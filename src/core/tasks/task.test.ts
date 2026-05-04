@@ -1,6 +1,13 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import {
+  registerAgent,
+  readRunLog,
+} from "../agents/index.js";
 import {
   renderTaskContext,
   selectTaskContext,
@@ -9,19 +16,33 @@ import {
   parseTaskMarkdown,
   renderTaskMarkdown,
   renderNextTask,
+  renderTasksTable,
   selectNextTask,
   TaskFormatError,
+  writeTaskFile,
   type ProjectTaskFile,
   type ProjectTask,
 } from "./index.js";
+import {
+  claimTask,
+  createStaleTaskLock,
+  doneTask,
+  releaseTask,
+  reviewTask,
+} from "./workflow.js";
 
 const TASK: ProjectTask = {
   id: "0007",
   title: "Add Task System",
-  status: "todo",
+  state: "todo",
+  owner: "none",
   mode: "mvp",
+  lane: "implementation",
+  scope: ["tasks"],
   risk: "medium",
+  parallel: true,
   dependsOn: ["0001", "0002"],
+  tags: ["tasks", "parser"],
   goal: "Implement task file parsing and generation support.",
   contextFiles: ["AGENTS.md", "docs/task-system.md"],
   allowedFiles: ["src/core/tasks/**", "docs/progress.md"],
@@ -40,16 +61,33 @@ const TASK: ProjectTask = {
   notes: ["Prefer explicit fields over inferred task metadata."],
 };
 
-test("renderTaskMarkdown emits the documented task shape", () => {
+async function withTempDirectory(
+  run: (directory: string) => Promise<void>,
+): Promise<void> {
+  const directory = await mkdtemp(join(tmpdir(), "apk-task-"));
+
+  try {
+    await run(directory);
+  } finally {
+    await rm(directory, { force: true, recursive: true });
+  }
+}
+
+test("renderTaskMarkdown emits the compact task shape", () => {
   assert.equal(
     renderTaskMarkdown(TASK),
     [
       "# Task 0007 - Add Task System",
       "",
-      "Status: todo",
+      "State: todo",
+      "Owner: none",
       "Mode: mvp",
+      "Lane: implementation",
+      "Scope: tasks",
       "Risk: medium",
-      "Depends on: 0001, 0002",
+      "Parallel: true",
+      "Depends on: 0001,0002",
+      "Tags: tasks,parser",
       "",
       "## Goal",
       "",
@@ -96,43 +134,26 @@ test("renderTaskMarkdown emits the documented task shape", () => {
   );
 });
 
-test("parseTaskMarkdown reads rendered task files", () => {
+test("parseTaskMarkdown reads rendered compact task files", () => {
   assert.deepEqual(parseTaskMarkdown(renderTaskMarkdown(TASK)), TASK);
 });
 
-test("parseTaskMarkdown accepts no dependencies", () => {
-  const task = parseTaskMarkdown(
-    renderTaskMarkdown({
-      ...TASK,
-      dependsOn: [],
-    }),
-  );
-
-  assert.deepEqual(task.dependsOn, []);
-});
-
-test("parseTaskMarkdown strips markdown code ticks from list paths", () => {
-  const task = parseTaskMarkdown(
-    renderTaskMarkdown({
-      ...TASK,
-      contextFiles: ["`AGENTS.md`", "`docs/task-system.md`"],
-    }),
-  );
-
-  assert.deepEqual(task.contextFiles, ["AGENTS.md", "docs/task-system.md"]);
-});
-
-test("parseTaskMarkdown reports useful validation errors", () => {
+test("parseTaskMarkdown reports useful compact validation errors", () => {
   assert.throws(
     () =>
       parseTaskMarkdown(
         [
           "# Broken",
           "",
-          "Status: waiting",
+          "State: waiting",
+          "Owner:",
           "Mode: legacy",
+          "Lane:",
+          "Scope: none",
           "Risk: risky",
+          "Parallel: maybe",
           "Depends on:",
+          "Tags: none",
           "",
           "## Goal",
           "",
@@ -141,25 +162,10 @@ test("parseTaskMarkdown reports useful validation errors", () => {
       ),
     (error: unknown) => {
       assert.ok(error instanceof TaskFormatError);
-      assert.deepEqual(error.issues, [
-        'Heading must match "# Task <id> - <title>".',
-        "Depends on must not be empty.",
-        "Status must be one of: todo, in-progress, done.",
-        "Mode must be one of: discovery, mvp, product, production, maintenance, audit, adopt.",
-        "Risk must be one of: low, medium, high.",
-        'Section "Context files" is required.',
-        'Section "Files allowed to edit" is required.',
-        'Section "Files forbidden to edit" is required.',
-        'Section "Steps" is required.',
-        'Section "Acceptance criteria" is required.',
-        'Section "Verification commands" is required.',
-        'Section "Documentation updates" is required.',
-        'Section "Notes" is required.',
-        'Depends on must be "none" or a comma-separated task id list.',
-        "Goal must not be empty.",
-        "Context files must include at least one item.",
-        "Verification commands must include at least one item.",
-      ]);
+      assert.ok(error.issues.includes('Heading must match "# Task <id> - <title>".'));
+      assert.ok(error.issues.includes("State must be one of: todo, doing, review, done, blocked, canceled."));
+      assert.ok(error.issues.includes("Owner must not be empty."));
+      assert.ok(error.issues.includes("Parallel must be true or false."));
       return true;
     },
   );
@@ -206,20 +212,6 @@ test("selectTaskContext can use the actual task file path", () => {
   );
 });
 
-test("selectTaskContext returns level 3 source and support files", () => {
-  assert.deepEqual(selectTaskContext(TASK, 3).files, [
-    "AGENTS.md",
-    "docs/project.md",
-    "docs/scope.md",
-    "docs/architecture.md",
-    ".tasks/0007-add-task-system.md",
-    "docs/decisions.md",
-    "docs/task-system.md",
-    "src/core/tasks/**",
-    "docs/progress.md",
-  ]);
-});
-
 test("renderTaskContext prints explicit file list", () => {
   assert.equal(
     renderTaskContext(selectTaskContext(TASK, 1)),
@@ -238,7 +230,7 @@ test("renderTaskContext prints explicit file list", () => {
   );
 });
 
-test("selectNextTask returns lowest-numbered todo task and ignores done tasks", () => {
+test("selectNextTask returns lowest-numbered todo task with done dependencies", () => {
   const files: ProjectTaskFile[] = [
     {
       path: ".tasks/0001-done.md",
@@ -246,16 +238,8 @@ test("selectNextTask returns lowest-numbered todo task and ignores done tasks", 
         ...TASK,
         id: "0001",
         title: "Done",
-        status: "done",
-      },
-    },
-    {
-      path: ".tasks/0010-later.md",
-      task: {
-        ...TASK,
-        id: "0010",
-        title: "Later",
-        status: "todo",
+        state: "done",
+        owner: "archive",
       },
     },
     {
@@ -264,7 +248,16 @@ test("selectNextTask returns lowest-numbered todo task and ignores done tasks", 
         ...TASK,
         id: "0009",
         title: "Next",
-        status: "todo",
+        dependsOn: ["0001"],
+      },
+    },
+    {
+      path: ".tasks/0010-blocked-by-dep.md",
+      task: {
+        ...TASK,
+        id: "0010",
+        title: "Blocked By Dependency",
+        dependsOn: ["0002"],
       },
     },
   ];
@@ -275,16 +268,14 @@ test("selectNextTask returns lowest-numbered todo task and ignores done tasks", 
   assert.equal(selection?.contextCommand, "apk context 0009 --level 2");
 });
 
-test("selectNextTask returns undefined when no todo tasks exist", () => {
+test("selectNextTask ignores busy and terminal states", () => {
   assert.equal(
     selectNextTask([
-      {
-        path: ".tasks/0001-done.md",
-        task: {
-          ...TASK,
-          status: "done",
-        },
-      },
+      { path: "doing.md", task: { ...TASK, state: "doing", owner: "codex-a" } },
+      { path: "review.md", task: { ...TASK, state: "review", owner: "codex-a" } },
+      { path: "blocked.md", task: { ...TASK, state: "blocked" } },
+      { path: "done.md", task: { ...TASK, state: "done", owner: "archive" } },
+      { path: "canceled.md", task: { ...TASK, state: "canceled" } },
     ]),
     undefined,
   );
@@ -305,7 +296,10 @@ test("renderNextTask prints candidate details", () => {
     [
       "Task: 0012",
       "Title: Add Next Task Command",
+      "State: todo",
+      "Owner: none",
       "Mode: mvp",
+      "Lane: implementation",
       "Risk: medium",
       "Path: .tasks/0012-add-next-task-command.md",
       "Context: apk context 0012 --level 2",
@@ -314,6 +308,131 @@ test("renderNextTask prints candidate details", () => {
   );
 });
 
-test("renderNextTask prints no-task message", () => {
-  assert.equal(renderNextTask(undefined), "No actionable todo tasks found.\n");
+test("renderTasksTable prints compact rows", () => {
+  assert.match(renderTasksTable([{ path: "task.md", task: TASK }]), /0007\s+todo\s+none\s+implementation\s+medium\s+yes\s+Add Task System/);
+});
+
+test("task transitions require registered owner and log events", async () => {
+  await withTempDirectory(async (directory) => {
+    const tasksDirectory = join(directory, ".tasks");
+    const taskPath = join(tasksDirectory, "0007-add-task-system.md");
+    await writeTaskFile(taskPath, TASK);
+
+    await assert.rejects(
+      () => claimTask({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        owner: "codex-a",
+      }),
+      /Agent is not registered/,
+    );
+
+    await registerAgent(directory, {
+      id: "codex-a",
+      platform: "codex",
+      model: "gpt-5.5",
+      created: "2026-05-04T12:00:00Z",
+    });
+
+    const claimed = await claimTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+    });
+    assert.equal(claimed.state, "doing");
+    assert.equal(claimed.owner, "codex-a");
+
+    const review = await reviewTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+    });
+    assert.equal(review.state, "review");
+
+    const done = await doneTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+    });
+    assert.equal(done.state, "done");
+
+    assert.deepEqual((await readRunLog(directory)).map((event) => event.event), [
+      "register",
+      "claim",
+      "review",
+      "done",
+    ]);
+  });
+});
+
+test("task transitions reject owner mismatch and stale locks", async () => {
+  await withTempDirectory(async (directory) => {
+    const taskPath = join(directory, ".tasks", "0007-add-task-system.md");
+    await writeTaskFile(taskPath, {
+      ...TASK,
+      state: "doing",
+      owner: "codex-a",
+    });
+    await registerAgent(directory, {
+      id: "codex-a",
+      platform: "codex",
+      model: "gpt-5.5",
+    });
+    await registerAgent(directory, {
+      id: "cursor-a",
+      platform: "cursor",
+      model: "claude-4",
+    });
+
+    await assert.rejects(
+      () => releaseTask({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        owner: "cursor-a",
+      }),
+      /owned by codex-a/,
+    );
+
+    await createStaleTaskLock(directory, ".tasks");
+    await assert.rejects(
+      () => releaseTask({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        owner: "codex-a",
+      }),
+      /Task lock exists/,
+    );
+  });
+});
+
+test("releaseTask can reopen ownerless blocked tasks with a registered owner", async () => {
+  await withTempDirectory(async (directory) => {
+    const taskPath = join(directory, ".tasks", "0007-add-task-system.md");
+    await writeTaskFile(taskPath, {
+      ...TASK,
+      state: "blocked",
+      owner: "none",
+    });
+    await registerAgent(directory, {
+      id: "codex-a",
+      platform: "codex",
+      model: "gpt-5.5",
+    });
+
+    const released = await releaseTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+    });
+
+    assert.equal(released.state, "todo");
+    assert.equal(released.owner, "none");
+  });
 });

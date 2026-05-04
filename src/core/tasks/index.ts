@@ -1,8 +1,15 @@
-import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
-export const TASK_STATUSES = ["todo", "in-progress", "done"] as const;
-export type TaskStatus = (typeof TASK_STATUSES)[number];
+export const TASK_STATES = [
+  "todo",
+  "doing",
+  "review",
+  "done",
+  "blocked",
+  "canceled",
+] as const;
+export type TaskState = (typeof TASK_STATES)[number];
 
 export const TASK_MODES = [
   "discovery",
@@ -21,10 +28,15 @@ export type TaskRisk = (typeof TASK_RISKS)[number];
 export interface ProjectTask {
   id: string;
   title: string;
-  status: TaskStatus;
+  state: TaskState;
+  owner: string;
   mode: TaskMode;
+  lane: string;
+  scope: string[];
   risk: TaskRisk;
+  parallel: boolean;
   dependsOn: string[];
+  tags: string[];
   goal: string;
   contextFiles: string[];
   allowedFiles: string[];
@@ -124,6 +136,21 @@ function parseSteps(text: string): string[] {
     .filter((line) => line.length > 0);
 }
 
+function parseCsv(text: string): string[] {
+  if (text === "none") {
+    return [];
+  }
+
+  return text
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+function renderCsv(items: readonly string[]): string {
+  return items.length === 0 ? "none" : items.join(",");
+}
+
 function renderList(items: readonly string[]): string {
   return items.map((item) => `- ${item}`).join("\n");
 }
@@ -197,6 +224,35 @@ function requireSection(
   return section;
 }
 
+function parseBoolean(value: string, issues: string[]): boolean {
+  if (value === "true") {
+    return true;
+  }
+
+  if (value === "false") {
+    return false;
+  }
+
+  issues.push("Parallel must be true or false.");
+  return false;
+}
+
+function defaultLane(mode: TaskMode): string {
+  if (mode === "adopt") {
+    return "adoption";
+  }
+
+  if (mode === "discovery") {
+    return "planning";
+  }
+
+  return "implementation";
+}
+
+function normalizeLegacyState(value: string): string {
+  return value === "in-progress" ? "doing" : value;
+}
+
 export function parseTaskMarkdown(markdown: string): ProjectTask {
   const normalized = markdown.replace(/\r\n/g, "\n");
   const lines = normalized.split("\n");
@@ -208,25 +264,41 @@ export function parseTaskMarkdown(markdown: string): ProjectTask {
     issues.push('Heading must match "# Task <id> - <title>".');
   }
 
-  const statusValue = readRequiredMetadata(lines, "Status", issues);
+  const stateValue = lines.some((line) => line.startsWith("State:"))
+    ? readRequiredMetadata(lines, "State", issues)
+    : normalizeLegacyState(readRequiredMetadata(lines, "Status", issues));
+  const ownerValue = lines.some((line) => line.startsWith("Owner:"))
+    ? readRequiredMetadata(lines, "Owner", issues)
+    : "none";
   const modeValue = readRequiredMetadata(lines, "Mode", issues);
   const riskValue = readRequiredMetadata(lines, "Risk", issues);
   const dependsOnValue = readRequiredMetadata(lines, "Depends on", issues);
+  const state = requireOneOf(stateValue, TASK_STATES, "State", issues);
+  const mode = requireOneOf(modeValue, TASK_MODES, "Mode", issues);
   const sections = parseSections(lines);
+  const scope = lines.some((line) => line.startsWith("Scope:"))
+    ? parseCsv(readRequiredMetadata(lines, "Scope", issues))
+    : [];
+  const tags = lines.some((line) => line.startsWith("Tags:"))
+    ? parseCsv(readRequiredMetadata(lines, "Tags", issues))
+    : [];
 
   const task: ProjectTask = {
     id: headingMatch?.[1] ?? "",
     title: headingMatch?.[2] ?? "",
-    status: requireOneOf(statusValue, TASK_STATUSES, "Status", issues),
-    mode: requireOneOf(modeValue, TASK_MODES, "Mode", issues),
+    state,
+    owner: ownerValue,
+    mode,
+    lane: lines.some((line) => line.startsWith("Lane:"))
+      ? readRequiredMetadata(lines, "Lane", issues)
+      : defaultLane(mode),
+    scope,
     risk: requireOneOf(riskValue, TASK_RISKS, "Risk", issues),
-    dependsOn:
-      dependsOnValue === "none"
-        ? []
-        : dependsOnValue
-            .split(",")
-            .map((entry) => entry.trim())
-            .filter((entry) => entry.length > 0),
+    parallel: lines.some((line) => line.startsWith("Parallel:"))
+      ? parseBoolean(readRequiredMetadata(lines, "Parallel", issues), issues)
+      : false,
+    dependsOn: parseCsv(dependsOnValue),
+    tags,
     goal: requireSection(sections, "goal", "Goal", issues).trim(),
     contextFiles: parseList(
       requireSection(sections, "contextFiles", "Context files", issues),
@@ -269,8 +341,24 @@ export function parseTaskMarkdown(markdown: string): ProjectTask {
     issues.push('Depends on must be "none" or a comma-separated task id list.');
   }
 
+  if (task.owner.length === 0) {
+    issues.push("Owner must not be empty.");
+  }
+
+  if ((task.state === "doing" || task.state === "review") && task.owner === "none") {
+    issues.push("Owner must be registered agent id for doing or review tasks.");
+  }
+
+  if (task.owner === "none" && !["todo", "blocked", "canceled"].includes(task.state)) {
+    issues.push("Owner none is only allowed for todo, blocked, or canceled tasks.");
+  }
+
   if (task.goal.length === 0) {
     issues.push("Goal must not be empty.");
+  }
+
+  if (task.lane.length === 0) {
+    issues.push("Lane must not be empty.");
   }
 
   if (task.contextFiles.length === 0) {
@@ -303,10 +391,15 @@ export function renderTaskMarkdown(task: ProjectTask): string {
   return [
     `# Task ${task.id} - ${task.title}`,
     "",
-    `Status: ${task.status}`,
+    `State: ${task.state}`,
+    `Owner: ${task.owner}`,
     `Mode: ${task.mode}`,
+    `Lane: ${task.lane}`,
+    `Scope: ${renderCsv(task.scope)}`,
     `Risk: ${task.risk}`,
-    `Depends on: ${task.dependsOn.length > 0 ? task.dependsOn.join(", ") : "none"}`,
+    `Parallel: ${task.parallel ? "true" : "false"}`,
+    `Depends on: ${renderCsv(task.dependsOn)}`,
+    `Tags: ${renderCsv(task.tags)}`,
     "",
     sections.join("\n\n"),
     "",
@@ -323,6 +416,11 @@ export async function loadTaskFile(path: string): Promise<ProjectTaskFile> {
     path,
     task: parseTaskMarkdown(await readFile(path, "utf8")),
   };
+}
+
+export async function writeTaskFile(path: string, task: ProjectTask): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, renderTaskMarkdown(task), "utf8");
 }
 
 export async function listTaskFiles(
@@ -359,15 +457,23 @@ export async function findTaskFile(
   return join(directory, match);
 }
 
+function completedTaskIds(files: readonly ProjectTaskFile[]): Set<string> {
+  return new Set(files.filter((file) => file.task.state === "done").map((file) => file.task.id));
+}
+
 export function selectNextTask(
   files: readonly ProjectTaskFile[],
 ): NextTaskSelection | undefined {
+  const completed = completedTaskIds(files);
   const next = [...files]
     .sort((left, right) => {
       const byId = taskSortValue(left.task) - taskSortValue(right.task);
       return byId === 0 ? left.path.localeCompare(right.path) : byId;
     })
-    .find((file) => file.task.status === "todo");
+    .find((file) => (
+      file.task.state === "todo" &&
+      file.task.dependsOn.every((dependency) => completed.has(dependency))
+    ));
 
   if (!next) {
     return undefined;
@@ -379,6 +485,23 @@ export function selectNextTask(
   };
 }
 
+export function renderTasksTable(files: readonly ProjectTaskFile[]): string {
+  const rows = [
+    "id    state     owner       lane            risk    par  title",
+    ...files.map(({ task }) => [
+      task.id.padEnd(5),
+      task.state.padEnd(9),
+      task.owner.padEnd(11),
+      task.lane.padEnd(15),
+      task.risk.padEnd(7),
+      (task.parallel ? "yes" : "no").padEnd(4),
+      task.title,
+    ].join(" ")),
+  ];
+
+  return `${rows.join("\n")}\n`;
+}
+
 export function renderNextTask(selection: NextTaskSelection | undefined): string {
   if (!selection) {
     return "No actionable todo tasks found.\n";
@@ -387,7 +510,10 @@ export function renderNextTask(selection: NextTaskSelection | undefined): string
   return [
     `Task: ${selection.task.id}`,
     `Title: ${selection.task.title}`,
+    `State: ${selection.task.state}`,
+    `Owner: ${selection.task.owner}`,
     `Mode: ${selection.task.mode}`,
+    `Lane: ${selection.task.lane}`,
     `Risk: ${selection.task.risk}`,
     `Path: ${selection.path}`,
     `Context: ${selection.contextCommand}`,

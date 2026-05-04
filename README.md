@@ -47,6 +47,16 @@ Implemented commands:
 
 - `apk init`
 - `apk adopt`
+- `apk agent register`
+- `apk agent list`
+- `apk agent prompt`
+- `apk tasks`
+- `apk claim`
+- `apk release`
+- `apk block`
+- `apk review`
+- `apk done`
+- `apk cancel`
 - `apk context <task-id>`
 - `apk mode [mode]`
 - `apk next-task`
@@ -241,12 +251,69 @@ Supported export targets: `agents`, `codex`, `opencode`, `cursor`.
 ## Example workflow
 
 1. Start a new repository with `apk init`, or add the kit to an existing repository with `apk adopt`.
-2. Run `apk next-task` to pick the next todo task.
-3. Run `apk context <task-id>` to list exact files to read.
-4. Run `apk prompt <agent> --task <task-id>` to generate an agent prompt.
-5. Work one task at a time.
-6. Run the task verification commands before marking it done.
-7. Run `apk export` when agent instruction files need regeneration.
+2. Register the working agent with `apk agent register`.
+3. Run `apk next-task` to pick the next todo task.
+4. Claim it with `apk claim <task-id> --owner <agent-id>`.
+5. Run `apk context <task-id>` and `apk prompt <agent> --task <task-id>`.
+6. Work one task at a time.
+7. Move the task through `review` and `done`.
+8. Run `apk export` when agent instruction files need regeneration.
+
+## Agent workflow
+
+Register each agent before task work:
+
+```bash
+apk agent register --id codex-a --platform codex --model gpt-5.5
+```
+
+List registered agents:
+
+```bash
+apk agent list
+```
+
+Print compact setup instructions for a platform:
+
+```bash
+apk agent prompt --platform codex
+```
+
+Claim and complete a task:
+
+```bash
+apk tasks --state todo
+apk claim 0001 --owner codex-a
+apk context 0001 --level 2
+apk prompt codex --task 0001 --level 2
+pnpm test
+pnpm lint
+apk review 0001 --owner codex-a
+apk done 0001 --owner codex-a
+```
+
+If a task cannot continue:
+
+```bash
+apk block 0001 --owner codex-a --reason "needs product decision"
+apk release 0001 --owner codex-a
+apk cancel 0001 --owner codex-a --reason "obsolete"
+```
+
+Agent registry lives in `.agentic/agents.jsonl`. Compact run analytics live in `.agentic/runs.jsonl`.
+
+Task files stay compact and only store the current owner id. Platform/model metadata stays in the registry and run log.
+
+## Discovery planning
+
+Discovery mode now has lightweight planning documents:
+
+- `docs/product/requirements.md`
+- `docs/engineering/load-profile.md`
+- `docs/engineering/tech-options.md`
+- `docs/engineering/risk-register.md`
+
+Use them before implementation to record product scope, expected load, data growth, stack choices, rejected alternatives, and future risks.
 
 ## Usage scenarios
 
@@ -413,9 +480,9 @@ apk export --force
 
 ## Current status
 
-Tasks 0001 through 0015 are complete. v0.1 is ready.
+Tasks 0001 through 0022 are complete. v0.1 plus compact agent workflow is ready.
 
-The repository now has a minimal TypeScript CLI scaffold, config schema, `apk init`, `apk adopt`, `apk mode`, `apk next-task`, `apk context`, `apk prompt`, `apk export`, template rendering, doc generation helpers, agent exporters, and task parsing support.
+The repository now has a minimal TypeScript CLI scaffold, config schema, `apk init`, `apk adopt`, `apk mode`, `apk next-task`, `apk tasks`, agent registration, task state transitions, run analytics, `apk context`, `apk prompt`, `apk export`, template rendering, doc generation helpers, agent exporters, and compact task parsing support.
 
 Default agent style for this repository: `caveman` when the active tool supports it.
 

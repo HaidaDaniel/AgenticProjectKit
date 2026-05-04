@@ -1,9 +1,14 @@
 # Task 0008 - Add Context Command
 
-Status: done
+State: done
+Owner: archive
 Mode: mvp
+Lane: archive
+Scope: completed-v0.1
 Risk: medium
+Parallel: false
 Depends on: 0007
+Tags: archive,v0.1
 
 ## Goal
 

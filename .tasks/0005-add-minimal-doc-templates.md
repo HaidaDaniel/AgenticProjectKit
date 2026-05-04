@@ -1,9 +1,14 @@
 # Task 0005 - Add Minimal Doc Templates
 
-Status: done
+State: done
+Owner: archive
 Mode: mvp
+Lane: archive
+Scope: completed-v0.1
 Risk: low
+Parallel: false
 Depends on: 0004
+Tags: archive,v0.1
 
 ## Goal
 

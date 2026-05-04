@@ -2,7 +2,7 @@
 
 ## Current status
 
-Phase 1 documentation is in place, Tasks 0001 through 0015 are complete, and v0.1 is ready.
+Phase 1 documentation is in place, Tasks 0001 through 0022 are complete, and the compact agent workflow upgrade is ready.
 
 The repository now has:
 
@@ -42,10 +42,16 @@ The repository now has:
 - prompt command tests wired into `pnpm test`.
 - README and CLI docs updated for the implemented v0.1 command surface.
 - post-readiness fixes for init/adopt workflow validity, config-aware task lookup, command-specific help, safe exports, and package bin/build support.
+- compact task metadata with `State`, `Owner`, `Lane`, `Scope`, `Parallel`, and `Tags`.
+- registered agent workflow backed by `.agentic/agents.jsonl`.
+- compact run analytics backed by `.agentic/runs.jsonl`.
+- task state commands for claim, release, block, review, done, and cancel.
+- discovery planning docs for requirements, load profile, tech options, and risk register.
+- all task files converted to the compact format.
 
 ## Next step
 
-Start v0.2 planning from the roadmap and scope docs.
+Use the discovery planning docs and compact task workflow in target repositories.
 
 ## Remaining v0.1 task plan
 
@@ -67,3 +73,4 @@ None.
 - Prompt command verification passed with `pnpm test`, `pnpm lint`, and `pnpm exec tsx src/cli/index.ts prompt codex --task 0014 --level 2`.
 - v0.1 readiness verification passed with `pnpm test`, `pnpm lint`, and help checks for `init`, `adopt`, `mode`, `next-task`, `context`, `prompt`, and `export`.
 - Post-readiness fix verification passed with `pnpm test`, `pnpm lint`, `pnpm build`, and fresh-repository smoke tests for `init`, `adopt`, `next-task`, `context`, `prompt`, and safe `export`.
+- Compact agent workflow verification passed with task parsing, transition, registry, run log, lock, and compact prompt tests.

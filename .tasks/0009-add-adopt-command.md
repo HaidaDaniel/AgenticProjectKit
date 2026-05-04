@@ -1,9 +1,14 @@
 # Task 0009 - Add Adopt Command
 
-Status: done
+State: done
+Owner: archive
 Mode: mvp
+Lane: archive
+Scope: completed-v0.1
 Risk: high
+Parallel: false
 Depends on: 0001, 0002, 0004, 0006, 0007, 0008
+Tags: archive,v0.1
 
 ## Goal
 

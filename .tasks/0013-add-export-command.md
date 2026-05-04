@@ -1,9 +1,14 @@
 # Task 0013 - Add Export Command
 
-Status: done
+State: done
+Owner: archive
 Mode: mvp
+Lane: archive
+Scope: completed-v0.1
 Risk: medium
+Parallel: false
 Depends on: 0006
+Tags: archive,v0.1
 
 ## Goal
 

@@ -35,9 +35,20 @@ Add source files and supporting repository files:
 - migrations;
 - generated files if relevant.
 
+## Exclusions
+
+The following operational files are not prompt context by default:
+
+- `.tasks/.apk.lock`;
+- `.agentic/agents.jsonl`;
+- `.agentic/runs.jsonl`.
+
+Agent registry and run logs are analytics and coordination state, not implementation context.
+
 ## Selection rules
 
 - Prefer the smallest context set that still makes the task safe.
 - Do not dump the entire repository into the prompt unless the task truly needs it.
 - For local models, be stricter about exact file lists and allowed edits.
 - For audit and adopt flows, include scanning and repository-shape documents first.
+- Prefer task metadata (`Lane`, `Scope`, `Tags`, `Parallel`) over long planning prose when splitting parallel work.

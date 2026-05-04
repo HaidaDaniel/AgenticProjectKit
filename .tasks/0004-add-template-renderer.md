@@ -1,9 +1,14 @@
 # Task 0004 - Add Template Renderer
 
-Status: done
+State: done
+Owner: archive
 Mode: mvp
+Lane: archive
+Scope: completed-v0.1
 Risk: medium
+Parallel: false
 Depends on: 0001, 0002
+Tags: archive,v0.1
 
 ## Goal
 

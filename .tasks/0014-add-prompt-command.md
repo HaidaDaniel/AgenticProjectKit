@@ -1,9 +1,14 @@
 # Task 0014 - Add Prompt Command
 
-Status: done
+State: done
+Owner: archive
 Mode: mvp
+Lane: archive
+Scope: completed-v0.1
 Risk: medium
+Parallel: false
 Depends on: 0006, 0007, 0008, 0012
+Tags: archive,v0.1
 
 ## Goal
 

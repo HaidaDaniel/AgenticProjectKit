@@ -1,9 +1,14 @@
 # Task 0015 - v0.1 Readiness Pass
 
-Status: done
+State: done
+Owner: archive
 Mode: mvp
+Lane: archive
+Scope: completed-v0.1
 Risk: medium
+Parallel: false
 Depends on: 0011, 0012, 0013, 0014
+Tags: archive,v0.1
 
 ## Goal
 

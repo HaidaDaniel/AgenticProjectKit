@@ -19,6 +19,14 @@ const STARTER_FILES: StarterFile[] = [
     content: serializeAgenticConfig(DEFAULT_CONFIG),
   },
   {
+    path: ".agentic/agents.jsonl",
+    content: "",
+  },
+  {
+    path: ".agentic/runs.jsonl",
+    content: "",
+  },
+  {
     path: ".agentic/modes/README.md",
     content: [
       "# Modes",
@@ -151,10 +159,15 @@ const STARTER_FILES: StarterFile[] = [
     content: [
       "# Task 0001 - Start Project",
       "",
-      "Status: todo",
+      "State: todo",
+      "Owner: none",
       "Mode: mvp",
+      "Lane: planning",
+      "Scope: product,architecture",
       "Risk: low",
+      "Parallel: false",
       "Depends on: none",
+      "Tags: start,planning",
       "",
       "## Goal",
       "",

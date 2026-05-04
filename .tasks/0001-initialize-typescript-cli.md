@@ -1,9 +1,14 @@
 # Task 0001 - Initialize TypeScript CLI
 
-Status: done
+State: done
+Owner: archive
 Mode: mvp
+Lane: archive
+Scope: completed-v0.1
 Risk: medium
+Parallel: false
 Depends on: none
+Tags: archive,v0.1
 
 ## Goal
 

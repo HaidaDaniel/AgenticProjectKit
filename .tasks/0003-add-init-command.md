@@ -1,9 +1,14 @@
 # Task 0003 - Add Init Command
 
-Status: done
+State: done
+Owner: archive
 Mode: mvp
+Lane: archive
+Scope: completed-v0.1
 Risk: medium
+Parallel: false
 Depends on: 0001, 0002
+Tags: archive,v0.1
 
 ## Goal
 

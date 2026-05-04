@@ -89,10 +89,15 @@ function createDocumentationCleanupTask(): ProjectTask {
   return {
     id: "0001",
     title: "Document Adopted Repository",
-    status: "todo",
+    state: "todo",
+    owner: "none",
     mode: "adopt",
+    lane: "adoption",
+    scope: ["docs", "adoption"],
     risk: "low",
+    parallel: false,
     dependsOn: [],
+    tags: ["adopt", "docs"],
     goal: "Review generated adoption docs and fill in project-specific details.",
     contextFiles: [
       "AGENTS.md",
@@ -159,6 +164,14 @@ export async function adoptRepository(rootDirectory: string): Promise<AdoptResul
         projectName: scan.rootName,
         defaultMode: "adopt",
       }),
+    },
+    {
+      path: ".agentic/agents.jsonl",
+      content: "",
+    },
+    {
+      path: ".agentic/runs.jsonl",
+      content: "",
     },
     {
       path: "docs/project-map.md",

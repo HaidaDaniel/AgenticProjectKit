@@ -1,9 +1,14 @@
 # Task 0011 - Add Mode Command
 
-Status: done
+State: done
+Owner: archive
 Mode: mvp
+Lane: archive
+Scope: completed-v0.1
 Risk: medium
+Parallel: false
 Depends on: 0002, 0003
+Tags: archive,v0.1
 
 ## Goal
 
