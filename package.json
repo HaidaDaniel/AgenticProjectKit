@@ -1,0 +1,31 @@
+{
+  "name": "agentic-project-kit",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "main": "dist/cli/index.js",
+  "bin": {
+    "apk": "dist/cli/index.js",
+    "agentic-project-kit": "dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "tsx src/cli/index.ts",
+    "start": "tsx src/cli/index.ts",
+    "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json && node scripts/copy-template-assets.mjs",
+    "prepare": "npm run build",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test src/core/config/schema.test.ts src/core/init/init.test.ts src/core/templates/renderer.test.ts src/core/tasks/task.test.ts src/core/docs/adopt.test.ts src/core/docs/prompt.test.ts src/core/modes/mode.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "handlebars": "^4.7.9"
+  }
+}

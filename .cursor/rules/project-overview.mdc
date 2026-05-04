@@ -1,0 +1,16 @@
+---
+description: Project overview and working principles for Agentic Project Kit
+---
+
+Repository docs and task files are the source of truth.
+
+Default style: `caveman`.
+
+Rules:
+
+- Read relevant docs before coding.
+- Work on one task at a time.
+- Keep changes small and reviewable.
+- Stay inside the task allowed files.
+- Do not add dependencies without updating docs/decisions.md.
+- Update docs/progress.md when task status changes.

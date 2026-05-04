@@ -1,0 +1,13 @@
+---
+description: Architecture guardrails for Agentic Project Kit
+---
+
+The project uses neutral policy and exporter layers.
+
+Rules:
+
+- Keep source of truth in repository docs and config.
+- Generate exported agent files from neutral policy content.
+- Keep CLI commands thin and task-driven.
+- Avoid tool lock-in.
+- Document architecture changes in docs/decisions.md.

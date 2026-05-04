@@ -1,0 +1,13 @@
+---
+description: Task workflow rules for repository work
+---
+
+Task files define the implementation contract.
+
+Rules:
+
+- Use the current task file as the execution contract.
+- Read listed context files before editing.
+- Do not touch forbidden files.
+- Run verification commands before marking work done.
+- Update the task if scope must expand.

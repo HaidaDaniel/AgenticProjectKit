@@ -1,0 +1,13 @@
+---
+description: Safe task shape for local language models
+---
+
+Local models need narrow, explicit context.
+
+Rules:
+
+- Provide exact context files.
+- Keep allowed files narrow.
+- Avoid architectural inference.
+- Avoid unrelated refactors.
+- Prefer explicit steps and acceptance criteria.
