@@ -74,3 +74,4 @@ None.
 - v0.1 readiness verification passed with `pnpm test`, `pnpm lint`, and help checks for `init`, `adopt`, `mode`, `next-task`, `context`, `prompt`, and `export`.
 - Post-readiness fix verification passed with `pnpm test`, `pnpm lint`, `pnpm build`, and fresh-repository smoke tests for `init`, `adopt`, `next-task`, `context`, `prompt`, and safe `export`.
 - Compact agent workflow verification passed with task parsing, transition, registry, run log, lock, and compact prompt tests.
+- Issue fixes verification passed: adopt creates task-system/context-system/decisions.md, init creates discovery docs, platform validation rejects unsupported platforms, architecture.md marks audit as planned, tech-stack.md matches package.json.

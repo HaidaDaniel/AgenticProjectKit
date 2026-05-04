@@ -229,8 +229,21 @@ export function renderAgentsTable(agents: readonly RegisteredAgent[]): string {
   return `${rows.join("\n")}\n`;
 }
 
+export const VALID_PROMPT_AGENTS = [
+  "agents",
+  "codex",
+  "opencode",
+  "cursor",
+] as const;
+
+export type ValidPromptAgent = (typeof VALID_PROMPT_AGENTS)[number];
+
 export function renderAgentSetupPrompt(platform: string): string {
   validateCompactValue("Platform", platform);
+
+  if (!(VALID_PROMPT_AGENTS as readonly string[]).includes(platform)) {
+    throw new Error(`Unsupported platform: ${platform}. Supported platforms: ${VALID_PROMPT_AGENTS.join(", ")}.`);
+  }
 
   return [
     "Register before task work:",

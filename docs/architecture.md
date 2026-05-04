@@ -48,10 +48,11 @@ docs/**
 
 - `init` creates the repository structure.
 - `adopt` inspects an existing project and adds kit files.
-- `audit` reads the repository and produces a documentation gap map.
 - `mode` changes the active operating rules.
 - `next-task` selects the next actionable item.
 - `context` resolves what files an agent should read.
 - `prompt` generates a tool-specific prompt from the neutral rules.
 - `export` writes agent-specific instruction files.
+- `audit` (planned) reads the repository and produces a documentation gap map.
+- `sync` (planned) synchronizes generated files from internal policy.
 
