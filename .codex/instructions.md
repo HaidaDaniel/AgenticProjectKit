@@ -13,6 +13,11 @@ Repository docs and task files are the source of truth.
 
 ## Task Discipline
 
+- Register agent before task work: apk agent register --id <id> --platform <platform> --model <model>.
+- Claim tasks with registered owner: apk claim <task-id> --owner <agent-id>.
+- Tasks in `doing` and `review` states require a registered owner.
+- Use apk release, apk block, apk review, apk done, apk cancel with --owner.
+- Task state changes are protected by .tasks/.apk.lock.
 - Use the current task file as the execution contract.
 - Read listed context files before editing.
 - Do not touch forbidden files.
