@@ -92,6 +92,8 @@ test("renderTaskPrompt includes task contract and selected context", () => {
       "- pnpm lint",
       "",
       "Rules:",
+      "- Prefer smallest useful vertical slice.",
+      "- Avoid premature abstractions.",
       "- Read context files first.",
       "- Work only inside allowed files.",
       "- Do not touch forbidden files.",
@@ -99,6 +101,63 @@ test("renderTaskPrompt includes task contract and selected context", () => {
       "",
     ].join("\n"),
   );
+});
+
+test("buildTaskPromptInput uses task metadata and available docs for level 2 context", () => {
+  const input = buildTaskPromptInput("codex", {
+    ...TASK,
+    lane: "audit",
+    scope: ["context", "scanner"],
+    tags: ["testing"],
+  }, 2, {
+    availableFiles: [
+      "docs/engineering/scanner-system.md",
+      "docs/engineering/testing-strategy.md",
+      "docs/product/requirements.md",
+    ],
+  });
+
+  assert.deepEqual(input.context.files, [
+    "AGENTS.md",
+    "docs/project.md",
+    "docs/scope.md",
+    "docs/architecture.md",
+    ".tasks/0014-add-prompt-command.md",
+    "docs/decisions.md",
+    "docs/engineering/scanner-system.md",
+    "docs/engineering/testing-strategy.md",
+    "docs/context-system.md",
+    "docs/task-system.md",
+  ]);
+});
+
+test("buildTaskPromptInput excludes operational files from level 3 context", () => {
+  const input = buildTaskPromptInput("codex", {
+    ...TASK,
+    contextFiles: [
+      ...TASK.contextFiles,
+      ".agentic/agents.jsonl",
+      ".tasks/.apk.lock",
+    ],
+    allowedFiles: [
+      ...TASK.allowedFiles,
+      ".agentic/runs.jsonl",
+    ],
+  }, 3);
+
+  assert.equal(input.context.files.includes(".agentic/agents.jsonl"), false);
+  assert.equal(input.context.files.includes(".agentic/runs.jsonl"), false);
+  assert.equal(input.context.files.includes(".tasks/.apk.lock"), false);
+});
+
+test("buildTaskPromptInput includes mode guidance", () => {
+  const prompt = renderTaskPrompt(buildTaskPromptInput("codex", {
+    ...TASK,
+    mode: "production",
+  }, 1));
+
+  assert.match(prompt, /- Prefer safer changes and stronger verification\./);
+  assert.match(prompt, /- Document operational risks\./);
 });
 
 test("parsePromptAgent accepts supported agents", () => {

@@ -1,7 +1,7 @@
 # Task 0023 - Fix Adopt Export Discovery Platform Docs
 
 State: done
-Owner: none
+Owner: archive
 Mode: mvp
 Lane: bugfix
 Scope: docs,cli

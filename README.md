@@ -49,7 +49,10 @@ Implemented commands:
 - `apk adopt`
 - `apk agent register`
 - `apk agent list`
+- `apk agent migrate-logs`
+- `apk analytics summary`
 - `apk agent prompt`
+- `apk audit`
 - `apk tasks`
 - `apk claim`
 - `apk release`
@@ -62,8 +65,7 @@ Implemented commands:
 - `apk next-task`
 - `apk prompt <agent> --task <task-id>`
 - `apk export [agent]`
-
-Planned later commands include `apk audit` and `apk sync`.
+- `apk sync [agent]`
 
 ## Using it in other repositories
 
@@ -248,6 +250,19 @@ Supported export targets: `agents`, `codex`, `opencode`, `cursor`.
 
 `export` skips existing files by default. Use `--force` to overwrite generated instruction files.
 
+Audit repository docs and generated instruction coverage:
+
+```bash
+pnpm exec tsx src/cli/index.ts audit
+```
+
+Check generated instruction drift, then write missing or stale files when intended:
+
+```bash
+pnpm exec tsx src/cli/index.ts sync
+pnpm exec tsx src/cli/index.ts sync cursor --write
+```
+
 ## Example workflow
 
 1. Start a new repository with `apk init`, or add the kit to an existing repository with `apk adopt`.
@@ -257,14 +272,15 @@ Supported export targets: `agents`, `codex`, `opencode`, `cursor`.
 5. Run `apk context <task-id>` and `apk prompt <agent> --task <task-id>`.
 6. Work one task at a time.
 7. Move the task through `review` and `done`.
-8. Run `apk export` when agent instruction files need regeneration.
+8. Run `apk sync` to check generated instruction drift.
+9. Run `apk export` or `apk sync --write` when generated instructions need regeneration.
 
 ## Agent workflow
 
 Register each agent before task work:
 
 ```bash
-apk agent register --id codex-a --platform codex --model gpt-5.5
+apk agent register --id codex-a --developer alice --platform codex --model gpt-5.5
 ```
 
 List registered agents:
@@ -300,9 +316,31 @@ apk release 0001 --owner codex-a
 apk cancel 0001 --owner codex-a --reason "obsolete"
 ```
 
-Agent registry lives in `.agentic/agents.jsonl`. Compact run analytics live in `.agentic/runs.jsonl`.
+Task files stay compact and only store the current owner id. Developer/platform/model metadata stays in the registry and run log.
 
-Task files stay compact and only store the current owner id. Platform/model metadata stays in the registry and run log.
+Team analytics use sharded, git-friendly files:
+
+- `.agentic/agents/<agent-id>.json`
+- `.agentic/runs/YYYY-MM-DD_<developer-id>_<agent-id>.jsonl`
+- `docs/analytics/agent-summary-YYYY-MM.md`
+
+Legacy `.agentic/agents.jsonl` and `.agentic/runs.jsonl` are migration inputs only. Convert them with:
+
+```bash
+apk agent migrate-logs --remove-legacy
+```
+
+Register a team agent with an explicit developer id when needed:
+
+```bash
+apk agent register --id codex-a --developer alice --platform codex --model gpt-5.5
+```
+
+Generate a monthly comparison summary:
+
+```bash
+apk analytics summary --month 2026-05 --write
+```
 
 ## Discovery planning
 
@@ -435,7 +473,19 @@ Generated outputs include:
 
 The source of truth remains the repository docs and neutral policy content; exported files are derived artifacts.
 
-### Scenario 5: Move from MVP to product work
+### Scenario 5: Audit and sync generated instructions
+
+Use this when you want to check repository readiness without changing application source files.
+
+```bash
+apk audit
+apk sync
+apk sync codex --write
+```
+
+`audit` writes `docs/audit-report.md` and `docs/project-map.md`. `sync` is check-only unless `--write` is present.
+
+### Scenario 6: Move from MVP to product work
 
 Use this after the first v0.1 scope is ready and the next work should focus on improving the product rather than proving the basic shape.
 
@@ -451,11 +501,11 @@ Switch from `mvp` to `product`:
 apk mode product
 ```
 
-Use `product` mode for v0.2 work such as better task generation, richer repository scanning, improved context selection, and stronger validation.
+Use `product` mode for v0.2 work such as richer repository scanning, audit reports, improved context selection, and stronger validation.
 
 Use `production` only when the project needs release hardening: stricter tests, clearer failure behavior, stronger docs, and safer workflows.
 
-### Scenario 6: Maintain the repository after v0.1
+### Scenario 7: Maintain the repository after v0.1
 
 Use this once the command surface is stable and the main work is incremental improvement.
 
@@ -480,10 +530,10 @@ apk export --force
 
 ## Current status
 
-Tasks 0001 through 0022 are complete. v0.1 plus compact agent workflow is ready.
+Tasks 0001 through 0027, 0029, and 0033 are complete. v0.1 plus audit, sync, and compact agent workflow are ready.
 
-The repository now has a minimal TypeScript CLI scaffold, config schema, `apk init`, `apk adopt`, `apk mode`, `apk next-task`, `apk tasks`, agent registration, task state transitions, run analytics, `apk context`, `apk prompt`, `apk export`, template rendering, doc generation helpers, agent exporters, and compact task parsing support.
+The repository now has a minimal TypeScript CLI scaffold, config schema, `apk init`, `apk adopt`, `apk audit`, `apk analytics summary`, `apk mode`, `apk next-task`, `apk tasks`, agent registration, task state transitions, sharded run analytics, `apk context`, `apk prompt`, `apk export`, `apk sync`, template rendering, doc generation helpers, agent exporters, and compact task parsing support.
 
 Default agent style for this repository: `caveman` when the active tool supports it.
 
-The next step is v0.2 planning from the roadmap and scope docs.
+The next step is working the remaining v0.2/v0.3 task backlog from `.tasks`.

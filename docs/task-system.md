@@ -60,22 +60,24 @@ Tags: mvp,api
 Agents register before task work:
 
 ```bash
-apk agent register --id codex-a --platform codex --model gpt-5.5
+apk agent register --id codex-a --developer alice --platform codex --model gpt-5.5
 ```
 
 Registry path:
 
 ```txt
-.agentic/agents.jsonl
+.agentic/agents/<agent-id>.json
 ```
 
 Run log path:
 
 ```txt
-.agentic/runs.jsonl
+.agentic/runs/YYYY-MM-DD_<developer-id>_<agent-id>.jsonl
 ```
 
-Run logs are compact JSONL events for later platform/model analysis. They do not store long prompts or context lists.
+Run logs are compact JSONL events for later developer/platform/model analysis. They do not store prompts, stdout, stderr, diffs, absolute paths, or context lists.
+
+Legacy `.agentic/agents.jsonl` and `.agentic/runs.jsonl` are migration inputs only and should not be committed.
 
 ## Task rules
 

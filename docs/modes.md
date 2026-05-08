@@ -1,5 +1,7 @@
 # Modes
 
+Prompt generation includes concise guidance from the task mode. Context rendering can include the same guidance when mode guidance is requested by the caller.
+
 ## discovery
 
 Used when the user has a rough idea and needs to turn it into requirements.
@@ -98,4 +100,3 @@ Rules:
 - create a project map;
 - create tasks for documentation cleanup;
 - preserve existing conventions.
-

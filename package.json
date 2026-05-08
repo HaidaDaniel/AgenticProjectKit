@@ -18,7 +18,7 @@
     "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json && node scripts/copy-template-assets.mjs",
     "prepare": "npm run build",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test src/core/config/schema.test.ts src/core/init/init.test.ts src/core/templates/renderer.test.ts src/core/tasks/task.test.ts src/core/docs/adopt.test.ts src/core/docs/prompt.test.ts src/core/modes/mode.test.ts"
+    "test": "tsx --test src/core/config/schema.test.ts src/core/init/init.test.ts src/core/templates/renderer.test.ts src/core/tasks/task.test.ts src/core/docs/adopt.test.ts src/core/docs/prompt.test.ts src/core/modes/mode.test.ts src/core/audit/audit.test.ts src/core/sync/sync.test.ts src/core/analytics/analytics.test.ts src/cli/cli.test.ts"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

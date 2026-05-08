@@ -24,6 +24,7 @@ Add the relevant design docs:
 - engineering docs related to the task;
 - product docs related to the task;
 - delivery docs related to the task.
+- when scanner facts are available, use task `Mode`, `Lane`, `Scope`, and `Tags` to include only present matching docs.
 
 ### Level 3
 
@@ -34,6 +35,7 @@ Add source files and supporting repository files:
 - configuration;
 - migrations;
 - generated files if relevant.
+- excludes operational lock, registry, and run log files.
 
 ## Exclusions
 
@@ -41,7 +43,9 @@ The following operational files are not prompt context by default:
 
 - `.tasks/.apk.lock`;
 - `.agentic/agents.jsonl`;
-- `.agentic/runs.jsonl`.
+- `.agentic/runs.jsonl`;
+- `.agentic/agents/**`;
+- `.agentic/runs/**`.
 
 Agent registry and run logs are analytics and coordination state, not implementation context.
 
@@ -52,3 +56,4 @@ Agent registry and run logs are analytics and coordination state, not implementa
 - For local models, be stricter about exact file lists and allowed edits.
 - For audit and adopt flows, include scanning and repository-shape documents first.
 - Prefer task metadata (`Lane`, `Scope`, `Tags`, `Parallel`) over long planning prose when splitting parallel work.
+- Use scanner facts as availability bounds for metadata-driven docs.

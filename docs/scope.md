@@ -23,24 +23,25 @@ Included:
 
 The next version should improve task generation and project analysis.
 
-Likely additions:
+Included:
 
 - richer scanning for existing repositories;
+- `apk audit`;
+- documentation and generated export gap reports;
+- task and config validation surfaced through audit;
 - better context selection;
-- more complete exporters;
-- improved prompt generation;
-- stronger validation of project config and task files.
+- improved prompt generation.
 
 ## v0.3
 
 The third version should focus on workflow quality and broader support.
 
-Likely additions:
+Included:
 
 - more robust audit and adopt flows;
 - better mode-specific behavior;
 - additional templates;
-- smoother export sync behavior;
+- `apk sync` check and write workflow;
 - stronger test coverage for the CLI and task pipeline.
 
 ## Future scope
@@ -66,3 +67,11 @@ Possible later additions:
 - no complex AST analysis;
 - no SaaS backend.
 
+## Explicit non-goals for v0.2 and v0.3
+
+- no web UI;
+- no authentication;
+- no database;
+- no cloud sync;
+- no issue tracker sync;
+- no SaaS backend.

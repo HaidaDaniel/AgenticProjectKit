@@ -2,7 +2,7 @@
 
 ## Current status
 
-Phase 1 documentation is in place, Tasks 0001 through 0022 are complete, and the compact agent workflow upgrade is ready.
+Phase 1 documentation is in place, Tasks 0001 through 0039 are complete, and the compact agent workflow upgrade is ready.
 
 The repository now has:
 
@@ -43,17 +43,32 @@ The repository now has:
 - README and CLI docs updated for the implemented v0.1 command surface.
 - post-readiness fixes for init/adopt workflow validity, config-aware task lookup, command-specific help, safe exports, and package bin/build support.
 - compact task metadata with `State`, `Owner`, `Lane`, `Scope`, `Parallel`, and `Tags`.
-- registered agent workflow backed by `.agentic/agents.jsonl`.
-- compact run analytics backed by `.agentic/runs.jsonl`.
+- registered agent workflow backed by `.agentic/agents/<agent-id>.json`.
+- compact run analytics backed by `.agentic/runs/YYYY-MM-DD_<developer-id>_<agent-id>.jsonl`.
 - task state commands for claim, release, block, review, done, and cancel.
 - discovery planning docs for requirements, load profile, tech options, and risk register.
 - all task files converted to the compact format.
+- task 0023 owner metadata fixed so task listing is valid.
+- enriched repository scanning for kit docs, generated agent exports, config, and task files.
+- an `apk audit` command that writes `docs/audit-report.md` and `docs/project-map.md`.
+- audit validation for config and task file errors.
+- an `apk sync` command with check-only default behavior and `--write` updates for generated instruction files.
+- v0.2 and v0.3 task backlog files 0024 through 0033.
+- v0.2 and v0.3 docs now exclude UI, SaaS, cloud sync, database, auth, and issue tracker sync.
+- metadata-aware context selection for product, engineering, delivery, audit, adopt, sync, and testing docs.
+- mode-aware prompt guidance.
+- richer adoption reports with pre-adoption doc and export gap summaries.
+- CLI smoke tests for help, audit, and sync.
+- team analytics dataset sharded for low-conflict commits.
+- `apk agent migrate-logs` for legacy log conversion.
+- `apk analytics summary` for developer, agent, platform, and model comparison.
+- CLI smoke tests for log migration and analytics summaries.
 
 ## Next step
 
-Use the discovery planning docs and compact task workflow in target repositories.
+No actionable todo tasks remain.
 
-## Remaining v0.1 task plan
+## Remaining v0.2 and v0.3 task plan
 
 None.
 
@@ -74,4 +89,7 @@ None.
 - v0.1 readiness verification passed with `pnpm test`, `pnpm lint`, and help checks for `init`, `adopt`, `mode`, `next-task`, `context`, `prompt`, and `export`.
 - Post-readiness fix verification passed with `pnpm test`, `pnpm lint`, `pnpm build`, and fresh-repository smoke tests for `init`, `adopt`, `next-task`, `context`, `prompt`, and safe `export`.
 - Compact agent workflow verification passed with task parsing, transition, registry, run log, lock, and compact prompt tests.
-- Issue fixes verification passed: adopt creates task-system/context-system/decisions.md, init creates discovery docs, platform validation rejects unsupported platforms, architecture.md marks audit as planned, tech-stack.md matches package.json.
+- Issue fixes verification passed: adopt creates task-system/context-system/decisions.md, init creates discovery docs, platform validation rejects unsupported platforms, and tech-stack.md matches package.json.
+- Audit and sync implementation verification passed with `pnpm test` and `pnpm lint`.
+- Final v0.2/v0.3 backlog verification passed with `pnpm test`, `pnpm lint`, and `pnpm build`.
+- Team analytics verification passed with `pnpm test` and `pnpm lint`.

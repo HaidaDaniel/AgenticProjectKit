@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -6,6 +6,8 @@ import test from "node:test";
 
 import {
   registerAgent,
+  listAgents,
+  migrateAgentLogs,
   readRunLog,
 } from "../agents/index.js";
 import {
@@ -330,6 +332,7 @@ test("task transitions require registered owner and log events", async () => {
 
     await registerAgent(directory, {
       id: "codex-a",
+      developer: "alice",
       platform: "codex",
       model: "gpt-5.5",
       created: "2026-05-04T12:00:00Z",
@@ -366,6 +369,87 @@ test("task transitions require registered owner and log events", async () => {
       "review",
       "done",
     ]);
+    assert.deepEqual(await readdir(join(directory, ".agentic", "agents")), ["codex-a.json"]);
+    assert.match((await readdir(join(directory, ".agentic", "runs")))[0], /^\d{4}-\d{2}-\d{2}_alice_codex-a\.jsonl$/);
+  });
+});
+
+test("agent registry reads sharded and legacy agents", async () => {
+  await withTempDirectory(async (directory) => {
+    await registerAgent(directory, {
+      id: "codex-a",
+      developer: "alice",
+      platform: "codex",
+      model: "gpt-5.5",
+      created: "2026-05-04T12:00:00Z",
+    });
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(
+      join(directory, ".agentic", "agents.jsonl"),
+      `${JSON.stringify({
+        id: "cursor-a",
+        platform: "cursor",
+        model: "claude-4",
+        label: "cursor-a",
+        created: "2026-05-04T13:00:00Z",
+      })}\n`,
+      "utf8",
+    );
+
+    const agents = await listAgents(directory);
+
+    assert.deepEqual(agents.map((agent) => [agent.id, agent.developer]), [
+      ["codex-a", "alice"],
+      ["cursor-a", "unknown"],
+    ]);
+  });
+});
+
+test("migrateAgentLogs converts legacy files to sharded layout", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(
+      join(directory, ".agentic", "agents.jsonl"),
+      `${JSON.stringify({
+        id: "codex-a",
+        platform: "codex",
+        model: "gpt-5.5",
+        label: "codex-a",
+        created: "2026-05-04T12:00:00Z",
+      })}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(directory, ".agentic", "runs.jsonl"),
+      `${JSON.stringify({
+        time: "2026-05-04T12:01:00Z",
+        event: "claim",
+        task: "0007",
+        agent: "codex-a",
+        platform: "codex",
+        model: "gpt-5.5",
+        state: "doing",
+        outcome: "ok",
+      })}\n`,
+      "utf8",
+    );
+
+    const result = await migrateAgentLogs(directory, { removeLegacy: true });
+
+    assert.deepEqual(result.agentsWritten, ["codex-a"]);
+    assert.equal(result.runEventsWritten, 1);
+    assert.match(
+      await readFile(join(directory, ".agentic", "agents", "codex-a.json"), "utf8"),
+      /"developer": "unknown"/,
+    );
+    assert.match(
+      await readFile(join(directory, ".agentic", "runs", "2026-05-04_unknown_codex-a.jsonl"), "utf8"),
+      /"developer":"unknown"/,
+    );
+    await assert.rejects(
+      () => readFile(join(directory, ".agentic", "agents.jsonl"), "utf8"),
+      /ENOENT/,
+    );
   });
 });
 
@@ -379,11 +463,13 @@ test("task transitions reject owner mismatch and stale locks", async () => {
     });
     await registerAgent(directory, {
       id: "codex-a",
+      developer: "alice",
       platform: "codex",
       model: "gpt-5.5",
     });
     await registerAgent(directory, {
       id: "cursor-a",
+      developer: "bob",
       platform: "cursor",
       model: "claude-4",
     });
@@ -421,6 +507,7 @@ test("releaseTask can reopen ownerless blocked tasks with a registered owner", a
     });
     await registerAgent(directory, {
       id: "codex-a",
+      developer: "alice",
       platform: "codex",
       model: "gpt-5.5",
     });

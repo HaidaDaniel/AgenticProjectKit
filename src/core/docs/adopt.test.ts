@@ -73,6 +73,10 @@ test("adoptRepository scans repository shape and creates kit files", async () =>
       await readFile(join(directory, "docs/project.md"), "utf8"),
       /Adopted repository:/,
     );
+    assert.match(
+      await readFile(join(directory, "docs/adoption-report.md"), "utf8"),
+      /## Pre-adoption Gaps\n\n- Missing kit docs: 8\n- Missing agent exports: 7/,
+    );
   });
 });
 

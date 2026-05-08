@@ -82,6 +82,25 @@ function renderAdoptionReport(scan: RepositoryScan): string {
     `- Name: ${scan.rootName}`,
     `- Stack: ${scan.detectedStack.length > 0 ? scan.detectedStack.join(", ") : "unknown"}`,
     "",
+    "## Pre-adoption Gaps",
+    "",
+    `- Missing kit docs: ${scan.kitDocs.missing.length}`,
+    `- Missing agent exports: ${scan.agentExports.missing.length}`,
+    `- Agentic config present: ${scan.hasAgenticConfig ? "yes" : "no"}`,
+    `- Existing task files: ${scan.taskFiles.length}`,
+    "",
+    "## Missing Kit Docs",
+    "",
+    ...(scan.kitDocs.missing.length > 0
+      ? scan.kitDocs.missing.map((item) => `- ${item}`)
+      : ["- none"]),
+    "",
+    "## Missing Agent Exports",
+    "",
+    ...(scan.agentExports.missing.length > 0
+      ? scan.agentExports.missing.map((item) => `- ${item}`)
+      : ["- none"]),
+    "",
   ].join("\n");
 }
 
@@ -166,11 +185,11 @@ export async function adoptRepository(rootDirectory: string): Promise<AdoptResul
       }),
     },
     {
-      path: ".agentic/agents.jsonl",
+      path: ".agentic/agents/.gitkeep",
       content: "",
     },
     {
-      path: ".agentic/runs.jsonl",
+      path: ".agentic/runs/.gitkeep",
       content: "",
     },
     {
@@ -268,14 +287,16 @@ export async function adoptRepository(rootDirectory: string): Promise<AdoptResul
         "Registry path:",
         "",
         "```txt",
-        ".agentic/agents.jsonl",
+        ".agentic/agents/<agent-id>.json",
         "```",
         "",
         "Run log path:",
         "",
         "```txt",
-        ".agentic/runs.jsonl",
+        ".agentic/runs/YYYY-MM-DD_<developer-id>_<agent-id>.jsonl",
         "```",
+        "",
+        "Legacy `.agentic/agents.jsonl` and `.agentic/runs.jsonl` are migration inputs only.",
         "",
         "## Task rules",
         "",
@@ -334,7 +355,9 @@ export async function adoptRepository(rootDirectory: string): Promise<AdoptResul
         "",
         "- `.tasks/.apk.lock`;",
         "- `.agentic/agents.jsonl`;",
-        "- `.agentic/runs.jsonl`.",
+        "- `.agentic/runs.jsonl`;",
+        "- `.agentic/agents/**`;",
+        "- `.agentic/runs/**`.",
         "",
         "## Selection rules",
         "",

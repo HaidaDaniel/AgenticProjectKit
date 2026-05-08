@@ -2,6 +2,13 @@ node_modules/
 dist/
 *.tgz
 .tasks/.apk.lock
+.agentic/agents.jsonl
+.agentic/runs.jsonl
+docs/audit-report.md
+docs/project-map.md
+.opencode/node_modules/
+.opencode/package.json
+.opencode/package-lock.json
 
 .env
 .env.*

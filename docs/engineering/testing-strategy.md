@@ -8,6 +8,8 @@ The implementation should use tests to protect the CLI and repository generation
 - unit tests for template rendering;
 - unit tests for exporter logic;
 - integration tests for CLI commands;
+- smoke tests for CLI help, audit, and sync behavior;
+- smoke tests for log migration and analytics summary behavior;
 - repository fixture tests for scanning and adoption flows.
 
 ## v0.1 focus
@@ -22,4 +24,5 @@ The implementation should use tests to protect the CLI and repository generation
 - keep tests close to the behavior they verify;
 - test task and context contracts explicitly;
 - include regression coverage for exporter output where practical.
-
+- keep CLI smoke tests temp-directory based and deterministic.
+- verify team analytics with sharded log fixtures.

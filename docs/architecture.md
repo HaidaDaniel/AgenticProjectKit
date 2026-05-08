@@ -53,6 +53,5 @@ docs/**
 - `context` resolves what files an agent should read.
 - `prompt` generates a tool-specific prompt from the neutral rules.
 - `export` writes agent-specific instruction files.
-- `audit` (planned) reads the repository and produces a documentation gap map.
-- `sync` (planned) synchronizes generated files from internal policy.
-
+- `audit` reads the repository and writes documentation and export gap reports.
+- `sync` checks or updates generated files from internal policy.

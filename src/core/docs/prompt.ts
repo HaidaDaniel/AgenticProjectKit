@@ -47,7 +47,10 @@ export function buildTaskPromptInput(
   return {
     agent: parsePromptAgent(agent),
     task,
-    context: selectTaskContext(task, level, options),
+    context: selectTaskContext(task, level, {
+      ...options,
+      includeModeGuidance: true,
+    }),
   };
 }
 
@@ -86,6 +89,7 @@ export function renderTaskPrompt(input: TaskPromptInput): string {
     ...renderList(task.verificationCommands),
     "",
     "Rules:",
+    ...(context.modeGuidance ? renderList(context.modeGuidance) : []),
     "- Read context files first.",
     "- Work only inside allowed files.",
     "- Do not touch forbidden files.",

@@ -19,11 +19,11 @@ const STARTER_FILES: StarterFile[] = [
     content: serializeAgenticConfig(DEFAULT_CONFIG),
   },
   {
-    path: ".agentic/agents.jsonl",
+    path: ".agentic/agents/.gitkeep",
     content: "",
   },
   {
-    path: ".agentic/runs.jsonl",
+    path: ".agentic/runs/.gitkeep",
     content: "",
   },
   {

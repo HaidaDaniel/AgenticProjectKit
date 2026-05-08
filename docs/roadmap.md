@@ -12,13 +12,14 @@
 ## v0.2
 
 - Better repository scanning.
-- Better prompt generation.
-- More complete export coverage.
-- Better validation of config and task files.
+- `apk audit` report generation.
+- Better validation of config and task files through audit.
 - Stronger context selection.
+- Better prompt generation.
 
 ## v0.3
 
+- `apk sync` check and write workflow.
 - Improved adoption and audit flows.
 - Better mode-aware behavior.
 - More template coverage.
@@ -33,3 +34,10 @@
 - Integrations with issue trackers.
 - Multi-repo workflows.
 
+## Excluded from v0.2 and v0.3
+
+- Web UI.
+- SaaS backend.
+- Cloud sync.
+- Issue tracker sync.
+- Database and authentication.
