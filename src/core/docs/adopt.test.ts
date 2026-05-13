@@ -4,6 +4,7 @@ import { join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { listAgentExporters } from "../exporters/index.js";
 import { adoptRepository } from "./adopt.js";
 
 async function withTempRepository(
@@ -75,7 +76,7 @@ test("adoptRepository scans repository shape and creates kit files", async () =>
     );
     assert.match(
       await readFile(join(directory, "docs/adoption-report.md"), "utf8"),
-      /## Pre-adoption Gaps\n\n- Missing kit docs: 8\n- Missing agent exports: 7/,
+      new RegExp(`## Pre-adoption Gaps\\n\\n- Missing kit docs: 8\\n- Missing agent exports: ${listAgentExporters().length}`),
     );
   });
 });

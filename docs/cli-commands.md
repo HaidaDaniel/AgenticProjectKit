@@ -62,7 +62,9 @@ Operating modes:
 Prompt agents:
 
 - `agents`
+- `claude`
 - `codex`
+- `gemini`
 - `opencode`
 - `cursor`
 
@@ -78,14 +80,18 @@ Task states:
 Export targets:
 
 - `agents`
+- `claude`
 - `codex`
+- `gemini`
 - `opencode`
 - `cursor`
 
 Sync targets:
 
 - `agents`
+- `claude`
 - `codex`
+- `gemini`
 - `opencode`
 - `cursor`
 

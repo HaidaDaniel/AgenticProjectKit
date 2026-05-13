@@ -1,0 +1,27 @@
+# Claude Code Instructions
+
+@AGENTS.md
+
+## Claude Code
+
+{{summary}}
+
+Default style: `{{defaultStyle}}`.
+
+Rules:
+
+{{#each coreRules}}
+- {{this}}
+{{/each}}
+
+Task workflow:
+
+{{#each taskRules}}
+- {{this}}
+{{/each}}
+
+Context files:
+
+{{#each contextFiles}}
+- `{{this}}`
+{{/each}}

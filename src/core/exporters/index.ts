@@ -6,7 +6,9 @@ import { renderTemplateFile, type TemplateData } from "../templates/index.js";
 
 export const AGENT_EXPORTER_IDS = [
   "agents",
+  "claude",
   "codex",
+  "gemini",
   "opencode",
   "cursor-project-overview",
   "cursor-architecture",
@@ -18,7 +20,9 @@ export type AgentExporterId = (typeof AGENT_EXPORTER_IDS)[number];
 
 export const AGENT_EXPORT_TARGETS = [
   "agents",
+  "claude",
   "codex",
+  "gemini",
   "opencode",
   "cursor",
 ] as const;
@@ -68,9 +72,19 @@ const EXPORTERS: readonly AgentExporter[] = [
     templatePath: join(templateDirectory, "agents.md.hbs"),
   },
   {
+    id: "claude",
+    outputPath: "CLAUDE.md",
+    templatePath: join(templateDirectory, "claude.md.hbs"),
+  },
+  {
     id: "codex",
     outputPath: ".codex/instructions.md",
     templatePath: join(templateDirectory, "codex.md.hbs"),
+  },
+  {
+    id: "gemini",
+    outputPath: "GEMINI.md",
+    templatePath: join(templateDirectory, "gemini.md.hbs"),
   },
   {
     id: "opencode",

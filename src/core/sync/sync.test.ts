@@ -26,7 +26,7 @@ test("syncAgentExports passes when generated files are current", async () => {
     const result = await syncAgentExports(directory);
 
     assert.equal(result.hasDrift, false);
-    assert.equal(result.checked.length, 7);
+    assert.equal(result.checked.length, 9);
     assert.deepEqual(result.missing, []);
     assert.deepEqual(result.stale, []);
   });
@@ -70,7 +70,9 @@ test("syncAgentExports writes missing and stale target files when requested", as
 test("syncAgentExports supports every export target", async () => {
   await withTempDirectory(async (directory) => {
     assert.equal((await syncAgentExports(directory, { target: "agents" })).checked.length, 1);
+    assert.equal((await syncAgentExports(directory, { target: "claude" })).checked.length, 1);
     assert.equal((await syncAgentExports(directory, { target: "codex" })).checked.length, 1);
+    assert.equal((await syncAgentExports(directory, { target: "gemini" })).checked.length, 1);
     assert.equal((await syncAgentExports(directory, { target: "opencode" })).checked.length, 1);
     assert.equal((await syncAgentExports(directory, { target: "cursor" })).checked.length, 4);
   });

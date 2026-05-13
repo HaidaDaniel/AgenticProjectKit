@@ -17,7 +17,9 @@ const EXPORT_HELP_TEXT = [
   "",
   "Agents:",
   "  agents",
+  "  claude",
   "  codex",
+  "  gemini",
   "  opencode",
   "  cursor",
 ].join("\n");

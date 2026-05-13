@@ -257,7 +257,7 @@ Generate a task prompt for a supported agent:
 pnpm exec tsx src/cli/index.ts prompt codex --task 0014 --level 2
 ```
 
-Supported prompt agents: `agents`, `codex`, `opencode`, `cursor`.
+Supported prompt agents: `agents`, `claude`, `codex`, `gemini`, `opencode`, `cursor`.
 
 Export generated agent instructions:
 
@@ -266,7 +266,7 @@ pnpm exec tsx src/cli/index.ts export
 pnpm exec tsx src/cli/index.ts export codex --force
 ```
 
-Supported export targets: `agents`, `codex`, `opencode`, `cursor`.
+Supported export targets: `agents`, `claude`, `codex`, `gemini`, `opencode`, `cursor`.
 
 `export` skips existing files by default. Use `--force` to overwrite generated instruction files.
 
@@ -459,7 +459,9 @@ apk prompt codex --task 0014 --level 2
 Supported prompt agents:
 
 - `agents`
+- `claude`
 - `codex`
+- `gemini`
 - `opencode`
 - `cursor`
 
@@ -478,7 +480,9 @@ apk export
 Export one target:
 
 ```bash
+apk export claude --force
 apk export codex --force
+apk export gemini --force
 apk export cursor --force
 apk export opencode --force
 apk export agents --force
@@ -487,6 +491,8 @@ apk export agents --force
 Generated outputs include:
 
 - `AGENTS.md`
+- `CLAUDE.md`
+- `GEMINI.md`
 - `.codex/instructions.md`
 - `.opencode/AGENTS.md`
 - `.cursor/rules/*.mdc`
@@ -550,9 +556,9 @@ apk export --force
 
 ## Current status
 
-Tasks 0001 through 0039 are complete. v0.1 plus the v0.2/v0.3 backlog, audit, sync, compact agent workflow, and team analytics are ready.
+Tasks 0001 through 0040 are complete. v0.1 plus the v0.2/v0.3 backlog, audit, sync, compact agent workflow, team analytics, and Claude/Gemini exports are ready.
 
-The repository now has a minimal TypeScript CLI scaffold, config schema, `init`, `adopt`, `audit`, `analytics summary`, `mode`, `next-task`, `tasks`, agent registration, task state transitions, sharded run analytics, `context`, `prompt`, `export`, `sync`, template rendering, doc generation helpers, agent exporters, and compact task parsing support.
+The repository now has a minimal TypeScript CLI scaffold, config schema, `init`, `adopt`, `audit`, `analytics summary`, `mode`, `next-task`, `tasks`, agent registration, task state transitions, sharded run analytics, `context`, `prompt`, `export`, `sync`, template rendering, doc generation helpers, Claude/Gemini/Codex/OpenCode/Cursor agent exporters, and compact task parsing support.
 
 Default agent style for this repository: `caveman` when the active tool supports it.
 

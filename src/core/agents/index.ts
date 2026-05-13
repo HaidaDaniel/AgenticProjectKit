@@ -516,7 +516,9 @@ export function renderMigrationSummary(result: MigrateLogsResult): string {
 
 export const VALID_PROMPT_AGENTS = [
   "agents",
+  "claude",
   "codex",
+  "gemini",
   "opencode",
   "cursor",
 ] as const;

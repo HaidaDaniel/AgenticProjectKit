@@ -2,7 +2,7 @@
 
 ## Current status
 
-Phase 1 documentation is in place, Tasks 0001 through 0039 are complete, and the compact agent workflow upgrade is ready.
+Phase 1 documentation is in place, Tasks 0001 through 0040 are complete, and the compact agent workflow upgrade is ready.
 
 The repository now has:
 
@@ -64,6 +64,7 @@ The repository now has:
 - `apk analytics summary` for developer, agent, platform, and model comparison.
 - CLI smoke tests for log migration and analytics summaries.
 - public repository readiness cleanup: MIT license, package metadata, committed config, non-conflicting `apkit` bin alias, and ignored sharded telemetry.
+- Claude Code and Gemini CLI exporters backed by the shared neutral policy.
 
 ## Next step
 
@@ -95,3 +96,4 @@ None.
 - Final v0.2/v0.3 backlog verification passed with `pnpm test`, `pnpm lint`, and `pnpm build`.
 - Team analytics verification passed with `pnpm test` and `pnpm lint`.
 - Public readiness cleanup verification passed with clean `apk audit`, `pnpm lint`, `pnpm test`, `pnpm build`, and package dry-run checks.
+- Claude/Gemini exporter verification passed with `pnpm lint`, `pnpm test`, `pnpm build`, `apk sync`, and `apk audit`.

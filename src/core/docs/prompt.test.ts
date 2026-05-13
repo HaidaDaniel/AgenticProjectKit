@@ -162,7 +162,9 @@ test("buildTaskPromptInput includes mode guidance", () => {
 
 test("parsePromptAgent accepts supported agents", () => {
   assert.equal(parsePromptAgent("agents"), "agents");
+  assert.equal(parsePromptAgent("claude"), "claude");
   assert.equal(parsePromptAgent("codex"), "codex");
+  assert.equal(parsePromptAgent("gemini"), "gemini");
   assert.equal(parsePromptAgent("opencode"), "opencode");
   assert.equal(parsePromptAgent("cursor"), "cursor");
 });
@@ -174,7 +176,7 @@ test("parsePromptAgent rejects unsupported agents", () => {
       assert.ok(error instanceof PromptAgentError);
       assert.equal(
         error.message,
-        "Unsupported prompt agent: legacy. Expected one of: agents, codex, opencode, cursor.",
+        "Unsupported prompt agent: legacy. Expected one of: agents, claude, codex, gemini, opencode, cursor.",
       );
       return true;
     },

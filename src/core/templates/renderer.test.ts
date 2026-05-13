@@ -138,7 +138,9 @@ test("agent exporters expose expected output files", () => {
     listAgentExporters().map((exporter) => exporter.outputPath),
     [
       "AGENTS.md",
+      "CLAUDE.md",
       ".codex/instructions.md",
+      "GEMINI.md",
       ".opencode/AGENTS.md",
       ".cursor/rules/project-overview.mdc",
       ".cursor/rules/architecture.mdc",
@@ -175,7 +177,9 @@ test("writeAllAgentExports writes every supported output", async () => {
 
     assert.deepEqual(result.written, [
       "AGENTS.md",
+      "CLAUDE.md",
       ".codex/instructions.md",
+      "GEMINI.md",
       ".opencode/AGENTS.md",
       ".cursor/rules/project-overview.mdc",
       ".cursor/rules/architecture.mdc",
@@ -201,7 +205,9 @@ test("writeAllAgentExports can skip existing files", async () => {
     assert.deepEqual(result.written, []);
     assert.deepEqual(result.skipped, [
       "AGENTS.md",
+      "CLAUDE.md",
       ".codex/instructions.md",
+      "GEMINI.md",
       ".opencode/AGENTS.md",
       ".cursor/rules/project-overview.mdc",
       ".cursor/rules/architecture.mdc",
@@ -230,7 +236,7 @@ test("writeAgentExportTarget writes only selected target group", async () => {
 
 test("parseAgentExportTarget rejects unsupported targets", () => {
   assert.throws(
-    () => parseAgentExportTarget("claude"),
-    /Unsupported agent export target: claude/,
+    () => parseAgentExportTarget("legacy"),
+    /Unsupported agent export target: legacy/,
   );
 });

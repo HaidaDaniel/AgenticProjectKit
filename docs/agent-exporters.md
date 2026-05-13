@@ -10,7 +10,7 @@ The internal docs and config should be the durable source of truth.
 
 Exporter files are derived artifacts and should not become the real policy source.
 
-## Planned outputs
+## Implemented outputs
 
 - `AGENTS.md`
 - `.codex/instructions.md`
@@ -18,6 +18,9 @@ Exporter files are derived artifacts and should not become the real policy sourc
 - `.cursor/rules/*.mdc`
 - `CLAUDE.md`
 - `GEMINI.md`
+
+## Planned outputs
+
 - `.github/copilot-instructions.md`
 
 ## Export rules
@@ -35,3 +38,5 @@ Exporter files are derived artifacts and should not become the real policy sourc
 - Codex instructions should emphasize task discipline and context selection.
 - OpenCode instructions should stay terse and operational.
 - Generic agent files should remain readable by humans first.
+- Claude Code should use `CLAUDE.md` as a thin adapter that imports `AGENTS.md`.
+- Gemini CLI should use `GEMINI.md` with the same shared rules and context list.
