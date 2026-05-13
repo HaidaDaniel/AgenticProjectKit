@@ -1,6 +1,6 @@
 # CLI Commands
 
-The CLI is named `apk`.
+The public CLI name is `apkit`. The shorter `apk` alias is kept for existing local workflows.
 
 ## Implemented commands
 

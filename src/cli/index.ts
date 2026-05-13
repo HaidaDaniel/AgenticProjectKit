@@ -17,8 +17,10 @@ import { runTaskStateCommand } from "./commands/task-state.js";
 const HELP_TEXT = [
   "Agentic Project Kit",
   "",
+  "Command: apkit (apk alias supported)",
+  "",
   "Usage:",
-  "  apk --help",
+  "  apkit --help",
   "  apk agent <register|list|prompt>",
   "  apk adopt [directory]",
   "  apk analytics summary [--month YYYY-MM] [--write]",

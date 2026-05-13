@@ -4,6 +4,10 @@ dist/
 .tasks/.apk.lock
 .agentic/agents.jsonl
 .agentic/runs.jsonl
+.agentic/agents/*
+!.agentic/agents/.gitkeep
+.agentic/runs/*
+!.agentic/runs/.gitkeep
 docs/audit-report.md
 docs/project-map.md
 .opencode/node_modules/

@@ -63,6 +63,7 @@ The repository now has:
 - `apk agent migrate-logs` for legacy log conversion.
 - `apk analytics summary` for developer, agent, platform, and model comparison.
 - CLI smoke tests for log migration and analytics summaries.
+- public repository readiness cleanup: MIT license, package metadata, committed config, non-conflicting `apkit` bin alias, and ignored sharded telemetry.
 
 ## Next step
 
@@ -93,3 +94,4 @@ None.
 - Audit and sync implementation verification passed with `pnpm test` and `pnpm lint`.
 - Final v0.2/v0.3 backlog verification passed with `pnpm test`, `pnpm lint`, and `pnpm build`.
 - Team analytics verification passed with `pnpm test` and `pnpm lint`.
+- Public readiness cleanup verification passed with clean `apk audit`, `pnpm lint`, `pnpm test`, `pnpm build`, and package dry-run checks.

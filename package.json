@@ -1,13 +1,24 @@
 {
   "name": "agentic-project-kit",
   "version": "0.1.0",
+  "description": "Repository-first workflow CLI for AI-assisted software development.",
   "private": false,
+  "license": "MIT",
   "type": "module",
   "main": "dist/cli/index.js",
   "bin": {
+    "apkit": "dist/cli/index.js",
     "apk": "dist/cli/index.js",
     "agentic-project-kit": "dist/cli/index.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HaidaDaniel/AgenticProjectKit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/HaidaDaniel/AgenticProjectKit/issues"
+  },
+  "homepage": "https://github.com/HaidaDaniel/AgenticProjectKit#readme",
   "files": [
     "dist",
     "README.md"
@@ -21,11 +32,11 @@
     "test": "tsx --test src/core/config/schema.test.ts src/core/init/init.test.ts src/core/templates/renderer.test.ts src/core/tasks/task.test.ts src/core/docs/adopt.test.ts src/core/docs/prompt.test.ts src/core/modes/mode.test.ts src/core/audit/audit.test.ts src/core/sync/sync.test.ts src/core/analytics/analytics.test.ts src/cli/cli.test.ts"
   },
   "devDependencies": {
-    "@types/node": "^25.6.0",
-    "tsx": "^4.21.0",
-    "typescript": "^6.0.3"
+    "tsx": "^4.21.0"
   },
   "dependencies": {
-    "handlebars": "^4.7.9"
+    "@types/node": "^25.6.0",
+    "handlebars": "^4.7.9",
+    "typescript": "^6.0.3"
   }
 }

@@ -28,8 +28,10 @@ It is intended to manage the whole project lifecycle:
 The intended command name is:
 
 ```bash
-apk
+apkit
 ```
+
+`apk` is still shipped as a short alias for existing local workflows, but `apkit` is the safer public command name because `apk` already exists as an unrelated npm package.
 
 During local development, run it through `tsx`:
 
@@ -40,7 +42,7 @@ pnpm exec tsx src/cli/index.ts --help
 After building or installing the package, run the CLI as:
 
 ```bash
-apk --help
+apkit --help
 ```
 
 Implemented commands:
@@ -548,10 +550,10 @@ apk export --force
 
 ## Current status
 
-Tasks 0001 through 0027, 0029, and 0033 are complete. v0.1 plus audit, sync, and compact agent workflow are ready.
+Tasks 0001 through 0039 are complete. v0.1 plus the v0.2/v0.3 backlog, audit, sync, compact agent workflow, and team analytics are ready.
 
-The repository now has a minimal TypeScript CLI scaffold, config schema, `apk init`, `apk adopt`, `apk audit`, `apk analytics summary`, `apk mode`, `apk next-task`, `apk tasks`, agent registration, task state transitions, sharded run analytics, `apk context`, `apk prompt`, `apk export`, `apk sync`, template rendering, doc generation helpers, agent exporters, and compact task parsing support.
+The repository now has a minimal TypeScript CLI scaffold, config schema, `init`, `adopt`, `audit`, `analytics summary`, `mode`, `next-task`, `tasks`, agent registration, task state transitions, sharded run analytics, `context`, `prompt`, `export`, `sync`, template rendering, doc generation helpers, agent exporters, and compact task parsing support.
 
 Default agent style for this repository: `caveman` when the active tool supports it.
 
-The next step is working the remaining v0.2/v0.3 task backlog from `.tasks`.
+No actionable todo tasks remain.

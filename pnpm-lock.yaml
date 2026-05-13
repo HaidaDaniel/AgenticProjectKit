@@ -8,19 +8,19 @@ importers:
 
   .:
     dependencies:
-      handlebars:
-        specifier: ^4.7.9
-        version: 4.7.9
-    devDependencies:
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
-      tsx:
-        specifier: ^4.21.0
-        version: 4.21.0
+      handlebars:
+        specifier: ^4.7.9
+        version: 4.7.9
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
+    devDependencies:
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
 
 packages:
 
