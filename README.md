@@ -69,89 +69,77 @@ Implemented commands:
 
 ## Using it in other repositories
 
-There are four practical ways to use Agentic Project Kit outside this repository.
+There are four practical ways to use Agentic Project Kit outside this repository without publishing it to npm.
 
-### Option 1: Use a pinned dev dependency
+### Option 1: Use a pinned GitHub dev dependency
 
 Best for teams and real projects.
 
-After the package is published:
+Use SSH when the machine already has GitHub credentials:
 
 ```bash
 cd path/to/your-project
-pnpm add -D agentic-project-kit
+pnpm add -D git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#main
 pnpm exec apk init
 ```
 
 For an existing repository:
 
 ```bash
-pnpm add -D agentic-project-kit
+pnpm add -D git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#main
 pnpm exec apk adopt
+```
+
+Pin a tag or commit SHA for repeatable installs:
+
+```bash
+pnpm add -D git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#<tag-or-commit>
+```
+
+HTTPS also works when GitHub auth is configured for HTTPS:
+
+```bash
+pnpm add -D git+https://github.com/HaidaDaniel/AgenticProjectKit.git#main
 ```
 
 This is usually better than a global install because every repository pins the exact CLI version it expects.
 
-### Option 2: Use one-shot execution with `pnpm dlx` or `npx`
-
-Best for quick bootstrap commands.
-
-After the package is published:
-
-```bash
-cd path/to/your-project
-pnpm dlx agentic-project-kit init
-```
-
-or:
-
-```bash
-npx agentic-project-kit init
-```
-
-For adoption:
-
-```bash
-pnpm dlx agentic-project-kit adopt
-npx agentic-project-kit adopt
-```
-
-This is valid. The tradeoff: every run may resolve the latest package unless you pin a version:
-
-```bash
-pnpm dlx agentic-project-kit@0.1.0 init
-npx agentic-project-kit@0.1.0 init
-```
-
-Use this for one-off setup. Use a dev dependency when repeatability matters.
-
-### Option 3: Install globally
+### Option 2: Install globally from GitHub
 
 Best for personal use across many local repositories.
 
-After the package is published:
-
 ```bash
-npm install -g agentic-project-kit
+npm install -g git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#main
 apk --help
 ```
 
 or:
 
 ```bash
-pnpm add -g agentic-project-kit
+pnpm add -g git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#main
 apk --help
+```
+
+If `apk` is not found after a pnpm global install:
+
+```bash
+pnpm bin -g
+pnpm setup
+source ~/.bashrc
 ```
 
 This is convenient, but less reproducible for teams because each developer may have a different global version.
 
-### Option 4: Link this local checkout while developing the CLI
+### Option 3: Link a local checkout while developing the CLI
 
 Best while working on Agentic Project Kit itself.
 
-From this repository:
+Clone the repository on the target machine:
 
 ```bash
+git clone git@github.com:HaidaDaniel/AgenticProjectKit.git ~/tools/AgenticProjectKit
+cd ~/tools/AgenticProjectKit
+corepack enable
 pnpm install
 pnpm build
 pnpm link --global
@@ -167,10 +155,40 @@ apk next-task
 When you change CLI source code, rebuild:
 
 ```bash
+cd ~/tools/AgenticProjectKit
 pnpm build
 ```
 
 The package bin points to `dist/cli/index.js`, so global/package usage depends on the build output.
+
+### Option 4: Run from a local checkout without global install
+
+Best when PATH/global package setup is inconvenient.
+
+Build the CLI once:
+
+```bash
+git clone git@github.com:HaidaDaniel/AgenticProjectKit.git ~/tools/AgenticProjectKit
+cd ~/tools/AgenticProjectKit
+corepack enable
+pnpm install
+pnpm build
+```
+
+Run it from another repository:
+
+```bash
+cd path/to/your-project
+node ~/tools/AgenticProjectKit/dist/cli/index.js adopt
+```
+
+Optional shell alias:
+
+```bash
+echo 'alias apk="node ~/tools/AgenticProjectKit/dist/cli/index.js"' >> ~/.bashrc
+source ~/.bashrc
+apk adopt
+```
 
 ## Quickstart
 
@@ -355,7 +373,7 @@ Use them before implementation to record product scope, expected load, data grow
 
 ## Usage scenarios
 
-The scenario commands below assume `apk` is available through a pinned dev dependency, `pnpm dlx`/`npx`, a global install, or a local global link.
+The scenario commands below assume `apk` is available through a GitHub dev dependency, a GitHub global install, a local global link, or a local checkout alias.
 
 ### Scenario 1: Start a new project
 
