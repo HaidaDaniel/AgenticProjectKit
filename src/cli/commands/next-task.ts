@@ -2,6 +2,7 @@ import { relative, resolve } from "node:path";
 
 import { readAgenticConfigFile } from "../../core/config/index.js";
 import {
+  listArchivedTaskFiles,
   listTaskFiles,
   renderNextTask,
   selectNextTask,
@@ -49,7 +50,11 @@ export async function runNextTaskCommand(argv: string[]): Promise<number> {
   try {
     const rootDirectory = resolve(process.cwd());
     const config = await readAgenticConfigFile(rootDirectory);
-    const selection = selectNextTask(await listTaskFiles(rootDirectory, config.taskDirectory));
+    const [files, archived] = await Promise.all([
+      listTaskFiles(rootDirectory, config.taskDirectory),
+      listArchivedTaskFiles(rootDirectory, config.taskDirectory),
+    ]);
+    const selection = selectNextTask(files, archived);
     console.log(renderNextTask(withRelativePath(rootDirectory, selection)));
     return 0;
   } catch (error: unknown) {

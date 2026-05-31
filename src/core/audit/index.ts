@@ -6,7 +6,7 @@ import {
   parseAgenticConfigJson,
 } from "../config/index.js";
 import { scanRepository, type RepositoryScan } from "../scanners/index.js";
-import { parseTaskMarkdown, TaskFormatError } from "../tasks/index.js";
+import { loadTaskFile, listArchivedTaskFiles, parseTaskMarkdown, TaskFormatError, validateTaskDependencies, type ProjectTaskFile } from "../tasks/index.js";
 
 export type AuditFindingLevel = "error" | "warning" | "info";
 
@@ -166,9 +166,12 @@ async function auditTasks(
     return 0;
   }
 
+  const validTaskFiles: ProjectTaskFile[] = [];
+
   for (const taskPath of scan.taskFiles) {
     try {
-      parseTaskMarkdown(await readFile(join(rootDirectory, taskPath), "utf8"));
+      const loaded = await loadTaskFile(join(rootDirectory, taskPath));
+      validTaskFiles.push(loaded);
     } catch (error: unknown) {
       const detail = error instanceof TaskFormatError
         ? error.issues.join("; ")
@@ -181,6 +184,17 @@ async function auditTasks(
         message: `${taskPath}: ${detail}`,
       });
     }
+  }
+
+  const archivedFiles = await listArchivedTaskFiles(rootDirectory);
+
+  const depIssues = validateTaskDependencies(validTaskFiles, archivedFiles);
+  for (const issue of depIssues) {
+    findings.push({
+      level: issue.kind === "cycle" ? "error" : "warning",
+      area: "dependencies",
+      message: issue.message,
+    });
   }
 
   return scan.taskFiles.length;

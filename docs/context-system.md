@@ -42,12 +42,13 @@ Add source files and supporting repository files:
 The following operational files are not prompt context by default:
 
 - `.tasks/.apk.lock`;
+- `.tasks/archive/**`;
 - `.agentic/agents.jsonl`;
 - `.agentic/runs.jsonl`;
 - `.agentic/agents/**`;
 - `.agentic/runs/**`.
 
-Agent registry and run logs are analytics and coordination state, not implementation context.
+Agent registry, run logs, and archived tasks are analytics and history, not implementation context.
 
 ## Selection rules
 

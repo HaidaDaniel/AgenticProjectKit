@@ -89,3 +89,59 @@ Legacy `.agentic/agents.jsonl` and `.agentic/runs.jsonl` are migration inputs on
 - Do not mark a task done until verification passes.
 - Update `docs/progress.md` when task status changes.
 - Use `Lane`, `Scope`, `Tags`, and `Parallel` to split work across agents.
+
+## Dependency graph rules
+
+- Every `Depends on` id must reference an existing task file.
+- Dependency edges must not contain cycles.
+- Missing dependencies are reported as audit warnings.
+- Cycles are reported as audit errors.
+- A task with a higher-numbered dependency is valid when that dependency exists.
+- Run `apk audit` to validate the dependency graph.
+
+## Task creation
+
+Use `apk task create` to generate new task files with validated metadata:
+
+```bash
+apk task create \
+  --title "Add Feature" \
+  --mode mvp \
+  --lane implementation \
+  --scope cli,docs \
+  --risk low \
+  --context "AGENTS.md,docs/task-system.md" \
+  --allowed "src/api/index.ts,docs/progress.md" \
+  --verification "pnpm test"
+```
+
+The command:
+
+- Auto-selects the next numeric task id.
+- Generates a slugged filename under the configured task directory.
+- Defaults to `State: todo` and `Owner: none`.
+- Requires `--scope` and `--allowed` to include at least one value.
+- Validates the rendered task against the parser before writing.
+- Validates the dependency graph including the new task.
+- Rejects duplicate slugs, invalid metadata, missing dependencies, and cycles.
+
+## Task archiving
+
+Completed tasks can be archived to reduce noise in the active task list.
+
+```bash
+apk task archive 0001
+apk task archive --all
+```
+
+Archive rules:
+
+- Only tasks in `done` state can be archived.
+- Archived tasks are moved to `.tasks/archive/`.
+- `apk tasks` default output shows only active top-level tasks (excludes archive).
+- `apk tasks --all` includes both active and archived tasks.
+- Dependency resolution treats archived done tasks as completed prerequisites.
+- `apk next-task` considers archived done tasks when checking `Depends on`.
+- `apk task deps` marks archived prerequisites and dependents with `(archived)` tag.
+- `apk task create` includes archived tasks in the id sequence.
+- Archived tasks cannot be overwritten; existing archive paths are refused.

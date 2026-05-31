@@ -1,5 +1,5 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { dirname, join, relative } from "node:path";
 
 export const TASK_STATES = [
   "todo",
@@ -10,6 +10,22 @@ export const TASK_STATES = [
   "canceled",
 ] as const;
 export type TaskState = (typeof TASK_STATES)[number];
+
+export const ACTIVE_TASK_STATES = [
+  "todo",
+  "doing",
+  "review",
+  "blocked",
+] as const;
+export type ActiveTaskState = (typeof ACTIVE_TASK_STATES)[number];
+
+export type DependencyIssueKind = "missing" | "cycle";
+
+export interface DependencyIssue {
+  kind: DependencyIssueKind;
+  taskId: string;
+  message: string;
+}
 
 export const TASK_MODES = [
   "discovery",
@@ -428,7 +444,7 @@ export async function listTaskFiles(
   taskDirectory = ".tasks",
 ): Promise<ProjectTaskFile[]> {
   const directory = join(rootDirectory, taskDirectory);
-  const entries = await readdir(directory);
+  const entries = await readdir(directory).catch(() => []);
   const files: ProjectTaskFile[] = [];
 
   for (const entry of entries.filter((name) => name.endsWith(".md")).sort()) {
@@ -441,6 +457,114 @@ export async function listTaskFiles(
   });
 }
 
+export async function listArchivedTaskFiles(
+  rootDirectory: string,
+  taskDirectory = ".tasks",
+): Promise<ProjectTaskFile[]> {
+  const archiveDirectory = join(rootDirectory, taskDirectory, "archive");
+  const entries = await readdir(archiveDirectory).catch(() => []);
+  const files: ProjectTaskFile[] = [];
+
+  for (const entry of entries.filter((name) => name.endsWith(".md")).sort()) {
+    files.push(await loadTaskFile(join(archiveDirectory, entry)));
+  }
+
+  return files.sort((left, right) => {
+    const byId = taskSortValue(left.task) - taskSortValue(right.task);
+    return byId === 0 ? left.path.localeCompare(right.path) : byId;
+  });
+}
+
+export async function allTaskFiles(
+  rootDirectory: string,
+  taskDirectory = ".tasks",
+): Promise<ProjectTaskFile[]> {
+  const [active, archived] = await Promise.all([
+    listTaskFiles(rootDirectory, taskDirectory),
+    listArchivedTaskFiles(rootDirectory, taskDirectory),
+  ]);
+  return [...active, ...archived].sort((left, right) => {
+    const byId = taskSortValue(left.task) - taskSortValue(right.task);
+    return byId === 0 ? left.path.localeCompare(right.path) : byId;
+  });
+}
+
+export interface TaskArchiveResult {
+  taskId: string;
+  sourcePath: string;
+  archivePath: string;
+}
+
+export async function archiveTask(
+  rootDirectory: string,
+  taskDirectory: string,
+  taskId: string,
+): Promise<TaskArchiveResult> {
+  const activeFiles = await listTaskFiles(rootDirectory, taskDirectory);
+  const file = activeFiles.find((f) => f.task.id === taskId);
+
+  if (!file) {
+    throw new Error(`Task file not found for id: ${taskId}`);
+  }
+
+  if (file.task.state !== "done") {
+    throw new Error(`Task ${taskId} is ${file.task.state}; only done tasks can be archived.`);
+  }
+
+  const sourcePath = file.path;
+  const archiveDirectory = join(rootDirectory, taskDirectory, "archive");
+  const fileName = sourcePath.split(/[\\/]/).pop()!;
+  const archivePath = join(archiveDirectory, fileName);
+
+  if (await fileExists(archivePath)) {
+    throw new Error(`Archived task already exists: ${archivePath}`);
+  }
+
+  await mkdir(archiveDirectory, { recursive: true });
+  await rename(sourcePath, archivePath);
+
+  return {
+    taskId,
+    sourcePath: relative(rootDirectory, sourcePath).replace(/\\/g, "/"),
+    archivePath: relative(rootDirectory, archivePath).replace(/\\/g, "/"),
+  };
+}
+
+export interface TaskArchiveAllResult {
+  archived: TaskArchiveResult[];
+}
+
+export async function archiveAllTasks(
+  rootDirectory: string,
+  taskDirectory: string,
+): Promise<TaskArchiveAllResult> {
+  const activeFiles = await listTaskFiles(rootDirectory, taskDirectory);
+  const doneFiles = activeFiles.filter((f) => f.task.state === "done");
+  const archived: TaskArchiveResult[] = [];
+
+  for (const file of doneFiles) {
+    const sourcePath = file.path;
+    const archiveDirectory = join(rootDirectory, taskDirectory, "archive");
+    const fileName = sourcePath.split(/[\\/]/).pop()!;
+    const archivePath = join(archiveDirectory, fileName);
+
+    if (await fileExists(archivePath)) {
+      throw new Error(`Archive path already exists: ${relative(rootDirectory, archivePath).replace(/\\/g, "/")}`);
+    }
+
+    await mkdir(archiveDirectory, { recursive: true });
+    await rename(sourcePath, archivePath);
+
+    archived.push({
+      taskId: file.task.id,
+      sourcePath: relative(rootDirectory, sourcePath).replace(/\\/g, "/"),
+      archivePath: relative(rootDirectory, archivePath).replace(/\\/g, "/"),
+    });
+  }
+
+  return { archived };
+}
+
 export async function findTaskFile(
   rootDirectory: string,
   taskId: string,
@@ -450,11 +574,21 @@ export async function findTaskFile(
   const entries = await readdir(directory);
   const match = entries.find((entry) => entry.startsWith(`${taskId}-`) && entry.endsWith(".md"));
 
-  if (!match) {
-    throw new Error(`Task file not found for id: ${taskId}`);
+  if (match) {
+    return join(directory, match);
   }
 
-  return join(directory, match);
+  const archiveDirectory = join(directory, "archive");
+  const archiveEntries = await readdir(archiveDirectory).catch(() => []);
+  const archiveMatch = archiveEntries.find((entry) =>
+    entry.startsWith(`${taskId}-`) && entry.endsWith(".md"),
+  );
+
+  if (archiveMatch) {
+    return join(archiveDirectory, archiveMatch);
+  }
+
+  throw new Error(`Task file not found for id: ${taskId}`);
 }
 
 function completedTaskIds(files: readonly ProjectTaskFile[]): Set<string> {
@@ -463,8 +597,12 @@ function completedTaskIds(files: readonly ProjectTaskFile[]): Set<string> {
 
 export function selectNextTask(
   files: readonly ProjectTaskFile[],
+  archivedFiles: readonly ProjectTaskFile[] = [],
 ): NextTaskSelection | undefined {
-  const completed = completedTaskIds(files);
+  const completed = new Set([
+    ...completedTaskIds(files),
+    ...completedTaskIds(archivedFiles),
+  ]);
   const next = [...files]
     .sort((left, right) => {
       const byId = taskSortValue(left.task) - taskSortValue(right.task);
@@ -519,4 +657,376 @@ export function renderNextTask(selection: NextTaskSelection | undefined): string
     `Context: ${selection.contextCommand}`,
     "",
   ].join("\n");
+}
+
+export function validateTaskDependencies(
+  files: readonly ProjectTaskFile[],
+  archivedFiles: readonly ProjectTaskFile[] = [],
+): DependencyIssue[] {
+  const issues: DependencyIssue[] = [];
+  const allIds = new Set([
+    ...files.map((file) => file.task.id),
+    ...archivedFiles.map((file) => file.task.id),
+  ]);
+
+  for (const file of files) {
+    for (const depId of file.task.dependsOn) {
+      if (!allIds.has(depId)) {
+        issues.push({
+          kind: "missing",
+          taskId: file.task.id,
+          message: `Task ${file.task.id} depends on ${depId}, which does not exist.`,
+        });
+      }
+    }
+  }
+
+  const adjList = new Map<string, string[]>();
+  for (const file of files) {
+    adjList.set(file.task.id, file.task.dependsOn);
+  }
+
+  const visited = new Set<string>();
+  const inStack = new Set<string>();
+
+  function detectCycle(nodeId: string, path: string[]): boolean {
+    if (inStack.has(nodeId)) {
+      const cycleStart = path.indexOf(nodeId);
+      const cyclePath = path.slice(cycleStart);
+      issues.push({
+        kind: "cycle",
+        taskId: nodeId,
+        message: `Dependency cycle detected: ${[...cyclePath, nodeId].join(" -> ")}.`,
+      });
+      return true;
+    }
+
+    if (visited.has(nodeId)) {
+      return false;
+    }
+
+    visited.add(nodeId);
+    inStack.add(nodeId);
+    path.push(nodeId);
+
+    const deps = adjList.get(nodeId) ?? [];
+    for (const depId of deps) {
+      if (allIds.has(depId)) {
+        detectCycle(depId, path);
+      }
+    }
+
+    inStack.delete(nodeId);
+    path.pop();
+    return false;
+  }
+
+  for (const file of files) {
+    detectCycle(file.task.id, []);
+  }
+
+  return issues.sort((a, b) => {
+    const byTaskId = a.taskId.localeCompare(b.taskId);
+    if (byTaskId !== 0) return byTaskId;
+    const kindOrder: Record<string, number> = { cycle: 0, missing: 1 };
+    const byKind = (kindOrder[a.kind] ?? 0) - (kindOrder[b.kind] ?? 0);
+    if (byKind !== 0) return byKind;
+    return a.message.localeCompare(b.message);
+  });
+}
+
+export interface DepEdge {
+  id: string;
+  title: string;
+  state: TaskState;
+  archived: boolean;
+}
+
+export interface TaskDepsResult {
+  id: string;
+  title: string;
+  state: TaskState;
+  path: string;
+  prerequisites: DepEdge[];
+  dependents: DepEdge[];
+  missingDeps: string[];
+  cycleIssues: string[];
+}
+
+export function findTaskDependents(
+  files: readonly ProjectTaskFile[],
+  taskId: string,
+  archivedFiles: readonly ProjectTaskFile[] = [],
+): DepEdge[] {
+  return [...files, ...archivedFiles]
+    .filter((file) => file.task.dependsOn.includes(taskId))
+    .map((file) => ({
+      id: file.task.id,
+      title: file.task.title,
+      state: file.task.state,
+      archived: archivedFiles.some((a) => a.task.id === file.task.id),
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
+
+export function buildTaskDeps(
+  files: readonly ProjectTaskFile[],
+  taskId: string,
+  filePath: string,
+  archivedFiles: readonly ProjectTaskFile[] = [],
+): TaskDepsResult | undefined {
+  const file = files.find((f) => f.task.id === taskId)
+    ?? archivedFiles.find((f) => f.task.id === taskId);
+  if (!file) {
+    return undefined;
+  }
+
+  const allIds = new Set([
+    ...files.map((f) => f.task.id),
+    ...archivedFiles.map((f) => f.task.id),
+  ]);
+  const prerequisites: DepEdge[] = file.task.dependsOn.map((depId) => {
+    const depFile = files.find((f) => f.task.id === depId);
+    const archivedDep = archivedFiles.find((f) => f.task.id === depId);
+    const isArchived = depFile === undefined && archivedDep !== undefined;
+    return {
+      id: depId,
+      title: (depFile ?? archivedDep)?.task.title ?? "(unknown)",
+      state: (depFile ?? archivedDep)?.task.state ?? ("done" as TaskState),
+      archived: isArchived,
+    };
+  });
+
+  const missingDeps = file.task.dependsOn.filter((depId) => !allIds.has(depId));
+  const dependents = findTaskDependents(files, taskId, archivedFiles);
+
+  const depIssues = validateTaskDependencies(files, archivedFiles).filter(
+    (issue) => issue.taskId === taskId || issue.message.includes(taskId),
+  );
+  const cycleIssues = depIssues
+    .filter((issue) => issue.kind === "cycle")
+    .map((issue) => issue.message);
+
+  return {
+    id: file.task.id,
+    title: file.task.title,
+    state: file.task.state,
+    path: filePath,
+    prerequisites,
+    dependents,
+    missingDeps,
+    cycleIssues,
+  };
+}
+
+export interface TaskCreateInput {
+  title: string;
+  mode: TaskMode;
+  lane: string;
+  scope: string[];
+  risk: TaskRisk;
+  parallel: boolean;
+  dependsOn: string[];
+  tags: string[];
+  goal: string;
+  contextFiles: string[];
+  allowedFiles: string[];
+  forbiddenFiles: string[];
+  steps: string[];
+  acceptanceCriteria: string[];
+  verificationCommands: string[];
+  documentationUpdates: string[];
+  notes: string[];
+}
+
+export interface TaskCreateResult {
+  id: string;
+  path: string;
+  task: ProjectTask;
+}
+
+export interface TaskCreateError extends Error {
+  name: "TaskCreateError";
+}
+
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/['']/g, "-")
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+export function nextTaskId(
+  files: readonly ProjectTaskFile[],
+  archivedFiles: readonly ProjectTaskFile[] = [],
+): string {
+  const all = [...files, ...archivedFiles];
+  const maxId = all.reduce((max, file) => {
+    const num = Number.parseInt(file.task.id, 10);
+    return !Number.isNaN(num) && num > max ? num : max;
+  }, 0);
+  return String(maxId + 1).padStart(4, "0");
+}
+
+export function buildTaskFileName(id: string, title: string): string {
+  return `${id}-${slugify(title)}.md`;
+}
+
+export async function createTask(
+  rootDirectory: string,
+  taskDirectory: string,
+  input: TaskCreateInput,
+): Promise<TaskCreateResult> {
+  const files = await listTaskFiles(rootDirectory, taskDirectory);
+  const archived = await listArchivedTaskFiles(rootDirectory, taskDirectory);
+  const id = nextTaskId(files, archived);
+  const fileName = buildTaskFileName(id, input.title);
+  const taskPath = join(rootDirectory, taskDirectory, fileName);
+
+  if (await fileExists(taskPath)) {
+    const err = new Error(`Task file already exists: ${fileName}`) as TaskCreateError;
+    err.name = "TaskCreateError";
+    throw err;
+  }
+
+  const newSlug = slugify(input.title);
+  const existingSlug = files.find((file) => {
+    const existingFile = file.path.split(/[\\/]/).pop()?.replace(/\.md$/, "");
+    if (!existingFile) return false;
+    const dashIndex = existingFile.indexOf("-");
+    if (dashIndex === -1) return false;
+    return existingFile.slice(dashIndex + 1) === newSlug;
+  });
+  if (existingSlug) {
+    const err = new Error(`Task file already exists: ${existingSlug.path.split("/").pop()}`) as TaskCreateError;
+    err.name = "TaskCreateError";
+    throw err;
+  }
+
+  const task: ProjectTask = {
+    id,
+    title: input.title,
+    state: "todo",
+    owner: "none",
+    mode: input.mode,
+    lane: input.lane,
+    scope: input.scope,
+    risk: input.risk,
+    parallel: input.parallel,
+    dependsOn: input.dependsOn,
+    tags: input.tags,
+    goal: input.goal,
+    contextFiles: input.contextFiles,
+    allowedFiles: input.allowedFiles,
+    forbiddenFiles: input.forbiddenFiles,
+    steps: input.steps,
+    acceptanceCriteria: input.acceptanceCriteria,
+    verificationCommands: input.verificationCommands,
+    documentationUpdates: input.documentationUpdates,
+    notes: input.notes,
+  };
+
+  try {
+    renderTaskMarkdown(task);
+  } catch (error: unknown) {
+    const err = new Error(`Failed to render task: ${error instanceof Error ? error.message : String(error)}`) as TaskCreateError;
+    err.name = "TaskCreateError";
+    throw err;
+  }
+
+  try {
+    parseTaskMarkdown(renderTaskMarkdown(task));
+  } catch (error: unknown) {
+    if (error instanceof TaskFormatError) {
+      const err = new Error(`Rendered task validation failed:\n- ${error.issues.join("\n- ")}`) as TaskCreateError;
+      err.name = "TaskCreateError";
+      throw err;
+    }
+    throw error;
+  }
+
+  const candidateFiles = [...files, { path: taskPath, task }];
+  const depIssues = validateTaskDependencies(candidateFiles, archived).filter(
+    (issue) => issue.taskId === id,
+  );
+
+  if (depIssues.length > 0) {
+    const messages = depIssues.map((issue) => issue.message).join("\n- ");
+    const err = new Error(`Dependency validation failed:\n- ${messages}`) as TaskCreateError;
+    err.name = "TaskCreateError";
+    throw err;
+  }
+
+  await writeTaskFile(taskPath, task);
+
+  return {
+    id,
+    path: relative(rootDirectory, taskPath).replace(/\\/g, "/"),
+    task,
+  };
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await readFile(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function renderTaskDeps(result: TaskDepsResult): string {
+  const lines: string[] = [];
+
+  lines.push(`Task: ${result.id}`);
+  lines.push(`Title: ${result.title}`);
+  lines.push(`State: ${result.state}`);
+  lines.push(`Path: ${result.path}`);
+  lines.push("");
+
+  if (result.prerequisites.length === 0) {
+    lines.push("Prerequisites: none");
+  } else {
+    lines.push("Prerequisites:");
+    for (const prereq of result.prerequisites) {
+      const archiveTag = prereq.archived ? " (archived)" : "";
+      const status = prereq.state === "done" ? "[done]"
+        : prereq.state === "canceled" || prereq.state === "blocked" ? `[${prereq.state}]`
+        : `[${prereq.state}]`;
+      lines.push(`  - ${prereq.id} ${status}${archiveTag} ${prereq.title}`);
+    }
+  }
+  lines.push("");
+
+  if (result.dependents.length === 0) {
+    lines.push("Dependents: none");
+  } else {
+    lines.push("Dependents:");
+    for (const dep of result.dependents) {
+      const archiveTag = dep.archived ? " (archived)" : "";
+      lines.push(`  - ${dep.id} [${dep.state}]${archiveTag} ${dep.title}`);
+    }
+  }
+  lines.push("");
+
+  if (result.missingDeps.length > 0) {
+    lines.push("Missing dependencies:");
+    for (const m of result.missingDeps) {
+      lines.push(`  - ${m}`);
+    }
+    lines.push("");
+  }
+
+  if (result.cycleIssues.length > 0) {
+    lines.push("Cycle issues:");
+    for (const c of result.cycleIssues) {
+      lines.push(`  - ${c}`);
+    }
+    lines.push("");
+  }
+
+  return lines.join("\n");
 }

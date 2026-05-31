@@ -68,6 +68,8 @@ Implemented commands:
 - `apk prompt <agent> --task <task-id>`
 - `apk export [agent]`
 - `apk sync [agent]`
+- `apk task deps <task-id>`
+- `apk task create`
 
 ## Using it in other repositories
 
@@ -281,6 +283,20 @@ Check generated instruction drift, then write missing or stale files when intend
 ```bash
 pnpm exec tsx src/cli/index.ts sync
 pnpm exec tsx src/cli/index.ts sync cursor --write
+```
+
+Create a new task file with validated metadata:
+
+```bash
+pnpm exec tsx src/cli/index.ts task create \
+  --title "Add Feature" \
+  --mode mvp \
+  --lane implementation \
+  --scope cli,docs \
+  --risk low \
+  --context "AGENTS.md,docs/task-system.md" \
+  --allowed "src/api/index.ts,docs/progress.md" \
+  --verification "pnpm test"
 ```
 
 ## Example workflow

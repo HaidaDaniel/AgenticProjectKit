@@ -2,6 +2,8 @@ import { relative, resolve } from "node:path";
 
 import { readAgenticConfigFile } from "../../core/config/index.js";
 import {
+  ACTIVE_TASK_STATES,
+  listArchivedTaskFiles,
   listTaskFiles,
   renderTasksTable,
   TASK_STATES,
@@ -13,11 +15,18 @@ const TASKS_HELP_TEXT = [
   "Agentic Project Kit",
   "",
   "Usage:",
-  "  apk tasks [--state <state>] [--owner <agent-id>]",
+  "  apk tasks [--all] [--state <state>] [--owner <agent-id>]",
+  "",
+  "By default only active tasks (todo, doing, review, blocked) are shown.",
+  "Use --all to include done, canceled, and archived tasks.",
 ].join("\n");
 
 function hasHelpFlag(argv: string[]): boolean {
   return argv.includes("--help") || argv.includes("-h");
+}
+
+function hasAllFlag(argv: string[]): boolean {
+  return argv.includes("--all");
 }
 
 function readFlagValue(argv: readonly string[], flag: string): string | undefined {
@@ -39,7 +48,7 @@ function parseState(value: string | undefined): TaskState | undefined {
 
 function rejectUnknownOptions(argv: readonly string[]): void {
   for (const arg of argv) {
-    if (arg.startsWith("-") && arg !== "--state" && arg !== "--owner") {
+    if (arg.startsWith("-") && arg !== "--state" && arg !== "--owner" && arg !== "--all" && arg !== "--help" && arg !== "-h") {
       throw new Error(`Unknown option: ${arg}`);
     }
   }
@@ -63,19 +72,41 @@ export async function runTasksCommand(argv: string[]): Promise<number> {
 
   try {
     rejectUnknownOptions(argv);
+    const showAll = hasAllFlag(argv);
     const state = parseState(readFlagValue(argv, "--state"));
     const owner = readFlagValue(argv, "--owner");
     const rootDirectory = resolve(process.cwd());
     const config = await readAgenticConfigFile(rootDirectory);
-    const files = withRelativePaths(
-      rootDirectory,
-      await listTaskFiles(rootDirectory, config.taskDirectory),
-    ).filter((file) => (
-      (state === undefined || file.task.state === state) &&
-      (owner === undefined || file.task.owner === owner)
-    ));
+    let files: ProjectTaskFile[];
+    if (showAll) {
+      const [active, archived] = await Promise.all([
+        listTaskFiles(rootDirectory, config.taskDirectory),
+        listArchivedTaskFiles(rootDirectory, config.taskDirectory),
+      ]);
+      files = withRelativePaths(rootDirectory, [...active, ...archived]);
+    } else {
+      files = withRelativePaths(
+        rootDirectory,
+        await listTaskFiles(rootDirectory, config.taskDirectory),
+      );
+    }
 
-    console.log(renderTasksTable(files));
+    const filtered = files.filter((file) => {
+      if (state !== undefined) {
+        return file.task.state === state && (owner === undefined || file.task.owner === owner);
+      }
+
+      if (showAll) {
+        return owner === undefined || file.task.owner === owner;
+      }
+
+      return (
+        ACTIVE_TASK_STATES.includes(file.task.state as typeof ACTIVE_TASK_STATES[number]) &&
+        (owner === undefined || file.task.owner === owner)
+      );
+    });
+
+    console.log(renderTasksTable(filtered));
     return 0;
   } catch (error: unknown) {
     console.error(error instanceof Error ? error.message : String(error));

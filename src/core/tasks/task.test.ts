@@ -15,12 +15,25 @@ import {
   selectTaskContext,
 } from "../docs/context.js";
 import {
+  allTaskFiles,
+  archiveAllTasks,
+  archiveTask,
+  buildTaskDeps,
+  buildTaskFileName,
+  createTask,
+  findTaskDependents,
+  findTaskFile,
+  listArchivedTaskFiles,
+  listTaskFiles,
+  nextTaskId,
   parseTaskMarkdown,
   renderTaskMarkdown,
   renderNextTask,
+  renderTaskDeps,
   renderTasksTable,
   selectNextTask,
   TaskFormatError,
+  validateTaskDependencies,
   writeTaskFile,
   type ProjectTaskFile,
   type ProjectTask,
@@ -522,4 +535,770 @@ test("releaseTask can reopen ownerless blocked tasks with a registered owner", a
     assert.equal(released.state, "todo");
     assert.equal(released.owner, "none");
   });
+});
+
+test("validateTaskDependencies reports missing dependency ids", () => {
+  const files: ProjectTaskFile[] = [
+    { path: "0001.md", task: { ...TASK, id: "0001", dependsOn: ["0002"] } },
+    { path: "0003.md", task: { ...TASK, id: "0003", dependsOn: [] } },
+  ];
+
+  const issues = validateTaskDependencies(files);
+
+  assert.equal(issues.length, 1);
+  assert.equal(issues[0].kind, "missing");
+  assert.equal(issues[0].taskId, "0001");
+  assert.match(issues[0].message, /0001.*0002/);
+});
+
+test("validateTaskDependencies reports direct cycles", () => {
+  const files: ProjectTaskFile[] = [
+    { path: "0001.md", task: { ...TASK, id: "0001", dependsOn: ["0002"] } },
+    { path: "0002.md", task: { ...TASK, id: "0002", dependsOn: ["0001"] } },
+  ];
+
+  const issues = validateTaskDependencies(files);
+
+  assert.ok(issues.some((i) => i.kind === "cycle"));
+  assert.ok(issues.some((i) => i.message.includes("0001") && i.message.includes("0002")));
+});
+
+test("validateTaskDependencies reports multi-task cycles", () => {
+  const files: ProjectTaskFile[] = [
+    { path: "0001.md", task: { ...TASK, id: "0001", dependsOn: ["0003"] } },
+    { path: "0002.md", task: { ...TASK, id: "0002", dependsOn: ["0001"] } },
+    { path: "0003.md", task: { ...TASK, id: "0003", dependsOn: ["0002"] } },
+  ];
+
+  const issues = validateTaskDependencies(files);
+
+  assert.ok(issues.some((i) => i.kind === "cycle"));
+});
+
+test("validateTaskDependencies accepts valid cross-number dependencies", () => {
+  const files: ProjectTaskFile[] = [
+    { path: "0001.md", task: { ...TASK, id: "0001", dependsOn: [] } },
+    { path: "0002.md", task: { ...TASK, id: "0002", dependsOn: ["0001"] } },
+    { path: "0003.md", task: { ...TASK, id: "0003", dependsOn: ["0001", "0002"] } },
+  ];
+
+  const issues = validateTaskDependencies(files);
+
+  assert.equal(issues.length, 0);
+});
+
+test("validateTaskDependencies returns no issues for tasks with no dependencies", () => {
+  const files: ProjectTaskFile[] = [
+    { path: "0001.md", task: { ...TASK, id: "0001", dependsOn: [] } },
+    { path: "0002.md", task: { ...TASK, id: "0002", dependsOn: [] } },
+  ];
+
+  const issues = validateTaskDependencies(files);
+
+  assert.equal(issues.length, 0);
+});
+
+test("findTaskDependents returns tasks that depend on a given task", () => {
+  const files: ProjectTaskFile[] = [
+    { path: "0001.md", task: { ...TASK, id: "0001", title: "Base", dependsOn: [], state: "done", owner: "archive" } },
+    { path: "0002.md", task: { ...TASK, id: "0002", title: "Child A", dependsOn: ["0001"] } },
+    { path: "0003.md", task: { ...TASK, id: "0003", title: "Child B", dependsOn: ["0001"] } },
+    { path: "0004.md", task: { ...TASK, id: "0004", title: "Independent", dependsOn: [] } },
+  ];
+
+  const dependents = findTaskDependents(files, "0001");
+
+  assert.equal(dependents.length, 2);
+  assert.equal(dependents[0].id, "0002");
+  assert.equal(dependents[1].id, "0003");
+});
+
+test("findTaskDependents returns empty array for task with no dependents", () => {
+  const files: ProjectTaskFile[] = [
+    { path: "0001.md", task: { ...TASK, id: "0001", title: "Base", dependsOn: [], state: "done", owner: "archive" } },
+    { path: "0002.md", task: { ...TASK, id: "0002", title: "Child", dependsOn: ["0001"] } },
+  ];
+
+  const dependents = findTaskDependents(files, "0002");
+
+  assert.equal(dependents.length, 0);
+});
+
+test("buildTaskDeps returns prerequisites, dependents, and issues", () => {
+  const files: ProjectTaskFile[] = [
+    { path: "0001.md", task: { ...TASK, id: "0001", title: "Base", dependsOn: [], state: "done", owner: "archive" } },
+    { path: "0002.md", task: { ...TASK, id: "0002", title: "Missing", dependsOn: [] } },
+    { path: "0003.md", task: { ...TASK, id: "0003", title: "Target", dependsOn: ["0001", "0099"] } },
+    { path: "0004.md", task: { ...TASK, id: "0004", title: "Child", dependsOn: ["0003"] } },
+  ];
+
+  const result = buildTaskDeps(files, "0003", ".tasks/0003-target.md");
+
+  assert.ok(result);
+  assert.equal(result!.id, "0003");
+  assert.equal(result!.prerequisites.length, 2);
+  assert.equal(result!.prerequisites[0].id, "0001");
+  assert.equal(result!.prerequisites[1].id, "0099");
+  assert.equal(result!.dependents.length, 1);
+  assert.equal(result!.dependents[0].id, "0004");
+  assert.equal(result!.missingDeps.length, 1);
+  assert.equal(result!.missingDeps[0], "0099");
+});
+
+test("buildTaskDeps returns undefined for unknown task id", () => {
+  const files: ProjectTaskFile[] = [
+    { path: "0001.md", task: { ...TASK, id: "0001", title: "Base", dependsOn: [], state: "done", owner: "archive" } },
+  ];
+
+  const result = buildTaskDeps(files, "0099", ".tasks/0099-unknown.md");
+
+  assert.equal(result, undefined);
+});
+
+test("buildTaskDeps returns cycle issues", () => {
+  const files: ProjectTaskFile[] = [
+    { path: "0001.md", task: { ...TASK, id: "0001", title: "A", dependsOn: ["0002"] } },
+    { path: "0002.md", task: { ...TASK, id: "0002", title: "B", dependsOn: ["0001"] } },
+  ];
+
+  const result = buildTaskDeps(files, "0001", ".tasks/0001-a.md");
+
+  assert.ok(result);
+  assert.ok(result!.cycleIssues.length > 0);
+});
+
+test("renderTaskDeps shows prerequisites and dependents", () => {
+  const result = {
+    id: "0003",
+    title: "Target",
+    state: "todo" as const,
+    path: ".tasks/0003-target.md",
+    prerequisites: [
+      { id: "0001", title: "Base", state: "done" as const, archived: false },
+      { id: "0002", title: "Prereq", state: "doing" as const, archived: false },
+    ],
+    dependents: [
+      { id: "0004", title: "Child", state: "todo" as const, archived: false },
+    ],
+    missingDeps: [],
+    cycleIssues: [],
+  };
+
+  const output = renderTaskDeps(result);
+
+  assert.match(output, /Task: 0003/);
+  assert.match(output, /Title: Target/);
+  assert.match(output, /State: todo/);
+  assert.match(output, /Prerequisites:/);
+  assert.match(output, /- 0001 \[done\] Base/);
+  assert.match(output, /- 0002 \[doing\] Prereq/);
+  assert.match(output, /Dependents:/);
+  assert.match(output, /- 0004 \[todo\] Child/);
+});
+
+test("renderTaskDeps shows missing dependencies", () => {
+  const result = {
+    id: "0003",
+    title: "Target",
+    state: "todo" as const,
+    path: ".tasks/0003-target.md",
+    prerequisites: [],
+    dependents: [],
+    missingDeps: ["0099"],
+    cycleIssues: [],
+  };
+
+  const output = renderTaskDeps(result);
+
+  assert.match(output, /Prerequisites: none/);
+  assert.match(output, /Dependents: none/);
+  assert.match(output, /Missing dependencies:/);
+  assert.match(output, /- 0099/);
+});
+
+test("renderTaskDeps shows cycle issues", () => {
+  const result = {
+    id: "0001",
+    title: "A",
+    state: "todo" as const,
+    path: ".tasks/0001-a.md",
+    prerequisites: [],
+    dependents: [],
+    missingDeps: [],
+    cycleIssues: ["Dependency cycle detected: 0001 -> 0002 -> 0001."],
+  };
+
+  const output = renderTaskDeps(result);
+
+  assert.match(output, /Cycle issues:/);
+  assert.match(output, /0001 -> 0002 -> 0001/);
+});
+
+test("nextTaskId returns the next numeric id from existing tasks", () => {
+  const files: ProjectTaskFile[] = [
+    { path: "0001.md", task: { ...TASK, id: "0001" } },
+    { path: "0003.md", task: { ...TASK, id: "0003" } },
+    { path: "0004.md", task: { ...TASK, id: "0004" } },
+  ];
+
+  assert.equal(nextTaskId(files), "0005");
+});
+
+test("nextTaskId returns 0001 for empty task list", () => {
+  assert.equal(nextTaskId([]), "0001");
+});
+
+test("buildTaskFileName generates kebab-case slug from title", () => {
+  assert.equal(buildTaskFileName("0046", "Add Feature X"), "0046-add-feature-x.md");
+  assert.equal(buildTaskFileName("0001", "It's a task!"), "0001-it-s-a-task.md");
+});
+
+test("createTask writes a valid task file with auto-generated id", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(
+      join(directory, ".agentic", "config.json"),
+      JSON.stringify({}),
+      "utf8",
+    );
+
+    const result = await createTask(directory, ".tasks", {
+      title: "Example Task",
+      mode: "mvp",
+      lane: "implementation",
+      scope: ["cli", "docs"],
+      risk: "low",
+      parallel: false,
+      dependsOn: [],
+      tags: ["example"],
+      goal: "Demonstrate task creation.",
+      contextFiles: ["AGENTS.md", "docs/task-system.md"],
+      allowedFiles: [".tasks/0001-example-task.md"],
+      forbiddenFiles: ["package.json"],
+      steps: ["Create the task.", "Verify it works."],
+      acceptanceCriteria: ["Task file is valid."],
+      verificationCommands: ["pnpm test"],
+      documentationUpdates: ["docs/progress.md"],
+      notes: ["First created task."],
+    });
+
+    assert.equal(result.id, "0001");
+    assert.equal(result.path, ".tasks/0001-example-task.md");
+    assert.equal(result.task.state, "todo");
+    assert.equal(result.task.owner, "none");
+    assert.equal(result.task.dependsOn.length, 0);
+
+    const content = await readFile(join(directory, ".tasks", "0001-example-task.md"), "utf8");
+    assert.match(content, /# Task 0001 - Example Task/);
+    assert.match(content, /State: todo/);
+    assert.match(content, /Owner: none/);
+
+    const reparse = parseTaskMarkdown(content);
+    assert.equal(reparse.id, "0001");
+    assert.equal(reparse.title, "Example Task");
+  });
+});
+
+test("createTask rejects missing dependency id", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(
+      join(directory, ".agentic", "config.json"),
+      JSON.stringify({}),
+      "utf8",
+    );
+
+    await assert.rejects(
+      () => createTask(directory, ".tasks", {
+        title: "Depends on Missing",
+        mode: "mvp",
+        lane: "implementation",
+        scope: [],
+        risk: "low",
+        parallel: false,
+        dependsOn: ["9999"],
+        tags: [],
+        goal: "Test missing dep.",
+        contextFiles: ["AGENTS.md"],
+        allowedFiles: [],
+        forbiddenFiles: [],
+        steps: [],
+        acceptanceCriteria: ["Fails validation."],
+        verificationCommands: ["pnpm test"],
+        documentationUpdates: [],
+        notes: [],
+      }),
+      /Dependency validation failed/,
+    );
+
+    assert.rejects(
+      () => readFile(join(directory, ".tasks", "0001-depends-on-missing.md"), "utf8"),
+      /ENOENT/,
+    );
+  });
+});
+
+test("createTask avoids overwriting existing task file", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(
+      join(directory, ".agentic", "config.json"),
+      JSON.stringify({}),
+      "utf8",
+    );
+
+    await createTask(directory, ".tasks", {
+      title: "Example Task",
+      mode: "mvp",
+      lane: "implementation",
+      scope: [],
+      risk: "low",
+      parallel: false,
+      dependsOn: [],
+      tags: [],
+      goal: "First creation.",
+      contextFiles: ["AGENTS.md"],
+      allowedFiles: [],
+      forbiddenFiles: [],
+      steps: [],
+      acceptanceCriteria: ["Works."],
+      verificationCommands: ["pnpm test"],
+      documentationUpdates: [],
+      notes: [],
+    });
+
+    await assert.rejects(
+      () => createTask(directory, ".tasks", {
+        title: "Example Task",
+        mode: "mvp",
+        lane: "implementation",
+        scope: [],
+        risk: "low",
+        parallel: false,
+        dependsOn: [],
+        tags: [],
+        goal: "Second creation.",
+        contextFiles: ["AGENTS.md"],
+        allowedFiles: [],
+        forbiddenFiles: [],
+        steps: [],
+        acceptanceCriteria: ["Works."],
+        verificationCommands: ["pnpm test"],
+        documentationUpdates: [],
+        notes: [],
+      }),
+      /Task file already exists/,
+    );
+  });
+});
+
+test("createTask validates rendered task before writing", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(
+      join(directory, ".agentic", "config.json"),
+      JSON.stringify({}),
+      "utf8",
+    );
+
+    await assert.rejects(
+      () => createTask(directory, ".tasks", {
+        title: "Bad Task",
+        mode: "mvp",
+        lane: "implementation",
+        scope: [],
+        risk: "low",
+        parallel: false,
+        dependsOn: [],
+        tags: [],
+        goal: "",
+        contextFiles: [],
+        allowedFiles: [],
+        forbiddenFiles: [],
+        steps: [],
+        acceptanceCriteria: [],
+        verificationCommands: [],
+        documentationUpdates: [],
+        notes: [],
+      }),
+      /Rendered task validation failed/,
+    );
+
+    assert.rejects(
+      () => readFile(join(directory, ".tasks"), "utf8"),
+      /ENOENT/,
+    );
+  });
+});
+
+test("archiveTask moves a done task to archive directory", async () => {
+  await withTempDirectory(async (directory) => {
+    const taskPath = join(directory, ".tasks", "0001-done-task.md");
+    await writeTaskFile(taskPath, {
+      ...TASK,
+      id: "0001",
+      title: "Done Task",
+      state: "done",
+      owner: "archive",
+    });
+
+    const result = await archiveTask(directory, ".tasks", "0001");
+
+    assert.equal(result.taskId, "0001");
+    assert.equal(result.archivePath, ".tasks/archive/0001-done-task.md");
+    assert.rejects(
+      () => readFile(taskPath),
+      /ENOENT/,
+    );
+    assert.doesNotReject(
+      () => readFile(join(directory, ".tasks", "archive", "0001-done-task.md")),
+    );
+  });
+});
+
+test("archiveTask refuses to archive non-done tasks", async () => {
+  await withTempDirectory(async (directory) => {
+    const states: Array<"todo" | "blocked" | "canceled"> = [
+      "todo", "blocked", "canceled",
+    ];
+
+    for (const state of states) {
+      await writeTaskFile(
+        join(directory, ".tasks", `0010-${state}-task.md`),
+        { ...TASK, id: "0010", title: `${state} Task`, state },
+      );
+
+      await assert.rejects(
+        () => archiveTask(directory, ".tasks", "0010"),
+        /only done tasks can be archived/,
+      );
+
+      await rm(join(directory, ".tasks", `0010-${state}-task.md`), { force: true });
+    }
+  });
+});
+
+test("archiveTask refuses to archive task that does not exist", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+
+    await assert.rejects(
+      () => archiveTask(directory, ".tasks", "9999"),
+      /Task file not found/,
+    );
+  });
+});
+
+test("archiveAllTasks moves all done tasks to archive", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeTaskFile(
+      join(directory, ".tasks", "0001-done-one.md"),
+      { ...TASK, id: "0001", title: "Done One", state: "done", owner: "archive" },
+    );
+    await writeTaskFile(
+      join(directory, ".tasks", "0002-done-two.md"),
+      { ...TASK, id: "0002", title: "Done Two", state: "done", owner: "archive" },
+    );
+    await writeTaskFile(
+      join(directory, ".tasks", "0003-todo-task.md"),
+      { ...TASK, id: "0003", title: "Todo Task", state: "todo" },
+    );
+
+    const result = await archiveAllTasks(directory, ".tasks");
+
+    assert.equal(result.archived.length, 2);
+    assert.ok(result.archived.some((a) => a.taskId === "0001"));
+    assert.ok(result.archived.some((a) => a.taskId === "0002"));
+    assert.doesNotReject(
+      () => readFile(join(directory, ".tasks", "0003-todo-task.md")),
+    );
+    assert.doesNotReject(
+      () => readFile(join(directory, ".tasks", "archive", "0001-done-one.md")),
+    );
+    assert.doesNotReject(
+      () => readFile(join(directory, ".tasks", "archive", "0002-done-two.md")),
+    );
+  });
+});
+
+test("archiveAllTasks refuses archive path collisions with clear error", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeTaskFile(
+      join(directory, ".tasks", "0001-done-task.md"),
+      { ...TASK, id: "0001", title: "Done Task", state: "done", owner: "archive" },
+    );
+    await mkdir(join(directory, ".tasks", "archive"), { recursive: true });
+    await writeFile(
+      join(directory, ".tasks", "archive", "0001-done-task.md"),
+      "existing",
+      "utf8",
+    );
+
+    await assert.rejects(
+      () => archiveAllTasks(directory, ".tasks"),
+      /Archive path already exists/,
+    );
+    assert.doesNotReject(
+      () => readFile(join(directory, ".tasks", "0001-done-task.md")),
+    );
+  });
+});
+
+test("selectNextTask considers archived done tasks as completed dependencies", async () => {
+  await withTempDirectory(async (directory) => {
+    const archivedTask: ProjectTaskFile = {
+      path: ".tasks/archive/0001-done-task.md",
+      task: { ...TASK, id: "0001", title: "Done Task", state: "done", owner: "archive" },
+    };
+
+    const activeTasks: ProjectTaskFile[] = [
+      {
+        path: ".tasks/0002-waiting-task.md",
+        task: { ...TASK, id: "0002", title: "Waiting Task", dependsOn: ["0001"] },
+      },
+    ];
+
+    const selection = selectNextTask(activeTasks, [archivedTask]);
+
+    assert.equal(selection?.task.id, "0002");
+  });
+});
+
+test("selectNextTask keeps todo task blocked when archived dep is missing", () => {
+  const activeTasks: ProjectTaskFile[] = [
+    {
+      path: ".tasks/0002-waiting-task.md",
+      task: { ...TASK, id: "0002", title: "Waiting Task", dependsOn: ["0001"] },
+    },
+  ];
+
+  const selection = selectNextTask(activeTasks, []);
+
+  assert.equal(selection, undefined);
+});
+
+test("validateTaskDependencies accepts archived done tasks as valid dependencies", () => {
+  const archivedFiles: ProjectTaskFile[] = [
+    {
+      path: ".tasks/archive/0001-done-task.md",
+      task: { ...TASK, id: "0001", title: "Done Task", state: "done", owner: "archive" },
+    },
+  ];
+
+  const activeFiles: ProjectTaskFile[] = [
+    {
+      path: ".tasks/0002-waiting-task.md",
+      task: { ...TASK, id: "0002", title: "Waiting Task", dependsOn: ["0001"] },
+    },
+  ];
+
+  const issues = validateTaskDependencies(activeFiles, archivedFiles);
+
+  assert.equal(issues.length, 0);
+});
+
+test("listArchivedTaskFiles reads task files from archive directory", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeTaskFile(
+      join(directory, ".tasks", "archive", "0001-done-task.md"),
+      { ...TASK, id: "0001", title: "Done Task", state: "done", owner: "archive" },
+    );
+    await writeTaskFile(
+      join(directory, ".tasks", "archive", "0002-done-task.md"),
+      { ...TASK, id: "0002", title: "Done Task Two", state: "done", owner: "archive" },
+    );
+    await writeTaskFile(
+      join(directory, ".tasks", "0003-todo-task.md"),
+      { ...TASK, id: "0003", title: "Todo Task", state: "todo" },
+    );
+
+    const archived = await listArchivedTaskFiles(directory);
+    const active = await listTaskFiles(directory);
+
+    assert.equal(archived.length, 2);
+    assert.equal(active.length, 1);
+    assert.equal(archived[0].task.id, "0001");
+    assert.equal(archived[1].task.id, "0002");
+  });
+});
+
+test("allTaskFiles combines active and archived tasks", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeTaskFile(
+      join(directory, ".tasks", "archive", "0001-done-task.md"),
+      { ...TASK, id: "0001", title: "Done Task", state: "done", owner: "archive" },
+    );
+    await writeTaskFile(
+      join(directory, ".tasks", "0003-todo-task.md"),
+      { ...TASK, id: "0003", title: "Todo Task", state: "todo" },
+    );
+
+    const all = await allTaskFiles(directory);
+
+    assert.equal(all.length, 2);
+    assert.equal(all[0].task.id, "0001");
+    assert.equal(all[1].task.id, "0003");
+  });
+});
+
+test("findTaskFile resolves archived task files", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeTaskFile(
+      join(directory, ".tasks", "archive", "0001-done-task.md"),
+      { ...TASK, id: "0001", title: "Done Task", state: "done", owner: "archive" },
+    );
+
+    const path = await findTaskFile(directory, "0001");
+
+    assert.match(path, /archive/);
+  });
+});
+
+test("buildTaskDeps shows archived prerequisites", () => {
+  const activeFiles: ProjectTaskFile[] = [
+    {
+      path: ".tasks/0002-target-task.md",
+      task: { ...TASK, id: "0002", title: "Target Task", dependsOn: ["0001"] },
+    },
+  ];
+
+  const archivedFiles: ProjectTaskFile[] = [
+    {
+      path: ".tasks/archive/0001-done-task.md",
+      task: { ...TASK, id: "0001", title: "Done Task", state: "done", owner: "archive" },
+    },
+  ];
+
+  const result = buildTaskDeps(activeFiles, "0002", ".tasks/0002-target-task.md", archivedFiles);
+
+  assert.ok(result);
+  assert.equal(result!.prerequisites.length, 1);
+  assert.equal(result!.prerequisites[0].id, "0001");
+  assert.equal(result!.prerequisites[0].archived, true);
+  assert.equal(result!.prerequisites[0].state, "done");
+});
+
+test("findTaskDependents includes archived dependents", () => {
+  const activeFiles: ProjectTaskFile[] = [
+    {
+      path: ".tasks/archive/0001-done-task.md",
+      task: { ...TASK, id: "0001", title: "Done Task", state: "done", owner: "archive", dependsOn: [] },
+    },
+  ];
+
+  const archivedFiles: ProjectTaskFile[] = [
+    {
+      path: ".tasks/archive/0000-done-dep.md",
+      task: { ...TASK, id: "0000", title: "Done Dep", state: "done", owner: "archive", dependsOn: [] },
+    },
+  ];
+
+  const dependents = findTaskDependents(activeFiles, "0001", archivedFiles);
+
+  assert.equal(dependents.length, 0);
+});
+
+test("renderTaskDeps shows archived tag for archived prerequisites", () => {
+  const result = {
+    id: "0003",
+    title: "Target",
+    state: "todo" as const,
+    path: ".tasks/0003-target.md",
+    prerequisites: [
+      { id: "0001", title: "Archived Base", state: "done" as const, archived: true },
+      { id: "0002", title: "Active Prereq", state: "doing" as const, archived: false },
+    ],
+    dependents: [
+      { id: "0004", title: "Archived Child", state: "done" as const, archived: true },
+    ],
+    missingDeps: [],
+    cycleIssues: [],
+  };
+
+  const output = renderTaskDeps(result);
+
+  assert.match(output, /- 0001 \[done\] \(archived\) Archived Base/);
+  assert.match(output, /- 0002 \[doing\] Active Prereq/);
+  assert.match(output, /- 0004 \[done\] \(archived\) Archived Child/);
+});
+
+test("nextTaskId includes archived tasks in id sequence", () => {
+  const activeFiles: ProjectTaskFile[] = [];
+  const archivedFiles: ProjectTaskFile[] = [
+    {
+      path: ".tasks/archive/0005-done-task.md",
+      task: { ...TASK, id: "0005", title: "Done Task", state: "done", owner: "archive" },
+    },
+  ];
+
+  assert.equal(nextTaskId(activeFiles, archivedFiles), "0006");
+});
+
+// Regression tests for task 0046 review findings
+
+test("buildTaskDeps resolves archived target task", () => {
+  const activeFiles: ProjectTaskFile[] = [
+    {
+      path: ".tasks/0002-active-task.md",
+      task: { ...TASK, id: "0002", title: "Active Task", dependsOn: ["0001"] },
+    },
+  ];
+
+  const archivedFiles: ProjectTaskFile[] = [
+    {
+      path: ".tasks/archive/0001-done-task.md",
+      task: { ...TASK, id: "0001", title: "Done Task", state: "done", owner: "archive", dependsOn: [] },
+    },
+  ];
+
+  const result = buildTaskDeps(activeFiles, "0001", ".tasks/archive/0001-done-task.md", archivedFiles);
+
+  assert.ok(result, "buildTaskDeps should resolve archived target task");
+  assert.equal(result!.id, "0001");
+  assert.equal(result!.title, "Done Task");
+  assert.equal(result!.state, "done");
+  assert.equal(result!.dependents.length, 1);
+  assert.equal(result!.dependents[0].id, "0002");
+});
+
+test("buildTaskDeps shows archived prerequisites for archived target", () => {
+  const activeFiles: ProjectTaskFile[] = [];
+
+  const archivedFiles: ProjectTaskFile[] = [
+    {
+      path: ".tasks/archive/0001-base-task.md",
+      task: { ...TASK, id: "0001", title: "Base Task", state: "done", owner: "archive", dependsOn: [] },
+    },
+    {
+      path: ".tasks/archive/0002-target-task.md",
+      task: { ...TASK, id: "0002", title: "Target Task", state: "done", owner: "archive", dependsOn: ["0001"] },
+    },
+  ];
+
+  const result = buildTaskDeps(activeFiles, "0002", ".tasks/archive/0002-target-task.md", archivedFiles);
+
+  assert.ok(result);
+  assert.equal(result!.prerequisites.length, 1);
+  assert.equal(result!.prerequisites[0].id, "0001");
+  assert.equal(result!.prerequisites[0].archived, true);
+});
+
+test("validateTaskDependencies accepts active task depending on archived done task", () => {
+  const archivedFiles: ProjectTaskFile[] = [
+    {
+      path: ".tasks/archive/0001-done-task.md",
+      task: { ...TASK, id: "0001", title: "Done Task", state: "done", owner: "archive" },
+    },
+  ];
+
+  const activeFiles: ProjectTaskFile[] = [
+    {
+      path: ".tasks/0002-waiting-task.md",
+      task: { ...TASK, id: "0002", title: "Waiting Task", dependsOn: ["0001"] },
+    },
+  ];
+
+  const issues = validateTaskDependencies(activeFiles, archivedFiles);
+
+  assert.equal(issues.length, 0, "Should have no issues for active task depending on archived done task");
 });

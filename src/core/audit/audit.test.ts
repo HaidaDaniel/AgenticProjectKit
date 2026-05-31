@@ -146,3 +146,134 @@ test("auditRepository reports invalid config files as errors", async () => {
     );
   });
 });
+
+// Regression test for task 0046 review findings
+
+test("auditRepository accepts active task depending on archived done task", async () => {
+  await withTempDirectory(async (directory) => {
+    await initProject(directory);
+
+    const archivedDir = join(directory, ".tasks", "archive");
+    await mkdir(archivedDir, { recursive: true });
+
+    await writeFile(
+      join(archivedDir, "0001-done-task.md"),
+      [
+        "# Task 0001 - Done Task",
+        "",
+        "State: done",
+        "Owner: archive",
+        "Mode: mvp",
+        "Lane: implementation",
+        "Scope: tasks",
+        "Risk: low",
+        "Parallel: false",
+        "Depends on: none",
+        "Tags: none",
+        "",
+        "## Goal",
+        "",
+        "A done task.",
+        "",
+        "## Context files",
+        "",
+        "- AGENTS.md",
+        "",
+        "## Files allowed to edit",
+        "",
+        "- .tasks/0001-done-task.md",
+        "",
+        "## Files forbidden to edit",
+        "",
+        "- package.json",
+        "",
+        "## Steps",
+        "",
+        "1. Do something.",
+        "",
+        "## Acceptance criteria",
+        "",
+        "- It works.",
+        "",
+        "## Verification commands",
+        "",
+        "- pnpm test",
+        "",
+        "## Documentation updates",
+        "",
+        "- docs/progress.md",
+        "",
+        "## Notes",
+        "",
+        "- None.",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    await writeFile(
+      join(directory, ".tasks/0003-waiting-task.md"),
+      [
+        "# Task 0003 - Waiting Task",
+        "",
+        "State: todo",
+        "Owner: none",
+        "Mode: mvp",
+        "Lane: implementation",
+        "Scope: tasks",
+        "Risk: low",
+        "Parallel: false",
+        "Depends on: 0001",
+        "Tags: none",
+        "",
+        "## Goal",
+        "",
+        "Depends on archived done task.",
+        "",
+        "## Context files",
+        "",
+        "- AGENTS.md",
+        "",
+        "## Files allowed to edit",
+        "",
+        "- .tasks/0003-waiting-task.md",
+        "",
+        "## Files forbidden to edit",
+        "",
+        "- package.json",
+        "",
+        "## Steps",
+        "",
+        "1. Do something.",
+        "",
+        "## Acceptance criteria",
+        "",
+        "- It works.",
+        "",
+        "## Verification commands",
+        "",
+        "- pnpm test",
+        "",
+        "## Documentation updates",
+        "",
+        "- docs/progress.md",
+        "",
+        "## Notes",
+        "",
+        "- None.",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    const result = await auditRepository(directory);
+
+    assert.ok(
+      !result.findings.some((finding) => (
+        finding.area === "dependencies" &&
+        finding.message.includes("0001")
+      )),
+      "Should not report archived done task as missing dependency",
+    );
+  });
+});

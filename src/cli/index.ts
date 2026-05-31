@@ -12,6 +12,7 @@ import { runNextTaskCommand } from "./commands/next-task.js";
 import { runPromptCommand } from "./commands/prompt.js";
 import { runSyncCommand } from "./commands/sync.js";
 import { runTasksCommand } from "./commands/tasks.js";
+import { runTaskCommand } from "./commands/task.js";
 import { runTaskStateCommand } from "./commands/task-state.js";
 
 const HELP_TEXT = [
@@ -38,7 +39,10 @@ const HELP_TEXT = [
   "  apk release <task-id> --owner <agent-id>",
   "  apk review <task-id> --owner <agent-id>",
   "  apk sync [agent] [--write]",
-  "  apk tasks [--state <state>] [--owner <agent-id>]",
+  "  apk task archive [<task-id>] [--all]",
+  "  apk task deps <task-id>",
+  "  apk task create --title <title> --mode <mode> --lane <lane> --scope <csv> --risk <risk> --context <csv> --allowed <csv> --verification <csv>",
+  "  apk tasks [--all] [--state <state>] [--owner <agent-id>]",
   "",
   "Commands:",
   "  agent  Register and list task agents.",
@@ -58,6 +62,7 @@ const HELP_TEXT = [
   "  release  Release a task back to todo.",
   "  review  Move a task to review.",
   "  sync  Check or update generated agent instruction files.",
+  "  task  Inspect task dependencies and graph.",
   "  tasks  List tasks in compact form.",
 ].join("\n");
 
@@ -121,6 +126,10 @@ async function main(): Promise<number> {
 
   if (command === "sync") {
     return runSyncCommand(commandArgs);
+  }
+
+  if (command === "task") {
+    return runTaskCommand(commandArgs);
   }
 
   if (command === "tasks") {
