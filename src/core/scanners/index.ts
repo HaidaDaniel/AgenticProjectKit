@@ -15,10 +15,27 @@ export interface RepositoryScan {
   topLevelDirectories: string[];
   topLevelFiles: string[];
   detectedStack: string[];
+  readiness: RepositoryReadinessScan;
   kitDocs: RepositoryFileSet;
   agentExports: RepositoryFileSet;
   hasAgenticConfig: boolean;
   taskFiles: string[];
+}
+
+export interface RepositoryReadinessScan {
+  packageManager: string | undefined;
+  packageScripts: string[];
+  lockfiles: string[];
+  hasCi: boolean;
+  hasEnvExample: boolean;
+  hasDockerfile: boolean;
+  hasDockerCompose: boolean;
+  hasReadme: boolean;
+  hasLicense: boolean;
+  testDirectories: string[];
+  generatedDirectories: string[];
+  monorepo: boolean;
+  tsStrict: boolean | undefined;
 }
 
 const IGNORED_DIRECTORIES = new Set([
@@ -138,11 +155,63 @@ async function detectPackageStack(rootDirectory: string): Promise<string[]> {
   return stack;
 }
 
+async function readJsonFile(path: string): Promise<Record<string, unknown> | undefined> {
+  if (!(await fileExists(path))) {
+    return undefined;
+  }
+
+  return JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
+}
+
+async function scanReadiness(
+  rootDirectory: string,
+  topLevelDirectories: readonly string[],
+  topLevelFiles: readonly string[],
+): Promise<RepositoryReadinessScan> {
+  const packageJson = await readJsonFile(join(rootDirectory, "package.json"));
+  const scripts = packageJson?.scripts && typeof packageJson.scripts === "object"
+    ? Object.keys(packageJson.scripts as Record<string, unknown>).sort()
+    : [];
+  const lockfiles = [
+    "pnpm-lock.yaml",
+    "package-lock.json",
+    "yarn.lock",
+    "bun.lockb",
+  ].filter((file) => topLevelFiles.includes(file));
+  const packageManager = topLevelFiles.includes("pnpm-lock.yaml") ? "pnpm"
+    : topLevelFiles.includes("package-lock.json") ? "npm"
+    : topLevelFiles.includes("yarn.lock") ? "yarn"
+    : topLevelFiles.includes("bun.lockb") ? "bun"
+    : undefined;
+  const tsconfig = await readJsonFile(join(rootDirectory, "tsconfig.json"));
+  const compilerOptions = tsconfig?.compilerOptions && typeof tsconfig.compilerOptions === "object"
+    ? tsconfig.compilerOptions as Record<string, unknown>
+    : undefined;
+
+  return {
+    packageManager,
+    packageScripts: scripts,
+    lockfiles,
+    hasCi: await fileExists(join(rootDirectory, ".github", "workflows")),
+    hasEnvExample: topLevelFiles.includes(".env.example"),
+    hasDockerfile: topLevelFiles.includes("Dockerfile"),
+    hasDockerCompose: topLevelFiles.includes("docker-compose.yml") || topLevelFiles.includes("docker-compose.yaml"),
+    hasReadme: topLevelFiles.some((file) => /^readme\.md$/i.test(file)),
+    hasLicense: topLevelFiles.some((file) => /^licen[sc]e(\.md|\.txt)?$/i.test(file)),
+    testDirectories: topLevelDirectories.filter((directory) => ["test", "tests", "__tests__"].includes(directory)),
+    generatedDirectories: topLevelDirectories.filter((directory) => ["dist", "build", ".next", "coverage"].includes(directory)),
+    monorepo: topLevelFiles.includes("pnpm-workspace.yaml") || Boolean(packageJson?.workspaces),
+    tsStrict: compilerOptions ? compilerOptions.strict === true : undefined,
+  };
+}
+
 export async function scanRepository(rootDirectory: string): Promise<RepositoryScan> {
   const entries = await readdir(rootDirectory, { withFileTypes: true });
-  const topLevelDirectories = entries
+  const allTopLevelDirectories = entries
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
+    .sort();
+  const topLevelDirectories = allTopLevelDirectories
     .filter((name) => !IGNORED_DIRECTORIES.has(name))
     .sort();
   const topLevelFiles = entries
@@ -170,6 +239,7 @@ export async function scanRepository(rootDirectory: string): Promise<RepositoryS
     topLevelDirectories,
     topLevelFiles,
     detectedStack: [...detectedStack].sort(),
+    readiness: await scanReadiness(rootDirectory, allTopLevelDirectories, topLevelFiles),
     kitDocs: await scanFileSet(rootDirectory, REQUIRED_KIT_DOCS),
     agentExports: await scanFileSet(rootDirectory, agentExportPaths),
     hasAgenticConfig: await fileExists(join(rootDirectory, CONFIG_PATH)),

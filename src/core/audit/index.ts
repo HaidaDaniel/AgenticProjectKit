@@ -87,6 +87,22 @@ function renderProjectMap(scan: RepositoryScan): string {
     "",
     ...renderBulletList(scan.taskFiles),
     "",
+    "## Repository Readiness",
+    "",
+    `- Package manager: ${scan.readiness.packageManager ?? "unknown"}`,
+    `- Package scripts: ${scan.readiness.packageScripts.length === 0 ? "none" : scan.readiness.packageScripts.join(",")}`,
+    `- Lockfiles: ${scan.readiness.lockfiles.length === 0 ? "none" : scan.readiness.lockfiles.join(",")}`,
+    `- CI: ${scan.readiness.hasCi ? "yes" : "no"}`,
+    `- Env example: ${scan.readiness.hasEnvExample ? "yes" : "no"}`,
+    `- Dockerfile: ${scan.readiness.hasDockerfile ? "yes" : "no"}`,
+    `- Docker compose: ${scan.readiness.hasDockerCompose ? "yes" : "no"}`,
+    `- README: ${scan.readiness.hasReadme ? "yes" : "no"}`,
+    `- License: ${scan.readiness.hasLicense ? "yes" : "no"}`,
+    `- Test directories: ${scan.readiness.testDirectories.length === 0 ? "none" : scan.readiness.testDirectories.join(",")}`,
+    `- Generated directories: ${scan.readiness.generatedDirectories.length === 0 ? "none" : scan.readiness.generatedDirectories.join(",")}`,
+    `- Monorepo: ${scan.readiness.monorepo ? "yes" : "no"}`,
+    `- TypeScript strict: ${scan.readiness.tsStrict === undefined ? "unknown" : scan.readiness.tsStrict ? "yes" : "no"}`,
+    "",
   ].join("\n");
 }
 
@@ -111,6 +127,8 @@ function renderAuditReport(result: Omit<AuditResult, "reportPath" | "projectMapP
     `- Missing kit docs: ${result.scan.kitDocs.missing.length}`,
     `- Missing agent exports: ${result.scan.agentExports.missing.length}`,
     `- Agentic config present: ${result.scan.hasAgenticConfig ? "yes" : "no"}`,
+    `- Package manager: ${result.scan.readiness.packageManager ?? "unknown"}`,
+    `- CI present: ${result.scan.readiness.hasCi ? "yes" : "no"}`,
     "",
   ].join("\n");
 }
@@ -200,12 +218,83 @@ async function auditTasks(
   return scan.taskFiles.length;
 }
 
+function auditRepoReadiness(scan: RepositoryScan, findings: AuditFinding[]): void {
+  if (scan.topLevelFiles.includes("package.json")) {
+    for (const script of ["test", "lint", "typecheck", "build"]) {
+      if (!scan.readiness.packageScripts.includes(script)) {
+        findings.push({
+          level: "warning",
+          area: "repo-readiness",
+          message: `Missing package script: ${script}.`,
+        });
+      }
+    }
+  }
+
+  if (scan.readiness.lockfiles.length > 1) {
+    findings.push({
+      level: "warning",
+      area: "repo-readiness",
+      message: `Multiple lockfiles detected: ${scan.readiness.lockfiles.join(",")}.`,
+    });
+  }
+
+  if (!scan.readiness.hasCi) {
+    findings.push({
+      level: "info",
+      area: "repo-readiness",
+      message: "GitHub Actions workflow not detected.",
+    });
+  }
+
+  if (!scan.readiness.hasEnvExample) {
+    findings.push({
+      level: "info",
+      area: "repo-readiness",
+      message: ".env.example not detected.",
+    });
+  }
+
+  if (scan.topLevelFiles.includes("package.json") && scan.readiness.testDirectories.length === 0) {
+    findings.push({
+      level: "info",
+      area: "repo-readiness",
+      message: "Top-level test directory not detected.",
+    });
+  }
+
+  if (!scan.readiness.hasLicense) {
+    findings.push({
+      level: "info",
+      area: "repo-readiness",
+      message: "License file not detected.",
+    });
+  }
+
+  if (!scan.readiness.hasReadme) {
+    findings.push({
+      level: "info",
+      area: "repo-readiness",
+      message: "README not detected.",
+    });
+  }
+
+  if (scan.readiness.tsStrict === false) {
+    findings.push({
+      level: "warning",
+      area: "repo-readiness",
+      message: "TypeScript strict mode is disabled.",
+    });
+  }
+}
+
 export async function auditRepository(rootDirectory: string): Promise<AuditResult> {
   const scan = await scanRepository(rootDirectory);
   const findings: AuditFinding[] = [];
 
   addMissingFindings(findings, "docs", scan.kitDocs.missing);
   addMissingFindings(findings, "exports", scan.agentExports.missing);
+  auditRepoReadiness(scan, findings);
   await auditConfig(rootDirectory, findings);
   const taskCount = await auditTasks(rootDirectory, scan, findings);
   const hasErrors = findings.some((finding) => finding.level === "error");

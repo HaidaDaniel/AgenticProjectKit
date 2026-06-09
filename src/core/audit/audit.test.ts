@@ -55,6 +55,42 @@ test("auditRepository accepts initialized kit without critical errors", async ()
   });
 });
 
+test("auditRepository reports lightweight repo readiness findings", async () => {
+  await withTempDirectory(async (directory) => {
+    await initProject(directory);
+    await writeFile(
+      join(directory, "package.json"),
+      JSON.stringify({
+        scripts: {
+          test: "node --test",
+          lint: "tsc --noEmit",
+        },
+        devDependencies: {
+          typescript: "^6.0.0",
+        },
+      }, null, 2),
+      "utf8",
+    );
+    await writeFile(join(directory, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n", "utf8");
+    await writeFile(
+      join(directory, "tsconfig.json"),
+      JSON.stringify({ compilerOptions: { strict: false } }, null, 2),
+      "utf8",
+    );
+
+    const result = await auditRepository(directory);
+    const report = await readFile(join(directory, "docs/audit-report.md"), "utf8");
+    const map = await readFile(join(directory, "docs/project-map.md"), "utf8");
+
+    assert.equal(result.hasErrors, false);
+    assert.ok(result.findings.some((finding) => finding.message === "Missing package script: typecheck."));
+    assert.ok(result.findings.some((finding) => finding.message === "TypeScript strict mode is disabled."));
+    assert.match(report, /Package manager: pnpm/);
+    assert.match(map, /## Repository Readiness/);
+    assert.match(map, /TypeScript strict: no/);
+  });
+});
+
 test("auditRepository reports invalid task files as errors", async () => {
   await withTempDirectory(async (directory) => {
     await initProject(directory);

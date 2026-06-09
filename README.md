@@ -1,6 +1,6 @@
 # Agentic Project Kit
 
-Agentic Project Kit is a repository-based operating system for AI-assisted software development.
+Agentic Project Kit is a repository-first CLI for structured AI-assisted development workflows.
 
 It keeps project context, operating rules, task definitions, and agent-specific instructions inside the repository so that work can continue without relying on long chat history.
 
@@ -12,7 +12,7 @@ Modern AI coding workflows often break down because important project context li
 
 This is not just a starter app template.
 
-It is intended to manage the whole project lifecycle:
+It supports lightweight lifecycle modes through repository docs, task metadata, and generated agent instructions:
 
 - new project discovery;
 - MVP delivery;
@@ -20,7 +20,7 @@ It is intended to manage the whole project lifecycle:
 - production readiness;
 - brownfield adoption;
 - audit mode for existing repositories;
-- task generation for AI agents;
+- task contracts and prompt generation for AI coding agents;
 - exports for different coding assistants.
 
 ## CLI
@@ -56,11 +56,13 @@ Implemented commands:
 - `apk agent prompt`
 - `apk audit`
 - `apk tasks`
+- `apk work <task-id> --owner <agent-id> --target <agent>`
 - `apk claim`
 - `apk release`
 - `apk block`
 - `apk review`
 - `apk done`
+- `apk doctor`
 - `apk cancel`
 - `apk context <task-id>`
 - `apk mode [mode]`
@@ -68,6 +70,8 @@ Implemented commands:
 - `apk prompt <agent> --task <task-id>`
 - `apk export [agent]`
 - `apk sync [agent]`
+- `apk status`
+- `apk suggest-context "<task description>"`
 - `apk task deps <task-id>`
 - `apk task create`
 
@@ -226,7 +230,7 @@ Create starter kit files in another repository:
 pnpm exec tsx src/cli/index.ts init path/to/project
 ```
 
-Adopt an existing repository without rewriting application code:
+Adopt an existing repository with a lightweight scan and without rewriting application code:
 
 ```bash
 pnpm exec tsx src/cli/index.ts adopt path/to/existing-repo
@@ -238,7 +242,15 @@ Print the files an agent should read for a task:
 pnpm exec tsx src/cli/index.ts context 0008 --level 2
 ```
 
-Use `--level 1` for minimum project context, `--level 2` for task docs, and `--level 3` when source or support files are needed.
+Use `--level 1` for minimum project context, `--level 2` for task docs, and `--level 3` to include source or support files explicitly named by the task contract.
+
+Suggest candidate context before writing a task:
+
+```bash
+pnpm exec tsx src/cli/index.ts suggest-context "Add auth middleware"
+```
+
+Suggestions are deterministic local heuristics, not deep code understanding.
 
 Print or set the operating mode:
 
@@ -270,9 +282,9 @@ pnpm exec tsx src/cli/index.ts export codex --force
 
 Supported export targets: `agents`, `claude`, `codex`, `gemini`, `opencode`, `cursor`.
 
-`export` skips existing files by default. Use `--force` to overwrite generated instruction files.
+`export` skips existing files by default. Use `--force` to overwrite generated instruction files. The core exporter API uses the same safe default unless `force` is explicitly true.
 
-Audit repository docs and generated instruction coverage:
+Audit kit/workflow readiness and generated instruction coverage:
 
 ```bash
 pnpm exec tsx src/cli/index.ts audit
@@ -290,6 +302,7 @@ Create a new task file with validated metadata:
 ```bash
 pnpm exec tsx src/cli/index.ts task create \
   --title "Add Feature" \
+  --goal "Implement the smallest useful feature slice." \
   --mode mvp \
   --lane implementation \
   --scope cli,docs \
@@ -299,17 +312,24 @@ pnpm exec tsx src/cli/index.ts task create \
   --verification "pnpm test"
 ```
 
+Use templates to reduce repeated metadata:
+
+```bash
+pnpm exec tsx src/cli/index.ts task create --template bugfix --title "Fix Parser" --scope cli --allowed src/cli/index.ts
+```
+
 ## Example workflow
 
 1. Start a new repository with `apk init`, or add the kit to an existing repository with `apk adopt`.
 2. Register the working agent with `apk agent register`.
-3. Run `apk next-task` to pick the next todo task.
-4. Claim it with `apk claim <task-id> --owner <agent-id>`.
-5. Run `apk context <task-id>` and `apk prompt <agent> --task <task-id>`.
-6. Work one task at a time.
-7. Move the task through `review` and `done`.
-8. Run `apk sync` to check generated instruction drift.
-9. Run `apk export` or `apk sync --write` when generated instructions need regeneration.
+3. Run `apk status` to inspect current workflow state.
+4. Run `apk next-task` to pick the next todo task.
+5. Claim it with `apk claim <task-id> --owner <agent-id>`.
+6. Run `apk context <task-id>` and `apk prompt <agent> --task <task-id>`.
+7. Work one task at a time.
+8. Move the task through `review` and `done`.
+9. Run `apk sync` to check generated instruction drift.
+10. Run `apk export` or `apk sync --write` when generated instructions need regeneration.
 
 ## Agent workflow
 
@@ -318,6 +338,14 @@ Register each agent before task work:
 ```bash
 apk agent register --id codex-a --developer alice --platform codex --model gpt-5.5
 ```
+
+Start or continue a task through the CLI work loop:
+
+```bash
+apk work 0001 --owner codex-a --target codex --level auto
+```
+
+`work` claims a todo task, renders the prompt, and prints verify/review/done commands. Use `--write-session` to store the prompt under `.agentic/sessions/`. It does not launch external AI agents.
 
 List registered agents:
 
@@ -338,6 +366,7 @@ apk tasks --state todo
 apk claim 0001 --owner codex-a
 apk context 0001 --level 2
 apk prompt codex --task 0001 --level 2
+apk task verify 0001 --owner codex-a
 pnpm test
 pnpm lint
 apk review 0001 --owner codex-a
@@ -377,6 +406,8 @@ Generate a monthly comparison summary:
 ```bash
 apk analytics summary --month 2026-05 --write
 ```
+
+Analytics summaries include active and archived task metadata when grouping risk, mode, and lane.
 
 ## Discovery planning
 
@@ -423,6 +454,7 @@ apk prompt codex --task 0001 --level 2
 ```
 
 Give the generated prompt to the selected agent, let it work only inside the allowed files, then run the verification commands listed in the task file.
+Use `apk task verify <task-id>` to check changed files against the task's allowed and forbidden file lists before review or done.
 
 ### Scenario 2: Adopt an existing repository
 
@@ -433,7 +465,7 @@ cd path/to/existing-repo
 apk adopt
 ```
 
-`adopt` scans the repository shape and writes missing kit files such as docs, config, task files, and agent instructions. It skips existing files instead of overwriting them.
+`adopt` performs a lightweight repository-shape scan and writes missing kit files such as docs, config, task files, and agent instructions. It skips existing files instead of overwriting them.
 
 After adoption:
 
@@ -464,7 +496,7 @@ Context levels:
 
 - `--level 1`: minimum project context and the task file.
 - `--level 2`: adds relevant docs and decisions.
-- `--level 3`: adds source/support files from the task contract.
+- `--level 3`: adds source/support files explicitly listed in the task contract.
 
 Generate the prompt:
 
@@ -517,7 +549,7 @@ The source of truth remains the repository docs and neutral policy content; expo
 
 ### Scenario 5: Audit and sync generated instructions
 
-Use this when you want to check repository readiness without changing application source files.
+Use this when you want to check kit/workflow readiness without changing application source files.
 
 ```bash
 apk audit
@@ -525,7 +557,7 @@ apk sync
 apk sync codex --write
 ```
 
-`audit` writes `docs/audit-report.md` and `docs/project-map.md`. `sync` is check-only unless `--write` is present.
+`audit` writes `docs/audit-report.md` and `docs/project-map.md` from lightweight repository and kit checks. It reports static readiness facts such as package scripts, lockfiles, CI presence, env examples, tests, license, README, Docker files, monorepo indicators, and TypeScript strict mode. It does not perform deep application architecture, security, coverage, or production-readiness analysis. `sync` is check-only unless `--write` is present.
 
 ### Scenario 6: Move from MVP to product work
 
@@ -543,7 +575,7 @@ Switch from `mvp` to `product`:
 apk mode product
 ```
 
-Use `product` mode for v0.2 work such as richer repository scanning, audit reports, improved context selection, and stronger validation.
+Use `product` mode for v0.2 work such as richer lightweight repository scanning, audit reports, improved context selection, and stronger validation.
 
 Use `production` only when the project needs release hardening: stricter tests, clearer failure behavior, stronger docs, and safer workflows.
 
@@ -555,6 +587,8 @@ Recommended loop:
 
 ```bash
 apk mode product
+apk status
+apk doctor
 apk next-task
 apk context <task-id> --level 2
 apk prompt codex --task <task-id> --level 2
@@ -563,6 +597,7 @@ pnpm lint
 ```
 
 For risky changes, use `--level 3` so the agent sees source files and support files named by the task.
+Run `apk task verify <task-id> --owner <agent-id>` before moving the task to review or done.
 
 When a task is done, update the task status and `docs/progress.md`. If the change affects agent instructions, run:
 
@@ -572,10 +607,10 @@ apk export --force
 
 ## Current status
 
-Tasks 0001 through 0040 are complete. v0.1 plus the v0.2/v0.3 backlog, audit, sync, compact agent workflow, team analytics, and Claude/Gemini exports are ready.
+Tasks 0001 through 0046 are complete. Tasks 0047 through 0055 are the next CLI-focused product backlog for honest positioning, workflow guardrails, status, doctor, audit readiness, context suggestions, task templates, and a CLI-only work loop.
 
-The repository now has a minimal TypeScript CLI scaffold, config schema, `init`, `adopt`, `audit`, `analytics summary`, `mode`, `next-task`, `tasks`, agent registration, task state transitions, sharded run analytics, `context`, `prompt`, `export`, `sync`, template rendering, doc generation helpers, Claude/Gemini/Codex/OpenCode/Cursor agent exporters, and compact task parsing support.
+The repository now has a minimal TypeScript CLI scaffold, config schema, `init`, lightweight `adopt`, kit/workflow `audit`, `analytics summary`, `mode`, `next-task`, `tasks`, agent registration, task state transitions, sharded run analytics, `context`, `prompt`, `export`, `sync`, template rendering, doc generation helpers, Claude/Gemini/Codex/OpenCode/Cursor agent exporters, task archive/dependency commands, and compact task parsing support.
 
 Default agent style for this repository: `caveman` when the active tool supports it.
 
-No actionable todo tasks remain.
+Actionable todo tasks are tracked in `.tasks/0047-*` through `.tasks/0055-*`.

@@ -25,7 +25,15 @@ function hasHelpFlag(argv: string[]): boolean {
 
 function readFlagValue(argv: readonly string[], flag: string): string | undefined {
   const index = argv.indexOf(flag);
-  return index === -1 ? undefined : argv[index + 1];
+  if (index === -1) {
+    return undefined;
+  }
+
+  if (index === argv.length - 1 || argv[index + 1].startsWith("-")) {
+    throw new Error(`${flag} requires a value.`);
+  }
+
+  return argv[index + 1];
 }
 
 function rejectUnknownOptions(argv: readonly string[], allowed: readonly string[]): void {

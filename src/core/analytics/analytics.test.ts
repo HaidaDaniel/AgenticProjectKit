@@ -133,3 +133,30 @@ test("summarizeAnalytics filters by month and writes docs summary", async () => 
     );
   });
 });
+
+test("summarizeAnalytics includes archived task metadata", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeTaskFile(join(directory, ".tasks", "archive", "0100-analytics-task.md"), TASK);
+    const agent = await registerAgent(directory, {
+      id: "codex-a",
+      developer: "alice",
+      platform: "codex",
+      model: "gpt-5.5",
+    });
+
+    await appendRunLog(directory, {
+      event: "done",
+      agent,
+      task: "0100",
+      state: "done",
+      outcome: "ok",
+      time: "2027-05-08T12:03:00Z",
+    });
+
+    const summary = await summarizeAnalytics(directory, { month: "2027-05" });
+
+    assert.deepEqual(summary.groups[0].risks, { medium: 1 });
+    assert.deepEqual(summary.groups[0].modes, { product: 1 });
+    assert.deepEqual(summary.groups[0].lanes, { analytics: 1 });
+  });
+});

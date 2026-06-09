@@ -66,6 +66,10 @@ test("CLI help lists implemented commands", async () => {
   assert.match(result.stdout, /apk audit \[directory\]/);
   assert.match(result.stdout, /apk analytics summary \[--month YYYY-MM\] \[--write\]/);
   assert.match(result.stdout, /apk sync \[agent\] \[--write\]/);
+  assert.match(result.stdout, /apk status/);
+  assert.match(result.stdout, /apk doctor/);
+  assert.match(result.stdout, /apk suggest-context/);
+  assert.match(result.stdout, /apk work <task-id>/);
   assert.match(result.stdout, /apk task deps <task-id>/);
   assert.match(result.stdout, /apk tasks \[--all\] \[--state <state>\] \[--owner <agent-id>\]/);
 });
@@ -186,6 +190,150 @@ test("CLI tasks help shows active filtering info", async () => {
   assert.equal(result.exitCode, 0);
   assert.match(result.stdout, /--all/);
   assert.match(result.stdout, /active tasks/);
+});
+
+test("CLI status shows compact workflow state", async () => {
+  await withTempDirectory(async (directory) => {
+    const tasksDir = join(directory, ".tasks");
+    await mkdir(tasksDir, { recursive: true });
+    await writeFile(join(tasksDir, "0001-todo-task.md"), buildTaskMarkdown("0001", "Todo Task", "todo"), "utf8");
+
+    const result = await runCli(["status"], directory);
+
+    assert.equal(result.exitCode, 0);
+    assert.match(result.stdout, /Mode:/);
+    assert.match(result.stdout, /Tasks:/);
+    assert.match(result.stdout, /todo:1/);
+    assert.match(result.stdout, /Next task: 0001 Todo Task/);
+    assert.match(result.stdout, /Generated instructions:/);
+    assert.match(result.stdout, /Latest run:/);
+    assert.match(result.stdout, /Warnings:/);
+  });
+});
+
+test("CLI status help shows usage", async () => {
+  const result = await runCli(["status", "--help"]);
+
+  assert.equal(result.exitCode, 0);
+  assert.match(result.stdout, /apk status/);
+});
+
+test("CLI status reports broken task files as warnings", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(join(directory, ".tasks", "0001-broken.md"), "# Broken\n", "utf8");
+
+    const result = await runCli(["status"], directory);
+
+    assert.equal(result.exitCode, 0);
+    assert.match(result.stdout, /task parse warning/);
+  });
+});
+
+test("CLI doctor help shows usage", async () => {
+  const result = await runCli(["doctor", "--help"]);
+
+  assert.equal(result.exitCode, 0);
+  assert.match(result.stdout, /apk doctor/);
+});
+
+test("CLI doctor reports warnings without failing", async () => {
+  await withTempDirectory(async (directory) => {
+    const tasksDir = join(directory, ".tasks");
+    await mkdir(tasksDir, { recursive: true });
+    await writeFile(join(tasksDir, "0001-todo-task.md"), buildTaskMarkdown("0001", "Todo Task", "todo"), "utf8");
+
+    const result = await runCli(["doctor"], directory);
+
+    assert.equal(result.exitCode, 0);
+    assert.match(result.stdout, /Doctor:/);
+    assert.match(result.stdout, /warn:/);
+    assert.match(result.stdout, /Result: pass/);
+  });
+});
+
+test("CLI doctor fails on broken task files", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(join(directory, ".tasks", "0001-broken.md"), "# Broken\n", "utf8");
+
+    const result = await runCli(["doctor"], directory);
+
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stdout, /tasks:/);
+    assert.match(result.stdout, /Result: fail/);
+  });
+});
+
+test("CLI suggest-context returns deterministic local candidates", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, "src", "auth"), { recursive: true });
+    await mkdir(join(directory, "src", "auth", "__tests__"), { recursive: true });
+    await writeFile(join(directory, "src", "auth", "middleware.ts"), "export {}\n", "utf8");
+    await writeFile(join(directory, "src", "auth", "__tests__", "middleware.test.ts"), "test('x', () => {});\n", "utf8");
+    await writeFile(join(directory, "package.json"), JSON.stringify({}), "utf8");
+
+    const result = await runCli(["suggest-context", "Add auth middleware", "--limit", "4"], directory);
+
+    assert.equal(result.exitCode, 0);
+    assert.match(result.stdout, /Context files/);
+    assert.match(result.stdout, /Files allowed to edit/);
+    assert.match(result.stdout, /src\/auth\/middleware\.ts/);
+    assert.doesNotMatch(result.stdout, /node_modules/);
+  });
+});
+
+test("CLI suggest-context help shows usage", async () => {
+  const result = await runCli(["suggest-context", "--help"]);
+
+  assert.equal(result.exitCode, 0);
+  assert.match(result.stdout, /apk suggest-context/);
+});
+
+test("CLI work claims todo task and prints prompt", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(join(directory, ".tasks", "0001-todo-task.md"), buildTaskMarkdown("0001", "Todo Task", "todo"), "utf8");
+    await runCli(["agent", "register", "--id", "codex-a", "--platform", "codex", "--model", "gpt"], directory);
+
+    const result = await runCli(["work", "0001", "--owner", "codex-a", "--target", "codex", "--level", "2"], directory);
+
+    assert.equal(result.exitCode, 0);
+    assert.match(result.stdout, /Agent: codex/);
+    assert.match(result.stdout, /Claimed: yes/);
+    assert.match(result.stdout, /apk task verify 0001 --owner codex-a/);
+    assert.match(await readFile(join(directory, ".tasks", "0001-todo-task.md"), "utf8"), /State: doing/);
+  });
+});
+
+test("CLI work refuses unregistered owner", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(join(directory, ".tasks", "0001-todo-task.md"), buildTaskMarkdown("0001", "Todo Task", "todo"), "utf8");
+
+    const result = await runCli(["work", "0001", "--owner", "codex-a", "--target", "codex"], directory);
+
+    assert.equal(result.exitCode, 1);
+    assert.ok(
+      result.stdout.match(/Agent is not registered/) || result.stderr.match(/Agent is not registered/),
+      "Expected unregistered owner error",
+    );
+  });
+});
+
+test("CLI work can write a session prompt", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(join(directory, ".tasks", "0001-todo-task.md"), buildTaskMarkdown("0001", "Todo Task", "todo"), "utf8");
+    await runCli(["agent", "register", "--id", "codex-a", "--platform", "codex", "--model", "gpt"], directory);
+
+    const result = await runCli(["work", "0001", "--owner", "codex-a", "--target", "codex", "--write-session"], directory);
+    const sessionMatch = /Session: (.+prompt\.md)/.exec(result.stdout);
+
+    assert.equal(result.exitCode, 0);
+    assert.ok(sessionMatch, "Expected session path in output");
+    assert.match(await readFile(join(directory, sessionMatch![1]), "utf8"), /Agent: codex/);
+  });
 });
 
 test("CLI audit writes reports in a temp repository", async () => {
@@ -336,6 +484,14 @@ test("CLI task deps --help shows usage", async () => {
   assert.match(result.stdout, /apk task deps <task-id>/);
 });
 
+test("CLI task verify --help shows usage", async () => {
+  const result = await runCli(["task", "verify", "--help"]);
+
+  assert.equal(result.exitCode, 0);
+  assert.match(result.stdout, /apk task verify <task-id>/);
+  assert.match(result.stdout, /--check-files-only/);
+});
+
 test("CLI task rejects unknown subcommand", async () => {
   const result = await runCli(["task", "unknown"]);
 
@@ -366,6 +522,7 @@ test("CLI task create --help shows usage", async () => {
 
   assert.equal(result.exitCode, 0);
   assert.match(result.stdout, /--title/);
+  assert.match(result.stdout, /--goal/);
   assert.match(result.stdout, /--mode/);
   assert.match(result.stdout, /--risk/);
   assert.match(result.stdout, /--verification/);
@@ -405,6 +562,140 @@ test("CLI task create writes a valid task file", async () => {
     assert.match(content, /Scope: cli,docs/);
     assert.match(content, /Risk: low/);
   });
+});
+
+test("CLI task create supports explicit --goal", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(
+      join(directory, ".agentic", "config.json"),
+      JSON.stringify({}),
+      "utf8",
+    );
+
+    const result = await runCli([
+      "task", "create",
+      "--title", "Goal Task",
+      "--goal", "Use this detailed goal.",
+      "--mode", "mvp",
+      "--lane", "implementation",
+      "--scope", "cli",
+      "--risk", "low",
+      "--context", "AGENTS.md",
+      "--allowed", "src/cli/index.ts",
+      "--verification", "pnpm test",
+    ], directory);
+
+    assert.equal(result.exitCode, 0);
+    assert.match(
+      await readFile(join(directory, ".tasks", "0001-goal-task.md"), "utf8"),
+      /Use this detailed goal\./,
+    );
+  });
+});
+
+test("CLI task create supports bugfix template defaults", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({}), "utf8");
+
+    const result = await runCli([
+      "task", "create",
+      "--template", "bugfix",
+      "--title", "Fix Parser",
+      "--scope", "cli",
+      "--allowed", "src/cli/index.ts",
+    ], directory);
+
+    assert.equal(result.exitCode, 0);
+    const content = await readFile(join(directory, ".tasks", "0001-fix-parser.md"), "utf8");
+    assert.match(content, /Lane: bugfix/);
+    assert.match(content, /Risk: medium/);
+    assert.match(content, /Tags: bugfix/);
+    assert.match(content, /- pnpm test/);
+  });
+});
+
+test("CLI task create template allows explicit overrides", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({}), "utf8");
+
+    const result = await runCli([
+      "task", "create",
+      "--template", "docs",
+      "--title", "Document CLI",
+      "--mode", "maintenance",
+      "--risk", "medium",
+      "--tags", "docs,cli",
+      "--scope", "docs",
+      "--allowed", "README.md",
+    ], directory);
+
+    assert.equal(result.exitCode, 0);
+    const content = await readFile(join(directory, ".tasks", "0001-document-cli.md"), "utf8");
+    assert.match(content, /Mode: maintenance/);
+    assert.match(content, /Risk: medium/);
+    assert.match(content, /Tags: docs,cli/);
+  });
+});
+
+test("CLI task create rejects unknown template", async () => {
+  const result = await runCli([
+    "task", "create",
+    "--template", "unknown",
+    "--title", "Bad Template",
+    "--scope", "cli",
+    "--allowed", "src/cli/index.ts",
+  ]);
+
+  assert.equal(result.exitCode, 1);
+  assert.ok(
+    result.stdout.match(/--template must be one of/) || result.stderr.match(/--template must be one of/),
+    "Expected unknown template error",
+  );
+});
+
+test("CLI task create rejects flag values that are missing", async () => {
+  await withTempDirectory(async (directory) => {
+    const result = await runCli([
+      "task", "create",
+      "--title", "--mode",
+      "mvp",
+    ], directory);
+
+    assert.equal(result.exitCode, 1);
+    assert.ok(
+      result.stdout.match(/--title requires a value/) || result.stderr.match(/--title requires a value/),
+      "Expected missing value error",
+    );
+  });
+});
+
+test("CLI agent register rejects flag values that are missing", async () => {
+  await withTempDirectory(async (directory) => {
+    const result = await runCli([
+      "agent", "register",
+      "--id", "--platform", "codex",
+      "--model", "gpt",
+    ], directory);
+
+    assert.equal(result.exitCode, 1);
+    assert.ok(
+      result.stdout.match(/--id requires a value/) || result.stderr.match(/--id requires a value/),
+      "Expected missing value error",
+    );
+  });
+});
+
+test("CLI analytics summary rejects missing month value", async () => {
+  const result = await runCli(["analytics", "summary", "--month", "--write"]);
+
+  assert.equal(result.exitCode, 1);
+  assert.ok(
+    result.stdout.match(/--month requires a value/) || result.stderr.match(/--month requires a value/),
+    "Expected missing value error",
+  );
 });
 
 test("CLI task create rejects missing title", async () => {

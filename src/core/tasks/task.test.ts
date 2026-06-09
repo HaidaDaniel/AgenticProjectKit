@@ -34,6 +34,9 @@ import {
   selectNextTask,
   TaskFormatError,
   validateTaskDependencies,
+  verifyTask,
+  verifyTaskFileScope,
+  renderTaskVerifyResult,
   writeTaskFile,
   type ProjectTaskFile,
   type ProjectTask,
@@ -325,6 +328,110 @@ test("renderNextTask prints candidate details", () => {
 
 test("renderTasksTable prints compact rows", () => {
   assert.match(renderTasksTable([{ path: "task.md", task: TASK }]), /0007\s+todo\s+none\s+implementation\s+medium\s+yes\s+Add Task System/);
+});
+
+test("verifyTaskFileScope accepts allowed exact and glob paths", () => {
+  const result = verifyTaskFileScope(TASK, [
+    "src/core/tasks/index.ts",
+    "docs/progress.md",
+  ]);
+
+  assert.deepEqual(result.outOfScopeFiles, []);
+  assert.deepEqual(result.forbiddenTouchedFiles, []);
+});
+
+test("verifyTaskFileScope reports out-of-allowed files", () => {
+  const result = verifyTaskFileScope(TASK, [
+    "README.md",
+  ]);
+
+  assert.deepEqual(result.outOfScopeFiles, ["README.md"]);
+  assert.deepEqual(result.forbiddenTouchedFiles, []);
+});
+
+test("verifyTaskFileScope reports forbidden files even when allowed", () => {
+  const task: ProjectTask = {
+    ...TASK,
+    allowedFiles: ["package.json"],
+    forbiddenFiles: ["package.json"],
+  };
+
+  const result = verifyTaskFileScope(task, ["package.json"]);
+
+  assert.deepEqual(result.outOfScopeFiles, []);
+  assert.deepEqual(result.forbiddenTouchedFiles, ["package.json"]);
+});
+
+test("verifyTask supports file-only checks and renders next step", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeTaskFile(join(directory, ".tasks", "0007-add-task-system.md"), TASK);
+
+    const result = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      checkFilesOnly: true,
+      changedFiles: ["src/core/tasks/index.ts"],
+    });
+
+    assert.equal(result.passed, true);
+    assert.equal(result.commandsSkipped, true);
+    assert.match(renderTaskVerifyResult(result), /Result: pass/);
+    assert.match(renderTaskVerifyResult(result), /Next: move task to review or done/);
+  });
+});
+
+test("verifyTask stops on failed verification command", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeTaskFile(join(directory, ".tasks", "0007-add-task-system.md"), {
+      ...TASK,
+      verificationCommands: ["pass", "fail", "skip"],
+    });
+
+    const result = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      changedFiles: ["src/core/tasks/index.ts"],
+      runCommand: async (command) => command === "fail" ? 7 : 0,
+    });
+
+    assert.equal(result.passed, false);
+    assert.deepEqual(result.commandsRun, [
+      { command: "pass", exitCode: 0 },
+      { command: "fail", exitCode: 7 },
+    ]);
+  });
+});
+
+test("verifyTask records run log event when owner is supplied", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeTaskFile(join(directory, ".tasks", "0007-add-task-system.md"), TASK);
+    await registerAgent(directory, {
+      id: "codex-a",
+      developer: "alice",
+      platform: "codex",
+      model: "gpt-5.5",
+    });
+
+    const result = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      checkFilesOnly: true,
+      changedFiles: ["src/core/tasks/index.ts"],
+    });
+    const events = await readRunLog(directory);
+
+    assert.equal(result.nextStep, "apk review 0007 --owner codex-a");
+    assert.ok(events.some((event) => (
+      event.event === "verify" &&
+      event.task === "0007" &&
+      event.agent === "codex-a" &&
+      event.outcome === "ok"
+    )));
+  });
 });
 
 test("task transitions require registered owner and log events", async () => {
@@ -925,7 +1032,41 @@ test("createTask validates rendered task before writing", async () => {
     );
 
     assert.rejects(
-      () => readFile(join(directory, ".tasks"), "utf8"),
+      () => readFile(join(directory, ".tasks", "0001-bad-task.md"), "utf8"),
+      /ENOENT/,
+    );
+  });
+});
+
+test("createTask refuses to allocate ids while task lock exists", async () => {
+  await withTempDirectory(async (directory) => {
+    await createStaleTaskLock(directory, ".tasks");
+
+    await assert.rejects(
+      () => createTask(directory, ".tasks", {
+        title: "Locked Task",
+        mode: "mvp",
+        lane: "implementation",
+        scope: ["cli"],
+        risk: "low",
+        parallel: false,
+        dependsOn: [],
+        tags: [],
+        goal: "Should not write while locked.",
+        contextFiles: ["AGENTS.md"],
+        allowedFiles: ["src/cli/index.ts"],
+        forbiddenFiles: [],
+        steps: [],
+        acceptanceCriteria: ["Fails cleanly."],
+        verificationCommands: ["pnpm test"],
+        documentationUpdates: [],
+        notes: [],
+      }),
+      /Task lock exists/,
+    );
+
+    assert.rejects(
+      () => readFile(join(directory, ".tasks", "0001-locked-task.md"), "utf8"),
       /ENOENT/,
     );
   });

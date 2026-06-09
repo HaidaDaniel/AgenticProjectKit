@@ -3,7 +3,7 @@ import { dirname, join } from "node:path";
 
 import { readRunLog, type RunLogEvent } from "../agents/index.js";
 import {
-  listTaskFiles,
+  allTaskFiles,
   type ProjectTask,
 } from "../tasks/index.js";
 
@@ -47,7 +47,7 @@ function validateMonth(month: string): void {
 async function taskMap(rootDirectory: string, taskDirectory: string): Promise<Map<string, ProjectTask>> {
   try {
     return new Map(
-      (await listTaskFiles(rootDirectory, taskDirectory))
+      (await allTaskFiles(rootDirectory, taskDirectory))
         .map(({ task }) => [task.id, task]),
     );
   } catch (error: unknown) {

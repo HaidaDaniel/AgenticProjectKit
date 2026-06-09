@@ -47,11 +47,11 @@ docs/**
 ## Flow
 
 - `init` creates the repository structure.
-- `adopt` inspects an existing project and adds kit files.
+- `adopt` performs a lightweight repository-shape scan and adds kit files.
 - `mode` changes the active operating rules.
 - `next-task` selects the next actionable item.
-- `context` resolves what files an agent should read.
+- `context` resolves what files an agent should read from the task contract and repository docs.
 - `prompt` generates a tool-specific prompt from the neutral rules.
 - `export` writes agent-specific instruction files.
-- `audit` reads the repository and writes documentation and export gap reports.
+- `audit` reads the repository and writes lightweight kit/workflow and export gap reports.
 - `sync` checks or updates generated files from internal policy.

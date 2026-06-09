@@ -5,15 +5,19 @@ import { runAdoptCommand } from "./commands/adopt.js";
 import { runAnalyticsCommand } from "./commands/analytics.js";
 import { runAuditCommand } from "./commands/audit.js";
 import { runContextCommand } from "./commands/context.js";
+import { runDoctorCommand } from "./commands/doctor.js";
 import { runExportCommand } from "./commands/export.js";
 import { runInitCommand } from "./commands/init.js";
 import { runModeCommand } from "./commands/mode.js";
 import { runNextTaskCommand } from "./commands/next-task.js";
 import { runPromptCommand } from "./commands/prompt.js";
+import { runSuggestContextCommand } from "./commands/suggest-context.js";
 import { runSyncCommand } from "./commands/sync.js";
+import { runStatusCommand } from "./commands/status.js";
 import { runTasksCommand } from "./commands/tasks.js";
 import { runTaskCommand } from "./commands/task.js";
 import { runTaskStateCommand } from "./commands/task-state.js";
+import { runWorkCommand } from "./commands/work.js";
 
 const HELP_TEXT = [
   "Agentic Project Kit",
@@ -30,6 +34,7 @@ const HELP_TEXT = [
   "  apk cancel <task-id> --owner <agent-id> [--reason <text>]",
   "  apk claim <task-id> --owner <agent-id>",
   "  apk done <task-id> --owner <agent-id>",
+  "  apk doctor",
   "  apk init [directory]",
   "  apk context <task-id> [--level 1|2|3]",
   "  apk export [agent]",
@@ -39,10 +44,13 @@ const HELP_TEXT = [
   "  apk release <task-id> --owner <agent-id>",
   "  apk review <task-id> --owner <agent-id>",
   "  apk sync [agent] [--write]",
+  "  apk status",
+  '  apk suggest-context "<task description>" [--limit <n>]',
   "  apk task archive [<task-id>] [--all]",
   "  apk task deps <task-id>",
   "  apk task create --title <title> --mode <mode> --lane <lane> --scope <csv> --risk <risk> --context <csv> --allowed <csv> --verification <csv>",
   "  apk tasks [--all] [--state <state>] [--owner <agent-id>]",
+  "  apk work <task-id> --owner <agent-id> --target <agent> [--level 1|2|3|auto] [--write-session]",
   "",
   "Commands:",
   "  agent  Register and list task agents.",
@@ -54,6 +62,7 @@ const HELP_TEXT = [
   "  claim  Claim a todo task for an agent.",
   "  context  Print task context files.",
   "  done  Mark a task done.",
+  "  doctor  Run local workflow health checks.",
   "  export  Write generated agent instruction files.",
   "  init  Create starter kit files in a repository.",
   "  mode  Print or update the active operating mode.",
@@ -62,8 +71,11 @@ const HELP_TEXT = [
   "  release  Release a task back to todo.",
   "  review  Move a task to review.",
   "  sync  Check or update generated agent instruction files.",
+  "  status  Print compact workflow status.",
+  "  suggest-context  Suggest task context files from local heuristics.",
   "  task  Inspect task dependencies and graph.",
   "  tasks  List tasks in compact form.",
+  "  work  Claim or continue a task and render its prompt.",
 ].join("\n");
 
 function hasHelpFlag(argv: string[]): boolean {
@@ -108,6 +120,10 @@ async function main(): Promise<number> {
     return runContextCommand(commandArgs);
   }
 
+  if (command === "doctor") {
+    return runDoctorCommand(commandArgs);
+  }
+
   if (command === "export") {
     return runExportCommand(commandArgs);
   }
@@ -128,12 +144,24 @@ async function main(): Promise<number> {
     return runSyncCommand(commandArgs);
   }
 
+  if (command === "status") {
+    return runStatusCommand(commandArgs);
+  }
+
+  if (command === "suggest-context") {
+    return runSuggestContextCommand(commandArgs);
+  }
+
   if (command === "task") {
     return runTaskCommand(commandArgs);
   }
 
   if (command === "tasks") {
     return runTasksCommand(commandArgs);
+  }
+
+  if (command === "work") {
+    return runWorkCommand(commandArgs);
   }
 
   console.error(`Unknown command: ${command}`);

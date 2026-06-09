@@ -87,6 +87,7 @@ Legacy `.agentic/agents.jsonl` and `.agentic/runs.jsonl` are migration inputs on
 - Include exact context files.
 - Include concrete verification commands.
 - Do not mark a task done until verification passes.
+- Use `apk task verify <task-id>` to check changed files against allowed/forbidden files before review or done.
 - Update `docs/progress.md` when task status changes.
 - Use `Lane`, `Scope`, `Tags`, and `Parallel` to split work across agents.
 
@@ -119,11 +120,41 @@ The command:
 
 - Auto-selects the next numeric task id.
 - Generates a slugged filename under the configured task directory.
+- Uses the task lock while selecting ids and writing files.
 - Defaults to `State: todo` and `Owner: none`.
 - Requires `--scope` and `--allowed` to include at least one value.
 - Validates the rendered task against the parser before writing.
 - Validates the dependency graph including the new task.
 - Rejects duplicate slugs, invalid metadata, missing dependencies, and cycles.
+
+Task templates reduce repetitive flags for common work:
+
+```bash
+apk task create --template bugfix --title "Fix Parser" --scope cli --allowed src/cli/index.ts
+```
+
+Supported templates:
+
+- `bugfix`
+- `feature`
+- `refactor`
+- `docs`
+- `audit`
+- `test`
+
+Templates provide default mode, lane, risk, tags, context, verification, steps, acceptance criteria, documentation updates, and notes. Explicit flags override template defaults. `--title`, `--scope`, and `--allowed` remain required.
+
+## CLI work loop
+
+`apk work <task-id> --owner <agent-id> --target <agent>` connects the existing task workflow:
+
+- validates the owner is registered;
+- claims a todo task or continues a task already doing under the same owner;
+- renders the task prompt;
+- optionally writes `.agentic/sessions/<task-id>/<run-id>/prompt.md` with `--write-session`;
+- prints next commands for `apk task verify`, `apk review`, and `apk done`.
+
+It does not launch external AI agents.
 
 ## Task archiving
 

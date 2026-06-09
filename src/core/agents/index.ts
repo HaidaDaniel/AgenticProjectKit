@@ -20,6 +20,8 @@ export const RUN_EVENTS = [
   "review",
   "done",
   "cancel",
+  "verify",
+  "work",
 ] as const;
 export type RunEventType = (typeof RUN_EVENTS)[number];
 

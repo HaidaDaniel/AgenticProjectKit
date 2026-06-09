@@ -1,5 +1,12 @@
-import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { exec, execFile } from "node:child_process";
+import { mkdir, open, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
+import { promisify } from "node:util";
+
+import { appendRunLog, requireAgent } from "../agents/index.js";
+
+const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export const TASK_STATES = [
   "todo",
@@ -849,6 +856,35 @@ export interface TaskCreateError extends Error {
   name: "TaskCreateError";
 }
 
+export interface TaskFileScopeResult {
+  changedFiles: string[];
+  outOfScopeFiles: string[];
+  forbiddenTouchedFiles: string[];
+}
+
+export interface TaskVerifyCommandResult {
+  command: string;
+  exitCode: number;
+}
+
+export interface TaskVerifyResult extends TaskFileScopeResult {
+  taskId: string;
+  commandsRun: TaskVerifyCommandResult[];
+  commandsSkipped: boolean;
+  passed: boolean;
+  nextStep: string;
+}
+
+export interface TaskVerifyOptions {
+  rootDirectory: string;
+  taskDirectory: string;
+  taskId: string;
+  owner?: string;
+  checkFilesOnly?: boolean;
+  changedFiles?: string[];
+  runCommand?: (command: string) => Promise<number>;
+}
+
 function slugify(text: string): string {
   return text
     .toLowerCase()
@@ -875,98 +911,137 @@ export function buildTaskFileName(id: string, title: string): string {
   return `${id}-${slugify(title)}.md`;
 }
 
+async function withTaskMutationLock<T>(
+  rootDirectory: string,
+  taskDirectory: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  const lockPath = join(rootDirectory, taskDirectory, ".apk.lock");
+  await mkdir(dirname(lockPath), { recursive: true });
+
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
+
+  try {
+    handle = await open(lockPath, "wx");
+    await handle.writeFile(JSON.stringify({
+      pid: process.pid,
+      created: new Date().toISOString(),
+    }));
+  } catch (error: unknown) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "EEXIST"
+    ) {
+      throw new Error(`Task lock exists: ${lockPath}. If no task command is running, remove it manually.`);
+    }
+
+    throw error;
+  }
+
+  try {
+    return await run();
+  } finally {
+    await handle?.close();
+    await rm(lockPath, { force: true });
+  }
+}
+
 export async function createTask(
   rootDirectory: string,
   taskDirectory: string,
   input: TaskCreateInput,
 ): Promise<TaskCreateResult> {
-  const files = await listTaskFiles(rootDirectory, taskDirectory);
-  const archived = await listArchivedTaskFiles(rootDirectory, taskDirectory);
-  const id = nextTaskId(files, archived);
-  const fileName = buildTaskFileName(id, input.title);
-  const taskPath = join(rootDirectory, taskDirectory, fileName);
+  return withTaskMutationLock(rootDirectory, taskDirectory, async () => {
+    const files = await listTaskFiles(rootDirectory, taskDirectory);
+    const archived = await listArchivedTaskFiles(rootDirectory, taskDirectory);
+    const id = nextTaskId(files, archived);
+    const fileName = buildTaskFileName(id, input.title);
+    const taskPath = join(rootDirectory, taskDirectory, fileName);
 
-  if (await fileExists(taskPath)) {
-    const err = new Error(`Task file already exists: ${fileName}`) as TaskCreateError;
-    err.name = "TaskCreateError";
-    throw err;
-  }
-
-  const newSlug = slugify(input.title);
-  const existingSlug = files.find((file) => {
-    const existingFile = file.path.split(/[\\/]/).pop()?.replace(/\.md$/, "");
-    if (!existingFile) return false;
-    const dashIndex = existingFile.indexOf("-");
-    if (dashIndex === -1) return false;
-    return existingFile.slice(dashIndex + 1) === newSlug;
-  });
-  if (existingSlug) {
-    const err = new Error(`Task file already exists: ${existingSlug.path.split("/").pop()}`) as TaskCreateError;
-    err.name = "TaskCreateError";
-    throw err;
-  }
-
-  const task: ProjectTask = {
-    id,
-    title: input.title,
-    state: "todo",
-    owner: "none",
-    mode: input.mode,
-    lane: input.lane,
-    scope: input.scope,
-    risk: input.risk,
-    parallel: input.parallel,
-    dependsOn: input.dependsOn,
-    tags: input.tags,
-    goal: input.goal,
-    contextFiles: input.contextFiles,
-    allowedFiles: input.allowedFiles,
-    forbiddenFiles: input.forbiddenFiles,
-    steps: input.steps,
-    acceptanceCriteria: input.acceptanceCriteria,
-    verificationCommands: input.verificationCommands,
-    documentationUpdates: input.documentationUpdates,
-    notes: input.notes,
-  };
-
-  try {
-    renderTaskMarkdown(task);
-  } catch (error: unknown) {
-    const err = new Error(`Failed to render task: ${error instanceof Error ? error.message : String(error)}`) as TaskCreateError;
-    err.name = "TaskCreateError";
-    throw err;
-  }
-
-  try {
-    parseTaskMarkdown(renderTaskMarkdown(task));
-  } catch (error: unknown) {
-    if (error instanceof TaskFormatError) {
-      const err = new Error(`Rendered task validation failed:\n- ${error.issues.join("\n- ")}`) as TaskCreateError;
+    if (await fileExists(taskPath)) {
+      const err = new Error(`Task file already exists: ${fileName}`) as TaskCreateError;
       err.name = "TaskCreateError";
       throw err;
     }
-    throw error;
-  }
 
-  const candidateFiles = [...files, { path: taskPath, task }];
-  const depIssues = validateTaskDependencies(candidateFiles, archived).filter(
-    (issue) => issue.taskId === id,
-  );
+    const newSlug = slugify(input.title);
+    const existingSlug = files.find((file) => {
+      const existingFile = file.path.split(/[\\/]/).pop()?.replace(/\.md$/, "");
+      if (!existingFile) return false;
+      const dashIndex = existingFile.indexOf("-");
+      if (dashIndex === -1) return false;
+      return existingFile.slice(dashIndex + 1) === newSlug;
+    });
+    if (existingSlug) {
+      const err = new Error(`Task file already exists: ${existingSlug.path.split("/").pop()}`) as TaskCreateError;
+      err.name = "TaskCreateError";
+      throw err;
+    }
 
-  if (depIssues.length > 0) {
-    const messages = depIssues.map((issue) => issue.message).join("\n- ");
-    const err = new Error(`Dependency validation failed:\n- ${messages}`) as TaskCreateError;
-    err.name = "TaskCreateError";
-    throw err;
-  }
+    const task: ProjectTask = {
+      id,
+      title: input.title,
+      state: "todo",
+      owner: "none",
+      mode: input.mode,
+      lane: input.lane,
+      scope: input.scope,
+      risk: input.risk,
+      parallel: input.parallel,
+      dependsOn: input.dependsOn,
+      tags: input.tags,
+      goal: input.goal,
+      contextFiles: input.contextFiles,
+      allowedFiles: input.allowedFiles,
+      forbiddenFiles: input.forbiddenFiles,
+      steps: input.steps,
+      acceptanceCriteria: input.acceptanceCriteria,
+      verificationCommands: input.verificationCommands,
+      documentationUpdates: input.documentationUpdates,
+      notes: input.notes,
+    };
 
-  await writeTaskFile(taskPath, task);
+    try {
+      renderTaskMarkdown(task);
+    } catch (error: unknown) {
+      const err = new Error(`Failed to render task: ${error instanceof Error ? error.message : String(error)}`) as TaskCreateError;
+      err.name = "TaskCreateError";
+      throw err;
+    }
 
-  return {
-    id,
-    path: relative(rootDirectory, taskPath).replace(/\\/g, "/"),
-    task,
-  };
+    try {
+      parseTaskMarkdown(renderTaskMarkdown(task));
+    } catch (error: unknown) {
+      if (error instanceof TaskFormatError) {
+        const err = new Error(`Rendered task validation failed:\n- ${error.issues.join("\n- ")}`) as TaskCreateError;
+        err.name = "TaskCreateError";
+        throw err;
+      }
+      throw error;
+    }
+
+    const candidateFiles = [...files, { path: taskPath, task }];
+    const depIssues = validateTaskDependencies(candidateFiles, archived).filter(
+      (issue) => issue.taskId === id,
+    );
+
+    if (depIssues.length > 0) {
+      const messages = depIssues.map((issue) => issue.message).join("\n- ");
+      const err = new Error(`Dependency validation failed:\n- ${messages}`) as TaskCreateError;
+      err.name = "TaskCreateError";
+      throw err;
+    }
+
+    await writeTaskFile(taskPath, task);
+
+    return {
+      id,
+      path: relative(rootDirectory, taskPath).replace(/\\/g, "/"),
+      task,
+    };
+  });
 }
 
 async function fileExists(path: string): Promise<boolean> {
@@ -976,6 +1051,214 @@ async function fileExists(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function normalizeRepoPath(path: string): string {
+  return path.replace(/\\/g, "/").replace(/^\.\//, "");
+}
+
+function escapeRegex(text: string): string {
+  return text.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
+}
+
+function patternToRegex(pattern: string): RegExp {
+  const normalized = normalizeRepoPath(pattern);
+  let source = "";
+
+  for (let index = 0; index < normalized.length; index += 1) {
+    const char = normalized[index];
+    const next = normalized[index + 1];
+
+    if (char === "*" && next === "*") {
+      source += ".*";
+      index += 1;
+      continue;
+    }
+
+    if (char === "*") {
+      source += "[^/]*";
+      continue;
+    }
+
+    source += escapeRegex(char);
+  }
+
+  return new RegExp(`^${source}$`);
+}
+
+function pathMatchesPattern(path: string, pattern: string): boolean {
+  const normalizedPath = normalizeRepoPath(path);
+  const normalizedPattern = normalizeRepoPath(pattern);
+
+  if (!normalizedPattern.includes("*")) {
+    return normalizedPath === normalizedPattern;
+  }
+
+  return patternToRegex(normalizedPattern).test(normalizedPath);
+}
+
+export function verifyTaskFileScope(
+  task: ProjectTask,
+  changedFiles: readonly string[],
+): TaskFileScopeResult {
+  const normalizedChanged = [...new Set(changedFiles.map(normalizeRepoPath))]
+    .filter((file) => file.length > 0)
+    .sort();
+  const outOfScopeFiles = normalizedChanged.filter((file) => (
+    !task.allowedFiles.some((pattern) => pathMatchesPattern(file, pattern))
+  ));
+  const forbiddenTouchedFiles = normalizedChanged.filter((file) => (
+    task.forbiddenFiles.some((pattern) => pathMatchesPattern(file, pattern))
+  ));
+
+  return {
+    changedFiles: normalizedChanged,
+    outOfScopeFiles,
+    forbiddenTouchedFiles,
+  };
+}
+
+async function gitLines(rootDirectory: string, args: readonly string[]): Promise<string[]> {
+  const result = await execFileAsync("git", args, { cwd: rootDirectory });
+  return result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+export async function listGitChangedFiles(rootDirectory: string): Promise<string[]> {
+  const files = await Promise.all([
+    gitLines(rootDirectory, ["diff", "--name-only"]),
+    gitLines(rootDirectory, ["diff", "--name-only", "--cached"]),
+    gitLines(rootDirectory, ["ls-files", "--others", "--exclude-standard"]),
+  ]);
+
+  return [...new Set(files.flat().map(normalizeRepoPath))].sort();
+}
+
+async function defaultRunCommand(rootDirectory: string, command: string): Promise<number> {
+  try {
+    await execAsync(command, {
+      cwd: rootDirectory,
+      windowsHide: true,
+    });
+    return 0;
+  } catch (error: unknown) {
+    if (error && typeof error === "object" && "code" in error) {
+      return typeof error.code === "number" ? error.code : 1;
+    }
+
+    return 1;
+  }
+}
+
+function verifyNextStep(result: {
+  passed: boolean;
+  owner?: string;
+  taskId: string;
+}): string {
+  if (!result.passed) {
+    return "fix failures and rerun verify";
+  }
+
+  if (result.owner) {
+    return `apk review ${result.taskId} --owner ${result.owner}`;
+  }
+
+  return "move task to review or done with a registered owner";
+}
+
+export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerifyResult> {
+  const taskPath = await findTaskFile(
+    options.rootDirectory,
+    options.taskId,
+    options.taskDirectory,
+  );
+  const { task } = await loadTaskFile(taskPath);
+  const scope = verifyTaskFileScope(
+    task,
+    options.changedFiles ?? await listGitChangedFiles(options.rootDirectory),
+  );
+  const commandsRun: TaskVerifyCommandResult[] = [];
+  let passed = scope.outOfScopeFiles.length === 0 && scope.forbiddenTouchedFiles.length === 0;
+
+  if (passed && !options.checkFilesOnly) {
+    for (const command of task.verificationCommands) {
+      const exitCode = await (options.runCommand ?? ((cmd) => defaultRunCommand(options.rootDirectory, cmd)))(command);
+      commandsRun.push({ command, exitCode });
+
+      if (exitCode !== 0) {
+        passed = false;
+        break;
+      }
+    }
+  }
+
+  if (options.owner) {
+    const agent = await requireAgent(options.rootDirectory, options.owner);
+    await appendRunLog(options.rootDirectory, {
+      event: "verify",
+      agent,
+      task: task.id,
+      state: task.state,
+      outcome: passed ? "ok" : "error",
+      reason: passed ? "verify passed" : "verify failed",
+    });
+  }
+
+  return {
+    taskId: task.id,
+    changedFiles: scope.changedFiles,
+    outOfScopeFiles: scope.outOfScopeFiles,
+    forbiddenTouchedFiles: scope.forbiddenTouchedFiles,
+    commandsRun,
+    commandsSkipped: options.checkFilesOnly ?? false,
+    passed,
+    nextStep: verifyNextStep({
+      passed,
+      owner: options.owner,
+      taskId: task.id,
+    }),
+  };
+}
+
+export function renderTaskVerifyResult(result: TaskVerifyResult): string {
+  const lines: string[] = [
+    `Task: ${result.taskId}`,
+    `Changed files: ${result.changedFiles.length}`,
+    `File scope: ${result.outOfScopeFiles.length === 0 && result.forbiddenTouchedFiles.length === 0 ? "pass" : "fail"}`,
+  ];
+
+  if (result.outOfScopeFiles.length > 0) {
+    lines.push("Out of allowed files:");
+    for (const file of result.outOfScopeFiles) {
+      lines.push(`  - ${file}`);
+    }
+  }
+
+  if (result.forbiddenTouchedFiles.length > 0) {
+    lines.push("Forbidden files touched:");
+    for (const file of result.forbiddenTouchedFiles) {
+      lines.push(`  - ${file}`);
+    }
+  }
+
+  if (result.commandsSkipped) {
+    lines.push("Commands: skipped");
+  } else if (result.commandsRun.length === 0) {
+    lines.push("Commands: none");
+  } else {
+    lines.push("Commands:");
+    for (const command of result.commandsRun) {
+      lines.push(`  - ${command.exitCode === 0 ? "pass" : "fail"} ${command.command}`);
+    }
+  }
+
+  lines.push(`Result: ${result.passed ? "pass" : "fail"}`);
+  lines.push(`Next: ${result.nextStep}`);
+  lines.push("");
+
+  return lines.join("\n");
 }
 
 export function renderTaskDeps(result: TaskDepsResult): string {

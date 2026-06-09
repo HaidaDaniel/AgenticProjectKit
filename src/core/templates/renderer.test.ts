@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -8,6 +8,7 @@ import {
   listAgentExporters,
   parseAgentExportTarget,
   renderAgentExportFiles,
+  writeAgentExportFiles,
   writeAgentExportTarget,
   writeAllAgentExports,
 } from "../exporters/index.js";
@@ -214,6 +215,24 @@ test("writeAllAgentExports can skip existing files", async () => {
       ".cursor/rules/task-workflow.mdc",
       ".cursor/rules/local-llm-safe.mdc",
     ]);
+  });
+});
+
+test("writeAgentExportFiles skips existing files by default", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeFile(join(directory, "AGENTS.md"), "existing", "utf8");
+
+    const result = await writeAgentExportFiles(directory, [
+      {
+        id: "agents",
+        outputPath: "AGENTS.md",
+        content: "new",
+      },
+    ]);
+
+    assert.deepEqual(result.written, []);
+    assert.deepEqual(result.skipped, ["AGENTS.md"]);
+    assert.equal(await readFile(join(directory, "AGENTS.md"), "utf8"), "existing");
   });
 });
 

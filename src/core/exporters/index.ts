@@ -240,7 +240,7 @@ export async function writeAgentExportFiles(
 ): Promise<WriteAgentExportsResult> {
   const written: string[] = [];
   const skipped: string[] = [];
-  const force = options.force ?? true;
+  const force = options.force ?? false;
 
   for (const file of files) {
     const outputPath = join(rootDirectory, file.outputPath);

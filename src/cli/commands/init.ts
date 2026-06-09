@@ -26,15 +26,20 @@ export async function runInitCommand(argv: string[]): Promise<number> {
     return 1;
   }
 
-  const rootDirectory = resolve(argv[0] ?? process.cwd());
-  const result = await initProject(rootDirectory);
+  try {
+    const rootDirectory = resolve(argv[0] ?? process.cwd());
+    const result = await initProject(rootDirectory);
 
-  console.log(`Initialized Agentic Project Kit in ${rootDirectory}`);
-  console.log(`Created ${result.created.length} file(s).`);
+    console.log(`Initialized Agentic Project Kit in ${rootDirectory}`);
+    console.log(`Created ${result.created.length} file(s).`);
 
-  if (result.skipped.length > 0) {
-    console.log(`Skipped ${result.skipped.length} existing file(s).`);
+    if (result.skipped.length > 0) {
+      console.log(`Skipped ${result.skipped.length} existing file(s).`);
+    }
+
+    return 0;
+  } catch (error: unknown) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
   }
-
-  return 0;
 }

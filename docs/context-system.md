@@ -58,3 +58,4 @@ Agent registry, run logs, and archived tasks are analytics and history, not impl
 - For audit and adopt flows, include scanning and repository-shape documents first.
 - Prefer task metadata (`Lane`, `Scope`, `Tags`, `Parallel`) over long planning prose when splitting parallel work.
 - Use scanner facts as availability bounds for metadata-driven docs.
+- Use `apk suggest-context "<task description>"` as optional local heuristic support when drafting a task. Suggestions are candidates, not guaranteed affected-file analysis.
