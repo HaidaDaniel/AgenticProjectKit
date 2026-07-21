@@ -78,6 +78,12 @@ test("adoptRepository scans repository shape and creates kit files", async () =>
       await readFile(join(directory, "docs/adoption-report.md"), "utf8"),
       new RegExp(`## Pre-adoption Gaps\\n\\n- Missing kit docs: 8\\n- Missing agent exports: ${listAgentExporters().length}`),
     );
+    const taskSystem = await readFile(join(directory, "docs/task-system.md"), "utf8");
+    assert.match(
+      taskSystem,
+      /pnpm exec apk agent register --id codex-a --platform codex --model gpt-5\.5/,
+    );
+    assert.doesNotMatch(taskSystem, /^apk agent register/m);
   });
 });
 

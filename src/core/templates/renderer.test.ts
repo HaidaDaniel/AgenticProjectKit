@@ -160,6 +160,25 @@ test("default agent exports match generated instruction files", async () => {
   }
 });
 
+test("default agent exports use repo-local apk commands for task workflow", async () => {
+  const exports = await renderAgentExportFiles();
+  const workflowExports = exports.filter((file) => [
+    "AGENTS.md",
+    "CLAUDE.md",
+    ".codex/instructions.md",
+    "GEMINI.md",
+    ".opencode/AGENTS.md",
+    ".cursor/rules/task-workflow.mdc",
+  ].includes(file.outputPath));
+
+  for (const file of workflowExports) {
+    assert.match(file.content, /pnpm exec apk agent register/);
+    assert.match(file.content, /pnpm exec apk claim/);
+    assert.doesNotMatch(file.content, /: apk agent register/);
+    assert.doesNotMatch(file.content, /: apk claim/);
+  }
+});
+
 async function withTempDirectory(
   run: (directory: string) => Promise<void>,
 ): Promise<void> {

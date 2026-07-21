@@ -112,6 +112,14 @@ pnpm add -D git+https://github.com/HaidaDaniel/AgenticProjectKit.git#main
 
 This is usually better than a global install because every repository pins the exact CLI version it expects.
 
+On a new server for a repository that already has Agentic Project Kit in `devDependencies`, bootstrap with the project lockfile:
+
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+pnpm exec apk doctor
+```
+
 ### Option 2: Install globally from GitHub
 
 Best for personal use across many local repositories.
@@ -190,7 +198,7 @@ cd path/to/your-project
 node ~/tools/AgenticProjectKit/dist/cli/index.js adopt
 ```
 
-Optional shell alias:
+Optional shell alias for personal use:
 
 ```bash
 echo 'alias apk="node ~/tools/AgenticProjectKit/dist/cli/index.js"' >> ~/.bashrc
@@ -320,29 +328,29 @@ pnpm exec tsx src/cli/index.ts task create --template bugfix --title "Fix Parser
 
 ## Example workflow
 
-1. Start a new repository with `apk init`, or add the kit to an existing repository with `apk adopt`.
-2. Register the working agent with `apk agent register`.
-3. Run `apk status` to inspect current workflow state.
-4. Run `apk next-task` to pick the next todo task.
-5. Claim it with `apk claim <task-id> --owner <agent-id>`.
-6. Run `apk context <task-id>` and `apk prompt <agent> --task <task-id>`.
+1. Start a new repository with `pnpm exec apk init`, or add the kit to an existing repository with `pnpm exec apk adopt`.
+2. Register the working agent with `pnpm exec apk agent register`.
+3. Run `pnpm exec apk status` to inspect current workflow state.
+4. Run `pnpm exec apk next-task` to pick the next todo task.
+5. Claim it with `pnpm exec apk claim <task-id> --owner <agent-id>`.
+6. Run `pnpm exec apk context <task-id>` and `pnpm exec apk prompt <agent> --task <task-id>`.
 7. Work one task at a time.
 8. Move the task through `review` and `done`.
-9. Run `apk sync` to check generated instruction drift.
-10. Run `apk export` or `apk sync --write` when generated instructions need regeneration.
+9. Run `pnpm exec apk sync` to check generated instruction drift.
+10. Run `pnpm exec apk export` or `pnpm exec apk sync --write` when generated instructions need regeneration.
 
 ## Agent workflow
 
 Register each agent before task work:
 
 ```bash
-apk agent register --id codex-a --developer alice --platform codex --model gpt-5.5
+pnpm exec apk agent register --id codex-a --developer alice --platform codex --model gpt-5.5
 ```
 
 Start or continue a task through the CLI work loop:
 
 ```bash
-apk work 0001 --owner codex-a --target codex --level auto
+pnpm exec apk work 0001 --owner codex-a --target codex --level auto
 ```
 
 `work` claims a todo task, renders the prompt, and prints verify/review/done commands. Use `--write-session` to store the prompt under `.agentic/sessions/`. It does not launch external AI agents.
@@ -350,35 +358,35 @@ apk work 0001 --owner codex-a --target codex --level auto
 List registered agents:
 
 ```bash
-apk agent list
+pnpm exec apk agent list
 ```
 
 Print compact setup instructions for a platform:
 
 ```bash
-apk agent prompt --platform codex
+pnpm exec apk agent prompt --platform codex
 ```
 
 Claim and complete a task:
 
 ```bash
-apk tasks --state todo
-apk claim 0001 --owner codex-a
-apk context 0001 --level 2
-apk prompt codex --task 0001 --level 2
-apk task verify 0001 --owner codex-a
+pnpm exec apk tasks --state todo
+pnpm exec apk claim 0001 --owner codex-a
+pnpm exec apk context 0001 --level 2
+pnpm exec apk prompt codex --task 0001 --level 2
+pnpm exec apk task verify 0001 --owner codex-a
 pnpm test
 pnpm lint
-apk review 0001 --owner codex-a
-apk done 0001 --owner codex-a
+pnpm exec apk review 0001 --owner codex-a
+pnpm exec apk done 0001 --owner codex-a
 ```
 
 If a task cannot continue:
 
 ```bash
-apk block 0001 --owner codex-a --reason "needs product decision"
-apk release 0001 --owner codex-a
-apk cancel 0001 --owner codex-a --reason "obsolete"
+pnpm exec apk block 0001 --owner codex-a --reason "needs product decision"
+pnpm exec apk release 0001 --owner codex-a
+pnpm exec apk cancel 0001 --owner codex-a --reason "obsolete"
 ```
 
 Task files stay compact and only store the current owner id. Developer/platform/model metadata stays in the registry and run log.
@@ -392,19 +400,19 @@ Team analytics use sharded, git-friendly files:
 Legacy `.agentic/agents.jsonl` and `.agentic/runs.jsonl` are migration inputs only. Convert them with:
 
 ```bash
-apk agent migrate-logs --remove-legacy
+pnpm exec apk agent migrate-logs --remove-legacy
 ```
 
 Register a team agent with an explicit developer id when needed:
 
 ```bash
-apk agent register --id codex-a --developer alice --platform codex --model gpt-5.5
+pnpm exec apk agent register --id codex-a --developer alice --platform codex --model gpt-5.5
 ```
 
 Generate a monthly comparison summary:
 
 ```bash
-apk analytics summary --month 2026-05 --write
+pnpm exec apk analytics summary --month 2026-05 --write
 ```
 
 Analytics summaries include active and archived task metadata when grouping risk, mode, and lane.
@@ -422,7 +430,7 @@ Use them before implementation to record product scope, expected load, data grow
 
 ## Usage scenarios
 
-The scenario commands below assume `apk` is available through a GitHub dev dependency, a GitHub global install, a local global link, or a local checkout alias.
+The scenario commands below assume Agentic Project Kit is installed as a project dev dependency and run through `pnpm exec apk`. If you intentionally use a global install or shell alias, the command body is the same.
 
 ### Scenario 1: Start a new project
 
@@ -430,31 +438,31 @@ Use this when the repository is empty or still at the planning stage.
 
 ```bash
 cd path/to/new-project
-apk init
+pnpm exec apk init
 ```
 
 The kit creates the base project docs, task directory, config file, and agent instruction files. After that, choose the operating mode:
 
 ```bash
-apk mode discovery
+pnpm exec apk mode discovery
 ```
 
 Use `discovery` while the idea, users, and scope are still unclear. Switch to `mvp` when the first deliverable is defined:
 
 ```bash
-apk mode mvp
+pnpm exec apk mode mvp
 ```
 
 Then work from task files:
 
 ```bash
-apk next-task
-apk context 0001 --level 2
-apk prompt codex --task 0001 --level 2
+pnpm exec apk next-task
+pnpm exec apk context 0001 --level 2
+pnpm exec apk prompt codex --task 0001 --level 2
 ```
 
 Give the generated prompt to the selected agent, let it work only inside the allowed files, then run the verification commands listed in the task file.
-Use `apk task verify <task-id>` to check changed files against the task's allowed and forbidden file lists before review or done.
+Use `pnpm exec apk task verify <task-id>` to check changed files against the task's allowed and forbidden file lists before review or done.
 
 ### Scenario 2: Adopt an existing repository
 
@@ -462,7 +470,7 @@ Use this when the app already exists and you want to add repository-first AI wor
 
 ```bash
 cd path/to/existing-repo
-apk adopt
+pnpm exec apk adopt
 ```
 
 `adopt` performs a lightweight repository-shape scan and writes missing kit files such as docs, config, task files, and agent instructions. It skips existing files instead of overwriting them.
@@ -470,8 +478,8 @@ apk adopt
 After adoption:
 
 ```bash
-apk mode adopt
-apk next-task
+pnpm exec apk mode adopt
+pnpm exec apk next-task
 ```
 
 Use `adopt` mode while documenting the existing repo and creating cleanup tasks. Move to `maintenance`, `product`, or `production` after the docs and task flow are stable.
@@ -483,13 +491,13 @@ Use this when you want an agent to work without relying on long chat history.
 First pick a task:
 
 ```bash
-apk next-task
+pnpm exec apk next-task
 ```
 
 Then inspect context:
 
 ```bash
-apk context 0014 --level 2
+pnpm exec apk context 0014 --level 2
 ```
 
 Context levels:
@@ -501,7 +509,7 @@ Context levels:
 Generate the prompt:
 
 ```bash
-apk prompt codex --task 0014 --level 2
+pnpm exec apk prompt codex --task 0014 --level 2
 ```
 
 Supported prompt agents:
@@ -522,18 +530,18 @@ Use this when project rules change and generated agent instruction files need to
 Export all supported targets:
 
 ```bash
-apk export
+pnpm exec apk export
 ```
 
 Export one target:
 
 ```bash
-apk export claude --force
-apk export codex --force
-apk export gemini --force
-apk export cursor --force
-apk export opencode --force
-apk export agents --force
+pnpm exec apk export claude --force
+pnpm exec apk export codex --force
+pnpm exec apk export gemini --force
+pnpm exec apk export cursor --force
+pnpm exec apk export opencode --force
+pnpm exec apk export agents --force
 ```
 
 Generated outputs include:
@@ -552,9 +560,9 @@ The source of truth remains the repository docs and neutral policy content; expo
 Use this when you want to check kit/workflow readiness without changing application source files.
 
 ```bash
-apk audit
-apk sync
-apk sync codex --write
+pnpm exec apk audit
+pnpm exec apk sync
+pnpm exec apk sync codex --write
 ```
 
 `audit` writes `docs/audit-report.md` and `docs/project-map.md` from lightweight repository and kit checks. It reports static readiness facts such as package scripts, lockfiles, CI presence, env examples, tests, license, README, Docker files, monorepo indicators, and TypeScript strict mode. It does not perform deep application architecture, security, coverage, or production-readiness analysis. `sync` is check-only unless `--write` is present.
@@ -566,13 +574,13 @@ Use this after the first v0.1 scope is ready and the next work should focus on i
 Check the current mode:
 
 ```bash
-apk mode
+pnpm exec apk mode
 ```
 
 Switch from `mvp` to `product`:
 
 ```bash
-apk mode product
+pnpm exec apk mode product
 ```
 
 Use `product` mode for v0.2 work such as richer lightweight repository scanning, audit reports, improved context selection, and stronger validation.
@@ -586,31 +594,31 @@ Use this once the command surface is stable and the main work is incremental imp
 Recommended loop:
 
 ```bash
-apk mode product
-apk status
-apk doctor
-apk next-task
-apk context <task-id> --level 2
-apk prompt codex --task <task-id> --level 2
+pnpm exec apk mode product
+pnpm exec apk status
+pnpm exec apk doctor
+pnpm exec apk next-task
+pnpm exec apk context <task-id> --level 2
+pnpm exec apk prompt codex --task <task-id> --level 2
 pnpm test
 pnpm lint
 ```
 
 For risky changes, use `--level 3` so the agent sees source files and support files named by the task.
-Run `apk task verify <task-id> --owner <agent-id>` before moving the task to review or done.
+Run `pnpm exec apk task verify <task-id> --owner <agent-id>` before moving the task to review or done.
 
 When a task is done, update the task status and `docs/progress.md`. If the change affects agent instructions, run:
 
 ```bash
-apk export --force
+pnpm exec apk export --force
 ```
 
 ## Current status
 
-Tasks 0001 through 0046 are complete. Tasks 0047 through 0055 are the next CLI-focused product backlog for honest positioning, workflow guardrails, status, doctor, audit readiness, context suggestions, task templates, and a CLI-only work loop.
+Tasks 0001 through 0056 are complete, including the CLI-focused backlog for honest positioning, workflow guardrails, status, doctor, audit readiness, context suggestions, task templates, the CLI-only work loop, and repo-local APK command guidance for generated agent instructions.
 
 The repository now has a minimal TypeScript CLI scaffold, config schema, `init`, lightweight `adopt`, kit/workflow `audit`, `analytics summary`, `mode`, `next-task`, `tasks`, agent registration, task state transitions, sharded run analytics, `context`, `prompt`, `export`, `sync`, template rendering, doc generation helpers, Claude/Gemini/Codex/OpenCode/Cursor agent exporters, task archive/dependency commands, and compact task parsing support.
 
 Default agent style for this repository: `caveman` when the active tool supports it.
 
-Actionable todo tasks are tracked in `.tasks/0047-*` through `.tasks/0055-*`.
+There are no remaining planned todo tasks in the current CLI-focused backlog.

@@ -626,7 +626,7 @@ export function selectNextTask(
 
   return {
     ...next,
-    contextCommand: `apk context ${next.task.id} --level 2`,
+    contextCommand: `pnpm exec apk context ${next.task.id} --level 2`,
   };
 }
 
@@ -1162,7 +1162,7 @@ function verifyNextStep(result: {
   }
 
   if (result.owner) {
-    return `apk review ${result.taskId} --owner ${result.owner}`;
+    return `pnpm exec apk review ${result.taskId} --owner ${result.owner}`;
   }
 
   return "move task to review or done with a registered owner";

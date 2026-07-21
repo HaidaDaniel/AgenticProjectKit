@@ -60,7 +60,7 @@ Tags: mvp,api
 Agents register before task work:
 
 ```bash
-apk agent register --id codex-a --developer alice --platform codex --model gpt-5.5
+pnpm exec apk agent register --id codex-a --developer alice --platform codex --model gpt-5.5
 ```
 
 Registry path:
@@ -87,7 +87,7 @@ Legacy `.agentic/agents.jsonl` and `.agentic/runs.jsonl` are migration inputs on
 - Include exact context files.
 - Include concrete verification commands.
 - Do not mark a task done until verification passes.
-- Use `apk task verify <task-id>` to check changed files against allowed/forbidden files before review or done.
+- Use `pnpm exec apk task verify <task-id>` to check changed files against allowed/forbidden files before review or done.
 - Update `docs/progress.md` when task status changes.
 - Use `Lane`, `Scope`, `Tags`, and `Parallel` to split work across agents.
 
@@ -98,14 +98,14 @@ Legacy `.agentic/agents.jsonl` and `.agentic/runs.jsonl` are migration inputs on
 - Missing dependencies are reported as audit warnings.
 - Cycles are reported as audit errors.
 - A task with a higher-numbered dependency is valid when that dependency exists.
-- Run `apk audit` to validate the dependency graph.
+- Run `pnpm exec apk audit` to validate the dependency graph.
 
 ## Task creation
 
-Use `apk task create` to generate new task files with validated metadata:
+Use `pnpm exec apk task create` to generate new task files with validated metadata:
 
 ```bash
-apk task create \
+pnpm exec apk task create \
   --title "Add Feature" \
   --mode mvp \
   --lane implementation \
@@ -130,7 +130,7 @@ The command:
 Task templates reduce repetitive flags for common work:
 
 ```bash
-apk task create --template bugfix --title "Fix Parser" --scope cli --allowed src/cli/index.ts
+pnpm exec apk task create --template bugfix --title "Fix Parser" --scope cli --allowed src/cli/index.ts
 ```
 
 Supported templates:
@@ -146,13 +146,13 @@ Templates provide default mode, lane, risk, tags, context, verification, steps, 
 
 ## CLI work loop
 
-`apk work <task-id> --owner <agent-id> --target <agent>` connects the existing task workflow:
+`pnpm exec apk work <task-id> --owner <agent-id> --target <agent>` connects the existing task workflow:
 
 - validates the owner is registered;
 - claims a todo task or continues a task already doing under the same owner;
 - renders the task prompt;
 - optionally writes `.agentic/sessions/<task-id>/<run-id>/prompt.md` with `--write-session`;
-- prints next commands for `apk task verify`, `apk review`, and `apk done`.
+- prints next commands for `pnpm exec apk task verify`, `pnpm exec apk review`, and `pnpm exec apk done`.
 
 It does not launch external AI agents.
 
@@ -161,18 +161,18 @@ It does not launch external AI agents.
 Completed tasks can be archived to reduce noise in the active task list.
 
 ```bash
-apk task archive 0001
-apk task archive --all
+pnpm exec apk task archive 0001
+pnpm exec apk task archive --all
 ```
 
 Archive rules:
 
 - Only tasks in `done` state can be archived.
 - Archived tasks are moved to `.tasks/archive/`.
-- `apk tasks` default output shows only active top-level tasks (excludes archive).
-- `apk tasks --all` includes both active and archived tasks.
+- `pnpm exec apk tasks` default output shows only active top-level tasks (excludes archive).
+- `pnpm exec apk tasks --all` includes both active and archived tasks.
 - Dependency resolution treats archived done tasks as completed prerequisites.
-- `apk next-task` considers archived done tasks when checking `Depends on`.
-- `apk task deps` marks archived prerequisites and dependents with `(archived)` tag.
-- `apk task create` includes archived tasks in the id sequence.
+- `pnpm exec apk next-task` considers archived done tasks when checking `Depends on`.
+- `pnpm exec apk task deps` marks archived prerequisites and dependents with `(archived)` tag.
+- `pnpm exec apk task create` includes archived tasks in the id sequence.
 - Archived tasks cannot be overwritten; existing archive paths are refused.

@@ -2,7 +2,7 @@
 
 ## Current status
 
-Phase 1 documentation is in place, and Tasks 0001 through 0055 are complete.
+Phase 1 documentation is in place, and Tasks 0001 through 0056 are complete.
 
 The repository now has:
 
@@ -74,6 +74,7 @@ The repository now has:
 - regression fixes for task workflow review findings: unknown-flag rejection in archive, archive-all positional-arg rejection, archive-collision refusal, archived-task visibility in tasks --all, archived-task audit dependency validation, archived-task deps inspection, --scope/--allowed enforcement in task create, and CLI error handling without stack traces.
 - completed CLI-focused backlog tasks for product positioning, CLI contract gaps, task verification, status, doctor, repo-readiness audit, context suggestions, task templates, and a CLI-only work loop.
 - an `apk work` command that claims or continues a task, renders the prompt, can write a session artifact, and points to verify/review/done commands.
+- generated agent instructions and agent setup prompts that use `pnpm exec apk` for project-local task workflow commands.
 
 ## Next step
 
@@ -81,7 +82,7 @@ No remaining planned task in the current CLI-focused backlog.
 
 ## Remaining task plan
 
-- Tasks 0001 through 0055 are complete.
+- Tasks 0001 through 0056 are complete.
 
 ## Notes
 
@@ -119,3 +120,4 @@ No remaining planned task in the current CLI-focused backlog.
 - Context suggestion verification passed with `pnpm lint`, `pnpm test`, `pnpm build`, `node dist/cli/index.js suggest-context "Add task status command"`, `node dist/cli/index.js suggest-context --help`, and `node dist/cli/index.js audit`.
 - Task template verification passed with `pnpm lint`, `pnpm test`, `pnpm build`, `node dist/cli/index.js task create --help`, a temp `node dist/cli/index.js task create --template bugfix ...` smoke test, and `node dist/cli/index.js audit`.
 - CLI work-loop verification passed with `pnpm lint`, `pnpm test`, `pnpm build`, `node dist/cli/index.js work --help`, `node dist/cli/index.js task verify --help`, `node dist/cli/index.js status`, `node dist/cli/index.js doctor`, `node dist/cli/index.js audit`, and a temp `node dist/cli/index.js work 0001 --owner codex-smoke --target codex --level 2` smoke test.
+- Repo-local APK command verification passed with `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm exec apk sync`, `pnpm exec apk audit`, and `pnpm exec apk agent prompt --platform codex`.

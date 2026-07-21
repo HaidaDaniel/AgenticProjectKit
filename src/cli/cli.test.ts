@@ -301,9 +301,20 @@ test("CLI work claims todo task and prints prompt", async () => {
     assert.equal(result.exitCode, 0);
     assert.match(result.stdout, /Agent: codex/);
     assert.match(result.stdout, /Claimed: yes/);
-    assert.match(result.stdout, /apk task verify 0001 --owner codex-a/);
+    assert.match(result.stdout, /pnpm exec apk task verify 0001 --owner codex-a/);
     assert.match(await readFile(join(directory, ".tasks", "0001-todo-task.md"), "utf8"), /State: doing/);
   });
+});
+
+test("CLI agent prompt uses repo-local apk commands", async () => {
+  const result = await runCli(["agent", "prompt", "--platform", "codex"]);
+
+  assert.equal(result.exitCode, 0);
+  assert.match(result.stdout, /pnpm exec apk agent register --id codex-a/);
+  assert.match(result.stdout, /pnpm exec apk claim <task-id> --owner <agent-id>/);
+  assert.match(result.stdout, /pnpm exec apk prompt codex --task <task-id> --level 2/);
+  assert.doesNotMatch(result.stdout, /^apk agent register/m);
+  assert.doesNotMatch(result.stdout, /apk prompt <platform>/);
 });
 
 test("CLI work refuses unregistered owner", async () => {

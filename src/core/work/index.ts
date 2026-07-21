@@ -102,9 +102,9 @@ export async function startWork(options: WorkOptions): Promise<WorkResult> {
     claimed,
     sessionPath,
     next: [
-      `apk task verify ${task.id} --owner ${options.owner}`,
-      `apk review ${task.id} --owner ${options.owner}`,
-      `apk done ${task.id} --owner ${options.owner}`,
+      `pnpm exec apk task verify ${task.id} --owner ${options.owner}`,
+      `pnpm exec apk review ${task.id} --owner ${options.owner}`,
+      `pnpm exec apk done ${task.id} --owner ${options.owner}`,
     ],
   };
 }

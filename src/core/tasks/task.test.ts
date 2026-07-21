@@ -283,7 +283,7 @@ test("selectNextTask returns lowest-numbered todo task with done dependencies", 
   const selection = selectNextTask(files);
 
   assert.equal(selection?.task.id, "0009");
-  assert.equal(selection?.contextCommand, "apk context 0009 --level 2");
+  assert.equal(selection?.contextCommand, "pnpm exec apk context 0009 --level 2");
 });
 
 test("selectNextTask ignores busy and terminal states", () => {
@@ -303,7 +303,7 @@ test("renderNextTask prints candidate details", () => {
   assert.equal(
     renderNextTask({
       path: ".tasks/0012-add-next-task-command.md",
-      contextCommand: "apk context 0012 --level 2",
+      contextCommand: "pnpm exec apk context 0012 --level 2",
       task: {
         ...TASK,
         id: "0012",
@@ -320,7 +320,7 @@ test("renderNextTask prints candidate details", () => {
       "Lane: implementation",
       "Risk: medium",
       "Path: .tasks/0012-add-next-task-command.md",
-      "Context: apk context 0012 --level 2",
+      "Context: pnpm exec apk context 0012 --level 2",
       "",
     ].join("\n"),
   );
@@ -424,7 +424,7 @@ test("verifyTask records run log event when owner is supplied", async () => {
     });
     const events = await readRunLog(directory);
 
-    assert.equal(result.nextStep, "apk review 0007 --owner codex-a");
+    assert.equal(result.nextStep, "pnpm exec apk review 0007 --owner codex-a");
     assert.ok(events.some((event) => (
       event.event === "verify" &&
       event.task === "0007" &&

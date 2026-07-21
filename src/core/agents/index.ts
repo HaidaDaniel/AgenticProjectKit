@@ -283,7 +283,7 @@ export async function requireAgent(
   const agent = await findAgent(rootDirectory, id);
 
   if (!agent) {
-    throw new Error(`Agent is not registered: ${id}. Run apk agent register --id ${id} --platform <platform> --model <model>.`);
+    throw new Error(`Agent is not registered: ${id}. Run pnpm exec apk agent register --id ${id} --platform <platform> --model <model>.`);
   }
 
   return agent;
@@ -536,15 +536,15 @@ export function renderAgentSetupPrompt(platform: string): string {
 
   return [
     "Register before task work:",
-    `apk agent register --id ${platform}-a --platform ${platform} --model <model>`,
+    `pnpm exec apk agent register --id ${platform}-a --platform ${platform} --model <model>`,
     "",
     "Then:",
-    "apk claim <task-id> --owner <agent-id>",
-    "apk context <task-id> --level 2",
-    "apk prompt <platform> --task <task-id> --level 2",
+    "pnpm exec apk claim <task-id> --owner <agent-id>",
+    "pnpm exec apk context <task-id> --level 2",
+    `pnpm exec apk prompt ${platform} --task <task-id> --level 2`,
     "run verification",
-    "apk review <task-id> --owner <agent-id>",
-    "apk done <task-id> --owner <agent-id>",
+    "pnpm exec apk review <task-id> --owner <agent-id>",
+    "pnpm exec apk done <task-id> --owner <agent-id>",
     "",
   ].join("\n");
 }

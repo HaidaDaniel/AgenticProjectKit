@@ -2,6 +2,8 @@
 
 The public CLI name is `apkit`. The shorter `apk` alias is kept for existing local workflows.
 
+When Agentic Project Kit is installed as a repository dev dependency, run commands through `pnpm exec apk` so agents use the project-pinned CLI instead of a global binary.
+
 ## Implemented commands
 
 - `apk init` - create the kit structure in a new repository.
@@ -41,30 +43,30 @@ The public CLI name is `apkit`. The shorter `apk` alias is kept for existing loc
 ## Example usage
 
 ```bash
-apk init
-apk agent register --id codex-a --developer alice --platform codex --model gpt-5.5
-apk mode mvp
-apk next-task
-apk claim 0001 --owner codex-a
-apk context 0001
-apk prompt codex --task 0001
-apk review 0001 --owner codex-a
-apk done 0001 --owner codex-a
-apk tasks --all
-apk export cursor --force
-apk audit
-apk doctor
-apk sync cursor
-apk status
-apk suggest-context "Add auth middleware"
-apk work 0043 --owner codex-a --target codex
-apk analytics summary --month 2026-05 --write
-apk task deps 0043
-apk task verify 0043 --owner codex-a
-apk task archive 0001
-apk task archive --all
-apk task create --title "Add Feature" --goal "Implement the smallest useful feature slice." --mode mvp --lane implementation --scope api,docs --risk low --context "AGENTS.md,docs/task-system.md" --allowed "src/api/index.ts" --verification "pnpm test"
-apk task create --template bugfix --title "Fix Parser" --scope cli --allowed src/cli/index.ts
+pnpm exec apk init
+pnpm exec apk agent register --id codex-a --developer alice --platform codex --model gpt-5.5
+pnpm exec apk mode mvp
+pnpm exec apk next-task
+pnpm exec apk claim 0001 --owner codex-a
+pnpm exec apk context 0001
+pnpm exec apk prompt codex --task 0001
+pnpm exec apk review 0001 --owner codex-a
+pnpm exec apk done 0001 --owner codex-a
+pnpm exec apk tasks --all
+pnpm exec apk export cursor --force
+pnpm exec apk audit
+pnpm exec apk doctor
+pnpm exec apk sync cursor
+pnpm exec apk status
+pnpm exec apk suggest-context "Add auth middleware"
+pnpm exec apk work 0043 --owner codex-a --target codex
+pnpm exec apk analytics summary --month 2026-05 --write
+pnpm exec apk task deps 0043
+pnpm exec apk task verify 0043 --owner codex-a
+pnpm exec apk task archive 0001
+pnpm exec apk task archive --all
+pnpm exec apk task create --title "Add Feature" --goal "Implement the smallest useful feature slice." --mode mvp --lane implementation --scope api,docs --risk low --context "AGENTS.md,docs/task-system.md" --allowed "src/api/index.ts" --verification "pnpm test"
+pnpm exec apk task create --template bugfix --title "Fix Parser" --scope cli --allowed src/cli/index.ts
 ```
 
 `apk export` skips existing files by default. Use `--force` to overwrite generated instruction files.

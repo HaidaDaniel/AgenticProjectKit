@@ -281,7 +281,7 @@ export async function adoptRepository(rootDirectory: string): Promise<AdoptResul
         "Agents register before task work:",
         "",
         "```bash",
-        "apk agent register --id codex-a --platform codex --model gpt-5.5",
+        "pnpm exec apk agent register --id codex-a --platform codex --model gpt-5.5",
         "```",
         "",
         "Registry path:",
