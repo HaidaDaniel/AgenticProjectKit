@@ -1,7 +1,7 @@
 # Task 0059 - Execute task verification profiles and record evidence
 
-State: todo
-Owner: none
+State: done
+Owner: codex-20260909
 Mode: product
 Lane: verification
 Scope: verification,cli,tests,docs

@@ -337,6 +337,15 @@ pnpm exec tsx src/cli/index.ts task create \
 
 Existing `## Verification commands` task files remain readable. Flat commands normalize to required local deterministic automated checks; no migration is required.
 
+Run all eligible checks or one verification profile:
+
+```bash
+pnpm exec apk task verify 0001 --profile deterministic --owner codex-a
+pnpm exec apk task evidence 0001
+```
+
+Required manual/live checks stay unresolved and optional failures do not block verification. Every check result is appended to `.agentic/evidence.jsonl` with candidate identity; stale or mixed-revision results cannot be treated as a current pass.
+
 ## Example workflow
 
 1. Start a new repository with `pnpm exec apk init`, or add the kit to an existing repository with `pnpm exec apk adopt`.

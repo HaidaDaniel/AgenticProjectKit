@@ -513,7 +513,7 @@ test("verifyTask supports file-only checks and renders next step", async () => {
   });
 });
 
-test("verifyTask stops on failed verification command", async () => {
+test("verifyTask records failed check and continues eligible checks", async () => {
   await withTempDirectory(async (directory) => {
     await writeTaskFile(join(directory, ".tasks", "0007-add-task-system.md"), {
       ...TASK,
@@ -532,7 +532,155 @@ test("verifyTask stops on failed verification command", async () => {
     assert.deepEqual(result.commandsRun, [
       { command: "pass", exitCode: 0 },
       { command: "fail", exitCode: 7 },
+      { command: "skip", exitCode: 0 },
     ]);
+    assert.deepEqual(result.checkResults.map((check) => check.status), ["pass", "fail", "pass"]);
+    assert.equal(result.evidenceWritten, 3);
+    assert.equal((await readTaskEvidence(directory, "0007")).length, 3);
+  });
+});
+
+test("verifyTask selects profiles and keeps manual/live requirements unresolved", async () => {
+  await withTempDirectory(async (directory) => {
+    const task: ProjectTask = {
+      ...TASK,
+      verification: [
+        {
+          id: "unit",
+          type: "automated",
+          required: true,
+          environment: "ci",
+          profile: "deterministic",
+          command: "unit",
+        },
+        {
+          id: "integration",
+          type: "automated",
+          required: true,
+          environment: "local",
+          profile: "integration",
+          command: "integration",
+        },
+        {
+          id: "production-smoke",
+          type: "manual",
+          required: true,
+          environment: "live",
+          profile: "trusted",
+          instruction: "Check production smoke path.",
+        },
+        {
+          id: "report",
+          type: "automated",
+          required: false,
+          environment: "local",
+          profile: "report",
+          command: "report",
+          evidence: "report URL",
+        },
+      ],
+      verificationCommands: ["unit", "integration", "report"],
+    };
+    await writeTaskFile(join(directory, ".tasks", "0007-add-task-system.md"), task);
+    const executed: string[] = [];
+    const result = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      changedFiles: ["src/core/tasks/index.ts"],
+      runCommand: async (command) => {
+        executed.push(command);
+        return command === "report" ? 9 : 0;
+      },
+    });
+
+    assert.deepEqual(executed, ["unit", "integration", "report"]);
+    assert.deepEqual(result.checkResults.map((check) => [check.id, check.status]), [
+      ["unit", "pass"],
+      ["integration", "pass"],
+      ["production-smoke", "unavailable"],
+      ["report", "fail"],
+    ]);
+    assert.equal(result.passed, false);
+    assert.equal((await readTaskEvidence(directory, "0007")).length, 4);
+  });
+});
+
+test("verifyTask profile selection leaves required unselected checks not-run", async () => {
+  await withTempDirectory(async (directory) => {
+    const task: ProjectTask = {
+      ...TASK,
+      verification: [
+        {
+          id: "unit",
+          type: "automated",
+          required: true,
+          environment: "ci",
+          profile: "deterministic",
+          command: "unit",
+        },
+        {
+          id: "integration",
+          type: "automated",
+          required: true,
+          environment: "local",
+          profile: "integration",
+          command: "integration",
+        },
+      ],
+      verificationCommands: ["unit", "integration"],
+    };
+    await writeTaskFile(join(directory, ".tasks", "0007-add-task-system.md"), task);
+    const executed: string[] = [];
+    const result = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      profile: "deterministic",
+      changedFiles: ["src/core/tasks/index.ts"],
+      runCommand: async (command) => {
+        executed.push(command);
+        return 0;
+      },
+    });
+
+    assert.deepEqual(executed, ["unit"]);
+    assert.deepEqual(result.checkResults.map((check) => check.status), ["pass", "not-run"]);
+    assert.equal(result.passed, false);
+  });
+});
+
+test("verifyTask rejects a pass when candidate changes during execution", async () => {
+  await withTempDirectory(async (directory) => {
+    const task: ProjectTask = {
+      ...TASK,
+      verification: [{
+        id: "mutating-check",
+        type: "automated",
+        required: true,
+        environment: "local",
+        profile: "deterministic",
+        command: "mutate",
+      }],
+      verificationCommands: ["mutate"],
+    };
+    await writeTaskFile(join(directory, ".tasks", "0007-add-task-system.md"), task);
+    const result = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      changedFiles: ["src/core/tasks/index.ts"],
+      runCommand: async () => {
+        await mkdir(join(directory, "src", "core", "tasks"), { recursive: true });
+        await writeFile(join(directory, "src", "core", "tasks", "index.ts"), "changed\n", "utf8");
+        return 0;
+      },
+    });
+
+    assert.equal(result.passed, false);
+    assert.equal(result.checkResults[0].status, "fail");
+    assert.match(result.checkResults[0].reason ?? "", /mixed-revision/);
+    assert.equal((await readTaskEvidence(directory, "0007"))[0].result, "fail");
   });
 });
 

@@ -137,3 +137,19 @@ Verification, manual/live checks, reports, and review outcomes need preserved hi
 Implementation:
 
 Records require task, run, agent, evidence type, result, timestamp, baseline, candidate, worktree, and repository identity; Git subjects also require HEAD SHA. Missing or ambiguous identity returns `unknown` freshness, while mismatched candidate identity returns `stale`.
+
+## ADR-0011 - Profile-aware verification is fail-safe
+
+Status: accepted
+
+Decision:
+
+Verification executes only eligible automated checks for the requested profile and records every check outcome, including unavailable and not-run states.
+
+Reason:
+
+Manual/live requirements and skipped profiles must remain visible and must not become implicit passes. Candidate mutation during execution must invalidate pass evidence.
+
+Implementation:
+
+`apk task verify` keeps the legacy command projection, supports `--profile`, appends per-check evidence, and returns failure when any required check is not `pass`. Optional failures remain observable without blocking the run.

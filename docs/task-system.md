@@ -178,6 +178,12 @@ Evidence results are `pass`, `fail`, `pending`, `unavailable`, or `not-run`. `re
 
 Use `apk task evidence <task-id>` for a safe summary of records. The append-only store keeps repeated runs and failed evidence instead of overwriting history.
 
+## Profile-aware verification
+
+`apk task verify <task-id>` runs all eligible automated checks by default. Pass `--profile deterministic|integration|trusted|report` to select one profile; `--profile all` is equivalent to the default. Automated checks in `static`, `ci`, or `local` environments can run. Manual checks and `live` environment checks remain `unavailable`, while checks outside the selected profile remain `not-run`.
+
+Each check produces a distinct `pass`, `fail`, `pending`, `unavailable`, or `not-run` result. Required non-pass checks fail verification; optional failures do not. A verification run records one run ID and subject identity for every check. If the candidate changes during execution, pass results are converted to mixed-revision failures.
+
 ## CLI work loop
 
 `pnpm exec apk work <task-id> --owner <agent-id> --target <agent>` connects the existing task workflow:

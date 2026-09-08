@@ -1,9 +1,16 @@
 import { exec, execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, open, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { promisify } from "node:util";
 
 import { appendRunLog, requireAgent } from "../agents/index.js";
+import {
+  appendTaskEvidence,
+  type TaskEvidenceCandidateSubject,
+  type TaskEvidenceResult,
+  type TaskEvidenceType,
+} from "./evidence.js";
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -1070,8 +1077,23 @@ export interface TaskVerifyCommandResult {
   exitCode: number;
 }
 
+export type TaskVerifyCheckStatus = TaskEvidenceResult;
+
+export interface TaskVerifyCheckResult {
+  id: string;
+  type: TaskVerificationType;
+  required: boolean;
+  status: TaskVerifyCheckStatus;
+  command?: string;
+  reason?: string;
+}
+
 export interface TaskVerifyResult extends TaskFileScopeResult {
   taskId: string;
+  runId: string;
+  subject: TaskEvidenceCandidateSubject;
+  checkResults: TaskVerifyCheckResult[];
+  evidenceWritten: number;
   commandsRun: TaskVerifyCommandResult[];
   commandsSkipped: boolean;
   passed: boolean;
@@ -1086,6 +1108,8 @@ export interface TaskVerifyOptions {
   checkFilesOnly?: boolean;
   changedFiles?: string[];
   runCommand?: (command: string) => Promise<number>;
+  profile?: TaskVerificationProfile | "all";
+  commandTimeoutMs?: number;
 }
 
 function slugify(text: string): string {
@@ -1331,6 +1355,18 @@ async function gitLines(rootDirectory: string, args: readonly string[]): Promise
     .filter((line) => line.length > 0);
 }
 
+async function gitOutput(
+  rootDirectory: string,
+  args: readonly string[],
+): Promise<string | undefined> {
+  try {
+    const result = await execFileAsync("git", args, { cwd: rootDirectory, maxBuffer: 8 * 1024 * 1024 });
+    return result.stdout;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function listGitChangedFiles(rootDirectory: string): Promise<string[]> {
   const files = await Promise.all([
     gitLines(rootDirectory, ["diff", "--name-only"]),
@@ -1341,11 +1377,85 @@ export async function listGitChangedFiles(rootDirectory: string): Promise<string
   return [...new Set(files.flat().map(normalizeRepoPath))].sort();
 }
 
-async function defaultRunCommand(rootDirectory: string, command: string): Promise<number> {
+function hashCandidatePart(value: unknown): string {
+  return createHash("sha256")
+    .update(JSON.stringify(value))
+    .digest("hex");
+}
+
+async function fingerprintChangedFiles(
+  rootDirectory: string,
+  changedFiles: readonly string[],
+): Promise<Array<{ path: string; sha256: string }>> {
+  const fingerprints: Array<{ path: string; sha256: string }> = [];
+  for (const path of changedFiles) {
+    try {
+      const content = await readFile(join(rootDirectory, path));
+      fingerprints.push({
+        path,
+        sha256: createHash("sha256").update(content).digest("hex"),
+      });
+    } catch {
+      fingerprints.push({ path, sha256: "missing" });
+    }
+  }
+  return fingerprints;
+}
+
+export async function captureTaskEvidenceSubject(
+  rootDirectory: string,
+  task: ProjectTask,
+  changedFiles: readonly string[],
+): Promise<TaskEvidenceCandidateSubject> {
+  const normalizedChangedFiles = [...new Set(changedFiles.map(normalizeRepoPath))]
+    .filter((path) => path.length > 0)
+    .sort();
+  const fingerprints = await fingerprintChangedFiles(rootDirectory, normalizedChangedFiles);
+  const isGit = (await gitOutput(rootDirectory, ["rev-parse", "--is-inside-work-tree"]))?.trim() === "true";
+  const headSha = isGit
+    ? (await gitOutput(rootDirectory, ["rev-parse", "HEAD"]))?.trim() || undefined
+    : undefined;
+  const repository = headSha ? "git" : "none";
+  const diff = isGit
+    ? [
+      await gitOutput(rootDirectory, ["diff", "--no-ext-diff", "--binary", "HEAD"]),
+      await gitOutput(rootDirectory, ["diff", "--cached", "--no-ext-diff", "--binary", "HEAD"]),
+    ].map((part) => part ?? "")
+    : [];
+  const candidateId = `candidate:${hashCandidatePart({
+    task: renderTaskMarkdown(task),
+    headSha,
+    changedFiles: normalizedChangedFiles,
+    fingerprints,
+    diff,
+  })}`;
+  const worktreeId = `worktree:${hashCandidatePart({
+    changedFiles: normalizedChangedFiles,
+    fingerprints,
+    diff,
+  })}`;
+
+  return {
+    taskId: task.id,
+    repository,
+    ...(headSha ? { headSha } : {}),
+    baselineId: `unclaimed:${headSha ?? "none"}`,
+    candidateId,
+    worktreeId,
+  };
+}
+
+async function defaultRunCommand(
+  rootDirectory: string,
+  command: string,
+  timeoutMs = 120_000,
+): Promise<number> {
   try {
     await execAsync(command, {
       cwd: rootDirectory,
       windowsHide: true,
+      timeout: timeoutMs,
+      maxBuffer: 2 * 1024 * 1024,
     });
     return 0;
   } catch (error: unknown) {
@@ -1373,6 +1483,33 @@ function verifyNextStep(result: {
   return "move task to review or done with a registered owner";
 }
 
+function verificationEvidenceType(check: TaskVerificationCheck): TaskEvidenceType {
+  if (check.profile === "report") {
+    return "report";
+  }
+  if (check.environment === "live") {
+    return "live";
+  }
+  if (check.type === "manual") {
+    return "manual";
+  }
+  if (check.environment === "ci") {
+    return "ci";
+  }
+  return "automated-test";
+}
+
+function verificationRunId(): string {
+  return `verify-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function isSelectedVerificationProfile(
+  check: TaskVerificationCheck,
+  profile: TaskVerificationProfile | "all" | undefined,
+): boolean {
+  return profile === undefined || profile === "all" || check.profile === profile;
+}
+
 export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerifyResult> {
   const taskPath = await findTaskFile(
     options.rootDirectory,
@@ -1380,23 +1517,107 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
     options.taskDirectory,
   );
   const { task } = await loadTaskFile(taskPath);
+  const changedFiles = options.changedFiles ?? await listGitChangedFiles(options.rootDirectory).catch(() => []);
   const scope = verifyTaskFileScope(
     task,
-    options.changedFiles ?? await listGitChangedFiles(options.rootDirectory),
+    changedFiles,
   );
+  const runId = verificationRunId();
+  const subject = await captureTaskEvidenceSubject(
+    options.rootDirectory,
+    task,
+    scope.changedFiles,
+  );
+  const checks = getTaskVerification(task);
   const commandsRun: TaskVerifyCommandResult[] = [];
+  const checkResults: TaskVerifyCheckResult[] = [];
   let passed = scope.outOfScopeFiles.length === 0 && scope.forbiddenTouchedFiles.length === 0;
 
-  if (passed && !options.checkFilesOnly) {
-    for (const command of task.verificationCommands) {
-      const exitCode = await (options.runCommand ?? ((cmd) => defaultRunCommand(options.rootDirectory, cmd)))(command);
-      commandsRun.push({ command, exitCode });
+  for (const check of checks) {
+    let status: TaskVerifyCheckStatus = "not-run";
+    let reason: string | undefined;
+    let exitCode: number | undefined;
 
-      if (exitCode !== 0) {
-        passed = false;
-        break;
+    if (!passed) {
+      reason = "file scope failed";
+    } else if (options.checkFilesOnly) {
+      reason = "file-only verification requested";
+    } else if (!isSelectedVerificationProfile(check, options.profile)) {
+      reason = `profile ${check.profile} not selected`;
+    } else if (check.type === "manual") {
+      status = "unavailable";
+      reason = "manual check requires an external reviewer or operator";
+    } else if (check.environment === "live") {
+      status = "unavailable";
+      reason = "live environment check is not executed by local verifier";
+    } else if (!check.command) {
+      status = "unavailable";
+      reason = "automated check has no command";
+    } else {
+      try {
+        exitCode = await (options.runCommand ?? ((cmd) => defaultRunCommand(
+          options.rootDirectory,
+          cmd,
+          options.commandTimeoutMs,
+        )))(check.command);
+      } catch (error: unknown) {
+        exitCode = 1;
+        reason = `command execution failed: ${error instanceof Error ? error.message : String(error)}`;
+      }
+      status = exitCode === 0 ? "pass" : "fail";
+      commandsRun.push({ command: check.command, exitCode });
+      if (status === "fail" && !reason) {
+        reason = `command exited with code ${exitCode}`;
       }
     }
+
+    checkResults.push({
+      id: check.id,
+      type: check.type,
+      required: check.required,
+      status,
+      ...(check.command ? { command: check.command } : {}),
+      ...(reason ? { reason } : {}),
+    });
+  }
+
+  const afterSubject = await captureTaskEvidenceSubject(
+    options.rootDirectory,
+    task,
+    scope.changedFiles,
+  );
+  if (afterSubject.candidateId !== subject.candidateId || afterSubject.worktreeId !== subject.worktreeId) {
+    for (const check of checkResults) {
+      if (check.status === "pass") {
+        check.status = "fail";
+        check.reason = "candidate changed during verification; result is mixed-revision";
+      }
+    }
+    passed = false;
+  }
+
+  if (!options.checkFilesOnly && checkResults.some((check) => check.required && check.status !== "pass")) {
+    passed = false;
+  }
+
+  let evidenceWritten = 0;
+  for (const [index, check] of checks.entries()) {
+    const result = checkResults[index];
+    await appendTaskEvidence(options.rootDirectory, {
+      taskId: task.id,
+      runId,
+      agent: options.owner ?? "unknown",
+      type: verificationEvidenceType(check),
+      result: result.status,
+      subject,
+      checkId: check.id,
+      profile: check.profile,
+      ...(check.command ? { command: check.command } : {}),
+      ...(check.artifact ? { artifact: check.artifact } : {}),
+      ...(check.evidence ? { evidence: check.evidence } : {}),
+      ...(result.reason ? { summary: result.reason } : {}),
+    });
+    evidenceWritten += 1;
   }
 
   if (options.owner) {
@@ -1407,12 +1628,16 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
       task: task.id,
       state: task.state,
       outcome: passed ? "ok" : "error",
-      reason: passed ? "verify passed" : "verify failed",
+      reason: `${passed ? "verify passed" : "verify failed"} (${runId})`,
     });
   }
 
   return {
     taskId: task.id,
+    runId,
+    subject,
+    checkResults,
+    evidenceWritten,
     changedFiles: scope.changedFiles,
     outOfScopeFiles: scope.outOfScopeFiles,
     forbiddenTouchedFiles: scope.forbiddenTouchedFiles,
@@ -1430,6 +1655,7 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
 export function renderTaskVerifyResult(result: TaskVerifyResult): string {
   const lines: string[] = [
     `Task: ${result.taskId}`,
+    `Run: ${result.runId}`,
     `Changed files: ${result.changedFiles.length}`,
     `File scope: ${result.outOfScopeFiles.length === 0 && result.forbiddenTouchedFiles.length === 0 ? "pass" : "fail"}`,
   ];
@@ -1458,6 +1684,12 @@ export function renderTaskVerifyResult(result: TaskVerifyResult): string {
       lines.push(`  - ${command.exitCode === 0 ? "pass" : "fail"} ${command.command}`);
     }
   }
+
+  lines.push("Checks:");
+  for (const check of result.checkResults) {
+    lines.push(`  - ${check.status} ${check.id}${check.required ? " (required)" : " (optional)"}${check.reason ? `: ${check.reason}` : ""}`);
+  }
+  lines.push(`Evidence: ${result.evidenceWritten} record(s)`);
 
   lines.push(`Result: ${result.passed ? "pass" : "fail"}`);
   lines.push(`Next: ${result.nextStep}`);

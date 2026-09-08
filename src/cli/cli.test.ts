@@ -501,6 +501,8 @@ test("CLI task verify --help shows usage", async () => {
   assert.equal(result.exitCode, 0);
   assert.match(result.stdout, /apk task verify <task-id>/);
   assert.match(result.stdout, /--check-files-only/);
+  assert.match(result.stdout, /--profile <profile\|all>/);
+  assert.match(result.stdout, /per-check evidence/);
 });
 
 test("CLI task rejects unknown subcommand", async () => {

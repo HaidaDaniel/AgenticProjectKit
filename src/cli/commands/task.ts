@@ -17,6 +17,7 @@ import {
   renderTaskVerifyResult,
   TASK_MODES,
   TASK_RISKS,
+  TASK_VERIFICATION_PROFILES,
   normalizeVerificationCommands,
   type TaskVerificationCheck,
   verifyTask,
@@ -30,14 +31,14 @@ const TASK_HELP_TEXT = [
   "  apk task archive [<task-id>] [--all]",
   "  apk task deps <task-id>",
   "  apk task evidence <task-id>",
-  "  apk task verify <task-id> [--check-files-only] [--owner <agent-id>]",
+  "  apk task verify <task-id> [--check-files-only] [--profile <profile|all>] [--owner <agent-id>]",
   "  apk task create --title <title> --scope <csv> --allowed <csv> [--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>]",
   "",
   "Subcommands:",
   "  archive Archive a done task or all done tasks.",
   "  deps    Inspect task prerequisites, dependents, and graph problems.",
   "  evidence List append-only evidence records for a task.",
-  "  verify  Check changed files and task verification commands.",
+  "  verify  Check files, resolve profiles, and record per-check evidence.",
   "  create  Generate a new task file with validated metadata.",
 ].join("\n");
 
@@ -96,10 +97,11 @@ const TASK_VERIFY_HELP_TEXT = [
   "Agentic Project Kit",
   "",
   "Usage:",
-  "  apk task verify <task-id> [--check-files-only] [--owner <agent-id>]",
+  "  apk task verify <task-id> [--check-files-only] [--profile <profile|all>] [--owner <agent-id>]",
   "",
   "Checks changed files against task allowed/forbidden files.",
-  "Runs task verification commands unless --check-files-only is supplied.",
+  "Runs selected eligible automated checks and records per-check evidence.",
+  "Manual/live and unselected checks remain visible as unavailable or not-run.",
 ].join("\n");
 
 const TASK_ARCHIVE_HELP_TEXT = [
@@ -482,7 +484,7 @@ async function runVerifySubcommand(argv: string[]): Promise<number> {
     return 0;
   }
 
-  const knownVerifyFlags = new Set(["--check-files-only", "--owner", "--help", "-h"]);
+  const knownVerifyFlags = new Set(["--check-files-only", "--profile", "--owner", "--help", "-h"]);
   for (const arg of argv) {
     if (arg.startsWith("-") && !knownVerifyFlags.has(arg)) {
       throw new Error(`Unknown option: ${arg}`);
@@ -491,7 +493,8 @@ async function runVerifySubcommand(argv: string[]): Promise<number> {
 
   const positional = argv.filter((arg, index) => (
     !arg.startsWith("-") &&
-    argv[index - 1] !== "--owner"
+    argv[index - 1] !== "--owner" &&
+    argv[index - 1] !== "--profile"
   ));
 
   if (positional.length !== 1) {
@@ -500,12 +503,21 @@ async function runVerifySubcommand(argv: string[]): Promise<number> {
 
   const rootDirectory = resolve(process.cwd());
   const config = await readAgenticConfigFile(rootDirectory);
+  const profile = parseFlag(argv, "--profile");
+  if (
+    profile !== undefined &&
+    profile !== "all" &&
+    !(TASK_VERIFICATION_PROFILES as readonly string[]).includes(profile)
+  ) {
+    throw new Error(`--profile must be one of: all, ${TASK_VERIFICATION_PROFILES.join(", ")}.`);
+  }
   const result = await verifyTask({
     rootDirectory,
     taskDirectory: config.taskDirectory,
     taskId: positional[0],
     owner: parseFlag(argv, "--owner"),
     checkFilesOnly: hasFlag(argv, "--check-files-only"),
+    profile: profile as (typeof TASK_VERIFICATION_PROFILES)[number] | "all" | undefined,
   });
 
   console.log(renderTaskVerifyResult(result));

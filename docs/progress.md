@@ -2,7 +2,7 @@
 
 ## Current status
 
-Phase 1 documentation is in place, and Tasks 0001 through 0058 are complete.
+Phase 1 documentation is in place, and Tasks 0001 through 0059 are complete.
 
 The repository now has:
 
@@ -77,17 +77,18 @@ The repository now has:
 - generated agent instructions and agent setup prompts that use `pnpm exec apk` for project-local task workflow commands.
 - structured task verification checks with legacy command compatibility, typed environment/profile metadata, and prompt/CLI propagation.
 - first-class append-only task evidence with explicit subject identity, freshness comparison, corruption diagnostics, and task-level readout.
+- profile-aware verification execution with per-check pass/fail/unavailable/not-run evidence, profile selection, timeout handling, and mixed-revision fail-closed behavior.
 
 ## Next step
 
-Next planned task: 0059 - Execute task verification profiles and record evidence.
+Next planned task: 0060 - Track task claim baseline and enforce allowed-file scope.
 
-Planning only: tasks 0059-0076 remain todo with Owner: none. Corrective pass fixes review-before-gate bootstrap, revision/freshness semantics, lock recovery and candidate freeze.
+Planning only: tasks 0060-0076 remain todo with Owner: none. Corrective pass fixes review-before-gate bootstrap, revision/freshness semantics, lock recovery and candidate freeze.
 
 ## Remaining task plan
 
 - Tasks 0001 through 0057 are complete.
-- Tasks 0059,0060,0061,0063,0062: Meaningful Done, in conceptual order; review capability precedes completion enforcement.
+- Tasks 0060,0061,0063,0062: Meaningful Done, in conceptual order; review capability precedes completion enforcement.
 - Task 0076: Milestone 1 Reliability / Foundation; no dependencies, required by final release 0075.
 - Tasks 0064-0066: Independent Correctness.
 - Tasks 0067-0071: Efficient Agent Workflow.
