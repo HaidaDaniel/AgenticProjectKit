@@ -2007,3 +2007,4 @@ export function renderTaskDeps(result: TaskDepsResult): string {
 }
 
 export * from "./evidence.js";
+export * from "./policy.js";

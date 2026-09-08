@@ -36,8 +36,10 @@ import {
   renderTaskMarkdown,
   renderNextTask,
   renderTaskDeps,
+  renderTaskPolicy,
   readTaskEvidence,
   renderTasksTable,
+  resolveTaskPolicy,
   selectNextTask,
   TaskFormatError,
   TaskEvidenceFormatError,
@@ -198,6 +200,91 @@ test("structured verification survives canonical task round trip", () => {
   assert.match(rendered, /## Verification/);
   assert.doesNotMatch(rendered, /## Verification commands/);
   assert.deepEqual(parseTaskMarkdown(rendered), task);
+});
+
+test("task policy applies deterministic risk defaults", () => {
+  const low = resolveTaskPolicy({
+    ...TASK,
+    risk: "low",
+    tags: ["docs"],
+  });
+  assert.equal(low.requirements.automatedVerification, true);
+  assert.equal(low.requirements.scope, false);
+  assert.equal(low.requirements.independentReview, false);
+  assert.equal(low.requirements.reviewLevel, "none");
+  assert.deepEqual(low.blockers, []);
+
+  const medium = resolveTaskPolicy(TASK);
+  assert.equal(medium.requirements.automatedVerification, true);
+  assert.equal(medium.requirements.scope, true);
+  assert.equal(medium.requirements.independentReview, true);
+  assert.equal(medium.requirements.reviewLevel, "lightweight");
+  assert.equal(medium.requirements.evidenceRequired, false);
+  assert.deepEqual(medium.blockers, []);
+});
+
+test("task policy requires declared high-risk evidence and explains tags", () => {
+  const high = resolveTaskPolicy({
+    ...TASK,
+    risk: "high",
+    tags: ["security"],
+  });
+  assert.equal(high.requirements.evidenceRequired, true);
+  assert.ok(high.blockers.some((blocker) => blocker.includes("evidence category")));
+  assert.equal(high.requirements.independentReview, true);
+  assert.equal(high.requirements.reviewLevel, "independent");
+
+  const release = resolveTaskPolicy({
+    ...TASK,
+    risk: "low",
+    tags: ["release"],
+    verification: [
+      {
+        id: "release-report",
+        type: "automated",
+        required: true,
+        environment: "local",
+        profile: "report",
+        command: "pnpm test",
+        artifact: "reports/release.json",
+      },
+      {
+        id: "live-smoke",
+        type: "manual",
+        required: true,
+        environment: "live",
+        profile: "trusted",
+        instruction: "Check the deployed release.",
+        evidence: "release URL",
+      },
+    ],
+  });
+  assert.deepEqual(release.requirements.evidenceCategories, ["live", "report"]);
+  assert.deepEqual(release.declaredEvidenceCategories, ["artifact", "evidence", "live", "manual", "report"]);
+  assert.deepEqual(release.blockers, []);
+  assert.match(renderTaskPolicy(release), /independent review: not required/);
+});
+
+test("task policy diagnoses tag conflicts and preserves legacy compatibility", () => {
+  const conflict = resolveTaskPolicy({
+    ...TASK,
+    risk: "medium",
+    tags: ["no-verification", "no-review", "local-only", "release"],
+  }, {
+    tagRules: [
+      { tag: "release", independentReview: false },
+      { tag: "release", independentReview: true },
+    ],
+  });
+  assert.ok(conflict.blockers.some((blocker) => blocker.includes("no-verification")));
+  assert.ok(conflict.blockers.some((blocker) => blocker.includes("no-review")));
+  assert.ok(conflict.blockers.some((blocker) => blocker.includes("local-only")));
+  assert.ok(conflict.blockers.some((blocker) => blocker.includes("conflicting policy rules")));
+  assert.ok(conflict.diagnostics.length >= 3);
+
+  const legacy = resolveTaskPolicy(TASK);
+  assert.equal(legacy.legacyCompatible, true);
+  assert.deepEqual(legacy.declaredEvidenceCategories, []);
 });
 
 test("structured verification reports actionable metadata errors", () => {

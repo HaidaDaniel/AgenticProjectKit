@@ -1,7 +1,7 @@
 # Task 0061 - Introduce risk and task-policy requirements
 
-State: todo
-Owner: none
+State: done
+Owner: codex-20260909
 Mode: product
 Lane: policy
 Scope: policy,cli,tests,docs

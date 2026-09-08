@@ -537,11 +537,37 @@ test("CLI task create --help shows usage", async () => {
   assert.equal(result.exitCode, 0);
   assert.equal(taskHelp.exitCode, 0);
   assert.match(taskHelp.stdout, /apk task evidence <task-id>/);
+  assert.match(taskHelp.stdout, /apk task policy <task-id>/);
   assert.match(result.stdout, /--title/);
   assert.match(result.stdout, /--goal/);
   assert.match(result.stdout, /--mode/);
   assert.match(result.stdout, /--risk/);
   assert.match(result.stdout, /--verification/);
+});
+
+test("CLI task policy renders effective requirements without mutation", async () => {
+  await withTempDirectory(async (directory) => {
+    const tasksDir = join(directory, ".tasks");
+    await mkdir(tasksDir, { recursive: true });
+    await writeFile(join(tasksDir, "0001-policy-task.md"), buildTaskMarkdown("0001", "Policy Task", "todo"), "utf8");
+
+    const result = await runCli(["task", "policy", "0001"], directory);
+
+    assert.equal(result.exitCode, 0);
+    assert.match(result.stdout, /Task: 0001/);
+    assert.match(result.stdout, /automated verification: required/);
+    assert.match(result.stdout, /Legacy compatible: yes/);
+    assert.match(result.stdout, /Blockers|Reasons:/);
+    assert.match(await readFile(join(tasksDir, "0001-policy-task.md"), "utf8"), /State: todo/);
+  });
+});
+
+test("CLI task policy --help shows usage", async () => {
+  const result = await runCli(["task", "policy", "--help"]);
+
+  assert.equal(result.exitCode, 0);
+  assert.match(result.stdout, /apk task policy <task-id>/);
+  assert.match(result.stdout, /without changing task state/);
 });
 
 test("CLI task create writes a valid task file", async () => {

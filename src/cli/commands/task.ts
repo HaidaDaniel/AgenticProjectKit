@@ -11,10 +11,13 @@ import {
   findTaskFile,
   listArchivedTaskFiles,
   listTaskFiles,
+  loadTaskFile,
   readTaskEvidence,
+  renderTaskPolicy,
   renderTaskDeps,
   renderTaskEvidence,
   renderTaskVerifyResult,
+  resolveTaskPolicy,
   TASK_MODES,
   TASK_RISKS,
   TASK_VERIFICATION_PROFILES,
@@ -31,6 +34,7 @@ const TASK_HELP_TEXT = [
   "  apk task archive [<task-id>] [--all]",
   "  apk task deps <task-id>",
   "  apk task evidence <task-id>",
+  "  apk task policy <task-id>",
   "  apk task verify <task-id> [--check-files-only] [--profile <profile|all>] [--owner <agent-id>]",
   "  apk task create --title <title> --scope <csv> --allowed <csv> [--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>]",
   "",
@@ -38,6 +42,7 @@ const TASK_HELP_TEXT = [
   "  archive Archive a done task or all done tasks.",
   "  deps    Inspect task prerequisites, dependents, and graph problems.",
   "  evidence List append-only evidence records for a task.",
+  "  policy  Resolve deterministic risk and tag requirements.",
   "  verify  Check files, resolve profiles, and record per-check evidence.",
   "  create  Generate a new task file with validated metadata.",
 ].join("\n");
@@ -58,6 +63,16 @@ const TASK_EVIDENCE_HELP_TEXT = [
   "  apk task evidence <task-id>",
   "",
   "List append-only task evidence records from .agentic/evidence.jsonl.",
+].join("\n");
+
+const TASK_POLICY_HELP_TEXT = [
+  "Agentic Project Kit",
+  "",
+  "Usage:",
+  "  apk task policy <task-id>",
+  "",
+  "Resolve deterministic requirements from task risk and tags.",
+  "Reports blockers and diagnostics without changing task state.",
 ].join("\n");
 
 const TASK_CREATE_HELP_TEXT = [
@@ -108,6 +123,7 @@ const TASK_ARCHIVE_HELP_TEXT = [
   "Agentic Project Kit",
   "",
   "Usage:",
+  "  apk task archive [<task-id>] [--all]",
   "  apk task archive <task-id>",
   "  apk task archive --all",
   "",
@@ -478,6 +494,25 @@ async function runEvidenceSubcommand(argv: string[]): Promise<number> {
   return 0;
 }
 
+async function runPolicySubcommand(argv: string[]): Promise<number> {
+  if (hasHelpFlag(argv)) {
+    console.log(TASK_POLICY_HELP_TEXT);
+    return 0;
+  }
+
+  rejectUnknownOptions(argv);
+  if (argv.length !== 1) {
+    throw new Error("Usage: apk task policy <task-id>");
+  }
+
+  const rootDirectory = resolve(process.cwd());
+  const config = await readAgenticConfigFile(rootDirectory);
+  const taskPath = await findTaskFile(rootDirectory, argv[0], config.taskDirectory);
+  const taskFile = await loadTaskFile(taskPath);
+  console.log(renderTaskPolicy(resolveTaskPolicy(taskFile.task)));
+  return 0;
+}
+
 async function runVerifySubcommand(argv: string[]): Promise<number> {
   if (hasHelpFlag(argv)) {
     console.log(TASK_VERIFY_HELP_TEXT);
@@ -526,17 +561,17 @@ async function runVerifySubcommand(argv: string[]): Promise<number> {
 
 export async function runTaskCommand(argv: string[]): Promise<number> {
   try {
-    if (hasHelpFlag(argv)) {
-      console.log(TASK_HELP_TEXT);
-      return 0;
-    }
-
     if (argv.length === 0) {
       console.error("Error: Usage: apk task <archive|deps|create>");
       return 1;
     }
 
     const [subcommand, ...subArgs] = argv;
+
+    if (subcommand === "--help" || subcommand === "-h") {
+      console.log(TASK_HELP_TEXT);
+      return 0;
+    }
 
     if (subcommand === "archive") {
       return await runArchiveSubcommand(subArgs);
@@ -552,6 +587,10 @@ export async function runTaskCommand(argv: string[]): Promise<number> {
 
     if (subcommand === "evidence") {
       return await runEvidenceSubcommand(subArgs);
+    }
+
+    if (subcommand === "policy") {
+      return await runPolicySubcommand(subArgs);
     }
 
     if (subcommand === "create") {

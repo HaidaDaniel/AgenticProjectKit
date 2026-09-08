@@ -188,6 +188,17 @@ Claiming a task records a baseline in `.agentic/task-baselines.jsonl`: HEAD when
 
 `verifyTask` exposes machine-readable attribution with `baselineId`, `attributedFiles`, `preExistingFiles`, `bookkeepingFiles`, and diagnostics. No-git or unavailable-HEAD work remains supported but reports limited attribution instead of claiming certainty.
 
+## Effective task policy
+
+`resolveTaskPolicy(task)` calculates completion requirements without changing task state. `pnpm exec apk task policy <task-id>` prints the same read-only result, including reasons, blockers, diagnostics, and legacy compatibility.
+
+- Low risk requires at least one required automated verification check.
+- Medium risk adds scope checking and a lightweight review requirement.
+- High risk adds scope checking, independent review, and declared evidence categories. Missing categories are blocking until declared by structured verification checks (`profile: report`, `environment: live`, `type: manual`, `artifact`, or `evidence`).
+- Classification tags add requirements: `migration`, `async`, `worker`, and `security` require independent review; `deployment` and `release` require live evidence; `benchmark` and `evaluation` require benchmark evidence; `provider` and `integration` require report evidence.
+
+Tag rules are additive and can be extended through the resolver API. Contradictory rules and incompatible tags such as `no-review`, `no-verification`, or `local-only` produce actionable blockers. Legacy `## Verification commands` tasks remain readable and receive local deterministic automated defaults; high-risk legacy tasks still report missing evidence instead of silently passing. Policy resolution is preparatory—completion enforcement begins in the later gate task.
+
 ## CLI work loop
 
 `pnpm exec apk work <task-id> --owner <agent-id> --target <agent>` connects the existing task workflow:

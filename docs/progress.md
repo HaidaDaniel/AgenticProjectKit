@@ -2,7 +2,7 @@
 
 ## Current status
 
-Phase 1 documentation is in place, and Tasks 0001 through 0060 are complete.
+Phase 1 documentation is in place, and Tasks 0001 through 0061 are complete.
 
 The repository now has:
 
@@ -79,17 +79,18 @@ The repository now has:
 - first-class append-only task evidence with explicit subject identity, freshness comparison, corruption diagnostics, and task-level readout.
 - profile-aware verification execution with per-check pass/fail/unavailable/not-run evidence, profile selection, timeout handling, and mixed-revision fail-closed behavior.
 - claim-baseline scope attribution with dirty-file fingerprints, post-claim Git change collection, bookkeeping exclusions, and no-git diagnostics.
+- deterministic effective task policy resolution from risk, tags, structured verification, and legacy defaults, with read-only CLI diagnostics and actionable blockers.
 
 ## Next step
 
-Next planned task: 0061 - Introduce risk and task-policy requirements.
+Next planned task: 0063 - Add independent task review and review evidence.
 
-Planning only: tasks 0061-0076 remain todo with Owner: none. Corrective pass fixes review-before-gate bootstrap, revision/freshness semantics, lock recovery and candidate freeze.
+Planning only: tasks 0062-0076 remain todo with Owner: none. Corrective pass fixes review-before-gate bootstrap, revision/freshness semantics, lock recovery and candidate freeze.
 
 ## Remaining task plan
 
-- Tasks 0001 through 0057 are complete.
-- Tasks 0061,0063,0062: Meaningful Done, in conceptual order; review capability precedes completion enforcement.
+- Tasks 0001 through 0061 are complete.
+- Tasks 0063,0062: Meaningful Done, in conceptual order; review capability precedes completion enforcement.
 - Task 0076: Milestone 1 Reliability / Foundation; no dependencies, required by final release 0075.
 - Tasks 0064-0066: Independent Correctness.
 - Tasks 0067-0071: Efficient Agent Workflow.
@@ -139,3 +140,4 @@ Planning only: tasks 0061-0076 remain todo with Owner: none. Corrective pass fix
 - Task template verification passed with `pnpm lint`, `pnpm test`, `pnpm build`, `node dist/cli/index.js task create --help`, a temp `node dist/cli/index.js task create --template bugfix ...` smoke test, and `node dist/cli/index.js audit`.
 - CLI work-loop verification passed with `pnpm lint`, `pnpm test`, `pnpm build`, `node dist/cli/index.js work --help`, `node dist/cli/index.js task verify --help`, `node dist/cli/index.js status`, `node dist/cli/index.js doctor`, `node dist/cli/index.js audit`, and a temp `node dist/cli/index.js work 0001 --owner codex-smoke --target codex --level 2` smoke test.
 - Repo-local APK command verification passed with `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm exec apk sync`, `pnpm exec apk audit`, and `pnpm exec apk agent prompt --platform codex`.
+- Risk/task-policy verification passed with `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm exec apk task create --help`, and `pnpm exec apk doctor`.

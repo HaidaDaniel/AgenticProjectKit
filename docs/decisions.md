@@ -169,3 +169,19 @@ A whole-worktree diff cannot distinguish pre-existing user edits from task chang
 Implementation:
 
 Git baselines record HEAD and dirty-file fingerprints; later verification includes post-claim commits and working-tree changes, handles new/deleted/renamed paths, and excludes unchanged baseline files plus explicit bookkeeping paths. No-git and detached/unborn HEAD states return diagnostics and fail closed on attribution certainty.
+
+## ADR-0013 - Deterministic effective task policy
+
+Status: accepted
+
+Decision:
+
+Resolve task completion requirements from the risk level and additive classification tags in a pure policy module. Keep policy output explicit and read-only until the completion gate composes it.
+
+Reason:
+
+Risk must produce predictable ceremony: automated verification for low risk, scope and review for medium risk, and evidence declarations for high risk. Classification-specific needs such as live release checks or independent security review should be extensible without an LLM or a large hardcoded classifier.
+
+Implementation:
+
+`resolveTaskPolicy` applies conservative defaults, merges the small built-in tag-rule registry with optional rules, deduplicates evidence categories, and reports conflicts or missing requirements as blockers. Legacy command-only tasks normalize to local deterministic checks; high-risk legacy tasks remain readable but fail policy resolution until evidence is declared. `apk task policy` is a read-only diagnostic surface; completion enforcement is deferred to the dependent gate task.
