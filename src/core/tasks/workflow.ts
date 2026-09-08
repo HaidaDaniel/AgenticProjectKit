@@ -8,6 +8,12 @@ import {
   type RegisteredAgent,
   type RunEventType,
 } from "../agents/index.js";
+import { appendTaskEvidence } from "./evidence.js";
+import {
+  captureTaskCompletionCandidate,
+  evaluateTaskCompletionGate,
+  TaskCompletionGateError,
+} from "./gate.js";
 import {
   findTaskFile,
   captureTaskBaseline,
@@ -179,13 +185,74 @@ export async function reviewTask(options: TaskTransitionOptions): Promise<Projec
 }
 
 export async function doneTask(options: TaskTransitionOptions): Promise<ProjectTask> {
-  return transition(options, "done", (task) => {
+  return withTaskLock(options.rootDirectory, options.taskDirectory, async () => {
+    const agent = await requireAgent(options.rootDirectory, options.owner);
+    const taskPath = await findTaskFile(
+      options.rootDirectory,
+      options.taskId,
+      options.taskDirectory,
+    );
+    const { task } = await loadTaskFile(taskPath);
     requireState(task, ["doing", "review"]);
     requireOwner(task, options.owner);
-    return {
+
+    const gate = await evaluateTaskCompletionGate({
+      rootDirectory: options.rootDirectory,
+      taskDirectory: options.taskDirectory,
+      taskId: task.id,
+    });
+    if (!gate.passed) {
+      throw new TaskCompletionGateError(gate);
+    }
+
+    const candidateAfterEvaluation = await captureTaskCompletionCandidate({
+      rootDirectory: options.rootDirectory,
+      taskDirectory: options.taskDirectory,
+      taskId: task.id,
+    });
+    if (
+      candidateAfterEvaluation.subject.candidateId !== gate.subject.candidateId ||
+      candidateAfterEvaluation.subject.worktreeId !== gate.subject.worktreeId
+    ) {
+      throw new TaskCompletionGateError({
+        ...gate,
+        passed: false,
+        blockers: [
+          ...gate.blockers,
+          "Candidate changed between gate evaluation and completion persistence.",
+        ],
+      });
+    }
+
+    const completionRunId = `completion-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    await appendTaskEvidence(options.rootDirectory, {
+      taskId: task.id,
+      runId: completionRunId,
+      agent: agent.id,
+      type: "completion",
+      result: "pass",
+      subject: gate.subject,
+      evidenceSet: gate.evidenceIds,
+      summary: "Completion gate passed for the evaluated candidate.",
+    });
+
+    const durationSec = await durationSinceLastClaim(options.rootDirectory, task.id, agent.id);
+    const nextTask = {
       ...task,
-      state: "done",
+      state: "done" as const,
     };
+    await writeTaskFile(taskPath, nextTask);
+    await appendRunLog(options.rootDirectory, {
+      event: "done",
+      agent,
+      task: task.id,
+      state: nextTask.state,
+      outcome: "ok",
+      reason: options.reason,
+      durationSec,
+    });
+
+    return nextTask;
   });
 }
 

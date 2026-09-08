@@ -27,6 +27,7 @@ import {
   captureTaskEvidenceSubject,
   createTask,
   compareTaskEvidenceFreshness,
+  evaluateTaskCompletionGate,
   findTaskDependents,
   findTaskFile,
   getTaskVerification,
@@ -41,6 +42,7 @@ import {
   recordTaskReview,
   renderTaskReviewPrompt,
   renderTaskReviewResult,
+  renderTaskCompletionGate,
   renderTaskMarkdown,
   renderNextTask,
   renderTaskDeps,
@@ -988,11 +990,177 @@ test("verifyTask records run log event when owner is supplied", async () => {
   });
 });
 
+test("completion gate reports dependencies, scope, evidence, and review blockers", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeTaskFile(join(directory, ".tasks", "0007-gated-task.md"), {
+      ...TASK,
+      risk: "medium",
+      dependsOn: ["9999"],
+      allowedFiles: ["src/core/tasks/**"],
+      forbiddenFiles: [],
+      verificationCommands: ["pnpm test"],
+    });
+
+    const gate = await evaluateTaskCompletionGate({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      changedFiles: ["README.md"],
+    });
+    assert.equal(gate.passed, false);
+    assert.ok(gate.blockers.some((blocker) => blocker.includes("Dependency 9999 is missing")));
+    assert.ok(gate.blockers.some((blocker) => blocker.includes("Scope violation: README.md")));
+    assert.ok(gate.blockers.some((blocker) => blocker.includes("missing verification evidence")));
+    assert.ok(gate.blockers.some((blocker) => blocker.includes("Missing independent review")));
+    assert.match(renderTaskCompletionGate(gate), /Gate: blocked/);
+  });
+});
+
+test("completion gate accepts current evidence, rejects stale candidates, and records provenance", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await mkdir(join(directory, "src", "core", "tasks"), { recursive: true });
+    await writeTaskFile(join(directory, ".tasks", "0007-gated-task.md"), {
+      ...TASK,
+      risk: "medium",
+      state: "todo",
+      owner: "none",
+      dependsOn: [],
+      allowedFiles: ["src/core/tasks/**"],
+      forbiddenFiles: [],
+      verificationCommands: ["pass"],
+    });
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await registerAgent(directory, {
+      id: "codex-owner",
+      developer: "alice",
+      platform: "codex",
+      model: "gpt-5",
+    });
+    await registerAgent(directory, {
+      id: "codex-reviewer",
+      developer: "bob",
+      platform: "codex",
+      model: "gpt-5",
+    });
+    await claimTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-owner",
+    });
+
+    const changedFile = join(directory, "src", "core", "tasks", "changed.ts");
+    await writeFile(changedFile, "export const version = 1;\n", "utf8");
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-owner",
+      runCommand: async () => 0,
+    });
+    assert.equal(verification.passed, true);
+
+    const beforeReview = await evaluateTaskCompletionGate({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+    });
+    assert.equal(beforeReview.passed, false);
+    assert.ok(beforeReview.blockers.some((blocker) => blocker.includes("Missing independent review")));
+
+    const review = await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      outcome: "pass",
+      implementationRunId: verification.runId,
+    });
+    const ready = await evaluateTaskCompletionGate({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+    });
+    assert.equal(ready.passed, true);
+    const verificationEvidence = (await readTaskEvidence(directory, "0007"))
+      .find((record) => record.runId === verification.runId && record.checkId === "check-1");
+    assert.ok(verificationEvidence);
+    assert.ok(ready.evidenceIds.includes(verificationEvidence!.id));
+    assert.ok(ready.evidenceIds.includes(review.evidence.id));
+
+    await writeFile(changedFile, "export const version = 2;\n", "utf8");
+    const stale = await evaluateTaskCompletionGate({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+    });
+    assert.equal(stale.passed, false);
+    assert.ok(stale.blockers.some((blocker) => blocker.includes("verification evidence belongs to another candidate revision")));
+    assert.ok(stale.blockers.some((blocker) => blocker.includes("review evidence belongs to another candidate revision")));
+
+    await assert.rejects(
+      () => doneTask({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        owner: "codex-owner",
+      }),
+      /Gate: blocked/,
+    );
+    assert.equal((await loadTaskFile(join(directory, ".tasks", "0007-gated-task.md"))).task.state, "doing");
+
+    const freshVerification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-owner",
+      runCommand: async () => 0,
+    });
+    const freshReview = await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      outcome: "pass",
+      implementationRunId: freshVerification.runId,
+    });
+    const done = await doneTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-owner",
+    });
+    assert.equal(done.state, "done");
+    assert.ok(freshReview.evidence.id !== review.evidence.id);
+    const completion = (await readTaskEvidence(directory, "0007")).find((record) => record.type === "completion");
+    assert.ok(completion);
+    assert.equal(completion?.result, "pass");
+    const freshVerificationEvidence = (await readTaskEvidence(directory, "0007"))
+      .find((record) => record.runId === freshVerification.runId && record.checkId === "check-1");
+    assert.ok(freshVerificationEvidence);
+    assert.ok(completion?.evidenceSet?.includes(freshVerificationEvidence!.id));
+    assert.ok(completion?.evidenceSet?.includes(freshReview.evidence.id));
+  });
+});
+
 test("task transitions require registered owner and log events", async () => {
   await withTempDirectory(async (directory) => {
     const tasksDirectory = join(directory, ".tasks");
     const taskPath = join(tasksDirectory, "0007-add-task-system.md");
-    await writeTaskFile(taskPath, TASK);
+    const transitionTask = {
+      ...TASK,
+      risk: "low" as const,
+      dependsOn: [],
+    };
+    await writeTaskFile(taskPath, transitionTask);
 
     await assert.rejects(
       () => claimTask({
@@ -1029,6 +1197,16 @@ test("task transitions require registered owner and log events", async () => {
     });
     assert.equal(review.state, "review");
 
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      changedFiles: [],
+      runCommand: async () => 0,
+    });
+    assert.equal(verification.passed, true);
+
     const done = await doneTask({
       rootDirectory: directory,
       taskDirectory: ".tasks",
@@ -1041,6 +1219,7 @@ test("task transitions require registered owner and log events", async () => {
       "register",
       "claim",
       "review",
+      "verify",
       "done",
     ]);
     assert.deepEqual(await readdir(join(directory, ".agentic", "agents")), ["codex-a.json"]);

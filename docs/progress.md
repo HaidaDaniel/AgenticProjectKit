@@ -81,12 +81,13 @@ The repository now has:
 - claim-baseline scope attribution with dirty-file fingerprints, post-claim Git change collection, bookkeeping exclusions, and no-git diagnostics.
 - deterministic effective task policy resolution from risk, tags, structured verification, and legacy defaults, with read-only CLI diagnostics and actionable blockers.
 - independent reviewer runs, review prompts, findings, append-only review evidence, self-review prevention, and revision freshness assessment.
+- candidate-aware completion gate shared by preview and `done`, with dependency/scope/policy/evidence/review enforcement and completion provenance.
 
 ## Next step
 
-Next planned task: 0062 - Gate task completion on verification, scope, policy and evidence.
+Next planned task: 0064 - Add correctness assumptions and adversarial review contract.
 
-Planning only: tasks 0062-0076 remain todo with Owner: none. Corrective pass fixes review-before-gate bootstrap, revision/freshness semantics, lock recovery and candidate freeze.
+Planning only: tasks 0064-0076 remain todo with Owner: none. Corrective pass fixes review-before-gate bootstrap, revision/freshness semantics, lock recovery and candidate freeze.
 
 ## Remaining task plan
 
@@ -143,3 +144,4 @@ Planning only: tasks 0062-0076 remain todo with Owner: none. Corrective pass fix
 - Repo-local APK command verification passed with `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm exec apk sync`, `pnpm exec apk audit`, and `pnpm exec apk agent prompt --platform codex`.
 - Risk/task-policy verification passed with `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm exec apk task create --help`, and `pnpm exec apk doctor`.
 - Independent-review verification passed with `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm exec apk task create --help`, and `pnpm exec apk doctor`.
+- Completion-gate verification passed with `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm exec apk task create --help`, and `pnpm exec apk doctor`.

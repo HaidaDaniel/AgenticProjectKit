@@ -8,6 +8,7 @@ import {
   archiveTask,
   buildTaskDeps,
   createTask,
+  evaluateTaskCompletionGate,
   findTaskFile,
   listArchivedTaskFiles,
   listTaskFiles,
@@ -16,6 +17,7 @@ import {
   renderTaskPolicy,
   renderTaskDeps,
   renderTaskEvidence,
+  renderTaskCompletionGate,
   renderTaskVerifyResult,
   resolveTaskPolicy,
   TASK_MODES,
@@ -35,6 +37,7 @@ const TASK_HELP_TEXT = [
   "  apk task deps <task-id>",
   "  apk task evidence <task-id>",
   "  apk task policy <task-id>",
+  "  apk task gate <task-id>",
   "  apk task verify <task-id> [--check-files-only] [--profile <profile|all>] [--owner <agent-id>]",
   "  apk task create --title <title> --scope <csv> --allowed <csv> [--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>]",
   "",
@@ -43,6 +46,7 @@ const TASK_HELP_TEXT = [
   "  deps    Inspect task prerequisites, dependents, and graph problems.",
   "  evidence List append-only evidence records for a task.",
   "  policy  Resolve deterministic risk and tag requirements.",
+  "  gate    Preview completion blockers for the current candidate.",
   "  verify  Check files, resolve profiles, and record per-check evidence.",
   "  create  Generate a new task file with validated metadata.",
 ].join("\n");
@@ -73,6 +77,16 @@ const TASK_POLICY_HELP_TEXT = [
   "",
   "Resolve deterministic requirements from task risk and tags.",
   "Reports blockers and diagnostics without changing task state.",
+].join("\n");
+
+const TASK_GATE_HELP_TEXT = [
+  "Agentic Project Kit",
+  "",
+  "Usage:",
+  "  apk task gate <task-id>",
+  "",
+  "Preview verification, scope, dependency, policy, evidence, and review gates.",
+  "The command is read-only and reports blockers for the current candidate.",
 ].join("\n");
 
 const TASK_CREATE_HELP_TEXT = [
@@ -513,6 +527,28 @@ async function runPolicySubcommand(argv: string[]): Promise<number> {
   return 0;
 }
 
+async function runGateSubcommand(argv: string[]): Promise<number> {
+  if (hasHelpFlag(argv)) {
+    console.log(TASK_GATE_HELP_TEXT);
+    return 0;
+  }
+
+  rejectUnknownOptions(argv);
+  if (argv.length !== 1) {
+    throw new Error("Usage: apk task gate <task-id>");
+  }
+
+  const rootDirectory = resolve(process.cwd());
+  const config = await readAgenticConfigFile(rootDirectory);
+  const result = await evaluateTaskCompletionGate({
+    rootDirectory,
+    taskDirectory: config.taskDirectory,
+    taskId: argv[0],
+  });
+  console.log(renderTaskCompletionGate(result));
+  return result.passed ? 0 : 1;
+}
+
 async function runVerifySubcommand(argv: string[]): Promise<number> {
   if (hasHelpFlag(argv)) {
     console.log(TASK_VERIFY_HELP_TEXT);
@@ -591,6 +627,10 @@ export async function runTaskCommand(argv: string[]): Promise<number> {
 
     if (subcommand === "policy") {
       return await runPolicySubcommand(subArgs);
+    }
+
+    if (subcommand === "gate") {
+      return await runGateSubcommand(subArgs);
     }
 
     if (subcommand === "create") {

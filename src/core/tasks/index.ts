@@ -1664,7 +1664,8 @@ export async function captureTaskEvidenceSubject(
     ].map((part) => part ?? "")
     : [];
   const candidateId = `candidate:${hashCandidatePart({
-    task: renderTaskMarkdown(task),
+    // Lifecycle state/owner changes (doing -> review -> done) are not implementation changes.
+    task: renderTaskMarkdown({ ...task, state: "doing", owner: "none" }),
     headSha,
     changedFiles: normalizedChangedFiles,
     fingerprints,
@@ -2009,3 +2010,4 @@ export function renderTaskDeps(result: TaskDepsResult): string {
 export * from "./evidence.js";
 export * from "./policy.js";
 export * from "./review.js";
+export * from "./gate.js";

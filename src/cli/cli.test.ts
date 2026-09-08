@@ -538,6 +538,7 @@ test("CLI task create --help shows usage", async () => {
   assert.equal(taskHelp.exitCode, 0);
   assert.match(taskHelp.stdout, /apk task evidence <task-id>/);
   assert.match(taskHelp.stdout, /apk task policy <task-id>/);
+  assert.match(taskHelp.stdout, /apk task gate <task-id>/);
   assert.match(result.stdout, /--title/);
   assert.match(result.stdout, /--goal/);
   assert.match(result.stdout, /--mode/);
@@ -568,6 +569,30 @@ test("CLI task policy --help shows usage", async () => {
   assert.equal(result.exitCode, 0);
   assert.match(result.stdout, /apk task policy <task-id>/);
   assert.match(result.stdout, /without changing task state/);
+});
+
+test("CLI task gate previews blockers without mutating the task", async () => {
+  await withTempDirectory(async (directory) => {
+    const tasksDir = join(directory, ".tasks");
+    await mkdir(tasksDir, { recursive: true });
+    const taskPath = join(tasksDir, "0001-gated-task.md");
+    await writeFile(taskPath, buildTaskMarkdown("0001", "Gated Task", "doing", "codex-owner"), "utf8");
+
+    const result = await runCli(["task", "gate", "0001"], directory);
+
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stdout, /Gate: blocked/);
+    assert.match(result.stdout, /missing verification evidence/);
+    assert.match(await readFile(taskPath, "utf8"), /State: doing/);
+  });
+});
+
+test("CLI task gate --help shows usage", async () => {
+  const result = await runCli(["task", "gate", "--help"]);
+
+  assert.equal(result.exitCode, 0);
+  assert.match(result.stdout, /apk task gate <task-id>/);
+  assert.match(result.stdout, /read-only/);
 });
 
 test("CLI review supports a separate reviewer prompt and review evidence", async () => {

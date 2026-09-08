@@ -11,6 +11,7 @@ export const TASK_EVIDENCE_TYPES = [
   "benchmark",
   "report",
   "review",
+  "completion",
 ] as const;
 export type TaskEvidenceType = (typeof TASK_EVIDENCE_TYPES)[number];
 
@@ -58,6 +59,7 @@ export interface TaskEvidenceRecord {
   reviewer?: string;
   implementationRunId?: string;
   findings?: string[];
+  evidenceSet?: string[];
 }
 
 export interface AddTaskEvidenceInput {
@@ -78,6 +80,7 @@ export interface AddTaskEvidenceInput {
   reviewer?: string;
   implementationRunId?: string;
   findings?: string[];
+  evidenceSet?: string[];
 }
 
 export type TaskEvidenceFreshness = "current" | "stale" | "unknown";
@@ -248,6 +251,7 @@ function normalizeEvidenceRecord(
     reviewer: optionalText(value.reviewer, `${prefix}.reviewer`, issues, 120),
     implementationRunId: optionalText(value.implementationRunId, `${prefix}.implementationRunId`, issues, 120),
     findings: optionalTextList(value.findings, `${prefix}.findings`, issues),
+    evidenceSet: optionalTextList(value.evidenceSet, `${prefix}.evidenceSet`, issues),
   };
 
   if (Number.isNaN(Date.parse(record.time))) {

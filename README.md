@@ -75,6 +75,7 @@ Implemented commands:
 - `apk task deps <task-id>`
 - `apk task evidence <task-id>`
 - `apk task policy <task-id>`
+- `apk task gate <task-id>`
 - `apk task create`
 
 ## Using it in other repositories
@@ -347,6 +348,15 @@ pnpm exec apk review 0001 --reviewer codex-reviewer --result pass --implementati
 ```
 
 Review evidence keeps findings and revision-bound freshness; the implementation owner cannot self-certify an independent review.
+
+Preview and enforce completion with the same candidate-aware gate:
+
+```bash
+pnpm exec apk task gate 0001
+pnpm exec apk done 0001 --owner codex-a
+```
+
+`done` rejects missing, failed, stale, or wrong-candidate verification/review evidence and records a completion evidence set on success. There is no force bypass.
 
 Run all eligible checks or one verification profile:
 

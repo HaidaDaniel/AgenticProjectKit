@@ -65,3 +65,7 @@ Claim baselines use a parallel append-only `.agentic/task-baselines.jsonl` store
 ## Effective policy resolution
 
 `src/core/tasks/policy.ts` is a deterministic policy layer over task risk, tags, and structured verification. It applies conservative low/medium/high defaults, merges additive classification rules, reports required evidence categories, and returns explainable blockers/diagnostics. The `apk task policy` command exposes this calculation read-only. The resolver does not mutate lifecycle state; later completion work consumes its result together with verification, scope, evidence, and review outcomes.
+
+## Independent review and completion gate
+
+`src/core/tasks/review.ts` adds reviewer-only runs and evidence on top of the shared subject/freshness contract. It validates reviewer/implementation-owner separation, captures the current baseline-to-candidate subject including dirty files, stores review outcomes and findings as append-only `review` evidence, and provides a distinct inspection prompt. `src/core/tasks/gate.ts` is the single read-only evaluator for task completion: it composes dependency state, policy blockers, baseline-aware scope, current verification evidence, evidence categories, and independent review freshness. `doneTask` invokes it under the existing mutation lock, rechecks the candidate before persistence, records a `completion` evidence provenance set, and only then writes the terminal task state.

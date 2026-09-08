@@ -1,7 +1,7 @@
 # Task 0062 - Gate task completion on verification, scope, policy and evidence
 
-State: todo
-Owner: none
+State: done
+Owner: codex-20260909
 Mode: product
 Lane: task-system
 Scope: task-system,cli,tests,docs
@@ -87,13 +87,13 @@ done succeeds only after common completion gate proves dependencies/blockers, ve
 - No easy --force bypass; initial implementation provides no gate bypass.
 - Regression proves doing -> done without required gates fails for gated tasks; legacy readability remains intact.
 
-## Verification commands
+## Verification
 
-- pnpm lint
-- pnpm test
-- pnpm build
-- pnpm exec apk task create --help
-- pnpm exec apk doctor
+- `{"id":"lint","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm lint"}`
+- `{"id":"test","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test"}`
+- `{"id":"build","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}`
+- `{"id":"task-help","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk task create --help"}`
+- `{"id":"doctor","type":"automated","required":true,"environment":"local","profile":"report","command":"pnpm exec apk doctor","evidence":"doctor readiness report"}`
 
 ## Documentation updates
 

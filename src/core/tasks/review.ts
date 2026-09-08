@@ -1,4 +1,5 @@
 import { appendRunLog, requireAgent } from "../agents/index.js";
+import { relative } from "node:path";
 import {
   captureTaskEvidenceSubject,
   findTaskFile,
@@ -6,6 +7,8 @@ import {
   listTaskChangedFilesSinceBaseline,
   loadTaskFile,
   readTaskBaseline,
+  verifyTaskFileScope,
+  verifyTaskFileScopeSinceBaseline,
   type ProjectTask,
 } from "./index.js";
 import {
@@ -104,6 +107,23 @@ function reviewSubject(
   return baselineId ? { ...subject, baselineId } : subject;
 }
 
+const DEFAULT_BOOKKEEPING_PATHS = [
+  ".tasks/.apk.lock",
+  ".agentic/task-baselines.jsonl",
+  ".agentic/evidence.jsonl",
+  ".agentic/runs.jsonl",
+  ".agentic/runs/",
+  ".agentic/agents.jsonl",
+  ".agentic/agents/",
+];
+
+function isBookkeepingPath(path: string, taskFile: string): boolean {
+  const normalized = path.replace(/\\/g, "/").replace(/^\.\//, "");
+  return [taskFile, ...DEFAULT_BOOKKEEPING_PATHS].some((entry) => (
+    normalized === entry || (entry.endsWith("/") && normalized.startsWith(entry))
+  ));
+}
+
 export function renderTaskReviewPrompt(input: TaskReviewPromptInput): string {
   const baseline = input.baselineHeadSha ?? "unavailable";
   const current = input.subject.headSha ?? "unavailable";
@@ -162,11 +182,19 @@ export async function prepareTaskReview(
   const { task } = await loadTaskFile(taskPath);
   requireReviewableTask(task, reviewer.id);
   const baseline = await readTaskBaseline(options.rootDirectory, task.id);
-  const changedFiles = [...(options.changedFiles ?? (
+  const rawChangedFiles = [...(options.changedFiles ?? (
     baseline
       ? await listTaskChangedFilesSinceBaseline(options.rootDirectory, baseline)
       : await listGitChangedFiles(options.rootDirectory).catch(() => [])
   ))].sort();
+  const taskRelativePath = relative(options.rootDirectory, taskPath).replace(/\\/g, "/");
+  const scope = baseline
+    ? await verifyTaskFileScopeSinceBaseline(options.rootDirectory, task, rawChangedFiles, baseline)
+    : verifyTaskFileScope(
+      task,
+      rawChangedFiles.filter((path) => !isBookkeepingPath(path, taskRelativePath)),
+    );
+  const changedFiles = scope.changedFiles;
   const capturedSubject = await captureTaskEvidenceSubject(
     options.rootDirectory,
     task,
@@ -302,4 +330,3 @@ export function renderTaskReviewResult(result: TaskReviewResult): string {
     "",
   ].join("\n");
 }
-
