@@ -73,6 +73,8 @@ Implemented commands:
 - `apk status`
 - `apk suggest-context "<task description>"`
 - `apk task deps <task-id>`
+- `apk task evidence <task-id>`
+- `apk task policy <task-id>`
 - `apk task create`
 
 ## Using it in other repositories
@@ -336,6 +338,15 @@ pnpm exec tsx src/cli/index.ts task create \
 ```
 
 Existing `## Verification commands` task files remain readable. Flat commands normalize to required local deterministic automated checks; no migration is required.
+
+For independent review, prepare an inspection prompt and record a separately identified reviewer outcome:
+
+```bash
+pnpm exec apk review 0001 --reviewer codex-reviewer --prompt
+pnpm exec apk review 0001 --reviewer codex-reviewer --result pass --implementation-run verify-123
+```
+
+Review evidence keeps findings and revision-bound freshness; the implementation owner cannot self-certify an independent review.
 
 Run all eligible checks or one verification profile:
 
@@ -635,10 +646,10 @@ pnpm exec apk export --force
 
 ## Current status
 
-Tasks 0001 through 0057 are complete, including the CLI-focused backlog and the structured verification contract with legacy command compatibility.
+Tasks 0001 through 0063 are complete, including the CLI-focused backlog, structured verification, deterministic policy resolution, and independent review evidence.
 
 The repository now has a minimal TypeScript CLI scaffold, config schema, `init`, lightweight `adopt`, kit/workflow `audit`, `analytics summary`, `mode`, `next-task`, `tasks`, agent registration, task state transitions, sharded run analytics, `context`, `prompt`, `export`, `sync`, template rendering, doc generation helpers, Claude/Gemini/Codex/OpenCode/Cursor agent exporters, task archive/dependency commands, compact task parsing, and typed verification requirements.
 
 Default agent style for this repository: `caveman` when the active tool supports it.
 
-The next implementation task is first-class task evidence records; later gated-workflow tasks remain planned.
+The next implementation task is completion gating; later correctness, workflow, harness, adoption, and release tasks remain planned.

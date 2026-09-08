@@ -9,7 +9,13 @@ import {
   releaseTask,
   reviewTask,
 } from "../../core/tasks/workflow.js";
-import type { ProjectTask } from "../../core/tasks/index.js";
+import {
+  TASK_REVIEW_OUTCOMES,
+  prepareTaskReview,
+  recordTaskReview,
+  renderTaskReviewResult,
+  type ProjectTask,
+} from "../../core/tasks/index.js";
 
 type TaskCommand = "claim" | "release" | "block" | "review" | "done" | "cancel";
 
@@ -22,13 +28,42 @@ function readFlagValue(argv: readonly string[], flag: string): string | undefine
   return index === -1 ? undefined : argv[index + 1];
 }
 
-function readTaskId(argv: readonly string[]): string | undefined {
-  return argv.find((arg) => !arg.startsWith("-") && arg !== readFlagValue(argv, "--owner") && arg !== readFlagValue(argv, "--reason"));
+function readFlagValues(argv: readonly string[], flag: string): string[] {
+  const values: string[] = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] === flag && argv[index + 1] !== undefined) {
+      values.push(argv[index + 1]);
+      index += 1;
+    }
+  }
+  return values;
 }
 
-function rejectUnknownOptions(argv: readonly string[]): void {
+function readTaskId(
+  argv: readonly string[],
+  valueFlags: readonly string[] = ["--owner", "--reason"],
+): string | undefined {
+  const positional: string[] = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (valueFlags.includes(arg)) {
+      index += 1;
+      continue;
+    }
+    if (!arg.startsWith("-")) {
+      positional.push(arg);
+    }
+  }
+  return positional.length === 1 ? positional[0] : undefined;
+}
+
+function rejectUnknownOptions(
+  argv: readonly string[],
+  allowedFlags: readonly string[] = [],
+): void {
+  const allowed = new Set(["--owner", "--reason", ...allowedFlags]);
   for (const arg of argv) {
-    if (arg.startsWith("-") && arg !== "--owner" && arg !== "--reason") {
+    if (arg.startsWith("-") && !allowed.has(arg)) {
       throw new Error(`Unknown option: ${arg}`);
     }
   }
@@ -36,6 +71,13 @@ function rejectUnknownOptions(argv: readonly string[]): void {
 
 function helpText(command: TaskCommand): string {
   const reason = command === "block" || command === "cancel" ? " [--reason <text>]" : "";
+  if (command === "review") {
+    return [
+      "Usage: apk review <task-id> --owner <agent-id>",
+      "Usage: apk review <task-id> --reviewer <reviewer-id> --result <pass|changes_requested|fail> [--finding <text>] [--implementation-run <run-id>]",
+      "Usage: apk review <task-id> --reviewer <reviewer-id> --prompt",
+    ].join("\n");
+  }
   return `Usage: apk ${command} <task-id> --owner <agent-id>${reason}`;
 }
 
@@ -57,6 +99,56 @@ export async function runTaskStateCommand(
   }
 
   try {
+    if (command === "review" && (
+      argv.includes("--reviewer") ||
+      argv.includes("--result") ||
+      argv.includes("--prompt")
+    )) {
+      const allowedReviewFlags = ["--reviewer", "--result", "--finding", "--implementation-run", "--prompt"];
+      rejectUnknownOptions(argv, allowedReviewFlags);
+      const taskId = readTaskId(argv, ["--reviewer", "--result", "--finding", "--implementation-run"]);
+      const reviewer = readFlagValue(argv, "--reviewer");
+      if (!taskId || !reviewer) {
+        throw new Error(helpText(command));
+      }
+      const rootDirectory = resolve(process.cwd());
+      const config = await readAgenticConfigFile(rootDirectory);
+      if (hasHelpFlag(argv)) {
+        console.log(helpText(command));
+        return 0;
+      }
+      if (argv.includes("--prompt")) {
+        if (readFlagValue(argv, "--result") !== undefined || readFlagValues(argv, "--finding").length > 0) {
+          throw new Error("--prompt cannot be combined with --result or --finding.");
+        }
+        const prepared = await prepareTaskReview({
+          rootDirectory,
+          taskDirectory: config.taskDirectory,
+          taskId,
+          reviewer,
+        });
+        console.log(prepared.prompt);
+        return 0;
+      }
+      const outcome = readFlagValue(argv, "--result");
+      if (!outcome || !(TASK_REVIEW_OUTCOMES as readonly string[]).includes(outcome)) {
+        throw new Error(`--result must be one of: ${TASK_REVIEW_OUTCOMES.join(", ")}.`);
+      }
+      if (argv.includes("--prompt")) {
+        throw new Error("--prompt cannot be combined with a review result.");
+      }
+      const result = await recordTaskReview({
+        rootDirectory,
+        taskDirectory: config.taskDirectory,
+        taskId,
+        reviewer,
+        outcome: outcome as (typeof TASK_REVIEW_OUTCOMES)[number],
+        findings: readFlagValues(argv, "--finding"),
+        implementationRunId: readFlagValue(argv, "--implementation-run"),
+      });
+      console.log(renderTaskReviewResult(result));
+      return result.outcome === "pass" ? 0 : 1;
+    }
     rejectUnknownOptions(argv);
     const taskId = readTaskId(argv);
     const owner = readFlagValue(argv, "--owner");

@@ -19,10 +19,12 @@ import {
 import {
   allTaskFiles,
   appendTaskEvidence,
+  assessTaskReviews,
   archiveAllTasks,
   archiveTask,
   buildTaskDeps,
   buildTaskFileName,
+  captureTaskEvidenceSubject,
   createTask,
   compareTaskEvidenceFreshness,
   findTaskDependents,
@@ -30,14 +32,21 @@ import {
   getTaskVerification,
   listArchivedTaskFiles,
   listTaskFiles,
+  listTaskReviews,
+  loadTaskFile,
   nextTaskId,
   normalizeVerificationCommands,
   parseTaskMarkdown,
+  prepareTaskReview,
+  recordTaskReview,
+  renderTaskReviewPrompt,
+  renderTaskReviewResult,
   renderTaskMarkdown,
   renderNextTask,
   renderTaskDeps,
   renderTaskPolicy,
   readTaskEvidence,
+  readTaskBaseline,
   renderTasksTable,
   resolveTaskPolicy,
   selectNextTask,
@@ -375,6 +384,112 @@ test("task evidence reports corrupted append-only records", async () => {
         assert.match(error.message, /Evidence line 1 must be valid JSON/);
         return true;
       },
+    );
+  });
+});
+
+test("independent review uses a separate reviewer run and revision-bound evidence", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await mkdir(join(directory, "src", "core", "tasks"), { recursive: true });
+    const taskPath = join(directory, ".tasks", "0007-reviewable-task.md");
+    await writeTaskFile(taskPath, {
+      ...TASK,
+      state: "todo",
+      owner: "none",
+      allowedFiles: ["src/core/tasks/**"],
+      forbiddenFiles: [],
+    });
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await registerAgent(directory, {
+      id: "codex-owner",
+      developer: "alice",
+      platform: "codex",
+      model: "gpt-5",
+    });
+    await registerAgent(directory, {
+      id: "codex-reviewer",
+      developer: "bob",
+      platform: "codex",
+      model: "gpt-5",
+    });
+    await claimTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-owner",
+    });
+
+    const changedFile = join(directory, "src", "core", "tasks", "changed.ts");
+    await writeFile(changedFile, "export const version = 1;\n", "utf8");
+    const first = await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      outcome: "pass",
+      implementationRunId: "verify-a",
+      changedFiles: ["src/core/tasks/changed.ts"],
+    });
+    assert.match(first.runId, /^review-/);
+    assert.equal(first.evidence.agent, "codex-reviewer");
+    assert.equal(first.evidence.implementationRunId, "verify-a");
+    assert.notEqual(first.runId, first.evidence.implementationRunId);
+    assert.match(first.prompt, /do not continue implementation work/);
+    assert.match(first.prompt, /Green tests alone are not correctness proof/);
+    assert.match(first.prompt, /Baseline-to-current diff:/);
+    assert.match(renderTaskReviewResult(first), /Outcome: pass/);
+
+    await writeFile(changedFile, "export const version = 2;\n", "utf8");
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.ok(baseline);
+    const currentTask = (await loadTaskFile(taskPath)).task;
+    const currentSubject = {
+      ...(await captureTaskEvidenceSubject(directory, currentTask, ["src/core/tasks/changed.ts"])),
+      baselineId: baseline.baselineId,
+    };
+    const assessmentsBefore = assessTaskReviews([first.evidence], currentSubject);
+    assert.equal(assessmentsBefore[0].freshness, "stale");
+
+    const second = await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      outcome: "changes_requested",
+      findings: ["Check the version transition boundary."],
+      implementationRunId: "verify-b",
+      changedFiles: ["src/core/tasks/changed.ts"],
+    });
+    assert.equal(second.outcome, "changes_requested");
+    assert.deepEqual(second.findings, ["Check the version transition boundary."]);
+    assert.equal(assessTaskReviews([second.evidence], second.subject)[0].freshness, "current");
+    assert.equal((await listTaskReviews(directory, "0007")).length, 2);
+    assert.equal((await readTaskEvidence(directory, "0007")).filter((record) => record.type === "review").length, 2);
+    assert.match(renderTaskReviewPrompt({
+      task: currentTask,
+      reviewer: "codex-reviewer",
+      subject: second.subject,
+      changedFiles: second.changedFiles,
+    }), /Acceptance criteria:/);
+
+    await assert.rejects(
+      () => recordTaskReview({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        reviewer: "codex-owner",
+        outcome: "pass",
+        changedFiles: ["src/core/tasks/changed.ts"],
+      }),
+      /cannot certify the same task/,
     );
   });
 });

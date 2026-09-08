@@ -26,6 +26,8 @@ When Agentic Project Kit is installed as a repository dev dependency, run comman
 - `apk release <task-id> --owner <agent-id>` - release a task back to todo.
 - `apk block <task-id> --owner <agent-id> --reason <text>` - block a task.
 - `apk review <task-id> --owner <agent-id>` - move a task to review.
+- `apk review <task-id> --reviewer <reviewer-id> --result <pass|changes_requested|fail> [--finding <text>] [--implementation-run <run-id>]` - append independent review evidence without changing task state.
+- `apk review <task-id> --reviewer <reviewer-id> --prompt` - render the revision-bound inspection prompt for an independent reviewer.
 - `apk done <task-id> --owner <agent-id>` - mark a task done.
 - `apk cancel <task-id> --owner <agent-id> --reason <text>` - cancel a task.
 - `apk context <task-id>` - output the context files needed for a task.
@@ -82,6 +84,7 @@ pnpm exec apk task create --template bugfix --title "Fix Parser" --scope cli --a
 `apk task verify --profile` selects `deterministic`, `integration`, `trusted`, or `report` checks. Manual/live checks are reported as unavailable, unselected checks as not-run, and required non-pass results return exit code 1. Each check appends a revision-bound record to `.agentic/evidence.jsonl`; command output is never stored.
 After `apk claim`, verification compares changed paths with the claim baseline in `.agentic/task-baselines.jsonl`, excludes unchanged pre-existing dirty files and workflow bookkeeping, and reports attributed scope violations. Baseline diagnostics are included in the machine-readable `verifyTask` result.
 `apk task policy <task-id>` resolves low/medium/high risk defaults and additive classification tags. It prints automated verification, scope, review, and evidence requirements plus actionable blockers and diagnostics; it does not enforce completion or mutate the task.
+`apk review` with `--reviewer` creates a separate `review-...` run, rejects self-review by the implementation owner, and records `pass`, `changes_requested`, or `fail` with optional findings. `--prompt` prints the evaluated HEAD, baseline/candidate/worktree identity, changed paths, acceptance criteria, scope, and adversarial inspection guidance without writing evidence.
 `apk audit` uses static inspection only. It reports lightweight readiness facts such as package scripts, lockfiles, CI presence, env examples, tests, license, README, Docker files, monorepo indicators, and TypeScript strict mode.
 `apk suggest-context` is heuristic and local. It scans bounded project paths and suggests candidates; it does not guarantee deep code understanding.
 

@@ -61,3 +61,4 @@ Agent registry, run logs, and archived tasks are analytics and history, not impl
 - Keep evidence and run history out of implementation context; expose bounded evidence summaries through task/status commands when needed.
 - Use scanner facts as availability bounds for metadata-driven docs.
 - Use `apk suggest-context "<task description>"` as optional local heuristic support when drafting a task. Suggestions are candidates, not guaranteed affected-file analysis.
+- Independent review prompts use the task contract plus the evaluated HEAD, baseline, candidate/worktree identity, changed paths, acceptance criteria, and allowed/forbidden scope; they are inspection prompts, not implementation prompts.

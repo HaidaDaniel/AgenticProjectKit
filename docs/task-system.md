@@ -174,7 +174,7 @@ Verification and review results can be stored as append-only JSONL records in `.
 - `taskId`, `baselineId`, `candidateId`, and `worktreeId`;
 - `repository: git` plus `headSha` for repository-backed work; or `repository: none` with explicit equivalent identities.
 
-Evidence results are `pass`, `fail`, `pending`, `unavailable`, or `not-run`. `readTaskEvidence` filters by task ID, while `compareTaskEvidenceFreshness` classifies a record as `current`, `stale`, or `unknown` against a candidate subject. Mismatched candidates remain in history but cannot be treated as current. Commands and short references are bounded; large stdout/stderr is not stored.
+Evidence results are `pass`, `changes_requested` (review only), `fail`, `pending`, `unavailable`, or `not-run`. `readTaskEvidence` filters by task ID, while `compareTaskEvidenceFreshness` classifies a record as `current`, `stale`, or `unknown` against a candidate subject. Mismatched candidates remain in history but cannot be treated as current. Commands and short references are bounded; large stdout/stderr is not stored.
 
 Use `apk task evidence <task-id>` for a safe summary of records. The append-only store keeps repeated runs and failed evidence instead of overwriting history.
 
@@ -198,6 +198,18 @@ Claiming a task records a baseline in `.agentic/task-baselines.jsonl`: HEAD when
 - Classification tags add requirements: `migration`, `async`, `worker`, and `security` require independent review; `deployment` and `release` require live evidence; `benchmark` and `evaluation` require benchmark evidence; `provider` and `integration` require report evidence.
 
 Tag rules are additive and can be extended through the resolver API. Contradictory rules and incompatible tags such as `no-review`, `no-verification`, or `local-only` produce actionable blockers. Legacy `## Verification commands` tasks remain readable and receive local deterministic automated defaults; high-risk legacy tasks still report missing evidence instead of silently passing. Policy resolution is preparatory—completion enforcement begins in the later gate task.
+
+## Independent review
+
+The existing `apk review <task-id> --owner <agent-id>` transition moves an implementation task to `review`. A separate reviewer can prepare a review prompt or append review evidence without changing lifecycle state:
+
+```bash
+pnpm exec apk review 0063 --reviewer codex-reviewer --prompt
+pnpm exec apk review 0063 --reviewer codex-reviewer --result pass --implementation-run verify-123
+pnpm exec apk review 0063 --reviewer codex-reviewer --result changes_requested --finding "Cover the rollback path."
+```
+
+Reviewers must be registered and cannot equal the implementation owner. Review records use a distinct `review-...` run ID, retain reviewer identity, optional implementation-run linkage, findings, and the same baseline/candidate/worktree subject used by verification. `listTaskReviews` and `assessTaskReviews` expose history and `current`/`stale`/`unknown` freshness; changing dirty implementation content makes earlier review PASS evidence stale. Review prompts name the evaluated HEAD and baseline-to-current changed paths and require inspection of acceptance criteria, assumptions, failure paths, scope, and counterexamples. They explicitly reject green tests alone as correctness proof.
 
 ## CLI work loop
 

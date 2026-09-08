@@ -570,6 +570,55 @@ test("CLI task policy --help shows usage", async () => {
   assert.match(result.stdout, /without changing task state/);
 });
 
+test("CLI review supports a separate reviewer prompt and review evidence", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    const tasksDir = join(directory, ".tasks");
+    await mkdir(tasksDir, { recursive: true });
+    await writeFile(join(tasksDir, "0001-review-task.md"), buildTaskMarkdown("0001", "Review Task", "todo"), "utf8");
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+
+    for (const [id, developer] of [["codex-owner", "alice"], ["codex-reviewer", "bob"]]) {
+      const registered = await runCli([
+        "agent", "register", "--id", id, "--developer", developer,
+        "--platform", "codex", "--model", "gpt-5",
+      ], directory);
+      assert.equal(registered.exitCode, 0);
+    }
+    const claimed = await runCli(["claim", "0001", "--owner", "codex-owner"], directory);
+    assert.equal(claimed.exitCode, 0);
+    await mkdir(join(directory, "src"), { recursive: true });
+    await writeFile(join(directory, "src", "changed.ts"), "export const changed = true;\n", "utf8");
+
+    const prompt = await runCli(["review", "0001", "--reviewer", "codex-reviewer", "--prompt"], directory);
+    assert.equal(prompt.exitCode, 0);
+    assert.match(prompt.stdout, /Evaluated HEAD:/);
+    assert.match(prompt.stdout, /do not continue implementation work/);
+    assert.match(prompt.stdout, /Green tests alone are not correctness proof/);
+
+    const review = await runCli([
+      "review", "0001", "--reviewer", "codex-reviewer", "--result", "changes_requested",
+      "--finding", "Inspect the failure path.", "--implementation-run", "verify-a",
+    ], directory);
+    assert.equal(review.exitCode, 1);
+    assert.match(review.stdout, /Reviewer: codex-reviewer/);
+    assert.match(review.stdout, /Outcome: changes_requested/);
+    assert.match(review.stdout, /Inspect the failure path\./);
+
+    const selfReview = await runCli([
+      "review", "0001", "--reviewer", "codex-owner", "--result", "pass",
+    ], directory);
+    assert.equal(selfReview.exitCode, 1);
+    assert.ok(selfReview.stdout.match(/cannot certify the same task/) || selfReview.stderr.match(/cannot certify the same task/));
+  });
+});
+
 test("CLI task create writes a valid task file", async () => {
   await withTempDirectory(async (directory) => {
     await mkdir(join(directory, ".agentic"), { recursive: true });

@@ -16,6 +16,7 @@ export type TaskEvidenceType = (typeof TASK_EVIDENCE_TYPES)[number];
 
 export const TASK_EVIDENCE_RESULTS = [
   "pass",
+  "changes_requested",
   "fail",
   "pending",
   "unavailable",
@@ -54,6 +55,9 @@ export interface TaskEvidenceRecord {
   artifact?: string;
   evidence?: string;
   summary?: string;
+  reviewer?: string;
+  implementationRunId?: string;
+  findings?: string[];
 }
 
 export interface AddTaskEvidenceInput {
@@ -71,6 +75,9 @@ export interface AddTaskEvidenceInput {
   artifact?: string;
   evidence?: string;
   summary?: string;
+  reviewer?: string;
+  implementationRunId?: string;
+  findings?: string[];
 }
 
 export type TaskEvidenceFreshness = "current" | "stale" | "unknown";
@@ -132,6 +139,24 @@ function optionalText(
     return undefined;
   }
   return textValue(value, label, issues, maxLength);
+}
+
+function optionalTextList(
+  value: unknown,
+  label: string,
+  issues: string[],
+): string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    issues.push(`${label} must be an array when provided.`);
+    return undefined;
+  }
+  if (value.length > 32) {
+    issues.push(`${label} must contain at most 32 items.`);
+  }
+  return value.map((item, index) => textValue(item, `${label}[${index}]`, issues, 320));
 }
 
 function oneOf<T extends string>(
@@ -220,6 +245,9 @@ function normalizeEvidenceRecord(
     artifact: optionalText(value.artifact, `${prefix}.artifact`, issues),
     evidence: optionalText(value.evidence, `${prefix}.evidence`, issues),
     summary: optionalText(value.summary, `${prefix}.summary`, issues, 320),
+    reviewer: optionalText(value.reviewer, `${prefix}.reviewer`, issues, 120),
+    implementationRunId: optionalText(value.implementationRunId, `${prefix}.implementationRunId`, issues, 120),
+    findings: optionalTextList(value.findings, `${prefix}.findings`, issues),
   };
 
   if (Number.isNaN(Date.parse(record.time))) {
@@ -368,6 +396,9 @@ export function renderTaskEvidence(
     lines.push(`    Subject: baseline=${record.subject.baselineId} candidate=${record.subject.candidateId} worktree=${record.subject.worktreeId}`);
     if (record.summary) {
       lines.push(`    Summary: ${record.summary}`);
+    }
+    if (record.findings && record.findings.length > 0) {
+      lines.push(`    Findings: ${record.findings.join("; ")}`);
     }
   }
   lines.push("");

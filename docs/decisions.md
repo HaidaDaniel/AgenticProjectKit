@@ -185,3 +185,19 @@ Risk must produce predictable ceremony: automated verification for low risk, sco
 Implementation:
 
 `resolveTaskPolicy` applies conservative defaults, merges the small built-in tag-rule registry with optional rules, deduplicates evidence categories, and reports conflicts or missing requirements as blockers. Legacy command-only tasks normalize to local deterministic checks; high-risk legacy tasks remain readable but fail policy resolution until evidence is declared. `apk task policy` is a read-only diagnostic surface; completion enforcement is deferred to the dependent gate task.
+
+## ADR-0014 - Independent review uses separate revision-bound evidence
+
+Status: accepted
+
+Decision:
+
+Keep the lifecycle transition to `review` separate from independent review certification. Record reviewer outcomes in the existing append-only evidence store with a distinct review run, reviewer identity, findings, and the evaluated candidate subject.
+
+Reason:
+
+An implementation owner must not certify a mandatory independent review. Review evidence must survive fix iterations, make stale PASS results visible after dirty changes, and give a later completion gate a stable current/stale/unknown assessment without requiring a vendor model runtime.
+
+Implementation:
+
+`recordTaskReview` validates a registered reviewer different from the task owner, emits `pass`, `changes_requested`, or `fail`, links an optional implementation run, and reuses verification subject/freshness semantics. `renderTaskReviewPrompt` names the baseline-to-current diff and requires acceptance, scope, hidden-assumption, failure-path, and counterexample review. The CLI supports `--prompt` and evidence recording; it does not change task state or enforce done.
