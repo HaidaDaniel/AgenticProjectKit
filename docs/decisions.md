@@ -153,3 +153,19 @@ Manual/live requirements and skipped profiles must remain visible and must not b
 Implementation:
 
 `apk task verify` keeps the legacy command projection, supports `--profile`, appends per-check evidence, and returns failure when any required check is not `pass`. Optional failures remain observable without blocking the run.
+
+## ADR-0012 - Claim baseline for conservative scope attribution
+
+Status: accepted
+
+Decision:
+
+Capture a task claim baseline in append-only `.agentic/task-baselines.jsonl` and compare later paths plus content fingerprints against it.
+
+Reason:
+
+A whole-worktree diff cannot distinguish pre-existing user edits from task changes. Safe verification must report attribution limits and avoid blaming unchanged dirty files or APK bookkeeping.
+
+Implementation:
+
+Git baselines record HEAD and dirty-file fingerprints; later verification includes post-claim commits and working-tree changes, handles new/deleted/renamed paths, and excludes unchanged baseline files plus explicit bookkeeping paths. No-git and detached/unborn HEAD states return diagnostics and fail closed on attribution certainty.

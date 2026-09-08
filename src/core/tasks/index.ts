@@ -1,6 +1,6 @@
 import { exec, execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, open, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, open, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { promisify } from "node:util";
 
@@ -54,6 +54,8 @@ export type TaskMode = (typeof TASK_MODES)[number];
 
 export const TASK_RISKS = ["low", "medium", "high"] as const;
 export type TaskRisk = (typeof TASK_RISKS)[number];
+
+export const TASK_BASELINES_PATH = ".agentic/task-baselines.jsonl";
 
 export const TASK_VERIFICATION_TYPES = ["automated", "manual"] as const;
 export type TaskVerificationType = (typeof TASK_VERIFICATION_TYPES)[number];
@@ -1070,6 +1072,38 @@ export interface TaskFileScopeResult {
   changedFiles: string[];
   outOfScopeFiles: string[];
   forbiddenTouchedFiles: string[];
+  attribution?: TaskScopeAttribution;
+}
+
+export interface TaskScopeAttribution {
+  baselineId: string;
+  attributedFiles: string[];
+  preExistingFiles: string[];
+  bookkeepingFiles: string[];
+  diagnostics: string[];
+}
+
+export interface TaskClaimBaseline {
+  baselineId: string;
+  taskId: string;
+  owner: string;
+  time: string;
+  repository: "git" | "none";
+  headSha?: string;
+  taskFile: string;
+  dirtyFiles: Record<string, string>;
+  bookkeepingPaths: string[];
+  diagnostics: string[];
+}
+
+export class TaskBaselineFormatError extends Error {
+  readonly issues: string[];
+
+  constructor(issues: string[]) {
+    super(`Invalid task baseline:\n- ${issues.join("\n- ")}`);
+    this.name = "TaskBaselineFormatError";
+    this.issues = issues;
+  }
 }
 
 export interface TaskVerifyCommandResult {
@@ -1402,6 +1436,213 @@ async function fingerprintChangedFiles(
   return fingerprints;
 }
 
+const DEFAULT_BOOKKEEPING_PATHS = [
+  ".tasks/.apk.lock",
+  ".agentic/task-baselines.jsonl",
+  ".agentic/evidence.jsonl",
+  ".agentic/runs.jsonl",
+  ".agentic/runs/",
+  ".agentic/agents.jsonl",
+  ".agentic/agents/",
+];
+
+function isBookkeepingPath(path: string, baseline: TaskClaimBaseline): boolean {
+  return [baseline.taskFile, ...baseline.bookkeepingPaths]
+    .map(normalizeRepoPath)
+    .some((entry) => path === entry || (entry.endsWith("/") && path.startsWith(entry)));
+}
+
+function isDefaultBookkeepingPath(path: string, taskFile: string): boolean {
+  return [taskFile, ...DEFAULT_BOOKKEEPING_PATHS]
+    .map(normalizeRepoPath)
+    .some((entry) => path === entry || (entry.endsWith("/") && path.startsWith(entry)));
+}
+
+function normalizeBaseline(value: unknown, lineNumber: number): TaskClaimBaseline {
+  const issues: string[] = [];
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new TaskBaselineFormatError([`Baseline line ${lineNumber} must be a JSON object.`]);
+  }
+  const raw = value as Record<string, unknown>;
+  const text = (field: string, max = 200): string => {
+    const fieldValue = raw[field];
+    if (typeof fieldValue !== "string" || fieldValue.trim().length === 0) {
+      issues.push(`Baseline line ${lineNumber}.${field} must be a non-empty string.`);
+      return "";
+    }
+    if (fieldValue.length > max) {
+      issues.push(`Baseline line ${lineNumber}.${field} must be at most ${max} characters.`);
+    }
+    return fieldValue;
+  };
+  const repository = raw.repository === "git" || raw.repository === "none"
+    ? raw.repository
+    : (issues.push(`Baseline line ${lineNumber}.repository must be git or none.`), "none");
+  const dirtyFiles: Record<string, string> = {};
+  if (!raw.dirtyFiles || typeof raw.dirtyFiles !== "object" || Array.isArray(raw.dirtyFiles)) {
+    issues.push(`Baseline line ${lineNumber}.dirtyFiles must be an object.`);
+  } else {
+    for (const [path, fingerprint] of Object.entries(raw.dirtyFiles as Record<string, unknown>)) {
+      if (typeof fingerprint !== "string" || fingerprint.length === 0) {
+        issues.push(`Baseline line ${lineNumber}.dirtyFiles.${path} must be a non-empty string.`);
+      } else {
+        dirtyFiles[normalizeRepoPath(path)] = fingerprint;
+      }
+    }
+  }
+  const bookkeepingPaths = Array.isArray(raw.bookkeepingPaths)
+    ? raw.bookkeepingPaths.filter((path): path is string => typeof path === "string").map(normalizeRepoPath)
+    : [];
+  const diagnostics = Array.isArray(raw.diagnostics)
+    ? raw.diagnostics.filter((item): item is string => typeof item === "string")
+    : [];
+  const baseline: TaskClaimBaseline = {
+    baselineId: text("baselineId", 240),
+    taskId: text("taskId"),
+    owner: text("owner"),
+    time: text("time", 40),
+    repository,
+    ...(typeof raw.headSha === "string" && raw.headSha.length > 0 ? { headSha: raw.headSha } : {}),
+    taskFile: normalizeRepoPath(text("taskFile")),
+    dirtyFiles,
+    bookkeepingPaths,
+    diagnostics,
+  };
+  if (baseline.repository === "git" && !baseline.headSha) {
+    issues.push(`Baseline line ${lineNumber}.headSha is required for git baselines.`);
+  }
+  if (issues.length > 0) {
+    throw new TaskBaselineFormatError(issues);
+  }
+  return baseline;
+}
+
+export async function captureTaskBaseline(
+  rootDirectory: string,
+  taskId: string,
+  owner: string,
+  taskFile: string,
+): Promise<TaskClaimBaseline> {
+  const changedFiles = await listGitChangedFiles(rootDirectory).catch(() => []);
+  const fingerprints = await fingerprintChangedFiles(rootDirectory, changedFiles);
+  const headSha = (await gitOutput(rootDirectory, ["rev-parse", "HEAD"]))?.trim() || undefined;
+  const repository = headSha ? "git" : "none";
+  const diagnostics = repository === "git"
+    ? []
+    : ["Git HEAD unavailable; dirty-file attribution is limited to explicit current paths."];
+  const time = new Date().toISOString();
+  const bookkeepingPaths = [...DEFAULT_BOOKKEEPING_PATHS];
+  const baselineId = `baseline:${hashCandidatePart({ taskId, owner, time, headSha, changedFiles })}`;
+  const baseline: TaskClaimBaseline = {
+    baselineId,
+    taskId,
+    owner,
+    time,
+    repository,
+    ...(headSha ? { headSha } : {}),
+    taskFile: normalizeRepoPath(taskFile),
+    dirtyFiles: Object.fromEntries(fingerprints.map(({ path, sha256 }) => [path, sha256])),
+    bookkeepingPaths,
+    diagnostics,
+  };
+  const path = join(rootDirectory, TASK_BASELINES_PATH);
+  await mkdir(dirname(path), { recursive: true });
+  await appendFile(path, `${JSON.stringify(baseline)}\n`, "utf8");
+  return baseline;
+}
+
+export async function readTaskBaseline(
+  rootDirectory: string,
+  taskId: string,
+): Promise<TaskClaimBaseline | undefined> {
+  let content: string;
+  try {
+    content = await readFile(join(rootDirectory, TASK_BASELINES_PATH), "utf8");
+  } catch (error: unknown) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  }
+
+  let latest: TaskClaimBaseline | undefined;
+  for (const [index, line] of content.split("\n").entries()) {
+    if (line.trim().length === 0) continue;
+    let value: unknown;
+    try {
+      value = JSON.parse(line);
+    } catch (error: unknown) {
+      throw new TaskBaselineFormatError([
+        `Baseline line ${index + 1} must be valid JSON (${error instanceof Error ? error.message : String(error)}).`,
+      ]);
+    }
+    const baseline = normalizeBaseline(value, index + 1);
+    if (baseline.taskId === taskId) {
+      latest = baseline;
+    }
+  }
+  return latest;
+}
+
+export async function listTaskChangedFilesSinceBaseline(
+  rootDirectory: string,
+  baseline: TaskClaimBaseline,
+): Promise<string[]> {
+  if (baseline.repository === "git" && baseline.headSha) {
+    const committedAndWorking = await gitOutput(rootDirectory, [
+      "diff",
+      "--name-only",
+      "--no-renames",
+      baseline.headSha,
+    ]);
+    const untracked = await gitOutput(rootDirectory, ["ls-files", "--others", "--exclude-standard"]);
+    return [...new Set([
+      ...(committedAndWorking ?? "").split(/\r?\n/),
+      ...(untracked ?? "").split(/\r?\n/),
+    ].map(normalizeRepoPath).filter((path) => path.length > 0))].sort();
+  }
+
+  return listGitChangedFiles(rootDirectory).catch(() => []);
+}
+
+export async function verifyTaskFileScopeSinceBaseline(
+  rootDirectory: string,
+  task: ProjectTask,
+  changedFiles: readonly string[],
+  baseline: TaskClaimBaseline,
+): Promise<TaskFileScopeResult> {
+  const normalizedChanged = [...new Set(changedFiles.map(normalizeRepoPath))]
+    .filter((file) => file.length > 0)
+    .sort();
+  const fingerprints = Object.fromEntries(
+    (await fingerprintChangedFiles(rootDirectory, normalizedChanged))
+      .map(({ path, sha256 }) => [path, sha256]),
+  );
+  const attributedFiles: string[] = [];
+  const preExistingFiles: string[] = [];
+  const bookkeepingFiles: string[] = [];
+  for (const file of normalizedChanged) {
+    if (isBookkeepingPath(file, baseline)) {
+      bookkeepingFiles.push(file);
+    } else if (baseline.dirtyFiles[file] !== undefined && baseline.dirtyFiles[file] === fingerprints[file]) {
+      preExistingFiles.push(file);
+    } else {
+      attributedFiles.push(file);
+    }
+  }
+  const scope = verifyTaskFileScope(task, attributedFiles);
+  return {
+    ...scope,
+    attribution: {
+      baselineId: baseline.baselineId,
+      attributedFiles,
+      preExistingFiles,
+      bookkeepingFiles,
+      diagnostics: baseline.diagnostics,
+    },
+  };
+}
+
 export async function captureTaskEvidenceSubject(
   rootDirectory: string,
   task: ProjectTask,
@@ -1517,17 +1758,30 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
     options.taskDirectory,
   );
   const { task } = await loadTaskFile(taskPath);
-  const changedFiles = options.changedFiles ?? await listGitChangedFiles(options.rootDirectory).catch(() => []);
-  const scope = verifyTaskFileScope(
-    task,
-    changedFiles,
+  const baseline = await readTaskBaseline(options.rootDirectory, task.id);
+  const changedFiles = options.changedFiles ?? (
+    baseline
+      ? await listTaskChangedFilesSinceBaseline(options.rootDirectory, baseline)
+      : await listGitChangedFiles(options.rootDirectory).catch(() => [])
   );
+  const scope = baseline
+    ? await verifyTaskFileScopeSinceBaseline(options.rootDirectory, task, changedFiles, baseline)
+    : verifyTaskFileScope(
+      task,
+      changedFiles.filter((path) => !isDefaultBookkeepingPath(
+        normalizeRepoPath(path),
+        normalizeRepoPath(relative(options.rootDirectory, taskPath)),
+      )),
+    );
   const runId = verificationRunId();
-  const subject = await captureTaskEvidenceSubject(
+  const capturedSubject = await captureTaskEvidenceSubject(
     options.rootDirectory,
     task,
     scope.changedFiles,
   );
+  const subject: TaskEvidenceCandidateSubject = baseline
+    ? { ...capturedSubject, baselineId: baseline.baselineId }
+    : capturedSubject;
   const checks = getTaskVerification(task);
   const commandsRun: TaskVerifyCommandResult[] = [];
   const checkResults: TaskVerifyCheckResult[] = [];
@@ -1634,6 +1888,7 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
 
   return {
     taskId: task.id,
+    attribution: scope.attribution,
     runId,
     subject,
     checkResults,

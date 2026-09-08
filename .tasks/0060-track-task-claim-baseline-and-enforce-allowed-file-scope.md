@@ -1,7 +1,7 @@
 # Task 0060 - Track task claim baseline and enforce allowed-file scope
 
-State: todo
-Owner: none
+State: done
+Owner: codex-20260909
 Mode: product
 Lane: task-system
 Scope: task-system,cli,tests,docs

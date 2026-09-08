@@ -1,5 +1,5 @@
 import { mkdir, open, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 
 import {
   appendRunLog,
@@ -10,6 +10,7 @@ import {
 } from "../agents/index.js";
 import {
   findTaskFile,
+  captureTaskBaseline,
   loadTaskFile,
   writeTaskFile,
   type ProjectTask,
@@ -98,6 +99,14 @@ async function transition(
     );
     const { task } = await loadTaskFile(taskPath);
     const nextTask = await update(task, agent);
+    if (event === "claim") {
+      await captureTaskBaseline(
+        options.rootDirectory,
+        task.id,
+        agent.id,
+        relative(options.rootDirectory, taskPath).replace(/\\/g, "/"),
+      );
+    }
     const durationSec = event === "done"
       ? await durationSinceLastClaim(options.rootDirectory, task.id, agent.id)
       : undefined;

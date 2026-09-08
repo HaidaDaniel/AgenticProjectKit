@@ -184,6 +184,10 @@ Use `apk task evidence <task-id>` for a safe summary of records. The append-only
 
 Each check produces a distinct `pass`, `fail`, `pending`, `unavailable`, or `not-run` result. Required non-pass checks fail verification; optional failures do not. A verification run records one run ID and subject identity for every check. If the candidate changes during execution, pass results are converted to mixed-revision failures.
 
+Claiming a task records a baseline in `.agentic/task-baselines.jsonl`: HEAD when available, dirty-file fingerprints, task file, and workflow bookkeeping paths. Later scope verification compares committed, working-tree, new, deleted, and renamed paths against that baseline. Unchanged pre-claim dirty files are reported as `preExistingFiles` and excluded from violations; edits after claim are attributed to the task. Task/evidence/run/agent bookkeeping paths are excluded explicitly.
+
+`verifyTask` exposes machine-readable attribution with `baselineId`, `attributedFiles`, `preExistingFiles`, `bookkeepingFiles`, and diagnostics. No-git or unavailable-HEAD work remains supported but reports limited attribution instead of claiming certainty.
+
 ## CLI work loop
 
 `pnpm exec apk work <task-id> --owner <agent-id> --target <agent>` connects the existing task workflow:

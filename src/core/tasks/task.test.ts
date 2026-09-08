@@ -1,8 +1,10 @@
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { promisify } from "node:util";
 
 import {
   registerAgent,
@@ -55,6 +57,8 @@ import {
   releaseTask,
   reviewTask,
 } from "./workflow.js";
+
+const execFileAsync = promisify(execFile);
 
 const TASK: ProjectTask = {
   id: "0007",
@@ -492,6 +496,74 @@ test("verifyTaskFileScope reports forbidden files even when allowed", () => {
 
   assert.deepEqual(result.outOfScopeFiles, []);
   assert.deepEqual(result.forbiddenTouchedFiles, ["package.json"]);
+});
+
+test("claim baseline attributes later git changes without blaming pre-existing dirty files", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await mkdir(join(directory, "docs", "foo"), { recursive: true });
+    await mkdir(join(directory, "secrets"), { recursive: true });
+    await writeFile(join(directory, "docs", "foo", "preexisting.md"), "before\n", "utf8");
+    await writeFile(join(directory, "docs", "foo", "delete-me.md"), "delete\n", "utf8");
+    await writeFile(join(directory, "secrets", "config.txt"), "clean\n", "utf8");
+    const task: ProjectTask = {
+      ...TASK,
+      allowedFiles: ["docs/foo/**", "secrets/**"],
+      forbiddenFiles: ["secrets/**"],
+      verificationCommands: ["pnpm test"],
+    };
+    const taskPath = join(directory, ".tasks", "0007-add-task-system.md");
+    await writeTaskFile(taskPath, task);
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+
+    // These edits exist before claim and must not be attributed unless changed again.
+    await writeFile(join(directory, "docs", "foo", "preexisting.md"), "before-claim\n", "utf8");
+    await writeFile(join(directory, "secrets", "config.txt"), "preexisting-secret\n", "utf8");
+
+    await registerAgent(directory, {
+      id: "codex-a",
+      developer: "alice",
+      platform: "codex",
+      model: "gpt-5",
+    });
+    await claimTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+    });
+
+    await writeFile(join(directory, "docs", "foo", "new.md"), "new\n", "utf8");
+    await writeFile(join(directory, "docs", "foobar.md"), "wrong directory\n", "utf8");
+    await writeFile(join(directory, "secrets", "config.txt"), "changed-after-claim\n", "utf8");
+    await rm(join(directory, "docs", "foo", "delete-me.md"));
+    await git("add", "docs/foo/new.md");
+    await git("commit", "--quiet", "-m", "post-claim change");
+
+    const result = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      checkFilesOnly: true,
+    });
+
+    assert.equal(result.passed, false);
+    assert.deepEqual(result.attribution?.preExistingFiles, ["docs/foo/preexisting.md"]);
+    assert.ok(result.attribution?.bookkeepingFiles.some((file) => file.endsWith(".tasks/0007-add-task-system.md")));
+    assert.ok(result.attribution?.attributedFiles.includes("docs/foo/new.md"));
+    assert.ok(result.attribution?.attributedFiles.includes("docs/foo/delete-me.md"));
+    assert.ok(result.attribution?.attributedFiles.includes("docs/foobar.md"));
+    assert.ok(result.attribution?.attributedFiles.includes("secrets/config.txt"));
+    assert.deepEqual(result.outOfScopeFiles, ["docs/foobar.md"]);
+    assert.deepEqual(result.forbiddenTouchedFiles, ["secrets/config.txt"]);
+  });
 });
 
 test("verifyTask supports file-only checks and renders next step", async () => {
