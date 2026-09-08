@@ -329,6 +329,14 @@ Use templates to reduce repeated metadata:
 pnpm exec tsx src/cli/index.ts task create --template bugfix --title "Fix Parser" --scope cli --allowed src/cli/index.ts
 ```
 
+Typed templates add domain guardrails, structured verification, correctness assumptions, and deterministic policy tags:
+
+```bash
+pnpm exec tsx src/cli/index.ts task create --type async-worker --title "Harden Worker" --scope worker --allowed src/worker.ts
+```
+
+Available typed templates include `feature`, `bugfix`, `refactor`, `migration`, `async-worker`, `provider-integration`, `deployment`, `benchmark`, `security`, and `release`; existing `docs`, `audit`, and `test` templates remain supported. `--template` is an alias for `--type`, and generated task Markdown is editable.
+
 Structured verification supports required automated/manual checks, environment/profile, and optional artifact/evidence requirements:
 
 ```bash
@@ -656,10 +664,10 @@ pnpm exec apk export --force
 
 ## Current status
 
-Tasks 0001 through 0063 are complete, including the CLI-focused backlog, structured verification, deterministic policy resolution, and independent review evidence.
+Tasks 0001 through 0065 are complete, including the CLI-focused backlog, structured verification, deterministic policy resolution, independent review evidence, correctness contracts, and typed task templates.
 
 The repository now has a minimal TypeScript CLI scaffold, config schema, `init`, lightweight `adopt`, kit/workflow `audit`, `analytics summary`, `mode`, `next-task`, `tasks`, agent registration, task state transitions, sharded run analytics, `context`, `prompt`, `export`, `sync`, template rendering, doc generation helpers, Claude/Gemini/Codex/OpenCode/Cursor agent exporters, task archive/dependency commands, compact task parsing, and typed verification requirements.
 
 Default agent style for this repository: `caveman` when the active tool supports it.
 
-The next implementation task is completion gating; later correctness, workflow, harness, adoption, and release tasks remain planned.
+The next implementation task is built-in repository and task-contract linting; later context, workflow, harness, adoption, and release tasks remain planned.

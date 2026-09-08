@@ -864,6 +864,85 @@ test("CLI task create template allows explicit overrides", async () => {
     assert.match(content, /Mode: maintenance/);
     assert.match(content, /Risk: medium/);
     assert.match(content, /Tags: docs,cli/);
+    assert.match(content, /"command":"pnpm lint"/);
+    assert.match(content, /"command":"pnpm test"/);
+  });
+});
+
+test("CLI task create supports typed domain templates with correctness guardrails", async () => {
+  const types = [
+    "feature",
+    "bugfix",
+    "refactor",
+    "docs",
+    "audit",
+    "test",
+    "migration",
+    "async-worker",
+    "provider-integration",
+    "deployment",
+    "benchmark",
+    "security",
+    "release",
+  ];
+  const guardedTypes = new Set([
+    "bugfix",
+    "refactor",
+    "migration",
+    "async-worker",
+    "provider-integration",
+    "deployment",
+    "benchmark",
+    "security",
+    "release",
+  ]);
+
+  for (const type of types) {
+    await withTempDirectory(async (directory) => {
+      await mkdir(join(directory, ".agentic"), { recursive: true });
+      await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({}), "utf8");
+
+      const result = await runCli([
+        "task", "create",
+        "--type", type,
+        "--title", `Template ${type}`,
+        "--scope", "tasks",
+        "--allowed", "src/example.ts",
+      ], directory);
+
+      assert.equal(result.exitCode, 0, `${type}: ${result.stdout}${result.stderr}`);
+      const content = await readFile(join(directory, ".tasks", `0001-template-${type}.md`), "utf8");
+      assert.match(content, new RegExp(`^Type: ${type}$`, "m"));
+      assert.match(content, /## Verification/);
+      assert.doesNotMatch(content, /## Verification commands/);
+      if (guardedTypes.has(type)) {
+        assert.match(content, /## Correctness assumptions/);
+        assert.match(content, /## Counterexample searches/);
+      }
+    });
+  }
+});
+
+test("CLI task create accepts template aliases and overrides typed guardrails", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({}), "utf8");
+
+    const result = await runCli([
+      "task", "create",
+      "--template", "provider",
+      "--title", "Provider Adapter",
+      "--scope", "integration",
+      "--allowed", "src/provider.ts",
+      "--assumptions", "The provider is called through a sandbox.",
+    ], directory);
+
+    assert.equal(result.exitCode, 0);
+    const content = await readFile(join(directory, ".tasks", "0001-provider-adapter.md"), "utf8");
+    assert.match(content, /^Type: provider-integration$/m);
+    assert.match(content, /Tags: provider,integration/);
+    assert.match(content, /The provider is called through a sandbox\./);
+    assert.doesNotMatch(content, /The external provider can be slow/);
   });
 });
 

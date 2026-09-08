@@ -85,6 +85,7 @@ export interface ProjectTask {
   owner: string;
   mode: TaskMode;
   lane: string;
+  type?: string;
   scope: string[];
   risk: TaskRisk;
   parallel: boolean;
@@ -551,6 +552,9 @@ export function parseTaskMarkdown(markdown: string): ProjectTask {
     lane: lines.some((line) => line.startsWith("Lane:"))
       ? readRequiredMetadata(lines, "Lane", issues)
       : defaultLane(mode),
+    ...(lines.some((line) => line.startsWith("Type:"))
+      ? { type: readRequiredMetadata(lines, "Type", issues) }
+      : {}),
     scope,
     risk: requireOneOf(riskValue, TASK_RISKS, "Risk", issues),
     parallel: lines.some((line) => line.startsWith("Parallel:"))
@@ -677,6 +681,7 @@ export function renderTaskMarkdown(task: ProjectTask): string {
     `Owner: ${task.owner}`,
     `Mode: ${task.mode}`,
     `Lane: ${task.lane}`,
+    ...(task.type ? [`Type: ${task.type}`] : []),
     `Scope: ${renderCsv(task.scope)}`,
     `Risk: ${task.risk}`,
     `Parallel: ${task.parallel ? "true" : "false"}`,
@@ -1089,6 +1094,7 @@ export interface TaskCreateInput {
   title: string;
   mode: TaskMode;
   lane: string;
+  type?: string;
   scope: string[];
   risk: TaskRisk;
   parallel: boolean;
@@ -1303,6 +1309,7 @@ export async function createTask(
       owner: "none",
       mode: input.mode,
       lane: input.lane,
+      ...(input.type ? { type: input.type } : {}),
       scope: input.scope,
       risk: input.risk,
       parallel: input.parallel,

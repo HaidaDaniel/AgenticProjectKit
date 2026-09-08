@@ -43,7 +43,7 @@ When Agentic Project Kit is installed as a repository dev dependency, run comman
 - `apk task policy <task-id>` - resolve deterministic risk/tag requirements and print blockers without changing task state.
 - `apk task gate <task-id>` - preview completion blockers for the current candidate without changing task state.
 - `apk task verify <task-id> [--check-files-only] [--profile <profile|all>] [--owner <agent-id>]` - run eligible verification checks and record evidence.
-- `apk task create --title <title> --scope <csv> --allowed <csv> [--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>] [--assumptions <csv>] [--invariants <csv>] [--required-evidence <csv>] [--review-questions <csv>] [--counterexample-searches <csv>]` - generate a new validated task file.
+- `apk task create --title <title> --scope <csv> --allowed <csv> [--type <name>|--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>] [--assumptions <csv>] [--invariants <csv>] [--required-evidence <csv>] [--review-questions <csv>] [--counterexample-searches <csv>]` - generate a new validated task file.
 
 ## Example usage
 
@@ -78,7 +78,7 @@ pnpm exec apk task create --template bugfix --title "Fix Parser" --scope cli --a
 `apk sync` is check-only by default. Use `--write` to update missing or stale generated files.
 `apk analytics summary` includes active and archived task metadata when grouping task risk, mode, and lane.
 `apk task create` uses the task lock while allocating ids and writing files so concurrent creates cannot leave duplicate task ids.
-`apk task create --template` supports `bugfix`, `feature`, `refactor`, `docs`, `audit`, and `test`. Explicit flags override template defaults.
+`apk task create --type` supports `feature`, `bugfix`, `refactor`, `migration`, `async-worker`, `provider-integration`, `deployment`, `benchmark`, `security`, and `release`, plus the existing `docs`, `audit`, and `test` templates. `--template` is an equivalent alias; `provider`/`integration` and `async` are accepted aliases. Typed defaults persist `Type`, structured verification, domain guardrails, and policy tags. Explicit flags override defaults, and generated task files remain editable.
 `--verification` keeps the legacy comma-separated command input and normalizes each command to a required local deterministic automated check. `--verification-json` accepts structured checks with `type`, `required`, `environment`, `profile`, `command` or `instruction`, and optional `artifact`/`evidence` fields. Legacy `## Verification commands` task files remain readable without migration.
 `--assumptions`, `--invariants`, `--required-evidence`, `--review-questions`, and `--counterexample-searches` populate optional correctness-contract sections. They are preserved through task parsing/rendering and included in implementation/review prompts only when non-empty.
 `apk task evidence <task-id>` reads `.agentic/evidence.jsonl`, filters by task ID, and prints bounded references and subject identities without command output blobs.

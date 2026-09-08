@@ -232,6 +232,22 @@ test("optional correctness contract survives canonical round trip without legacy
   assert.doesNotMatch(legacy, /## Review questions/);
 });
 
+test("typed task metadata survives round trip and maps to policy tags", () => {
+  const task: ProjectTask = {
+    ...TASK,
+    type: "async-worker",
+    tags: [],
+  };
+
+  assert.match(renderTaskMarkdown(task), /Type: async-worker/);
+  assert.deepEqual(parseTaskMarkdown(renderTaskMarkdown(task)), task);
+
+  const policy = resolveTaskPolicy(task);
+  assert.deepEqual(policy.classifications, ["async", "worker"]);
+  assert.equal(policy.requirements.independentReview, true);
+  assert.deepEqual(policy.requirements.evidenceCategories, ["report"]);
+});
+
 test("task policy applies deterministic risk defaults", () => {
   const low = resolveTaskPolicy({
     ...TASK,

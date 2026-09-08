@@ -3,6 +3,12 @@ import { relative, resolve } from "node:path";
 
 import { readAgenticConfigFile } from "../../core/config/index.js";
 import {
+  getTaskTemplate,
+  resolveTaskTemplateType,
+  TASK_TEMPLATE_TYPES,
+  type TaskTemplateType,
+} from "../../core/templates/task-templates.js";
+import {
   allTaskFiles,
   archiveAllTasks,
   archiveTask,
@@ -39,7 +45,7 @@ const TASK_HELP_TEXT = [
   "  apk task policy <task-id>",
   "  apk task gate <task-id>",
   "  apk task verify <task-id> [--check-files-only] [--profile <profile|all>] [--owner <agent-id>]",
-  "  apk task create --title <title> --scope <csv> --allowed <csv> [--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>]",
+  "  apk task create --title <title> --scope <csv> --allowed <csv> [--type <name>|--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>]",
   "",
   "Subcommands:",
   "  archive Archive a done task or all done tasks.",
@@ -93,7 +99,7 @@ const TASK_CREATE_HELP_TEXT = [
   "Agentic Project Kit",
   "",
   "Usage:",
-  "  apk task create --title <title> --scope <csv> --allowed <csv> [--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>]",
+  "  apk task create --title <title> --scope <csv> --allowed <csv> [--type <name>|--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>]",
   "",
   "Required flags:",
   "  --title <title>         Task title.",
@@ -101,14 +107,15 @@ const TASK_CREATE_HELP_TEXT = [
   "  --allowed <csv>         Comma-separated allowed file paths.",
   "",
   "Optional flags:",
-  "  --template <name>       Defaults: bugfix, feature, refactor, docs, audit, test.",
+  "  --type <name>           Typed contract: feature, bugfix, refactor, migration, async-worker, provider-integration, deployment, benchmark, security, release (or existing docs, audit, test).",
+  "  --template <name>       Alias for --type; existing generic templates remain supported.",
   "  --mode <mode>           Task mode: discovery, mvp, product, production, maintenance, audit, adopt.",
   "  --lane <lane>           Work lane (e.g. implementation, planning, adoption).",
   "  --risk <risk>           Risk level: low, medium, high.",
   "  --context <csv>         Comma-separated context file paths.",
   "  --verification <csv>    Comma-separated legacy verification commands; normalized to required local deterministic checks.",
   "  --verification-json <json>  Structured verification check array.",
-  "  --goal <text>          Task goal text (default: title).",
+  "  --goal <text>           Task goal text (default: title).",
   "  --depends <csv>         Comma-separated dependency task ids.",
   "  --tags <csv>            Comma-separated tags.",
   "  --parallel              Mark task as parallel (default: false).",
@@ -186,104 +193,18 @@ function hasFlag(argv: string[], flag: string): boolean {
   return argv.includes(flag);
 }
 
-interface TaskTemplateDefaults {
-  mode: TaskCreateInput["mode"];
-  lane: string;
-  risk: TaskCreateInput["risk"];
-  tags: string[];
-  contextFiles: string[];
-  verification: TaskVerificationCheck[];
-  steps: string[];
-  acceptanceCriteria: string[];
-  documentationUpdates: string[];
-  notes: string[];
-}
+function parseTemplate(name: string | undefined, flag = "--template"): {
+  type: TaskTemplateType;
+  defaults: ReturnType<typeof getTaskTemplate>;
+} | undefined {
+  if (name === undefined) return undefined;
 
-const TASK_TEMPLATES: Record<string, TaskTemplateDefaults> = {
-  bugfix: {
-    mode: "product",
-    lane: "bugfix",
-    risk: "medium",
-    tags: ["bugfix"],
-    contextFiles: ["AGENTS.md", "docs/task-system.md"],
-    verification: normalizeVerificationCommands(["pnpm test"]),
-    steps: ["Reproduce or characterize the bug.", "Implement the smallest safe fix.", "Add or update regression coverage.", "Run verification."],
-    acceptanceCriteria: ["Bug is fixed.", "Regression coverage exists."],
-    documentationUpdates: ["Update docs/progress.md when task state changes."],
-    notes: ["Keep the fix narrow."],
-  },
-  feature: {
-    mode: "product",
-    lane: "implementation",
-    risk: "medium",
-    tags: ["feature"],
-    contextFiles: ["AGENTS.md", "docs/project.md", "docs/task-system.md"],
-    verification: normalizeVerificationCommands(["pnpm test"]),
-    steps: ["Implement the smallest useful feature slice.", "Add focused tests.", "Run verification."],
-    acceptanceCriteria: ["Feature behavior is implemented and tested."],
-    documentationUpdates: ["Update docs/progress.md when task state changes."],
-    notes: ["Avoid unrelated refactors."],
-  },
-  refactor: {
-    mode: "product",
-    lane: "refactor",
-    risk: "medium",
-    tags: ["refactor"],
-    contextFiles: ["AGENTS.md", "docs/architecture.md", "docs/task-system.md"],
-    verification: normalizeVerificationCommands(["pnpm test"]),
-    steps: ["Identify the behavior-preserving change.", "Refactor in small steps.", "Run verification."],
-    acceptanceCriteria: ["Behavior is unchanged.", "Code is simpler or clearer."],
-    documentationUpdates: ["Update docs/progress.md when task state changes."],
-    notes: ["Do not change public behavior unless the task says so."],
-  },
-  docs: {
-    mode: "product",
-    lane: "documentation",
-    risk: "low",
-    tags: ["docs"],
-    contextFiles: ["AGENTS.md", "docs/project.md", "docs/scope.md"],
-    verification: normalizeVerificationCommands(["pnpm lint", "pnpm test"]),
-    steps: ["Read relevant docs.", "Update documentation.", "Run verification."],
-    acceptanceCriteria: ["Docs are accurate and scoped."],
-    documentationUpdates: ["Update docs/progress.md when task state changes."],
-    notes: ["Do not change source code unless explicitly required."],
-  },
-  audit: {
-    mode: "audit",
-    lane: "audit",
-    risk: "medium",
-    tags: ["audit"],
-    contextFiles: ["AGENTS.md", "docs/cli-commands.md", "docs/task-system.md"],
-    verification: normalizeVerificationCommands(["pnpm test", "node dist/cli/index.js audit"]),
-    steps: ["Inspect current behavior.", "Add or update audit checks.", "Run verification."],
-    acceptanceCriteria: ["Audit findings are deterministic and documented."],
-    documentationUpdates: ["Update docs/progress.md when task state changes."],
-    notes: ["Keep audit static unless the task says otherwise."],
-  },
-  test: {
-    mode: "product",
-    lane: "testing",
-    risk: "low",
-    tags: ["tests"],
-    contextFiles: ["AGENTS.md", "docs/task-system.md"],
-    verification: normalizeVerificationCommands(["pnpm test"]),
-    steps: ["Identify missing coverage.", "Add focused tests.", "Run verification."],
-    acceptanceCriteria: ["Tests cover the intended behavior."],
-    documentationUpdates: ["Update docs/progress.md when task state changes."],
-    notes: ["Prefer focused regression tests."],
-  },
-};
-
-function parseTemplate(name: string | undefined): TaskTemplateDefaults | undefined {
-  if (name === undefined) {
-    return undefined;
+  try {
+    const type = resolveTaskTemplateType(name);
+    return { type, defaults: getTaskTemplate(type) };
+  } catch {
+    throw new Error(`${flag} must be one of: ${TASK_TEMPLATE_TYPES.join(", ")}.`);
   }
-
-  const template = TASK_TEMPLATES[name];
-  if (!template) {
-    throw new Error(`--template must be one of: ${Object.keys(TASK_TEMPLATES).join(", ")}.`);
-  }
-  return template;
 }
 
 async function runCreateSubcommand(argv: string[]): Promise<number> {
@@ -294,7 +215,7 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
 
   const knownFlags = new Set([
     "--title", "--mode", "--lane", "--scope", "--risk", "--parallel",
-    "--goal", "--template",
+    "--goal", "--template", "--type",
     "--depends", "--tags", "--context", "--allowed", "--forbidden",
     "--steps", "--acceptance", "--verification", "--verification-json", "--docs", "--notes",
     "--assumptions", "--invariants", "--required-evidence", "--review-questions", "--counterexample-searches",
@@ -311,21 +232,28 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
     throw new Error("--title is required.");
   }
 
-  const template = parseTemplate(parseFlag(argv, "--template"));
+  const templateFlag = parseFlag(argv, "--template");
+  const typeFlag = parseFlag(argv, "--type");
+  const templateFromFlag = parseTemplate(templateFlag);
+  const typeFromFlag = parseTemplate(typeFlag, "--type");
+  if (templateFromFlag && typeFromFlag && templateFromFlag.type !== typeFromFlag.type) {
+    throw new Error("--type and --template must name the same task template.");
+  }
+  const template = typeFromFlag ?? templateFromFlag;
 
   const modeRaw = parseFlag(argv, "--mode");
-  const mode = modeRaw ?? template?.mode;
+  const mode = modeRaw ?? template?.defaults.mode;
   if (!mode || !TASK_MODES.includes(mode as (typeof TASK_MODES)[number])) {
     throw new Error(`--mode must be one of: ${TASK_MODES.join(", ")}.`);
   }
 
-  const lane = parseFlag(argv, "--lane") ?? template?.lane;
+  const lane = parseFlag(argv, "--lane") ?? template?.defaults.lane;
   if (!lane) {
     throw new Error("--lane is required.");
   }
 
   const riskRaw = parseFlag(argv, "--risk");
-  const risk = riskRaw ?? template?.risk;
+  const risk = riskRaw ?? template?.defaults.risk;
   if (!risk || !TASK_RISKS.includes(risk as (typeof TASK_RISKS)[number])) {
     throw new Error(`--risk must be one of: ${TASK_RISKS.join(", ")}.`);
   }
@@ -339,7 +267,16 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
   const requiredEvidence = parseCsvFlag(parseFlag(argv, "--required-evidence"));
   const reviewQuestions = parseCsvFlag(parseFlag(argv, "--review-questions"));
   const counterexampleSearches = parseCsvFlag(parseFlag(argv, "--counterexample-searches"));
-  const resolvedContextFiles = contextFiles.length > 0 ? contextFiles : template?.contextFiles ?? [];
+  const resolvedCorrectnessAssumptions = correctnessAssumptions.length > 0
+    ? correctnessAssumptions : template?.defaults.correctnessAssumptions ?? [];
+  const resolvedInvariants = invariants.length > 0 ? invariants : template?.defaults.invariants ?? [];
+  const resolvedRequiredEvidence = requiredEvidence.length > 0
+    ? requiredEvidence : template?.defaults.requiredEvidence ?? [];
+  const resolvedReviewQuestions = reviewQuestions.length > 0
+    ? reviewQuestions : template?.defaults.reviewQuestions ?? [];
+  const resolvedCounterexampleSearches = counterexampleSearches.length > 0
+    ? counterexampleSearches : template?.defaults.counterexampleSearches ?? [];
+  const resolvedContextFiles = contextFiles.length > 0 ? contextFiles : template?.defaults.contextFiles ?? [];
   const verificationJson = parseFlag(argv, "--verification-json");
   let structuredVerification: TaskVerificationCheck[] | undefined;
   if (verificationJson !== undefined) {
@@ -357,7 +294,7 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
   const resolvedVerification = structuredVerification
     ?? (verificationCommands.length > 0
       ? normalizeVerificationCommands(verificationCommands)
-      : template?.verification ?? []);
+      : template?.defaults.verification ?? []);
 
   if (resolvedContextFiles.length === 0) {
     throw new Error("--context must include at least one file.");
@@ -379,35 +316,36 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
     title,
     mode: mode as (typeof TASK_MODES)[number],
     lane,
+    type: template?.type,
     scope,
     risk: risk as (typeof TASK_RISKS)[number],
     parallel: hasFlag(argv, "--parallel"),
     dependsOn: parseCsvFlag(parseFlag(argv, "--depends")),
     tags: parseCsvFlag(parseFlag(argv, "--tags")).length > 0
       ? parseCsvFlag(parseFlag(argv, "--tags"))
-      : template?.tags ?? [],
+      : template?.defaults.tags ?? [],
     goal: parseFlag(argv, "--goal") ?? title,
     contextFiles: resolvedContextFiles,
     allowedFiles,
     forbiddenFiles: parseCsvFlag(parseFlag(argv, "--forbidden")),
     steps: parseCsvFlag(parseFlag(argv, "--steps")).length > 0
       ? parseCsvFlag(parseFlag(argv, "--steps"))
-      : template?.steps ?? [],
+      : template?.defaults.steps ?? [],
     acceptanceCriteria: parseCsvFlag(parseFlag(argv, "--acceptance")).length > 0
       ? parseCsvFlag(parseFlag(argv, "--acceptance"))
-      : template?.acceptanceCriteria ?? [],
-    correctnessAssumptions,
-    invariants,
-    requiredEvidence,
-    reviewQuestions,
-    counterexampleSearches,
+      : template?.defaults.acceptanceCriteria ?? [],
+    correctnessAssumptions: resolvedCorrectnessAssumptions,
+    invariants: resolvedInvariants,
+    requiredEvidence: resolvedRequiredEvidence,
+    reviewQuestions: resolvedReviewQuestions,
+    counterexampleSearches: resolvedCounterexampleSearches,
     verification: resolvedVerification,
     documentationUpdates: parseCsvFlag(parseFlag(argv, "--docs")).length > 0
       ? parseCsvFlag(parseFlag(argv, "--docs"))
-      : template?.documentationUpdates ?? [],
+      : template?.defaults.documentationUpdates ?? [],
     notes: parseCsvFlag(parseFlag(argv, "--notes")).length > 0
       ? parseCsvFlag(parseFlag(argv, "--notes"))
-      : template?.notes ?? [],
+      : template?.defaults.notes ?? [],
   };
 
   const rootDirectory = resolve(process.cwd());

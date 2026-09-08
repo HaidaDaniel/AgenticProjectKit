@@ -217,3 +217,19 @@ Reviewers need explicit claims and adversarial targets for high-risk, distribute
 Implementation:
 
 The task parser, renderer, creator, and CLI preserve these fields and omit empty sections. The fields guide inspection but do not independently alter verification or completion policy; required proof remains represented by structured verification and append-only evidence records.
+
+## ADR-0017 - Typed templates are declarative task contracts
+
+Status: accepted
+
+Decision:
+
+Extend the existing task-create template surface with canonical typed templates for feature, bugfix, refactor, migration, async-worker, provider-integration, deployment, benchmark, security, and release work, while retaining docs, audit, and test templates. Persist the canonical type in task metadata and map domain types to existing deterministic policy tags.
+
+Reason:
+
+Reusable domain guardrails reduce omissions in high-risk task contracts without introducing a second authoring system or requiring an LLM. Generated Markdown must remain compact, parseable, and editable.
+
+Implementation:
+
+Template defaults live in `src/core/templates/task-templates.ts`. They use existing structured verification and optional correctness fields; `--type` is canonical, `--template` remains an alias, and explicit flags override defaults. Provider/integration and async aliases normalize to canonical types. Policy consumes persisted type mappings in addition to explicit tags, so classification remains deterministic even when tags are overridden.

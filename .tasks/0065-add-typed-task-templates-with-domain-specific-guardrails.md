@@ -1,7 +1,7 @@
 # Task 0065 - Add typed task templates with domain-specific guardrails
 
-State: todo
-Owner: none
+State: done
+Owner: codex-20260909
 Mode: product
 Lane: task-authoring
 Scope: task-authoring,cli,tests,docs

@@ -51,6 +51,23 @@ export const DEFAULT_TASK_POLICY_TAG_RULES: readonly TaskPolicyTagRule[] = [
   { tag: "release", evidenceCategories: ["live", "report"] },
 ];
 
+const TASK_TYPE_POLICY_TAGS: Record<string, readonly string[]> = {
+  migration: ["migration"],
+  "async-worker": ["async", "worker"],
+  "provider-integration": ["provider", "integration"],
+  deployment: ["deployment"],
+  benchmark: ["benchmark"],
+  security: ["security"],
+  release: ["release"],
+};
+
+function policyTags(task: ProjectTask): string[] {
+  return [...new Set([
+    ...task.tags,
+    ...(task.type ? TASK_TYPE_POLICY_TAGS[task.type] ?? [] : []),
+  ])];
+}
+
 function verificationChecks(task: ProjectTask): TaskVerificationCheck[] {
   return task.verification ?? task.verificationCommands.map((command, index) => ({
     id: `check-${index + 1}`,
@@ -90,6 +107,7 @@ export function resolveTaskPolicy(
   task: ProjectTask,
   options: TaskPolicyOptions = {},
 ): EffectiveTaskPolicy {
+  const tags = policyTags(task);
   const requirements: TaskPolicyRequirements = {
     automatedVerification: true,
     scope: task.risk !== "low",
@@ -101,12 +119,12 @@ export function resolveTaskPolicy(
   const reasons = [`risk=${task.risk} defaults applied`];
   const diagnostics: string[] = [];
   const blockers: string[] = [];
-  const classifications = [...new Set(task.tags)].sort();
+  const classifications = [...new Set(tags)].sort();
   const rules = [...DEFAULT_TASK_POLICY_TAG_RULES, ...(options.tagRules ?? [])];
   const matchedRules = new Map<string, TaskPolicyTagRule[]>();
 
   for (const rule of rules) {
-    if (!task.tags.includes(rule.tag)) continue;
+    if (!tags.includes(rule.tag)) continue;
     const matches = matchedRules.get(rule.tag) ?? [];
     matches.push(rule);
     matchedRules.set(rule.tag, matches);
@@ -150,15 +168,15 @@ export function resolveTaskPolicy(
     blockers.push("Declare at least one required automated verification check.");
   }
 
-  if (task.tags.includes("no-verification")) {
+  if (tags.includes("no-verification")) {
     diagnostics.push("Tag no-verification conflicts with the risk verification requirement.");
     blockers.push("Remove no-verification or declare required automated verification.");
   }
-  if (task.tags.includes("no-review") && requirements.independentReview) {
+  if (tags.includes("no-review") && requirements.independentReview) {
     diagnostics.push("Tag no-review conflicts with the risk or classification review requirement.");
     blockers.push("Remove no-review or satisfy the required independent review.");
   }
-  if (task.tags.includes("local-only") && requirements.evidenceCategories.includes("live")) {
+  if (tags.includes("local-only") && requirements.evidenceCategories.includes("live")) {
     diagnostics.push("Tag local-only conflicts with a live evidence requirement.");
     blockers.push("Remove local-only or remove the live policy requirement.");
   }

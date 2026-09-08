@@ -141,6 +141,17 @@ Supported templates:
 - `docs`
 - `audit`
 - `test`
+- `migration`
+- `async-worker`
+- `provider-integration`
+- `deployment`
+- `benchmark`
+- `security`
+- `release`
+
+`--type` is the canonical typed-template flag; `--template` remains an equivalent alias. `provider` and `integration` resolve to `provider-integration`, while `async` resolves to `async-worker`. A typed template persists its canonical `Type` metadata and maps its domain to deterministic policy tags, even when explicit `--tags` overrides the default tag list.
+
+Domain templates populate structured verification and, where useful, the optional correctness contract. Their guardrails cover the relevant failure and review surfaces: migrations include compatibility, integrity, rollback/recovery, and idempotency; async workers include retries, cancellation, bounded concurrency, shutdown, and partial commits; provider integrations include timeout, fallback, malformed responses, and capability mismatch; deployments and releases include live candidate checks; benchmarks include comparability and leakage; security includes fail-closed and secret-boundary checks. Generated Markdown remains editable after creation.
 
 Templates provide default mode, lane, risk, tags, context, verification, steps, acceptance criteria, documentation updates, and notes. Explicit flags override template defaults. `--title`, `--scope`, and `--allowed` remain required.
 
