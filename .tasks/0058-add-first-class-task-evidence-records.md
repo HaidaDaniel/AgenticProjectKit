@@ -1,7 +1,7 @@
 # Task 0058 - Add first-class task evidence records
 
-State: todo
-Owner: none
+State: done
+Owner: codex-20260909
 Mode: product
 Lane: task-system
 Scope: task-system,cli,tests,docs

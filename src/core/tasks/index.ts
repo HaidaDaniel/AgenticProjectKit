@@ -1518,3 +1518,5 @@ export function renderTaskDeps(result: TaskDepsResult): string {
 
   return lines.join("\n");
 }
+
+export * from "./evidence.js";

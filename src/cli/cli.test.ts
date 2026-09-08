@@ -530,8 +530,11 @@ test("CLI task deps shows no prerequisites for independent task", async () => {
 
 test("CLI task create --help shows usage", async () => {
   const result = await runCli(["task", "create", "--help"]);
+  const taskHelp = await runCli(["task", "--help"]);
 
   assert.equal(result.exitCode, 0);
+  assert.equal(taskHelp.exitCode, 0);
+  assert.match(taskHelp.stdout, /apk task evidence <task-id>/);
   assert.match(result.stdout, /--title/);
   assert.match(result.stdout, /--goal/);
   assert.match(result.stdout, /--mode/);
@@ -607,6 +610,43 @@ test("CLI task create writes structured verification from JSON", async () => {
     assert.match(content, /"environment":"live"/);
     assert.match(content, /"instruction":"Check the deployed release\."/);
     assert.doesNotMatch(content, /## Verification commands/);
+  });
+});
+
+test("CLI task evidence lists records for one task", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(
+      join(directory, ".agentic", "evidence.jsonl"),
+      `${JSON.stringify({
+        id: "evidence-a",
+        taskId: "0001",
+        runId: "run-a",
+        agent: "codex-a",
+        type: "automated-test",
+        result: "pass",
+        time: "2026-09-09T10:00:00Z",
+        subject: {
+          taskId: "0001",
+          runId: "run-a",
+          repository: "none",
+          baselineId: "base-a",
+          candidateId: "candidate-a",
+          worktreeId: "worktree-a",
+        },
+        checkId: "unit-tests",
+        profile: "deterministic",
+        command: "pnpm test",
+      })}\n`,
+      "utf8",
+    );
+
+    const result = await runCli(["task", "evidence", "0001"], directory);
+
+    assert.equal(result.exitCode, 0);
+    assert.match(result.stdout, /Task: 0001/);
+    assert.match(result.stdout, /Evidence: 1/);
+    assert.match(result.stdout, /pass automated-test agent=codex-a check=unit-tests profile=deterministic/);
   });
 });
 

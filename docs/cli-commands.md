@@ -37,6 +37,7 @@ When Agentic Project Kit is installed as a repository dev dependency, run comman
 - `apk task archive <task-id>` - archive a done task by moving it to `.tasks/archive/`.
 - `apk task archive --all` - archive all done top-level tasks.
 - `apk task deps <task-id>` - inspect task prerequisites, dependents, and graph problems.
+- `apk task evidence <task-id>` - list append-only evidence records for a task.
 - `apk task verify <task-id> [--check-files-only] [--owner <agent-id>]` - verify changed files and task verification commands.
 - `apk task create --title <title> --scope <csv> --allowed <csv> [--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>]` - generate a new validated task file.
 
@@ -75,6 +76,7 @@ pnpm exec apk task create --template bugfix --title "Fix Parser" --scope cli --a
 `apk task create` uses the task lock while allocating ids and writing files so concurrent creates cannot leave duplicate task ids.
 `apk task create --template` supports `bugfix`, `feature`, `refactor`, `docs`, `audit`, and `test`. Explicit flags override template defaults.
 `--verification` keeps the legacy comma-separated command input and normalizes each command to a required local deterministic automated check. `--verification-json` accepts structured checks with `type`, `required`, `environment`, `profile`, `command` or `instruction`, and optional `artifact`/`evidence` fields. Legacy `## Verification commands` task files remain readable without migration.
+`apk task evidence <task-id>` reads `.agentic/evidence.jsonl`, filters by task ID, and prints bounded references and subject identities without command output blobs.
 `apk task verify` checks `git diff` changed files against task allowed/forbidden files, then runs task verification commands unless `--check-files-only` is set.
 `apk audit` uses static inspection only. It reports lightweight readiness facts such as package scripts, lockfiles, CI presence, env examples, tests, license, README, Docker files, monorepo indicators, and TypeScript strict mode.
 `apk suggest-context` is heuristic and local. It scans bounded project paths and suggests candidates; it does not guarantee deep code understanding.

@@ -55,3 +55,7 @@ docs/**
 - `export` writes agent-specific instruction files.
 - `audit` reads the repository and writes lightweight kit/workflow and export gap reports.
 - `sync` checks or updates generated files from internal policy.
+
+## Evidence storage
+
+Task evidence uses a dedicated append-only `.agentic/evidence.jsonl` store. It is separate from agent/run analytics so verification, manual/live checks, reports, and later review evidence retain their own typed results and revision-bound subject identities. Read operations tolerate a missing store (no evidence) and report malformed records with line diagnostics.

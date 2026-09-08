@@ -167,6 +167,17 @@ pnpm exec apk task create --title "Release smoke" --mode product --lane release 
 
 Malformed JSON or check metadata reports the check number and invalid field. Prompts include the full structured requirement and retain the flat command list for compatible workflows.
 
+## Evidence records
+
+Verification and review results can be stored as append-only JSONL records in `.agentic/evidence.jsonl`. Records include task, agent, run, evidence type, result, timestamp, check/profile identity, and a subject containing:
+
+- `taskId`, `baselineId`, `candidateId`, and `worktreeId`;
+- `repository: git` plus `headSha` for repository-backed work; or `repository: none` with explicit equivalent identities.
+
+Evidence results are `pass`, `fail`, `pending`, `unavailable`, or `not-run`. `readTaskEvidence` filters by task ID, while `compareTaskEvidenceFreshness` classifies a record as `current`, `stale`, or `unknown` against a candidate subject. Mismatched candidates remain in history but cannot be treated as current. Commands and short references are bounded; large stdout/stderr is not stored.
+
+Use `apk task evidence <task-id>` for a safe summary of records. The append-only store keeps repeated runs and failed evidence instead of overwriting history.
+
 ## CLI work loop
 
 `pnpm exec apk work <task-id> --owner <agent-id> --target <agent>` connects the existing task workflow:

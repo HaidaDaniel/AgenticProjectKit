@@ -16,11 +16,13 @@ import {
 } from "../docs/context.js";
 import {
   allTaskFiles,
+  appendTaskEvidence,
   archiveAllTasks,
   archiveTask,
   buildTaskDeps,
   buildTaskFileName,
   createTask,
+  compareTaskEvidenceFreshness,
   findTaskDependents,
   findTaskFile,
   getTaskVerification,
@@ -32,9 +34,12 @@ import {
   renderTaskMarkdown,
   renderNextTask,
   renderTaskDeps,
+  readTaskEvidence,
   renderTasksTable,
   selectNextTask,
   TaskFormatError,
+  TaskEvidenceFormatError,
+  TASK_EVIDENCE_PATH,
   validateTaskDependencies,
   verifyTask,
   verifyTaskFileScope,
@@ -212,6 +217,75 @@ test("structured verification reports actionable metadata errors", () => {
       return true;
     },
   );
+});
+
+test("task evidence appends, reads, filters, and compares subject freshness", async () => {
+  await withTempDirectory(async (directory) => {
+    assert.deepEqual(await readTaskEvidence(directory), []);
+    const subject = {
+      taskId: "0007",
+      repository: "git" as const,
+      headSha: "abc123",
+      baselineId: "base-a",
+      candidateId: "candidate-a",
+      worktreeId: "worktree-a",
+    };
+    await appendTaskEvidence(directory, {
+      id: "evidence-a",
+      taskId: "0007",
+      runId: "run-a",
+      agent: "codex-a",
+      type: "automated-test",
+      result: "pass",
+      time: "2026-09-09T10:00:00Z",
+      subject,
+      checkId: "unit-tests",
+      profile: "deterministic",
+      command: "pnpm test",
+      artifact: "reports/test.xml",
+    });
+    await appendTaskEvidence(directory, {
+      id: "evidence-b",
+      taskId: "0007",
+      runId: "run-b",
+      agent: "codex-a",
+      type: "manual",
+      result: "fail",
+      time: "2026-09-09T10:01:00Z",
+      subject: { ...subject, candidateId: "candidate-b", worktreeId: "worktree-b" },
+      summary: "Smoke check failed.",
+    });
+
+    const all = await readTaskEvidence(directory);
+    assert.equal(all.length, 2);
+    assert.equal((await readTaskEvidence(directory, "0007")).length, 2);
+    assert.equal(all.filter((record) => record.result === "fail").length, 1);
+    assert.equal(compareTaskEvidenceFreshness(all[0], subject).freshness, "current");
+    assert.equal(
+      compareTaskEvidenceFreshness(all[0], { ...subject, candidateId: "candidate-b" }).freshness,
+      "stale",
+    );
+    assert.equal(
+      compareTaskEvidenceFreshness(all[0], { ...subject, headSha: undefined }).freshness,
+      "unknown",
+    );
+  });
+});
+
+test("task evidence reports corrupted append-only records", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, TASK_EVIDENCE_PATH), "{broken\n", "utf8");
+
+    await assert.rejects(
+      () => readTaskEvidence(directory),
+      (error: unknown) => {
+        assert.ok(error instanceof TaskEvidenceFormatError);
+        assert.match(error.message, /Evidence line 1 must be valid JSON/);
+        return true;
+      },
+    );
+  });
 });
 
 test("parseTaskMarkdown reports useful compact validation errors", () => {

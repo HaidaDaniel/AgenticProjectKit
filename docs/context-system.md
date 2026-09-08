@@ -45,6 +45,7 @@ The following operational files are not prompt context by default:
 - `.tasks/archive/**`;
 - `.agentic/agents.jsonl`;
 - `.agentic/runs.jsonl`;
+- `.agentic/evidence.jsonl`;
 - `.agentic/agents/**`;
 - `.agentic/runs/**`.
 
@@ -57,5 +58,6 @@ Agent registry, run logs, and archived tasks are analytics and history, not impl
 - For local models, be stricter about exact file lists and allowed edits.
 - For audit and adopt flows, include scanning and repository-shape documents first.
 - Prefer task metadata (`Lane`, `Scope`, `Tags`, `Parallel`) over long planning prose when splitting parallel work.
+- Keep evidence and run history out of implementation context; expose bounded evidence summaries through task/status commands when needed.
 - Use scanner facts as availability bounds for metadata-driven docs.
 - Use `apk suggest-context "<task description>"` as optional local heuristic support when drafting a task. Suggestions are candidates, not guaranteed affected-file analysis.

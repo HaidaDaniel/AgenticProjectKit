@@ -11,7 +11,9 @@ import {
   findTaskFile,
   listArchivedTaskFiles,
   listTaskFiles,
+  readTaskEvidence,
   renderTaskDeps,
+  renderTaskEvidence,
   renderTaskVerifyResult,
   TASK_MODES,
   TASK_RISKS,
@@ -27,12 +29,14 @@ const TASK_HELP_TEXT = [
   "Usage:",
   "  apk task archive [<task-id>] [--all]",
   "  apk task deps <task-id>",
+  "  apk task evidence <task-id>",
   "  apk task verify <task-id> [--check-files-only] [--owner <agent-id>]",
   "  apk task create --title <title> --scope <csv> --allowed <csv> [--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>]",
   "",
   "Subcommands:",
   "  archive Archive a done task or all done tasks.",
   "  deps    Inspect task prerequisites, dependents, and graph problems.",
+  "  evidence List append-only evidence records for a task.",
   "  verify  Check changed files and task verification commands.",
   "  create  Generate a new task file with validated metadata.",
 ].join("\n");
@@ -44,6 +48,15 @@ const TASK_DEPS_HELP_TEXT = [
   "  apk task deps <task-id>",
   "",
   "Print task prerequisites, dependents, missing deps, and cycle issues.",
+].join("\n");
+
+const TASK_EVIDENCE_HELP_TEXT = [
+  "Agentic Project Kit",
+  "",
+  "Usage:",
+  "  apk task evidence <task-id>",
+  "",
+  "List append-only task evidence records from .agentic/evidence.jsonl.",
 ].join("\n");
 
 const TASK_CREATE_HELP_TEXT = [
@@ -446,6 +459,23 @@ async function runArchiveSubcommand(argv: string[]): Promise<number> {
   return 0;
 }
 
+async function runEvidenceSubcommand(argv: string[]): Promise<number> {
+  if (hasHelpFlag(argv)) {
+    console.log(TASK_EVIDENCE_HELP_TEXT);
+    return 0;
+  }
+
+  rejectUnknownOptions(argv);
+  if (argv.length !== 1) {
+    throw new Error("Usage: apk task evidence <task-id>");
+  }
+
+  const rootDirectory = resolve(process.cwd());
+  const records = await readTaskEvidence(rootDirectory);
+  console.log(renderTaskEvidence(records, argv[0]));
+  return 0;
+}
+
 async function runVerifySubcommand(argv: string[]): Promise<number> {
   if (hasHelpFlag(argv)) {
     console.log(TASK_VERIFY_HELP_TEXT);
@@ -506,6 +536,10 @@ export async function runTaskCommand(argv: string[]): Promise<number> {
 
     if (subcommand === "verify") {
       return await runVerifySubcommand(subArgs);
+    }
+
+    if (subcommand === "evidence") {
+      return await runEvidenceSubcommand(subArgs);
     }
 
     if (subcommand === "create") {
