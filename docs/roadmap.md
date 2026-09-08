@@ -41,3 +41,19 @@
 - Cloud sync.
 - Issue tracker sync.
 - Database and authentication.
+
+## Next gated-workflow release (planned)
+
+Tasks 0057-0075 preserve repository-first, model-agnostic control-plane direction. `done` becomes evidence-backed completion; external coding harnesses remain workers.
+
+| Milestone | Tasks | Capability |
+| --- | --- | --- |
+| 1 - Meaningful Done | 0057-0062 | Structured verification, evidence, execution profiles, claim scope, risk policy, completion gate |
+| 2 - Independent Correctness | 0063-0066 | Independent review, assumptions/invariants, typed guardrails, built-in consistency lint |
+| 3 - Efficient Agent Workflow | 0067-0071 | Budgeted context, change-aware suggestions, dogfood evidence, provenance, explainable status |
+| 4 - Harness Interoperability | 0072-0073 | Worker contract, implement/review/fix composition |
+| 5 - Upgrade and Release | 0074-0075 | Safe v0.3.1 adoption and candidate-specific release validation |
+
+Task links and direct dependency graph: [delivery milestones](delivery/milestones.md#next-gated-workflow-release-planned).
+
+This backlog excludes model runtime ownership, RAG/vector storage, cloud/UI/SaaS work, autonomous swarms and remote execution. Earlier future ideas remain separate.

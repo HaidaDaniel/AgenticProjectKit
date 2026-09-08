@@ -78,14 +78,25 @@ The repository now has:
 
 ## Next step
 
-No remaining planned task in the current CLI-focused backlog.
+Next planned task: 0057 - Structured task verification contract with backward compatibility.
+
+Planning only: tasks 0057-0075 created as todo with Owner: none; implementation not started.
 
 ## Remaining task plan
 
 - Tasks 0001 through 0056 are complete.
+- Tasks 0057-0062: Meaningful Done.
+- Tasks 0063-0066: Independent Correctness.
+- Tasks 0067-0071: Efficient Agent Workflow.
+- Tasks 0072-0073: Harness Interoperability.
+- Tasks 0074-0075: Upgrade and Release.
+- Contracts extend existing task verify, templates, graph validation, context, sync and work loop.
+- Task links and dependency graph: [delivery milestones](delivery/milestones.md#next-gated-workflow-release-planned).
 
 ## Notes
 
+- Gated-workflow planning validation: 75 tasks parse; 19 new todo/unowned contracts round-trip; no duplicate IDs, missing dependencies or cycles. All 445 new-task context references and milestone links resolve; direct dependencies match milestone table.
+- Read-only checks passed: task parser/dependency API (same validation used by audit), tasks --state todo, task deps 0075, status, sync and doctor. Doctor has no failures; existing warnings: no typecheck script, .env.example or GitHub Actions. Report-writing audit and implementation test suites not run during planning.
 - `apk init` verification passed with `pnpm test`, `pnpm lint`, CLI help, and a temp-directory smoke test.
 - Template renderer verification passed with `pnpm test` and `pnpm lint`.
 - Minimal doc template verification passed with `pnpm test` and `pnpm lint`.
