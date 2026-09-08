@@ -12,7 +12,7 @@ Tags: risk,policy,guardrails,task-types
 
 ## Goal
 
-Deterministic effective policy turns task risk and classification into explicit mandatory completion requirements.
+Deterministic effective policy turns task risk and classification into calculated mandatory completion requirements; enforcement starts in 0062.
 
 ## Context files
 
@@ -72,6 +72,7 @@ Deterministic effective policy turns task risk and classification into explicit 
 
 - Low risk requires automated verification; medium adds scope and lightweight/independent review requirement; high requires verification, scope, independent review and declared evidence categories.
 - Unresolved high-risk required evidence is represented as blocking; downstream gate can enforce all requirements.
+- Resolver reports medium/high review requirements without changing done transitions; 0063 provides review capability before 0062 activates final enforcement.
 - Task type/tag policy adds requirements to risk defaults; deterministic resolver returns explainable effective policy without LLM.
 - Conflicting configuration produces actionable diagnostics; legacy repositories receive documented safe compatible defaults.
 - Minimal extension mechanism accommodates migration, async/worker, deployment, benchmark/evaluation, security, provider/integration and release policies without hardcoding dozens of checks.
@@ -97,7 +98,7 @@ Deterministic effective policy turns task risk and classification into explicit 
 
 - Backlog reference: APK-GATE-05. Milestone 1.
 - Risk enum and tags already exist; current status displays counts and current audit has static readiness checks. This task supplies policy resolution, not another task classifier UI.
-- Required review remains unresolved until 0063 supplies review evidence; policy must not silently waive unavailable enforcement.
+- Policy resolution only: calculated requirements remain explicit, including unmet review requirements. No final completion enforcement until 0062 composes already-available verification, scope, evidence and 0063 review capabilities.
 - Non-goals: verification execution, review agents or full domain-template content. Prefer existing dependencies.
 - Context lists current files and prerequisite task contracts. Before implementation, read prerequisite changes and amend this task with their actual module paths if needed; do not invent missing Context files.
 - Allowed new helper modules stay inside listed module patterns. Other task files and unrelated modules remain outside scope. If scope must expand, amend task before editing.

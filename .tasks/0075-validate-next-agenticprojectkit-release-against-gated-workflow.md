@@ -7,12 +7,12 @@ Lane: release
 Scope: release,cli,tests,docs
 Risk: high
 Parallel: false
-Depends on: 0057,0058,0059,0060,0061,0062,0063,0064,0065,0066,0067,0068,0069,0070,0071,0072,0073,0074
+Depends on: 0057,0058,0059,0060,0061,0062,0063,0064,0065,0066,0067,0068,0069,0070,0071,0072,0073,0074,0076
 Tags: release,e2e,dogfood,gated-workflow
 
 ## Goal
 
-Release candidate has reproducible end-to-end gated-workflow evidence from APK itself and at least one self-contained fixture/adopted example.
+Frozen release candidate has reproducible, revision-current end-to-end gated-workflow evidence from APK itself and at least one self-contained fixture/adopted example, with no evidence laundering across candidate revisions.
 
 ## Context files
 
@@ -60,6 +60,7 @@ Release candidate has reproducible end-to-end gated-workflow evidence from APK i
 - .tasks/0072-define-model-agnostic-worker-and-harness-integration-contract.md
 - .tasks/0073-compose-implementation-review-and-fixer-runs-without-owning-the-model-runtime.md
 - .tasks/0074-provide-safe-adoption-path-for-the-new-gated-task-workflow.md
+- .tasks/0076-recover-stale-task-mutation-locks-safely.md
 
 ## Files allowed to edit
 
@@ -92,13 +93,15 @@ Release candidate has reproducible end-to-end gated-workflow evidence from APK i
 
 ## Steps
 
-1. Identify exact candidate version/tree/SHA and validate package build/checks; consume upgrade fixture from 0074.
-2. Exercise real CLI success and rejection scenarios in isolated repositories, including cross-harness handoff and review/fix loop.
-3. Record bounded real dogfood session on APK plus fixture/adopted example; attach candidate-specific evidence and update release-readiness docs.
+1. Preparation: refresh generated artifacts, sync writes, formatting/generated docs and preparation scripts before freeze within allowed scope; consume 0074 upgrade fixture. Resolve generated changes by acceptance/commit or include them in candidate identity.
+2. Freeze: verify expected worktree state; record exact version, HEAD SHA and candidate tree/worktree identity. Declare candidate-controlled inputs and non-candidate build/evidence output locations before validation.
+3. Validation: run non-mutating checks against frozen candidate, including final read-only lint/audit surface from 0066, real CLI success/rejection scenarios and 0076 crash recovery. Use isolated repositories for scenario mutations.
+4. Record bounded dogfood/review/e2e outcomes from APK and fixture/adopted example against same frozen candidate. If validation changes candidate inputs, invalidate current evidence, prepare and freeze new candidate, then rerun relevant validation.
+5. Produce release report with exact SHA/tree/version and evidence set. Candidate-controlled documentation or post-validation changes require new freeze/revalidation; only predeclared non-candidate evidence artifacts may be appended without changing subject.
 
 ## Acceptance criteria
 
-- All selected milestone tasks 0057-0074 complete before final release gate.
+- All selected milestone tasks 0057-0074 and 0076 complete before final release gate.
 - Low-risk scenario covers claim, fixture implementation, verification and done.
 - High-risk scenario covers claim, verification, scope, independent review, evidence and done.
 - Scope violation and failed required verification each reject completion.
@@ -106,9 +109,16 @@ Release candidate has reproducible end-to-end gated-workflow evidence from APK i
 - Failed review rejects completion; fixer iteration, re-verification and new independent review can then pass while preserving history.
 - v0.3.1-style fixture upgrades and old tasks remain readable.
 - Alternate agent/export format preserves task/context/review contract.
+- Lock crash/recovery scenario preserves mutual exclusion; live owner cannot be stolen and concurrent stale recovery remains safe.
 - Deterministic automated tests, release checks and package build pass; real CLI workflow evidence accompanies unit fixtures.
 - Bounded dogfood session is recorded; failure cannot be relabeled as pass.
-- Evidence references actual candidate tree/version/SHA; post-bump or later candidate mutation requires fresh relevant validation.
+- Mutating preparation completes before freeze; expected worktree state documented and accepted generated changes committed or included in candidate identity.
+- Final release evidence and report bind exact version, HEAD SHA and candidate tree/worktree identity, including dirty state where present.
+- Post-freeze checks that satisfy release evidence are non-mutating with respect to candidate-controlled inputs; final lint/audit uses read-only surface supplied by 0066.
+- Build output locations and candidate-input boundary declared before freeze. Build that changes tracked candidate inputs belongs in preparation or invalidates freeze; isolated/non-candidate outputs cannot hide source changes.
+- Any validation or post-validation mutation of candidate-controlled files invalidates current release evidence; candidate must be frozen again and relevant checks rerun. Regression covers freeze A -> mutating check -> A evidence rejected for changed candidate B.
+- Fixture/live/dogfood/review evidence must identify same release candidate and evaluated scenario subject; evidence from another revision cannot satisfy release gate. No evidence laundering across candidate revisions.
+- Evidence recording/bookkeeping exclusions are declared before freeze and cannot exclude implementation, requirements or other candidate inputs merely to keep stale PASS valid.
 - Docs accurately describe implemented behavior; release evidence records commands, outcomes, candidate identity and fixture versus real-session limits.
 
 ## Verification commands
@@ -116,7 +126,7 @@ Release candidate has reproducible end-to-end gated-workflow evidence from APK i
 - pnpm lint
 - pnpm test
 - pnpm build
-- pnpm release:check
+- pnpm exec apk sync
 - pnpm exec apk doctor
 - pnpm exec apk status
 
@@ -133,8 +143,9 @@ Release candidate has reproducible end-to-end gated-workflow evidence from APK i
 
 - Backlog reference: APK-RELEASE-02. Milestone 5.
 - Release validation task only; feature defects return to owning task with explicit scope update rather than expanding this task into implementation.
-- Existing pnpm release:check runs lint/test/build/sync/audit; it does not bump version. No publish, push or version bump authorized by this task.
-- Evidence report paths are planned new outputs. Audit report/project map are disposable runtime artifacts, not release evidence by themselves.
+- Existing pnpm release:check includes report-writing audit; do not use it as frozen-candidate validation. If used for preparation, run only within allowed scope or isolated preparation checkout; it provides no final frozen-candidate evidence. No publish, push or version bump authorized by this task.
+- Verification commands above are existing individual surfaces, not the entire final gate. Before execution, bind actual read-only lint/audit command delivered by 0066 in this contract; it is mandatory for final validation. Build is conditional on declared non-mutating candidate semantics; mutating build runs before freeze.
+- Evidence report paths are planned new outputs; declare their treatment before freeze. Report-writing audit outputs are neither automatically permitted candidate mutations nor release proof. Refresh candidate-controlled docs during preparation; later edits require revalidation.
 - No downstream repository re-audit; use APK and controlled fixture/adopted example.
 - Context lists current files and prerequisite task contracts. Before implementation, read prerequisite changes and amend this task with their actual module paths if needed; do not invent missing Context files.
 - Allowed new helper modules stay inside listed module patterns. Other task files and unrelated modules remain outside scope. If scope must expand, amend task before editing.

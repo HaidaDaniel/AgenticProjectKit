@@ -12,7 +12,7 @@ Tags: evidence,verification,provenance,task-system
 
 ## Goal
 
-Tasks have machine-readable evidence linked to agent/run identity, preserving history independently of free-text Notes.
+Tasks have machine-readable evidence bound to evaluated task/candidate state and agent/run identity, with current/stale freshness and preserved history independently of free-text Notes.
 
 ## Context files
 
@@ -66,19 +66,22 @@ Tasks have machine-readable evidence linked to agent/run identity, preserving hi
 
 ## Steps
 
-1. Define compact evidence records on existing sharded run storage or dedicated append-only store; document chosen storage contract.
-2. Expose add/read/filter-by-task operations with validation and bounded export-safe references.
+1. Define compact evidence records and subject identity on existing sharded run storage or dedicated append-only store; document storage and freshness semantics.
+2. Expose add/read/filter-by-task operations with subject validation, current/stale comparison and bounded export-safe references.
 3. Add record lifecycle, corruption and legacy-project regression coverage.
 
 ## Acceptance criteria
 
 - Evidence records include task ID, agent/run identity, type, verification check/profile identity where applicable, result and timestamp.
-- Optional command, artifact/report path, commit SHA, short summary and environment identity remain representable.
+- Evidence eligible to satisfy completion has machine-readable subject identity: task ID, run identity, evidence type, evaluated HEAD/commit SHA for repository-backed work, task baseline identity and worktree/change identity when uncommitted state matters.
+- Subject identity distinguishes evaluated candidate/task contract from current state; HEAD alone is insufficient for dirty worktrees. Non-repository work uses explicit equivalent subject identity; missing/ambiguous identity cannot satisfy future gate.
+- Freshness query distinguishes current and stale independently of pass/fail. Changed subject makes evidence stale; stale evidence remains in history/provenance and cannot satisfy completion.
+- Optional command, artifact/report path, short summary and environment identity remain representable; repository revision binding is not merely optional descriptive metadata.
 - Automated tests, CI results, live/manual checks, benchmark/report evidence and independent review remain distinct; fixture evidence cannot masquerade as live/production evidence.
 - Evidence can be added and queried by task ID; append-only or equivalent history protection prevents accidental loss.
 - Pass, fail and unavailable/not-run stay distinct; corrupted records produce diagnostics.
 - Task markdown excludes large stdout/stderr blobs; references are safe for prompts/status exports.
-- Tests cover write/read/filter, malformed records, history preservation and projects without evidence.
+- Tests cover write/read/filter, malformed records, history preservation, projects without evidence and revision A PASS becoming stale for revision B, including dirty changes without HEAD change.
 
 ## Verification commands
 
@@ -101,6 +104,8 @@ Tasks have machine-readable evidence linked to agent/run identity, preserving hi
 
 - Backlog reference: APK-GATE-02. Milestone 1.
 - Registry and run shards already exist in src/core/agents/index.ts; current RunLogEvent has outcome/reason but no first-class check evidence. Extend storage without duplicating registry.
+- Define subject/baseline identity contract here; 0060 later supplies claim-baseline capture. Evidence from an unclaimed task must identify its evaluated baseline explicitly, never silently invent a claim. No dependency on 0060 or completion enforcement.
+- Prefer conservative invalidation on candidate input changes, including changed task requirements. Declare subject inputs and bookkeeping/evidence output exclusions explicitly; exclusions cannot hide implementation changes. Per-file hashing or incremental build system not required; uncertain freshness never counts as current.
 - A separate .agentic evidence store is an implementation choice, not a required new subsystem. Runtime data belongs in fixtures during automated verification.
 - Non-goals: policy enforcement, verification execution, automatic review or CI integration.
 - Context lists current files and prerequisite task contracts. Before implementation, read prerequisite changes and amend this task with their actual module paths if needed; do not invent missing Context files.

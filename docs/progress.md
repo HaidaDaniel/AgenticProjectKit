@@ -80,13 +80,14 @@ The repository now has:
 
 Next planned task: 0057 - Structured task verification contract with backward compatibility.
 
-Planning only: tasks 0057-0075 created as todo with Owner: none; implementation not started.
+Planning only: tasks 0057-0076 remain todo with Owner: none; implementation not started. Corrective pass fixes review-before-gate bootstrap, revision/freshness semantics, lock recovery and candidate freeze.
 
 ## Remaining task plan
 
 - Tasks 0001 through 0056 are complete.
-- Tasks 0057-0062: Meaningful Done.
-- Tasks 0063-0066: Independent Correctness.
+- Tasks 0057,0058,0059,0060,0061,0063,0062: Meaningful Done, in conceptual order; review capability precedes completion enforcement.
+- Task 0076: Milestone 1 Reliability / Foundation; no dependencies, required by final release 0075.
+- Tasks 0064-0066: Independent Correctness.
 - Tasks 0067-0071: Efficient Agent Workflow.
 - Tasks 0072-0073: Harness Interoperability.
 - Tasks 0074-0075: Upgrade and Release.
@@ -95,7 +96,9 @@ Planning only: tasks 0057-0075 created as todo with Owner: none; implementation 
 
 ## Notes
 
-- Gated-workflow planning validation: 75 tasks parse; 19 new todo/unowned contracts round-trip; no duplicate IDs, missing dependencies or cycles. All 445 new-task context references and milestone links resolve; direct dependencies match milestone table.
+- Corrective-pass validation: 76 tasks parse; all 20 backlog tasks remain todo/unowned and round-trip. No missing dependencies, cycles, self-dependencies or duplicate IDs; 461 context references and milestone links resolve. Task/dependency docs agree on 0063 before 0062 and 0076 before final release 0075.
+- Corrective-pass doctor/status and task deps checks passed; git diff --check clean. Doctor retains three existing warnings (typecheck script, .env.example, GitHub Actions); no claim, product implementation, report-writing audit, commit or push performed.
+- Initial backlog planning validation: 75 tasks parsed; 19 new todo/unowned contracts round-tripped; no duplicate IDs, missing dependencies or cycles. All 445 initial context references and milestone links resolved; direct dependencies matched milestone table.
 - Read-only checks passed: task parser/dependency API (same validation used by audit), tasks --state todo, task deps 0075, status, sync and doctor. Doctor has no failures; existing warnings: no typecheck script, .env.example or GitHub Actions. Report-writing audit and implementation test suites not run during planning.
 - `apk init` verification passed with `pnpm test`, `pnpm lint`, CLI help, and a temp-directory smoke test.
 - Template renderer verification passed with `pnpm test` and `pnpm lint`.

@@ -12,7 +12,7 @@ Tags: verification,runner,evidence,cli
 
 ## Goal
 
-Existing task verification executes selected environment-compatible profiles and records per-check evidence with truthful outcomes.
+Existing task verification executes selected environment-compatible profiles and records per-check outcomes bound to evaluated revision/worktree identity, exposing stale results after candidate changes.
 
 ## Context files
 
@@ -65,7 +65,7 @@ Existing task verification executes selected environment-compatible profiles and
 ## Steps
 
 1. Extend existing verifyTask/defaultRunCommand and task verify CLI; retain current command compatibility.
-2. Resolve requested profiles, execute eligible automated checks, record every outcome and explain unavailable mandatory checks.
+2. Resolve requested profiles, capture evaluated subject identity, execute eligible automated checks, record every outcome and explain unavailable mandatory checks.
 3. Add deterministic command fixtures for success, failure, timeout, spawn/shell failure and repeat execution.
 
 ## Acceptance criteria
@@ -75,6 +75,10 @@ Existing task verification executes selected environment-compatible profiles and
 - Only eligible automated checks run; mandatory unavailable/live/manual checks remain unresolved, never implicit pass.
 - Statuses distinguish pass, fail, pending/not-run and unavailable; not-applicable only with explicit semantics.
 - Successful commands persist pass evidence; failures persist fail evidence; required failure/unavailable returns non-zero.
+- Every successful or failed verification run records evaluated HEAD, baseline and candidate/worktree identity through 0058 subject contract; uncommitted changes cannot reuse HEAD-only evidence.
+- Relevant task-controlled file changes invalidate earlier verification evidence. Conservatively invalidate on any candidate-input change, including otherwise irrelevant inputs; declared evidence/bookkeeping outputs are not candidate inputs.
+- Regression: verify revision A -> PASS; modify allowed source file without committing -> evidence query reports old PASS stale; verify revision B -> new PASS current, old evidence retained. Future 0062 gate consumes same freshness result.
+- Detect candidate-input mutation during checks; ambiguous/mixed-revision results cannot become current PASS. Record evaluated identity and require stable candidate plus fresh verification.
 - Optional failures do not block completion solely for being optional; required skipped checks remain visible.
 - Timeouts, execution exceptions and shell/process failures never become success; command output bounded.
 - Verification reruns safely preserve history; tests use deterministic fixture commands and exercise real process failure paths.
@@ -99,6 +103,7 @@ Existing task verification executes selected environment-compatible profiles and
 
 - Backlog reference: APK-GATE-03. Milestone 1.
 - Task 0049 already implemented command execution, whole-worktree scope checking and aggregate verify run events; this task adds structured profiles/evidence and robust execution semantics.
+- Use conservative fail-safe freshness semantics, not complex incremental verification. Evidence query regression runs here; completion-gate enforcement regression belongs to 0062.
 - Non-goals: automatic task completion, policy engine or independent AI review.
 - Context lists current files and prerequisite task contracts. Before implementation, read prerequisite changes and amend this task with their actual module paths if needed; do not invent missing Context files.
 - Allowed new helper modules stay inside listed module patterns. Other task files and unrelated modules remain outside scope. If scope must expand, amend task before editing.

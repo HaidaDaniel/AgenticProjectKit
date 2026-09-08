@@ -44,16 +44,19 @@
 
 ## Next gated-workflow release (planned)
 
-Tasks 0057-0075 preserve repository-first, model-agnostic control-plane direction. `done` becomes evidence-backed completion; external coding harnesses remain workers.
+Tasks 0057-0076 preserve repository-first, model-agnostic control-plane direction. `done` becomes evidence-backed completion; external coding harnesses remain workers.
 
 | Milestone | Tasks | Capability |
 | --- | --- | --- |
-| 1 - Meaningful Done | 0057-0062 | Structured verification, evidence, execution profiles, claim scope, risk policy, completion gate |
-| 2 - Independent Correctness | 0063-0066 | Independent review, assumptions/invariants, typed guardrails, built-in consistency lint |
+| 1 - Meaningful Done | 0057, 0058, 0059, 0060, 0061, 0063, 0062 | Revision-bound evidence, verification, scope, policy, independent review capability, then completion enforcement |
+| 1 - Reliability / Foundation | 0076 | Safe stale-lock recovery; independent of evidence/policy, required before final release |
+| 2 - Independent Correctness | 0064-0066 | Assumptions/invariants, typed guardrails, built-in consistency lint |
 | 3 - Efficient Agent Workflow | 0067-0071 | Budgeted context, change-aware suggestions, dogfood evidence, provenance, explainable status |
 | 4 - Harness Interoperability | 0072-0073 | Worker contract, implement/review/fix composition |
 | 5 - Upgrade and Release | 0074-0075 | Safe v0.3.1 adoption and candidate-specific release validation |
 
 Task links and direct dependency graph: [delivery milestones](delivery/milestones.md#next-gated-workflow-release-planned).
+
+Bootstrap: 0063 depends on 0058,0061; 0062 depends on 0059,0060,0061,0063. 0075 requires 0057-0074 plus 0076. Evidence freshness is mandatory; stale history remains visible but cannot close tasks. Release lifecycle: prepare -> freeze exact candidate -> non-mutating validation -> evidence; changed candidate requires new freeze/revalidation.
 
 This backlog excludes model runtime ownership, RAG/vector storage, cloud/UI/SaaS work, autonomous swarms and remote execution. Earlier future ideas remain separate.
