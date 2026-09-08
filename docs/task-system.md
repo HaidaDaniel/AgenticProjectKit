@@ -167,6 +167,18 @@ pnpm exec apk task create --title "Release smoke" --mode product --lane release 
 
 Malformed JSON or check metadata reports the check number and invalid field. Prompts include the full structured requirement and retain the flat command list for compatible workflows.
 
+## Correctness contract
+
+Tasks may add optional Markdown list sections for `Correctness assumptions`, `Invariants`, `Required evidence`, `Review questions`, and `Counterexample searches`. These fields describe claims an implementation and independent reviewer must inspect; they do not add mandatory ceremony to low-risk tasks by themselves.
+
+The canonical parser and renderer preserve these fields, omit empty sections, and leave legacy task objects and round-trips unchanged when no correctness fields are present. Implementation and independent-review prompts include only populated groups under `Correctness requirements:`. The task-create CLI accepts the matching comma-separated flags:
+
+```bash
+pnpm exec apk task create --title "Harden worker" --scope worker --allowed src/worker.ts --assumptions "queue delivery is at-least-once" --invariants "duplicate jobs are idempotent" --required-evidence "retry test output" --review-questions "What happens after a process crash?" --counterexample-searches "replayed message during shutdown"
+```
+
+These requirements are descriptive review inputs. They reuse the existing evidence records and completion policy; `Required evidence` does not create a proof artifact unless a verification check or policy explicitly declares one.
+
 ## Evidence records
 
 Verification and review results can be stored as append-only JSONL records in `.agentic/evidence.jsonl`. Records include task, agent, run, evidence type, result, timestamp, check/profile identity, and a subject containing:

@@ -115,6 +115,11 @@ const TASK_CREATE_HELP_TEXT = [
   "  --forbidden <csv>       Comma-separated forbidden file paths.",
   "  --steps <csv>           Comma-separated numbered steps.",
   "  --acceptance <csv>      Comma-separated acceptance criteria.",
+  "  --assumptions <csv>     Correctness assumptions to challenge.",
+  "  --invariants <csv>      Invariants that must remain true.",
+  "  --required-evidence <csv>  Evidence references required by the task.",
+  "  --review-questions <csv>  Questions for an independent reviewer.",
+  "  --counterexample-searches <csv>  Counterexamples the reviewer should seek.",
   "  --docs <csv>            Comma-separated documentation updates.",
   "  --notes <csv>           Comma-separated notes.",
   "",
@@ -292,6 +297,7 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
     "--goal", "--template",
     "--depends", "--tags", "--context", "--allowed", "--forbidden",
     "--steps", "--acceptance", "--verification", "--verification-json", "--docs", "--notes",
+    "--assumptions", "--invariants", "--required-evidence", "--review-questions", "--counterexample-searches",
     "--help", "-h",
   ]);
   for (const arg of argv) {
@@ -328,6 +334,11 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
   const contextFiles = parseCsvFlag(parseFlag(argv, "--context"));
   const allowedFiles = parseCsvFlag(parseFlag(argv, "--allowed"));
   const verificationCommands = parseCsvFlag(parseFlag(argv, "--verification"));
+  const correctnessAssumptions = parseCsvFlag(parseFlag(argv, "--assumptions"));
+  const invariants = parseCsvFlag(parseFlag(argv, "--invariants"));
+  const requiredEvidence = parseCsvFlag(parseFlag(argv, "--required-evidence"));
+  const reviewQuestions = parseCsvFlag(parseFlag(argv, "--review-questions"));
+  const counterexampleSearches = parseCsvFlag(parseFlag(argv, "--counterexample-searches"));
   const resolvedContextFiles = contextFiles.length > 0 ? contextFiles : template?.contextFiles ?? [];
   const verificationJson = parseFlag(argv, "--verification-json");
   let structuredVerification: TaskVerificationCheck[] | undefined;
@@ -385,6 +396,11 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
     acceptanceCriteria: parseCsvFlag(parseFlag(argv, "--acceptance")).length > 0
       ? parseCsvFlag(parseFlag(argv, "--acceptance"))
       : template?.acceptanceCriteria ?? [],
+    correctnessAssumptions,
+    invariants,
+    requiredEvidence,
+    reviewQuestions,
+    counterexampleSearches,
     verification: resolvedVerification,
     documentationUpdates: parseCsvFlag(parseFlag(argv, "--docs")).length > 0
       ? parseCsvFlag(parseFlag(argv, "--docs"))

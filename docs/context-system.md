@@ -62,3 +62,4 @@ Agent registry, run logs, and archived tasks are analytics and history, not impl
 - Use scanner facts as availability bounds for metadata-driven docs.
 - Use `apk suggest-context "<task description>"` as optional local heuristic support when drafting a task. Suggestions are candidates, not guaranteed affected-file analysis.
 - Independent review prompts use the task contract plus the evaluated HEAD, baseline, candidate/worktree identity, changed paths, acceptance criteria, and allowed/forbidden scope; they are inspection prompts, not implementation prompts.
+- When present, review prompts also carry the task's correctness assumptions, invariants, required evidence references, review questions, and counterexample searches. Empty groups are omitted so low-risk or legacy tasks keep compact prompts.

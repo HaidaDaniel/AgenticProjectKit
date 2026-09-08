@@ -31,6 +31,29 @@ function renderList(items: readonly string[]): string[] {
   return items.map((item) => `- ${item}`);
 }
 
+function renderCorrectnessRequirements(task: ProjectTask): string[] {
+  const groups: Array<[string, string[] | undefined]> = [
+    ["Assumptions", task.correctnessAssumptions],
+    ["Invariants", task.invariants],
+    ["Required evidence", task.requiredEvidence],
+    ["Review questions", task.reviewQuestions],
+    ["Counterexample searches", task.counterexampleSearches],
+  ];
+  const populated = groups.filter(([, items]) => items && items.length > 0);
+  if (populated.length === 0) {
+    return [];
+  }
+
+  return [
+    "Correctness requirements:",
+    ...populated.flatMap(([label, items]) => [
+      `${label}:`,
+      ...renderList(items!),
+    ]),
+    "",
+  ];
+}
+
 function renderVerificationRequirement(
   check: ReturnType<typeof getTaskVerification>[number],
 ): string {
@@ -101,6 +124,7 @@ export function renderTaskPrompt(input: TaskPromptInput): string {
     "Acceptance criteria:",
     ...renderList(task.acceptanceCriteria),
     "",
+    ...renderCorrectnessRequirements(task),
     ...(task.verification !== undefined ? [
       "Verification requirements:",
       ...getTaskVerification(task).map(renderVerificationRequirement),

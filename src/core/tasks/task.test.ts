@@ -213,6 +213,25 @@ test("structured verification survives canonical task round trip", () => {
   assert.deepEqual(parseTaskMarkdown(rendered), task);
 });
 
+test("optional correctness contract survives canonical round trip without legacy noise", () => {
+  const task: ProjectTask = {
+    ...TASK,
+    correctnessAssumptions: ["Inputs are normalized."],
+    invariants: ["No item is processed twice."],
+    requiredEvidence: ["Idempotency report"],
+    reviewQuestions: ["What if delivery is duplicated?"],
+    counterexampleSearches: ["Search retry and timeout paths."],
+  };
+  const rendered = renderTaskMarkdown(task);
+  assert.match(rendered, /## Correctness assumptions/);
+  assert.match(rendered, /## Counterexample searches/);
+  assert.deepEqual(parseTaskMarkdown(rendered), task);
+
+  const legacy = renderTaskMarkdown(TASK);
+  assert.doesNotMatch(legacy, /## Correctness assumptions/);
+  assert.doesNotMatch(legacy, /## Review questions/);
+});
+
 test("task policy applies deterministic risk defaults", () => {
   const low = resolveTaskPolicy({
     ...TASK,
@@ -447,6 +466,25 @@ test("independent review uses a separate reviewer run and revision-bound evidenc
     assert.match(first.prompt, /do not continue implementation work/);
     assert.match(first.prompt, /Green tests alone are not correctness proof/);
     assert.match(first.prompt, /Baseline-to-current diff:/);
+    assert.match(renderTaskReviewPrompt({
+      task: {
+        ...TASK,
+        reviewQuestions: ["Which retry assumption can fail?"],
+        counterexampleSearches: ["Search duplicate delivery."],
+      },
+      reviewer: "codex-reviewer",
+      subject: first.subject,
+      changedFiles: first.changedFiles,
+    }), /Correctness requirements:/);
+    assert.match(renderTaskReviewPrompt({
+      task: {
+        ...TASK,
+        invariants: ["No duplicate processing."],
+      },
+      reviewer: "codex-reviewer",
+      subject: first.subject,
+      changedFiles: first.changedFiles,
+    }), /No duplicate processing\./);
     assert.match(renderTaskReviewResult(first), /Outcome: pass/);
 
     await writeFile(changedFile, "export const version = 2;\n", "utf8");

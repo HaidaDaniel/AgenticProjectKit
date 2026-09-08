@@ -124,6 +124,23 @@ function isBookkeepingPath(path: string, taskFile: string): boolean {
   ));
 }
 
+function renderCorrectnessRequirements(task: ProjectTask): string[] {
+  const groups: Array<[string, string[] | undefined]> = [
+    ["Assumptions", task.correctnessAssumptions],
+    ["Invariants", task.invariants],
+    ["Required evidence", task.requiredEvidence],
+    ["Review questions", task.reviewQuestions],
+    ["Counterexample searches", task.counterexampleSearches],
+  ];
+  const populated = groups.filter(([, items]) => items && items.length > 0);
+  if (populated.length === 0) return [];
+  return [
+    "Correctness requirements:",
+    ...populated.flatMap(([label, items]) => [label + ":", ...(items ?? []).map((item) => `- ${item}`)]),
+    "",
+  ];
+}
+
 export function renderTaskReviewPrompt(input: TaskReviewPromptInput): string {
   const baseline = input.baselineHeadSha ?? "unavailable";
   const current = input.subject.headSha ?? "unavailable";
@@ -156,6 +173,7 @@ export function renderTaskReviewPrompt(input: TaskReviewPromptInput): string {
     "Acceptance criteria:",
     ...input.task.acceptanceCriteria.map((criterion) => `- ${criterion}`),
     "",
+    ...renderCorrectnessRequirements(input.task),
     "Allowed files:",
     ...input.task.allowedFiles.map((path) => `- ${path}`),
     "",

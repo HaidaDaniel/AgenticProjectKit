@@ -96,6 +96,11 @@ export interface ProjectTask {
   forbiddenFiles: string[];
   steps: string[];
   acceptanceCriteria: string[];
+  correctnessAssumptions?: string[];
+  invariants?: string[];
+  requiredEvidence?: string[];
+  reviewQuestions?: string[];
+  counterexampleSearches?: string[];
   /** Structured checks; absent only on in-memory legacy task objects. */
   verification?: TaskVerificationCheck[];
   /** Backward-compatible automated command projection. */
@@ -132,6 +137,11 @@ type SectionKey =
   | "forbiddenFiles"
   | "steps"
   | "acceptanceCriteria"
+  | "correctnessAssumptions"
+  | "invariants"
+  | "requiredEvidence"
+  | "reviewQuestions"
+  | "counterexampleSearches"
   | "verification"
   | "verificationCommands"
   | "documentationUpdates"
@@ -144,6 +154,11 @@ const SECTION_TITLES: Record<string, SectionKey> = {
   "Files forbidden to edit": "forbiddenFiles",
   Steps: "steps",
   "Acceptance criteria": "acceptanceCriteria",
+  "Correctness assumptions": "correctnessAssumptions",
+  Invariants: "invariants",
+  "Required evidence": "requiredEvidence",
+  "Review questions": "reviewQuestions",
+  "Counterexample searches": "counterexampleSearches",
   Verification: "verification",
   "Verification commands": "verificationCommands",
   "Documentation updates": "documentationUpdates",
@@ -157,6 +172,11 @@ const SECTION_ORDER: readonly [SectionKey, string][] = [
   ["forbiddenFiles", "Files forbidden to edit"],
   ["steps", "Steps"],
   ["acceptanceCriteria", "Acceptance criteria"],
+  ["correctnessAssumptions", "Correctness assumptions"],
+  ["invariants", "Invariants"],
+  ["requiredEvidence", "Required evidence"],
+  ["reviewQuestions", "Review questions"],
+  ["counterexampleSearches", "Counterexample searches"],
   ["verificationCommands", "Verification commands"],
   ["documentationUpdates", "Documentation updates"],
   ["notes", "Notes"],
@@ -510,6 +530,17 @@ export function parseTaskMarkdown(markdown: string): ProjectTask {
     ? parseStructuredVerification(sections.verification ?? "", issues)
     : normalizeVerificationCommands(parseList(sections.verificationCommands ?? ""));
   const verificationCommands = verificationCommandsFromChecks(verification);
+  const optionalLists = {
+    correctnessAssumptions: sections.correctnessAssumptions === undefined
+      ? undefined
+      : parseList(sections.correctnessAssumptions),
+    invariants: sections.invariants === undefined ? undefined : parseList(sections.invariants),
+    requiredEvidence: sections.requiredEvidence === undefined ? undefined : parseList(sections.requiredEvidence),
+    reviewQuestions: sections.reviewQuestions === undefined ? undefined : parseList(sections.reviewQuestions),
+    counterexampleSearches: sections.counterexampleSearches === undefined
+      ? undefined
+      : parseList(sections.counterexampleSearches),
+  };
 
   const task: ProjectTask = {
     id: headingMatch?.[1] ?? "",
@@ -546,6 +577,16 @@ export function parseTaskMarkdown(markdown: string): ProjectTask {
     acceptanceCriteria: parseList(
       requireSection(sections, "acceptanceCriteria", "Acceptance criteria", issues),
     ),
+    ...(optionalLists.correctnessAssumptions && optionalLists.correctnessAssumptions.length > 0
+      ? { correctnessAssumptions: optionalLists.correctnessAssumptions } : {}),
+    ...(optionalLists.invariants && optionalLists.invariants.length > 0
+      ? { invariants: optionalLists.invariants } : {}),
+    ...(optionalLists.requiredEvidence && optionalLists.requiredEvidence.length > 0
+      ? { requiredEvidence: optionalLists.requiredEvidence } : {}),
+    ...(optionalLists.reviewQuestions && optionalLists.reviewQuestions.length > 0
+      ? { reviewQuestions: optionalLists.reviewQuestions } : {}),
+    ...(optionalLists.counterexampleSearches && optionalLists.counterexampleSearches.length > 0
+      ? { counterexampleSearches: optionalLists.counterexampleSearches } : {}),
     ...(hasStructuredVerification ? { verification } : {}),
     verificationCommands,
     documentationUpdates: parseList(
@@ -601,7 +642,15 @@ export function parseTaskMarkdown(markdown: string): ProjectTask {
 export function renderTaskMarkdown(task: ProjectTask): string {
   const verification = getTaskVerification(task);
   const sectionOrder = SECTION_ORDER.filter(([key]) => (
-    key !== "verification" && key !== "verificationCommands"
+    key !== "verification" &&
+    key !== "verificationCommands" &&
+    (!([
+      "correctnessAssumptions",
+      "invariants",
+      "requiredEvidence",
+      "reviewQuestions",
+      "counterexampleSearches",
+    ] as string[]).includes(key) || ((task[key] as string[] | undefined)?.length ?? 0) > 0)
   ));
   const verificationIndex = sectionOrder.findIndex(([key]) => key === "documentationUpdates");
   sectionOrder.splice(verificationIndex, 0, [
@@ -1051,6 +1100,11 @@ export interface TaskCreateInput {
   forbiddenFiles: string[];
   steps: string[];
   acceptanceCriteria: string[];
+  correctnessAssumptions?: string[];
+  invariants?: string[];
+  requiredEvidence?: string[];
+  reviewQuestions?: string[];
+  counterexampleSearches?: string[];
   verification?: TaskVerificationCheck[];
   /** Backward-compatible input for flat command verification. */
   verificationCommands?: string[];
@@ -1260,6 +1314,16 @@ export async function createTask(
       forbiddenFiles: input.forbiddenFiles,
       steps: input.steps,
       acceptanceCriteria: input.acceptanceCriteria,
+      ...(input.correctnessAssumptions && input.correctnessAssumptions.length > 0
+        ? { correctnessAssumptions: input.correctnessAssumptions } : {}),
+      ...(input.invariants && input.invariants.length > 0
+        ? { invariants: input.invariants } : {}),
+      ...(input.requiredEvidence && input.requiredEvidence.length > 0
+        ? { requiredEvidence: input.requiredEvidence } : {}),
+      ...(input.reviewQuestions && input.reviewQuestions.length > 0
+        ? { reviewQuestions: input.reviewQuestions } : {}),
+      ...(input.counterexampleSearches && input.counterexampleSearches.length > 0
+        ? { counterexampleSearches: input.counterexampleSearches } : {}),
       verification,
       verificationCommands: verificationCommandsFromChecks(verification),
       documentationUpdates: input.documentationUpdates,

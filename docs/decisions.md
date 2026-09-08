@@ -201,3 +201,19 @@ An implementation owner must not certify a mandatory independent review. Review 
 Implementation:
 
 `recordTaskReview` validates a registered reviewer different from the task owner, emits `pass`, `changes_requested`, or `fail`, links an optional implementation run, and reuses verification subject/freshness semantics. `renderTaskReviewPrompt` names the baseline-to-current diff and requires acceptance, scope, hidden-assumption, failure-path, and counterexample review. The CLI supports `--prompt` and evidence recording; it does not change task state or enforce done.
+
+## ADR-0016 - Optional correctness contract stays descriptive and sparse
+
+Status: accepted
+
+Decision:
+
+Add optional task fields for correctness assumptions, invariants, required evidence references, review questions, and counterexample searches. Store them as compact Markdown list sections and propagate populated values to implementation and independent-review prompts.
+
+Reason:
+
+Reviewers need explicit claims and adversarial targets for high-risk, distributed, security, migration, benchmark, and architecture work, while ordinary tasks should not pay prompt or format noise for unused fields.
+
+Implementation:
+
+The task parser, renderer, creator, and CLI preserve these fields and omit empty sections. The fields guide inspection but do not independently alter verification or completion policy; required proof remains represented by structured verification and append-only evidence records.

@@ -1,7 +1,7 @@
 # Task 0064 - Add correctness assumptions and adversarial review contract
 
-State: todo
-Owner: none
+State: done
+Owner: codex-20260909
 Mode: product
 Lane: review
 Scope: review,cli,tests,docs

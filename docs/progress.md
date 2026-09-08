@@ -2,7 +2,7 @@
 
 ## Current status
 
-Phase 1 documentation is in place, and Tasks 0001 through 0063 are complete.
+Phase 1 documentation is in place, and Tasks 0001 through 0064 are complete.
 
 The repository now has:
 
@@ -82,16 +82,17 @@ The repository now has:
 - deterministic effective task policy resolution from risk, tags, structured verification, and legacy defaults, with read-only CLI diagnostics and actionable blockers.
 - independent reviewer runs, review prompts, findings, append-only review evidence, self-review prevention, and revision freshness assessment.
 - candidate-aware completion gate shared by preview and `done`, with dependency/scope/policy/evidence/review enforcement and completion provenance.
+- optional correctness assumptions, invariants, evidence references, review questions, and counterexample searches propagated through task files, CLI creation, and implementation/review prompts.
 
 ## Next step
 
-Next planned task: 0064 - Add correctness assumptions and adversarial review contract.
+Next planned task: 0065 - Add task dependency graph and impact analysis.
 
-Planning only: tasks 0064-0076 remain todo with Owner: none. Corrective pass fixes review-before-gate bootstrap, revision/freshness semantics, lock recovery and candidate freeze.
+Planning only: tasks 0065-0076 remain todo with Owner: none. Corrective pass fixes review-before-gate bootstrap, revision/freshness semantics, lock recovery and candidate freeze.
 
 ## Remaining task plan
 
-- Tasks 0001 through 0063 are complete.
+- Tasks 0001 through 0064 are complete.
 - Task 0062: Meaningful Done; review capability now precedes completion enforcement.
 - Task 0076: Milestone 1 Reliability / Foundation; no dependencies, required by final release 0075.
 - Tasks 0064-0066: Independent Correctness.
@@ -145,3 +146,4 @@ Planning only: tasks 0064-0076 remain todo with Owner: none. Corrective pass fix
 - Risk/task-policy verification passed with `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm exec apk task create --help`, and `pnpm exec apk doctor`.
 - Independent-review verification passed with `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm exec apk task create --help`, and `pnpm exec apk doctor`.
 - Completion-gate verification passed with `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm exec apk task create --help`, and `pnpm exec apk doctor`.
+- Correctness-contract verification passed with `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm exec apk task create --help`, and `pnpm exec apk doctor`.

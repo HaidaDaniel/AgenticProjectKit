@@ -127,6 +127,32 @@ test("renderTaskPrompt preserves structured verification requirements", () => {
   assert.match(prompt, /Verification commands:\n/);
 });
 
+test("renderTaskPrompt includes populated correctness requirements only", () => {
+  const prompt = renderTaskPrompt(buildTaskPromptInput("codex", {
+    ...TASK,
+    correctnessAssumptions: ["Input is normalized before processing."],
+    invariants: ["Processed items are never duplicated."],
+    requiredEvidence: ["Idempotency report"],
+    reviewQuestions: ["What happens after a partial retry?"],
+    counterexampleSearches: ["Search for duplicate delivery."],
+  }, 1));
+
+  assert.match(prompt, /Correctness requirements:/);
+  assert.match(prompt, /Assumptions:\n- Input is normalized before processing\./);
+  assert.match(prompt, /Invariants:\n- Processed items are never duplicated\./);
+  assert.match(prompt, /Counterexample searches:\n- Search for duplicate delivery\./);
+
+  const emptyPrompt = renderTaskPrompt(buildTaskPromptInput("codex", {
+    ...TASK,
+    correctnessAssumptions: [],
+    invariants: [],
+    requiredEvidence: [],
+    reviewQuestions: [],
+    counterexampleSearches: [],
+  }, 1));
+  assert.doesNotMatch(emptyPrompt, /Correctness requirements:/);
+});
+
 test("buildTaskPromptInput uses task metadata and available docs for level 2 context", () => {
   const input = buildTaskPromptInput("codex", {
     ...TASK,

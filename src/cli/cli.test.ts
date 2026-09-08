@@ -704,6 +704,11 @@ test("CLI task create writes structured verification from JSON", async () => {
       "--context", "AGENTS.md",
       "--allowed", "docs/release.md",
       "--verification-json", verification,
+      "--assumptions", "Release metadata is complete",
+      "--invariants", "Every release has one immutable identifier",
+      "--required-evidence", "release URL",
+      "--review-questions", "Can rollback happen halfway through deploy?",
+      "--counterexample-searches", "Search partial deployment paths",
     ], directory);
 
     assert.equal(result.exitCode, 0);
@@ -711,6 +716,8 @@ test("CLI task create writes structured verification from JSON", async () => {
     assert.match(content, /## Verification/);
     assert.match(content, /"environment":"live"/);
     assert.match(content, /"instruction":"Check the deployed release\."/);
+    assert.match(content, /## Correctness assumptions/);
+    assert.match(content, /## Counterexample searches/);
     assert.doesNotMatch(content, /## Verification commands/);
   });
 });
