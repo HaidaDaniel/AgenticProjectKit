@@ -48,6 +48,27 @@ export type TaskMode = (typeof TASK_MODES)[number];
 export const TASK_RISKS = ["low", "medium", "high"] as const;
 export type TaskRisk = (typeof TASK_RISKS)[number];
 
+export const TASK_VERIFICATION_TYPES = ["automated", "manual"] as const;
+export type TaskVerificationType = (typeof TASK_VERIFICATION_TYPES)[number];
+
+export const TASK_VERIFICATION_ENVIRONMENTS = ["static", "ci", "local", "live"] as const;
+export type TaskVerificationEnvironment = (typeof TASK_VERIFICATION_ENVIRONMENTS)[number];
+
+export const TASK_VERIFICATION_PROFILES = ["deterministic", "integration", "trusted", "report"] as const;
+export type TaskVerificationProfile = (typeof TASK_VERIFICATION_PROFILES)[number];
+
+export interface TaskVerificationCheck {
+  id: string;
+  type: TaskVerificationType;
+  required: boolean;
+  environment: TaskVerificationEnvironment;
+  profile: TaskVerificationProfile;
+  command?: string;
+  instruction?: string;
+  artifact?: string;
+  evidence?: string;
+}
+
 export interface ProjectTask {
   id: string;
   title: string;
@@ -66,6 +87,9 @@ export interface ProjectTask {
   forbiddenFiles: string[];
   steps: string[];
   acceptanceCriteria: string[];
+  /** Structured checks; absent only on in-memory legacy task objects. */
+  verification?: TaskVerificationCheck[];
+  /** Backward-compatible automated command projection. */
   verificationCommands: string[];
   documentationUpdates: string[];
   notes: string[];
@@ -99,6 +123,7 @@ type SectionKey =
   | "forbiddenFiles"
   | "steps"
   | "acceptanceCriteria"
+  | "verification"
   | "verificationCommands"
   | "documentationUpdates"
   | "notes";
@@ -110,6 +135,7 @@ const SECTION_TITLES: Record<string, SectionKey> = {
   "Files forbidden to edit": "forbiddenFiles",
   Steps: "steps",
   "Acceptance criteria": "acceptanceCriteria",
+  Verification: "verification",
   "Verification commands": "verificationCommands",
   "Documentation updates": "documentationUpdates",
   Notes: "notes",
@@ -180,6 +206,167 @@ function renderList(items: readonly string[]): string {
 
 function renderSteps(items: readonly string[]): string {
   return items.map((item, index) => `${index + 1}. ${item}`).join("\n");
+}
+
+function renderVerification(checks: readonly TaskVerificationCheck[]): string {
+  return checks
+    .map((check) => `- \`${JSON.stringify(check)}\``)
+    .join("\n");
+}
+
+function addVerificationIssue(
+  issues: string[],
+  checkNumber: number,
+  message: string,
+): void {
+  issues.push(`Verification check ${checkNumber} ${message}`);
+}
+
+function parseVerificationBoolean(
+  value: unknown,
+  checkNumber: number,
+  issues: string[],
+): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  addVerificationIssue(issues, checkNumber, "required must be true or false.");
+  return false;
+}
+
+function parseVerificationString(
+  value: unknown,
+  field: string,
+  checkNumber: number,
+  issues: string[],
+): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "string" || value.trim().length === 0) {
+    addVerificationIssue(issues, checkNumber, `${field} must be a non-empty string when provided.`);
+    return undefined;
+  }
+
+  return value;
+}
+
+function parseVerificationCheck(
+  value: unknown,
+  checkNumber: number,
+  issues: string[],
+): TaskVerificationCheck | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    addVerificationIssue(issues, checkNumber, "must be a JSON object.");
+    return undefined;
+  }
+
+  const raw = value as Record<string, unknown>;
+  const id = parseVerificationString(raw.id, "id", checkNumber, issues) ?? `check-${checkNumber}`;
+  const type = raw.type;
+  const environment = raw.environment;
+  const profile = raw.profile;
+
+  if (!(TASK_VERIFICATION_TYPES as readonly unknown[]).includes(type)) {
+    addVerificationIssue(issues, checkNumber, `type must be one of: ${TASK_VERIFICATION_TYPES.join(", ")}.`);
+  }
+  if (!(TASK_VERIFICATION_ENVIRONMENTS as readonly unknown[]).includes(environment)) {
+    addVerificationIssue(issues, checkNumber, `environment must be one of: ${TASK_VERIFICATION_ENVIRONMENTS.join(", ")}.`);
+  }
+  if (!(TASK_VERIFICATION_PROFILES as readonly unknown[]).includes(profile)) {
+    addVerificationIssue(issues, checkNumber, `profile must be one of: ${TASK_VERIFICATION_PROFILES.join(", ")}.`);
+  }
+
+  const command = parseVerificationString(raw.command, "command", checkNumber, issues);
+  const instruction = parseVerificationString(raw.instruction, "instruction", checkNumber, issues);
+  const artifact = parseVerificationString(raw.artifact, "artifact", checkNumber, issues);
+  const evidence = parseVerificationString(raw.evidence, "evidence", checkNumber, issues);
+
+  if (type === "automated" && !command) {
+    addVerificationIssue(issues, checkNumber, "automated checks require command.");
+  }
+  if (type === "manual" && !instruction) {
+    addVerificationIssue(issues, checkNumber, "manual checks require instruction.");
+  }
+  if (command && instruction) {
+    addVerificationIssue(issues, checkNumber, "must define command or instruction, not both.");
+  }
+
+  return {
+    id,
+    type: type as TaskVerificationType,
+    required: parseVerificationBoolean(raw.required, checkNumber, issues),
+    environment: environment as TaskVerificationEnvironment,
+    profile: profile as TaskVerificationProfile,
+    ...(command ? { command } : {}),
+    ...(instruction ? { instruction } : {}),
+    ...(artifact ? { artifact } : {}),
+    ...(evidence ? { evidence } : {}),
+  };
+}
+
+function parseStructuredVerification(
+  text: string,
+  issues: string[],
+): TaskVerificationCheck[] {
+  const entries = parseList(text);
+  const checks: TaskVerificationCheck[] = [];
+  const ids = new Set<string>();
+
+  entries.forEach((entry, index) => {
+    let value: unknown;
+    try {
+      value = JSON.parse(entry);
+    } catch (error: unknown) {
+      addVerificationIssue(
+        issues,
+        index + 1,
+        `must be valid JSON (${error instanceof Error ? error.message : String(error)}).`,
+      );
+      return;
+    }
+
+    const check = parseVerificationCheck(value, index + 1, issues);
+    if (!check) {
+      return;
+    }
+    if (ids.has(check.id)) {
+      addVerificationIssue(issues, index + 1, `id "${check.id}" must be unique.`);
+    }
+    ids.add(check.id);
+    checks.push(check);
+  });
+
+  if (checks.length === 0) {
+    issues.push("Verification must include at least one check.");
+  }
+
+  return checks;
+}
+
+export function normalizeVerificationCommands(
+  commands: readonly string[],
+): TaskVerificationCheck[] {
+  return commands.map((command, index) => ({
+    id: `check-${index + 1}`,
+    type: "automated",
+    required: true,
+    environment: "local",
+    profile: "deterministic",
+    command,
+  }));
+}
+
+export function getTaskVerification(task: ProjectTask): TaskVerificationCheck[] {
+  return task.verification ?? normalizeVerificationCommands(task.verificationCommands);
+}
+
+function verificationCommandsFromChecks(checks: readonly TaskVerificationCheck[]): string[] {
+  return checks
+    .filter((check) => check.type === "automated" && check.command)
+    .map((check) => check.command!);
 }
 
 function readRequiredMetadata(
@@ -305,6 +492,15 @@ export function parseTaskMarkdown(markdown: string): ProjectTask {
   const tags = lines.some((line) => line.startsWith("Tags:"))
     ? parseCsv(readRequiredMetadata(lines, "Tags", issues))
     : [];
+  const hasStructuredVerification = sections.verification !== undefined;
+  const hasLegacyVerification = sections.verificationCommands !== undefined;
+  if (!hasStructuredVerification && !hasLegacyVerification) {
+    issues.push('Section "Verification" or "Verification commands" is required.');
+  }
+  const verification = hasStructuredVerification
+    ? parseStructuredVerification(sections.verification ?? "", issues)
+    : normalizeVerificationCommands(parseList(sections.verificationCommands ?? ""));
+  const verificationCommands = verificationCommandsFromChecks(verification);
 
   const task: ProjectTask = {
     id: headingMatch?.[1] ?? "",
@@ -341,14 +537,8 @@ export function parseTaskMarkdown(markdown: string): ProjectTask {
     acceptanceCriteria: parseList(
       requireSection(sections, "acceptanceCriteria", "Acceptance criteria", issues),
     ),
-    verificationCommands: parseList(
-      requireSection(
-        sections,
-        "verificationCommands",
-        "Verification commands",
-        issues,
-      ),
-    ),
+    ...(hasStructuredVerification ? { verification } : {}),
+    verificationCommands,
     documentationUpdates: parseList(
       requireSection(
         sections,
@@ -388,7 +578,7 @@ export function parseTaskMarkdown(markdown: string): ProjectTask {
     issues.push("Context files must include at least one item.");
   }
 
-  if (task.verificationCommands.length === 0) {
+  if (verification.length === 0 && !hasStructuredVerification) {
     issues.push("Verification commands must include at least one item.");
   }
 
@@ -400,12 +590,23 @@ export function parseTaskMarkdown(markdown: string): ProjectTask {
 }
 
 export function renderTaskMarkdown(task: ProjectTask): string {
-  const sections = SECTION_ORDER.map(([key, title]) => {
+  const verification = getTaskVerification(task);
+  const sectionOrder = SECTION_ORDER.filter(([key]) => (
+    key !== "verification" && key !== "verificationCommands"
+  ));
+  const verificationIndex = sectionOrder.findIndex(([key]) => key === "documentationUpdates");
+  sectionOrder.splice(verificationIndex, 0, [
+    task.verification === undefined ? "verificationCommands" : "verification",
+    task.verification === undefined ? "Verification commands" : "Verification",
+  ]);
+  const sections = sectionOrder.map(([key, title]) => {
     const value = task[key];
     const content = key === "goal"
       ? task.goal
       : key === "steps"
         ? renderSteps(value as string[])
+        : key === "verification"
+          ? renderVerification(verification)
         : renderList(value as string[]);
 
     return [`## ${title}`, "", content].join("\n");
@@ -841,7 +1042,9 @@ export interface TaskCreateInput {
   forbiddenFiles: string[];
   steps: string[];
   acceptanceCriteria: string[];
-  verificationCommands: string[];
+  verification?: TaskVerificationCheck[];
+  /** Backward-compatible input for flat command verification. */
+  verificationCommands?: string[];
   documentationUpdates: string[];
   notes: string[];
 }
@@ -980,6 +1183,7 @@ export async function createTask(
       throw err;
     }
 
+    const verification = input.verification ?? normalizeVerificationCommands(input.verificationCommands ?? []);
     const task: ProjectTask = {
       id,
       title: input.title,
@@ -998,7 +1202,8 @@ export async function createTask(
       forbiddenFiles: input.forbiddenFiles,
       steps: input.steps,
       acceptanceCriteria: input.acceptanceCriteria,
-      verificationCommands: input.verificationCommands,
+      verification,
+      verificationCommands: verificationCommandsFromChecks(verification),
       documentationUpdates: input.documentationUpdates,
       notes: input.notes,
     };

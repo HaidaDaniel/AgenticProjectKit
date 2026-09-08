@@ -23,9 +23,11 @@ import {
   createTask,
   findTaskDependents,
   findTaskFile,
+  getTaskVerification,
   listArchivedTaskFiles,
   listTaskFiles,
   nextTaskId,
+  normalizeVerificationCommands,
   parseTaskMarkdown,
   renderTaskMarkdown,
   renderNextTask,
@@ -154,6 +156,62 @@ test("renderTaskMarkdown emits the compact task shape", () => {
 
 test("parseTaskMarkdown reads rendered compact task files", () => {
   assert.deepEqual(parseTaskMarkdown(renderTaskMarkdown(TASK)), TASK);
+  assert.deepEqual(getTaskVerification(TASK), normalizeVerificationCommands(["pnpm test"]));
+});
+
+test("structured verification survives canonical task round trip", () => {
+  const task: ProjectTask = {
+    ...TASK,
+    verification: [
+      {
+        id: "unit-tests",
+        type: "automated",
+        required: true,
+        environment: "ci",
+        profile: "deterministic",
+        command: "pnpm test",
+        artifact: "reports/test.xml",
+      },
+      {
+        id: "live-check",
+        type: "manual",
+        required: false,
+        environment: "live",
+        profile: "trusted",
+        instruction: "Confirm the production smoke check.",
+        evidence: "link or incident id",
+      },
+    ],
+    verificationCommands: ["pnpm test"],
+  };
+
+  const rendered = renderTaskMarkdown(task);
+  assert.match(rendered, /## Verification/);
+  assert.doesNotMatch(rendered, /## Verification commands/);
+  assert.deepEqual(parseTaskMarkdown(rendered), task);
+});
+
+test("structured verification reports actionable metadata errors", () => {
+  assert.throws(
+    () => parseTaskMarkdown(renderTaskMarkdown({
+      ...TASK,
+      verification: [{
+        id: "bad",
+        type: "manual",
+        required: true,
+        environment: "local",
+        profile: "integration",
+        command: "pnpm test",
+        instruction: "Run it manually.",
+      }],
+      verificationCommands: [],
+    })),
+    (error: unknown) => {
+      assert.ok(error instanceof TaskFormatError);
+      assert.ok(error.issues.some((issue) => issue.includes("must define command or instruction, not both")));
+      return true;
+    },
+  );
 });
 
 test("parseTaskMarkdown reports useful compact validation errors", () => {

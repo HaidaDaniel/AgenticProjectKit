@@ -144,6 +144,29 @@ Supported templates:
 
 Templates provide default mode, lane, risk, tags, context, verification, steps, acceptance criteria, documentation updates, and notes. Explicit flags override template defaults. `--title`, `--scope`, and `--allowed` remain required.
 
+## Verification contract
+
+New tasks store verification checks in a `## Verification` section. Each check is one JSON object in a readable Markdown bullet:
+
+```md
+## Verification
+
+- `{"id":"unit-tests","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm test","artifact":"reports/test.xml"}`
+- `{"id":"release-smoke","type":"manual","required":true,"environment":"live","profile":"trusted","instruction":"Check the deployed release.","evidence":"release URL"}`
+```
+
+Checks declare `type` (`automated` or `manual`), `required`, `environment` (`static`, `ci`, `local`, or `live`), and `profile` (`deterministic`, `integration`, `trusted`, or `report`). Automated checks require `command`; manual checks require `instruction`. `artifact` and `evidence` are optional requirements.
+
+The legacy `## Verification commands` section remains valid and is normalized in memory to required automated checks with `environment: local` and `profile: deterministic`. Legacy task files are not migrated automatically. The compatible `verificationCommands` projection remains available to existing command execution until profile-aware verification is enabled.
+
+Use structured verification directly from the API or through the CLI:
+
+```bash
+pnpm exec apk task create --title "Release smoke" --mode product --lane release --scope release --risk high --context AGENTS.md --allowed docs/release.md --verification-json '[{"id":"smoke","type":"manual","required":true,"environment":"live","profile":"trusted","instruction":"Check the deployed release.","evidence":"release URL"}]'
+```
+
+Malformed JSON or check metadata reports the check number and invalid field. Prompts include the full structured requirement and retain the flat command list for compatible workflows.
+
 ## CLI work loop
 
 `pnpm exec apk work <task-id> --owner <agent-id> --target <agent>` connects the existing task workflow:

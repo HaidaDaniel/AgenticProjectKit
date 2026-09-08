@@ -326,6 +326,17 @@ Use templates to reduce repeated metadata:
 pnpm exec tsx src/cli/index.ts task create --template bugfix --title "Fix Parser" --scope cli --allowed src/cli/index.ts
 ```
 
+Structured verification supports required automated/manual checks, environment/profile, and optional artifact/evidence requirements:
+
+```bash
+pnpm exec tsx src/cli/index.ts task create \
+  --title "Release smoke" --mode product --lane release --scope release --risk high \
+  --context AGENTS.md --allowed docs/release.md \
+  --verification-json '[{"id":"smoke","type":"manual","required":true,"environment":"live","profile":"trusted","instruction":"Check the deployed release.","evidence":"release URL"}]'
+```
+
+Existing `## Verification commands` task files remain readable. Flat commands normalize to required local deterministic automated checks; no migration is required.
+
 ## Example workflow
 
 1. Start a new repository with `pnpm exec apk init`, or add the kit to an existing repository with `pnpm exec apk adopt`.
@@ -615,10 +626,10 @@ pnpm exec apk export --force
 
 ## Current status
 
-Tasks 0001 through 0056 are complete, including the CLI-focused backlog for honest positioning, workflow guardrails, status, doctor, audit readiness, context suggestions, task templates, the CLI-only work loop, and repo-local APK command guidance for generated agent instructions.
+Tasks 0001 through 0057 are complete, including the CLI-focused backlog and the structured verification contract with legacy command compatibility.
 
-The repository now has a minimal TypeScript CLI scaffold, config schema, `init`, lightweight `adopt`, kit/workflow `audit`, `analytics summary`, `mode`, `next-task`, `tasks`, agent registration, task state transitions, sharded run analytics, `context`, `prompt`, `export`, `sync`, template rendering, doc generation helpers, Claude/Gemini/Codex/OpenCode/Cursor agent exporters, task archive/dependency commands, and compact task parsing support.
+The repository now has a minimal TypeScript CLI scaffold, config schema, `init`, lightweight `adopt`, kit/workflow `audit`, `analytics summary`, `mode`, `next-task`, `tasks`, agent registration, task state transitions, sharded run analytics, `context`, `prompt`, `export`, `sync`, template rendering, doc generation helpers, Claude/Gemini/Codex/OpenCode/Cursor agent exporters, task archive/dependency commands, compact task parsing, and typed verification requirements.
 
 Default agent style for this repository: `caveman` when the active tool supports it.
 
-There are no remaining planned todo tasks in the current CLI-focused backlog.
+The next implementation task is first-class task evidence records; later gated-workflow tasks remain planned.

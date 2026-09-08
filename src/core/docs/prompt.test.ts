@@ -103,6 +103,30 @@ test("renderTaskPrompt includes task contract and selected context", () => {
   );
 });
 
+test("renderTaskPrompt preserves structured verification requirements", () => {
+  const prompt = renderTaskPrompt(buildTaskPromptInput("codex", {
+    ...TASK,
+    verification: [
+      {
+        id: "smoke",
+        type: "manual",
+        required: true,
+        environment: "live",
+        profile: "trusted",
+        instruction: "Check the deployed smoke path.",
+        artifact: "smoke-report.md",
+        evidence: "release URL",
+      },
+    ],
+    verificationCommands: [],
+  }, 1));
+
+  assert.match(prompt, /Verification requirements:/);
+  assert.match(prompt, /smoke \[required\] type=manual; environment=live; profile=trusted/);
+  assert.match(prompt, /instruction=Check the deployed smoke path\.; artifact=smoke-report\.md; evidence=release URL/);
+  assert.match(prompt, /Verification commands:\n/);
+});
+
 test("buildTaskPromptInput uses task metadata and available docs for level 2 context", () => {
   const input = buildTaskPromptInput("codex", {
     ...TASK,

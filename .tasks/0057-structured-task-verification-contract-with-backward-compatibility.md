@@ -1,7 +1,7 @@
 # Task 0057 - Structured task verification contract with backward compatibility
 
-State: todo
-Owner: none
+State: done
+Owner: codex-20260909
 Mode: product
 Lane: task-system
 Scope: task-system,cli,tests,docs

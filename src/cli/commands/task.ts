@@ -15,6 +15,8 @@ import {
   renderTaskVerifyResult,
   TASK_MODES,
   TASK_RISKS,
+  normalizeVerificationCommands,
+  type TaskVerificationCheck,
   verifyTask,
   type TaskCreateInput,
 } from "../../core/tasks/index.js";
@@ -26,7 +28,7 @@ const TASK_HELP_TEXT = [
   "  apk task archive [<task-id>] [--all]",
   "  apk task deps <task-id>",
   "  apk task verify <task-id> [--check-files-only] [--owner <agent-id>]",
-  "  apk task create --title <title> --scope <csv> --allowed <csv> [--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--goal <text>]",
+  "  apk task create --title <title> --scope <csv> --allowed <csv> [--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>]",
   "",
   "Subcommands:",
   "  archive Archive a done task or all done tasks.",
@@ -48,7 +50,7 @@ const TASK_CREATE_HELP_TEXT = [
   "Agentic Project Kit",
   "",
   "Usage:",
-  "  apk task create --title <title> --scope <csv> --allowed <csv> [--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--goal <text>]",
+  "  apk task create --title <title> --scope <csv> --allowed <csv> [--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>]",
   "",
   "Required flags:",
   "  --title <title>         Task title.",
@@ -61,7 +63,8 @@ const TASK_CREATE_HELP_TEXT = [
   "  --lane <lane>           Work lane (e.g. implementation, planning, adoption).",
   "  --risk <risk>           Risk level: low, medium, high.",
   "  --context <csv>         Comma-separated context file paths.",
-  "  --verification <csv>    Comma-separated verification commands.",
+  "  --verification <csv>    Comma-separated legacy verification commands; normalized to required local deterministic checks.",
+  "  --verification-json <json>  Structured verification check array.",
   "  --goal <text>          Task goal text (default: title).",
   "  --depends <csv>         Comma-separated dependency task ids.",
   "  --tags <csv>            Comma-separated tags.",
@@ -139,7 +142,7 @@ interface TaskTemplateDefaults {
   risk: TaskCreateInput["risk"];
   tags: string[];
   contextFiles: string[];
-  verificationCommands: string[];
+  verification: TaskVerificationCheck[];
   steps: string[];
   acceptanceCriteria: string[];
   documentationUpdates: string[];
@@ -153,7 +156,7 @@ const TASK_TEMPLATES: Record<string, TaskTemplateDefaults> = {
     risk: "medium",
     tags: ["bugfix"],
     contextFiles: ["AGENTS.md", "docs/task-system.md"],
-    verificationCommands: ["pnpm test"],
+    verification: normalizeVerificationCommands(["pnpm test"]),
     steps: ["Reproduce or characterize the bug.", "Implement the smallest safe fix.", "Add or update regression coverage.", "Run verification."],
     acceptanceCriteria: ["Bug is fixed.", "Regression coverage exists."],
     documentationUpdates: ["Update docs/progress.md when task state changes."],
@@ -165,7 +168,7 @@ const TASK_TEMPLATES: Record<string, TaskTemplateDefaults> = {
     risk: "medium",
     tags: ["feature"],
     contextFiles: ["AGENTS.md", "docs/project.md", "docs/task-system.md"],
-    verificationCommands: ["pnpm test"],
+    verification: normalizeVerificationCommands(["pnpm test"]),
     steps: ["Implement the smallest useful feature slice.", "Add focused tests.", "Run verification."],
     acceptanceCriteria: ["Feature behavior is implemented and tested."],
     documentationUpdates: ["Update docs/progress.md when task state changes."],
@@ -177,7 +180,7 @@ const TASK_TEMPLATES: Record<string, TaskTemplateDefaults> = {
     risk: "medium",
     tags: ["refactor"],
     contextFiles: ["AGENTS.md", "docs/architecture.md", "docs/task-system.md"],
-    verificationCommands: ["pnpm test"],
+    verification: normalizeVerificationCommands(["pnpm test"]),
     steps: ["Identify the behavior-preserving change.", "Refactor in small steps.", "Run verification."],
     acceptanceCriteria: ["Behavior is unchanged.", "Code is simpler or clearer."],
     documentationUpdates: ["Update docs/progress.md when task state changes."],
@@ -189,7 +192,7 @@ const TASK_TEMPLATES: Record<string, TaskTemplateDefaults> = {
     risk: "low",
     tags: ["docs"],
     contextFiles: ["AGENTS.md", "docs/project.md", "docs/scope.md"],
-    verificationCommands: ["pnpm lint", "pnpm test"],
+    verification: normalizeVerificationCommands(["pnpm lint", "pnpm test"]),
     steps: ["Read relevant docs.", "Update documentation.", "Run verification."],
     acceptanceCriteria: ["Docs are accurate and scoped."],
     documentationUpdates: ["Update docs/progress.md when task state changes."],
@@ -201,7 +204,7 @@ const TASK_TEMPLATES: Record<string, TaskTemplateDefaults> = {
     risk: "medium",
     tags: ["audit"],
     contextFiles: ["AGENTS.md", "docs/cli-commands.md", "docs/task-system.md"],
-    verificationCommands: ["pnpm test", "node dist/cli/index.js audit"],
+    verification: normalizeVerificationCommands(["pnpm test", "node dist/cli/index.js audit"]),
     steps: ["Inspect current behavior.", "Add or update audit checks.", "Run verification."],
     acceptanceCriteria: ["Audit findings are deterministic and documented."],
     documentationUpdates: ["Update docs/progress.md when task state changes."],
@@ -213,7 +216,7 @@ const TASK_TEMPLATES: Record<string, TaskTemplateDefaults> = {
     risk: "low",
     tags: ["tests"],
     contextFiles: ["AGENTS.md", "docs/task-system.md"],
-    verificationCommands: ["pnpm test"],
+    verification: normalizeVerificationCommands(["pnpm test"]),
     steps: ["Identify missing coverage.", "Add focused tests.", "Run verification."],
     acceptanceCriteria: ["Tests cover the intended behavior."],
     documentationUpdates: ["Update docs/progress.md when task state changes."],
@@ -243,7 +246,7 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
     "--title", "--mode", "--lane", "--scope", "--risk", "--parallel",
     "--goal", "--template",
     "--depends", "--tags", "--context", "--allowed", "--forbidden",
-    "--steps", "--acceptance", "--verification", "--docs", "--notes",
+    "--steps", "--acceptance", "--verification", "--verification-json", "--docs", "--notes",
     "--help", "-h",
   ]);
   for (const arg of argv) {
@@ -281,9 +284,24 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
   const allowedFiles = parseCsvFlag(parseFlag(argv, "--allowed"));
   const verificationCommands = parseCsvFlag(parseFlag(argv, "--verification"));
   const resolvedContextFiles = contextFiles.length > 0 ? contextFiles : template?.contextFiles ?? [];
-  const resolvedVerificationCommands = verificationCommands.length > 0
-    ? verificationCommands
-    : template?.verificationCommands ?? [];
+  const verificationJson = parseFlag(argv, "--verification-json");
+  let structuredVerification: TaskVerificationCheck[] | undefined;
+  if (verificationJson !== undefined) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(verificationJson);
+    } catch (error: unknown) {
+      throw new Error(`--verification-json must be valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (!Array.isArray(parsed)) {
+      throw new Error("--verification-json must contain a JSON array of verification checks.");
+    }
+    structuredVerification = parsed as TaskVerificationCheck[];
+  }
+  const resolvedVerification = structuredVerification
+    ?? (verificationCommands.length > 0
+      ? normalizeVerificationCommands(verificationCommands)
+      : template?.verification ?? []);
 
   if (resolvedContextFiles.length === 0) {
     throw new Error("--context must include at least one file.");
@@ -297,8 +315,8 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
     throw new Error("--allowed must include at least one file.");
   }
 
-  if (resolvedVerificationCommands.length === 0) {
-    throw new Error("--verification must include at least one command.");
+  if (resolvedVerification.length === 0) {
+    throw new Error("--verification or --verification-json must include at least one check.");
   }
 
   const input: TaskCreateInput = {
@@ -322,7 +340,7 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
     acceptanceCriteria: parseCsvFlag(parseFlag(argv, "--acceptance")).length > 0
       ? parseCsvFlag(parseFlag(argv, "--acceptance"))
       : template?.acceptanceCriteria ?? [],
-    verificationCommands: resolvedVerificationCommands,
+    verification: resolvedVerification,
     documentationUpdates: parseCsvFlag(parseFlag(argv, "--docs")).length > 0
       ? parseCsvFlag(parseFlag(argv, "--docs"))
       : template?.documentationUpdates ?? [],

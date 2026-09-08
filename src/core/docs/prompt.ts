@@ -9,6 +9,7 @@ import {
   type TaskContextOptions,
   type TaskContextSelection,
 } from "./context.js";
+import { getTaskVerification } from "../tasks/index.js";
 
 export const PROMPT_AGENTS = AGENT_EXPORT_TARGETS;
 export type PromptAgent = AgentExportTarget;
@@ -28,6 +29,21 @@ export class PromptAgentError extends Error {
 
 function renderList(items: readonly string[]): string[] {
   return items.map((item) => `- ${item}`);
+}
+
+function renderVerificationRequirement(
+  check: ReturnType<typeof getTaskVerification>[number],
+): string {
+  const requirement = check.required ? "required" : "optional";
+  const subject = check.type === "automated"
+    ? `command=${check.command}`
+    : `instruction=${check.instruction}`;
+  const extras = [
+    check.artifact ? `artifact=${check.artifact}` : undefined,
+    check.evidence ? `evidence=${check.evidence}` : undefined,
+  ].filter((value): value is string => value !== undefined);
+
+  return `- ${check.id} [${requirement}] type=${check.type}; environment=${check.environment}; profile=${check.profile}; ${subject}${extras.length > 0 ? `; ${extras.join("; ")}` : ""}`;
 }
 
 export function parsePromptAgent(agent: string): PromptAgent {
@@ -85,6 +101,11 @@ export function renderTaskPrompt(input: TaskPromptInput): string {
     "Acceptance criteria:",
     ...renderList(task.acceptanceCriteria),
     "",
+    ...(task.verification !== undefined ? [
+      "Verification requirements:",
+      ...getTaskVerification(task).map(renderVerificationRequirement),
+      "",
+    ] : []),
     "Verification commands:",
     ...renderList(task.verificationCommands),
     "",

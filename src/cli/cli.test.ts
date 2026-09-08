@@ -575,6 +575,73 @@ test("CLI task create writes a valid task file", async () => {
   });
 });
 
+test("CLI task create writes structured verification from JSON", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({}), "utf8");
+
+    const verification = JSON.stringify([{
+      id: "release-smoke",
+      type: "manual",
+      required: true,
+      environment: "live",
+      profile: "trusted",
+      instruction: "Check the deployed release.",
+      evidence: "release URL",
+    }]);
+    const result = await runCli([
+      "task", "create",
+      "--title", "Structured Verification Task",
+      "--mode", "mvp",
+      "--lane", "release",
+      "--scope", "release",
+      "--risk", "medium",
+      "--context", "AGENTS.md",
+      "--allowed", "docs/release.md",
+      "--verification-json", verification,
+    ], directory);
+
+    assert.equal(result.exitCode, 0);
+    const content = await readFile(join(directory, ".tasks", "0001-structured-verification-task.md"), "utf8");
+    assert.match(content, /## Verification/);
+    assert.match(content, /"environment":"live"/);
+    assert.match(content, /"instruction":"Check the deployed release\."/);
+    assert.doesNotMatch(content, /## Verification commands/);
+  });
+});
+
+test("CLI task create reports malformed structured verification", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({}), "utf8");
+
+    const result = await runCli([
+      "task", "create",
+      "--title", "Bad Verification Task",
+      "--mode", "mvp",
+      "--lane", "release",
+      "--scope", "cli",
+      "--risk", "low",
+      "--context", "AGENTS.md",
+      "--allowed", "src/cli/index.ts",
+      "--verification-json", JSON.stringify([{
+        id: "broken",
+        type: "manual",
+        required: true,
+        environment: "local",
+        profile: "integration",
+        command: "pnpm test",
+      }]),
+    ], directory);
+
+    assert.equal(result.exitCode, 1);
+    assert.ok(
+      result.stdout.match(/manual checks require instruction/) || result.stderr.match(/manual checks require instruction/),
+      "Expected actionable structured verification error",
+    );
+  });
+});
+
 test("CLI task create supports explicit --goal", async () => {
   await withTempDirectory(async (directory) => {
     await mkdir(join(directory, ".agentic"), { recursive: true });
@@ -623,7 +690,7 @@ test("CLI task create supports bugfix template defaults", async () => {
     assert.match(content, /Lane: bugfix/);
     assert.match(content, /Risk: medium/);
     assert.match(content, /Tags: bugfix/);
-    assert.match(content, /- pnpm test/);
+    assert.match(content, /"command":"pnpm test"/);
   });
 });
 

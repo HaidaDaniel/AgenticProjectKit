@@ -105,3 +105,19 @@ Decision:
 Reason:
 
 Adoption must preserve application code and avoid overwriting existing project instructions or docs.
+
+## ADR-0009 - Structured verification with legacy projection
+
+Status: accepted
+
+Decision:
+
+Store verification as compact typed checks in task Markdown, while retaining `verificationCommands` as a derived compatibility projection.
+
+Reason:
+
+Completion and verification workflows need explicit automated/manual type, requiredness, environment/profile, and evidence expectations without forcing existing v0.3.1 task files through a migration.
+
+Implementation:
+
+Canonical checks live as JSON bullets under `## Verification`. Legacy `## Verification commands` entries normalize to required automated checks with local/deterministic defaults. Structured checks are rendered in prompts; execution and evidence persistence remain later task capabilities.

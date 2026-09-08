@@ -2,7 +2,7 @@
 
 ## Current status
 
-Phase 1 documentation is in place, and Tasks 0001 through 0056 are complete.
+Phase 1 documentation is in place, and Tasks 0001 through 0057 are complete.
 
 The repository now has:
 
@@ -75,17 +75,18 @@ The repository now has:
 - completed CLI-focused backlog tasks for product positioning, CLI contract gaps, task verification, status, doctor, repo-readiness audit, context suggestions, task templates, and a CLI-only work loop.
 - an `apk work` command that claims or continues a task, renders the prompt, can write a session artifact, and points to verify/review/done commands.
 - generated agent instructions and agent setup prompts that use `pnpm exec apk` for project-local task workflow commands.
+- structured task verification checks with legacy command compatibility, typed environment/profile metadata, and prompt/CLI propagation.
 
 ## Next step
 
-Next planned task: 0057 - Structured task verification contract with backward compatibility.
+Next planned task: 0058 - Add first-class task evidence records.
 
-Planning only: tasks 0057-0076 remain todo with Owner: none; implementation not started. Corrective pass fixes review-before-gate bootstrap, revision/freshness semantics, lock recovery and candidate freeze.
+Planning only: tasks 0058-0076 remain todo with Owner: none. Corrective pass fixes review-before-gate bootstrap, revision/freshness semantics, lock recovery and candidate freeze.
 
 ## Remaining task plan
 
-- Tasks 0001 through 0056 are complete.
-- Tasks 0057,0058,0059,0060,0061,0063,0062: Meaningful Done, in conceptual order; review capability precedes completion enforcement.
+- Tasks 0001 through 0057 are complete.
+- Tasks 0058,0059,0060,0061,0063,0062: Meaningful Done, in conceptual order; review capability precedes completion enforcement.
 - Task 0076: Milestone 1 Reliability / Foundation; no dependencies, required by final release 0075.
 - Tasks 0064-0066: Independent Correctness.
 - Tasks 0067-0071: Efficient Agent Workflow.
