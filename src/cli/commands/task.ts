@@ -25,12 +25,17 @@ import {
   renderTaskEvidence,
   renderTaskCompletionGate,
   renderTaskVerifyResult,
+  renderDogfoodResult,
+  renderDogfoodSession,
+  recordDogfoodResult,
   resolveTaskPolicy,
+  startDogfoodSession,
   TASK_MODES,
   TASK_RISKS,
   TASK_VERIFICATION_PROFILES,
   normalizeVerificationCommands,
   type TaskVerificationCheck,
+  type TaskEvidenceMetrics,
   verifyTask,
   type TaskCreateInput,
 } from "../../core/tasks/index.js";
@@ -44,6 +49,8 @@ const TASK_HELP_TEXT = [
   "  apk task evidence <task-id>",
   "  apk task policy <task-id>",
   "  apk task gate <task-id>",
+  "  apk task dogfood start <task-id> --owner <agent-id> --tool <tool> --scenario <text>",
+  "  apk task dogfood result <task-id> --owner <agent-id> --session <session-id> --outcome <pass|fail>",
   "  apk task verify <task-id> [--check-files-only] [--profile <profile|all>] [--owner <agent-id>]",
   "  apk task create --title <title> --scope <csv> --allowed <csv> [--type <name>|--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>]",
   "",
@@ -53,6 +60,7 @@ const TASK_HELP_TEXT = [
   "  evidence List append-only evidence records for a task.",
   "  policy  Resolve deterministic risk and tag requirements.",
   "  gate    Preview completion blockers for the current candidate.",
+  "  dogfood Start a bounded agent usability session or record its result.",
   "  verify  Check files, resolve profiles, and record per-check evidence.",
   "  create  Generate a new task file with validated metadata.",
 ].join("\n");
@@ -93,6 +101,17 @@ const TASK_GATE_HELP_TEXT = [
   "",
   "Preview verification, scope, dependency, policy, evidence, and review gates.",
   "The command is read-only and reports blockers for the current candidate.",
+].join("\n");
+
+const TASK_DOGFOOD_HELP_TEXT = [
+  "Agentic Project Kit",
+  "",
+  "Usage:",
+  "  apk task dogfood start <task-id> --owner <agent-id> --tool <tool> --scenario <text> [--session <id>] [--started-at <ISO timestamp>]",
+  "  apk task dogfood result <task-id> --owner <agent-id> --session <session-id> --outcome <pass|fail> [--ended-at <ISO timestamp>] [--failures <csv>] [--retries <n>] [--observations <csv>] [--issues <csv>] [--metrics-json <json>]",
+  "",
+  "Start writes a reproducible prompt and session metadata without launching a model.",
+  "Result writes distinct bounded dogfood evidence; failed sessions remain fail.",
 ].join("\n");
 
 const TASK_CREATE_HELP_TEXT = [
@@ -462,6 +481,127 @@ async function runEvidenceSubcommand(argv: string[]): Promise<number> {
   return 0;
 }
 
+function parseDogfoodMetrics(value: string | undefined): TaskEvidenceMetrics | undefined {
+  if (value === undefined) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch (error: unknown) {
+    throw new Error(`--metrics-json must be valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("--metrics-json must contain a JSON object.");
+  }
+  return parsed as TaskEvidenceMetrics;
+}
+
+function optionalCsvFlag(argv: string[], flag: string): string[] | undefined {
+  const value = parseFlag(argv, flag);
+  return value === undefined ? undefined : parseCsvFlag(value);
+}
+
+async function runDogfoodSubcommand(argv: string[]): Promise<number> {
+  if (hasHelpFlag(argv)) {
+    console.log(TASK_DOGFOOD_HELP_TEXT);
+    return 0;
+  }
+
+  const [action, ...args] = argv;
+  const knownFlags = action === "start"
+    ? new Set(["--owner", "--tool", "--scenario", "--session", "--started-at", "--help", "-h"])
+    : new Set(["--owner", "--session", "--outcome", "--ended-at", "--failures", "--retries", "--observations", "--issues", "--metrics-json", "--help", "-h"]);
+  for (const arg of args) {
+    if (arg.startsWith("-") && !knownFlags.has(arg)) {
+      throw new Error(`Unknown option: ${arg}`);
+    }
+  }
+
+  if (action !== "start" && action !== "result") {
+    throw new Error(TASK_DOGFOOD_HELP_TEXT);
+  }
+
+  const positional = args.filter((arg, index) => (
+    !arg.startsWith("-") &&
+    args[index - 1] !== "--owner" &&
+    args[index - 1] !== "--tool" &&
+    args[index - 1] !== "--scenario" &&
+    args[index - 1] !== "--session" &&
+    args[index - 1] !== "--started-at" &&
+    args[index - 1] !== "--outcome" &&
+    args[index - 1] !== "--ended-at" &&
+    args[index - 1] !== "--failures" &&
+    args[index - 1] !== "--retries" &&
+    args[index - 1] !== "--observations" &&
+    args[index - 1] !== "--issues" &&
+    args[index - 1] !== "--metrics-json"
+  ));
+  if (positional.length !== 1) {
+    throw new Error(TASK_DOGFOOD_HELP_TEXT);
+  }
+
+  const rootDirectory = resolve(process.cwd());
+  const config = await readAgenticConfigFile(rootDirectory);
+  const taskId = positional[0];
+  const owner = parseFlag(args, "--owner");
+  if (!owner) {
+    throw new Error("--owner is required.");
+  }
+
+  if (action === "start") {
+    const tool = parseFlag(args, "--tool");
+    const scenario = parseFlag(args, "--scenario");
+    if (!tool || !scenario) {
+      throw new Error("--tool and --scenario are required.");
+    }
+    const session = await startDogfoodSession({
+      rootDirectory,
+      taskDirectory: config.taskDirectory,
+      taskId,
+      owner,
+      tool,
+      scenario,
+      sessionId: parseFlag(args, "--session"),
+      startedAt: parseFlag(args, "--started-at"),
+    });
+    console.log(renderDogfoodSession(session));
+    return 0;
+  }
+
+  const sessionId = parseFlag(args, "--session");
+  const outcome = parseFlag(args, "--outcome");
+  if (!sessionId || !outcome) {
+    throw new Error("--session and --outcome are required.");
+  }
+  if (outcome !== "pass" && outcome !== "fail") {
+    throw new Error("--outcome must be pass or fail.");
+  }
+  const retriesValue = parseFlag(args, "--retries");
+  let retries: number | undefined;
+  if (retriesValue !== undefined) {
+    const parsedRetries = Number.parseInt(retriesValue, 10);
+    if (!Number.isInteger(parsedRetries) || parsedRetries < 0) {
+      throw new Error("--retries must be a non-negative integer.");
+    }
+    retries = parsedRetries;
+  }
+  const result = await recordDogfoodResult({
+    rootDirectory,
+    taskDirectory: config.taskDirectory,
+    taskId,
+    owner,
+    sessionId,
+    outcome,
+    endedAt: parseFlag(args, "--ended-at"),
+    failures: optionalCsvFlag(args, "--failures"),
+    retries,
+    observations: optionalCsvFlag(args, "--observations"),
+    issues: optionalCsvFlag(args, "--issues"),
+    metrics: parseDogfoodMetrics(parseFlag(args, "--metrics-json")),
+  });
+  console.log(renderDogfoodResult(result));
+  return result.outcome === "pass" ? 0 : 1;
+}
+
 async function runPolicySubcommand(argv: string[]): Promise<number> {
   if (hasHelpFlag(argv)) {
     console.log(TASK_POLICY_HELP_TEXT);
@@ -552,7 +692,7 @@ async function runVerifySubcommand(argv: string[]): Promise<number> {
 export async function runTaskCommand(argv: string[]): Promise<number> {
   try {
     if (argv.length === 0) {
-      console.error("Error: Usage: apk task <archive|deps|create>");
+      console.error("Error: Usage: apk task <archive|deps|evidence|policy|gate|dogfood|verify|create>");
       return 1;
     }
 
@@ -577,6 +717,10 @@ export async function runTaskCommand(argv: string[]): Promise<number> {
 
     if (subcommand === "evidence") {
       return await runEvidenceSubcommand(subArgs);
+    }
+
+    if (subcommand === "dogfood") {
+      return await runDogfoodSubcommand(subArgs);
     }
 
     if (subcommand === "policy") {

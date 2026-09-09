@@ -115,6 +115,7 @@ const DEFAULT_BOOKKEEPING_PATHS = [
   ".agentic/runs/",
   ".agentic/agents.jsonl",
   ".agentic/agents/",
+  ".agentic/sessions/",
 ];
 
 function isBookkeepingPath(path: string, taskFile: string): boolean {

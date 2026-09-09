@@ -372,6 +372,67 @@ test("CLI work can write a session prompt", async () => {
   });
 });
 
+test("CLI dogfood starts a reproducible session and records pass or fail", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(join(directory, ".tasks", "0001-todo-task.md"), buildTaskMarkdown("0001", "Todo Task", "todo"), "utf8");
+    await runCli(["agent", "register", "--id", "codex-a", "--platform", "codex", "--model", "gpt"], directory);
+
+    const start = await runCli([
+      "task", "dogfood", "start", "0001",
+      "--owner", "codex-a",
+      "--tool", "codex",
+      "--scenario", "Read the task and report whether the workflow is understandable.",
+      "--session", "cli-pass",
+      "--started-at", "2026-09-09T10:00:00Z",
+    ], directory);
+    assert.equal(start.exitCode, 0);
+    assert.match(start.stdout, /Protocol: dogfood-v1/);
+    assert.match(start.stdout, /Session: cli-pass/);
+    const promptMatch = /Prompt: (.+prompt\.md)/.exec(start.stdout);
+    assert.ok(promptMatch);
+    assert.match(await readFile(join(directory, promptMatch![1]), "utf8"), /Scenario:/);
+
+    const pass = await runCli([
+      "task", "dogfood", "result", "0001",
+      "--owner", "codex-a",
+      "--session", "cli-pass",
+      "--outcome", "pass",
+      "--ended-at", "2026-09-09T10:00:05Z",
+      "--metrics-json", JSON.stringify({ actionCount: 2, contextUnits: 10 }),
+    ], directory);
+    assert.equal(pass.exitCode, 0, `${pass.stdout}${pass.stderr}`);
+    assert.match(pass.stdout, /Outcome: pass/);
+
+    const failStart = await runCli([
+      "task", "dogfood", "start", "0001",
+      "--owner", "codex-a",
+      "--tool", "codex",
+      "--scenario", "Repeat the workflow and capture a failure.",
+      "--session", "cli-fail",
+      "--started-at", "2026-09-09T10:01:00Z",
+    ], directory);
+    assert.equal(failStart.exitCode, 0);
+
+    const fail = await runCli([
+      "task", "dogfood", "result", "0001",
+      "--owner", "codex-a",
+      "--session", "cli-fail",
+      "--outcome", "fail",
+      "--ended-at", "2026-09-09T10:01:03Z",
+      "--failures", "The handoff was unclear",
+      "--issues", "Improve the prompt",
+    ], directory);
+    assert.equal(fail.exitCode, 1);
+    assert.match(fail.stdout, /Outcome: fail/);
+
+    const evidence = await runCli(["task", "evidence", "0001"], directory);
+    assert.equal(evidence.exitCode, 0);
+    assert.match(evidence.stdout, /dogfood/);
+    assert.match(evidence.stdout, /Failures: The handoff was unclear/);
+  });
+});
+
 test("CLI audit writes reports in a temp repository", async () => {
   await withTempDirectory(async (directory) => {
     await mkdir(join(directory, "src"), { recursive: true });
@@ -594,6 +655,8 @@ test("CLI task create --help shows usage", async () => {
   assert.match(taskHelp.stdout, /apk task evidence <task-id>/);
   assert.match(taskHelp.stdout, /apk task policy <task-id>/);
   assert.match(taskHelp.stdout, /apk task gate <task-id>/);
+  assert.match(taskHelp.stdout, /apk task dogfood start <task-id>/);
+  assert.match(taskHelp.stdout, /apk task dogfood result <task-id>/);
   assert.match(result.stdout, /--title/);
   assert.match(result.stdout, /--goal/);
   assert.match(result.stdout, /--mode/);

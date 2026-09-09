@@ -197,7 +197,7 @@ These requirements are descriptive review inputs. They reuse the existing eviden
 
 ## Evidence records
 
-Verification and review results can be stored as append-only JSONL records in `.agentic/evidence.jsonl`. Records include task, agent, run, evidence type, result, timestamp, check/profile identity, and a subject containing:
+Verification, review, and dogfood results can be stored as append-only JSONL records in `.agentic/evidence.jsonl`. Records include task, agent, run, evidence type, result, timestamp, check/profile identity, and a subject containing:
 
 - `taskId`, `baselineId`, `candidateId`, and `worktreeId`;
 - `repository: git` plus `headSha` for repository-backed work; or `repository: none` with explicit equivalent identities.
@@ -205,6 +205,12 @@ Verification and review results can be stored as append-only JSONL records in `.
 Evidence results are `pass`, `changes_requested` (review only), `fail`, `pending`, `unavailable`, or `not-run`. `readTaskEvidence` filters by task ID, while `compareTaskEvidenceFreshness` classifies a record as `current`, `stale`, or `unknown` against a candidate subject. Mismatched candidates remain in history but cannot be treated as current. Commands and short references are bounded; large stdout/stderr is not stored.
 
 Use `apk task evidence <task-id>` for a safe summary of records. The append-only store keeps repeated runs and failed evidence instead of overwriting history.
+
+### Bounded dogfooding
+
+`apk task dogfood start <task-id> --owner <agent-id> --tool <tool> --scenario <text>` requires a registered agent, claims a todo task when needed, writes a reproducible protocol prompt and session metadata under `.agentic/sessions/dogfood/<task-id>/<session-id>/`, and records the session/run identity in the existing run shards. APK does not launch a model or external service.
+
+After the controlled session, `apk task dogfood result <task-id> --owner <agent-id> --session <session-id> --outcome <pass|fail>` appends one distinct `dogfood` evidence record. It stores scenario, tool and agent identity, task goal, start/end timestamps, bounded failures, retries, observations, discovered issues, and optional action/tool/context/duration/latency metrics. A completed session cannot be recorded again, so a failed session cannot be promoted to pass. The schema is vendor-neutral and supports comparison by agent/tool without making dogfood a required completion gate.
 
 ## Profile-aware verification
 

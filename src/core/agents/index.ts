@@ -47,6 +47,7 @@ export interface RunLogEvent {
   time: string;
   event: RunEventType;
   task?: string;
+  runId?: string;
   agent: string;
   developer: string;
   platform: string;
@@ -179,6 +180,7 @@ function canonicalRunEvent(
     time: raw.time ?? new Date(0).toISOString(),
     event: raw.event ?? "register",
     task: raw.task,
+    runId: raw.runId,
     agent: raw.agent ?? "",
     developer: raw.developer ?? agent?.developer ?? "unknown",
     platform: raw.platform ?? agent?.platform ?? "",
@@ -393,6 +395,7 @@ export async function appendRunLog(
     event: RunEventType;
     agent: RegisteredAgent;
     task?: string;
+    runId?: string;
     state?: TaskState;
     outcome: "ok" | "error";
     reason?: string;
@@ -404,6 +407,7 @@ export async function appendRunLog(
     time: input.time ?? new Date().toISOString(),
     event: input.event,
     task: input.task,
+    runId: input.runId,
     agent: input.agent.id,
     developer: input.agent.developer,
     platform: input.agent.platform,

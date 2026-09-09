@@ -1515,6 +1515,7 @@ const DEFAULT_BOOKKEEPING_PATHS = [
   ".agentic/runs/",
   ".agentic/agents.jsonl",
   ".agentic/agents/",
+  ".agentic/sessions/",
 ];
 
 function isBookkeepingPath(path: string, baseline: TaskClaimBaseline): boolean {
@@ -2082,3 +2083,4 @@ export * from "./evidence.js";
 export * from "./policy.js";
 export * from "./review.js";
 export * from "./gate.js";
+export * from "./dogfood.js";

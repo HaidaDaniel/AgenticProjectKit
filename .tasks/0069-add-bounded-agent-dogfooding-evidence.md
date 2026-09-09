@@ -1,14 +1,14 @@
 # Task 0069 - Add bounded agent dogfooding evidence
 
-State: todo
-Owner: none
+State: done
+Owner: codex-20260909
 Mode: product
 Lane: evaluation
 Scope: evaluation,cli,tests,docs
 Risk: medium
 Parallel: true
 Depends on: 0058,0063,0064
-Tags: dogfood,agent-usability,evidence,evaluation
+Tags: dogfood,agent-usability,evidence
 
 ## Goal
 
@@ -84,13 +84,13 @@ Controlled dogfooding sessions produce bounded, comparable evidence of agent usa
 - Different agents can be compared through vendor-neutral schema; future policy can require dogfood for agent-facing high-risk tasks.
 - Output bounded; record lifecycle tests cover successful/failed sessions and optional metrics.
 
-## Verification commands
+## Verification
 
-- pnpm lint
-- pnpm test
-- pnpm build
-- pnpm exec apk task create --help
-- pnpm exec apk doctor
+- `{"id":"lint","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm lint"}`
+- `{"id":"tests","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm test"}`
+- `{"id":"build","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}`
+- `{"id":"task-help","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx src/cli/index.ts task --help"}`
+- `{"id":"doctor","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx src/cli/index.ts doctor"}`
 
 ## Documentation updates
 

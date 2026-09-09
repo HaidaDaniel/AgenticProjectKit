@@ -9,6 +9,7 @@ export const TASK_EVIDENCE_TYPES = [
   "live",
   "manual",
   "benchmark",
+  "dogfood",
   "report",
   "review",
   "completion",
@@ -41,6 +42,14 @@ export interface TaskEvidenceSubject extends TaskEvidenceCandidateSubject {
   runId: string;
 }
 
+export interface TaskEvidenceMetrics {
+  actionCount?: number;
+  toolCallCount?: number;
+  contextUnits?: number;
+  durationMs?: number;
+  latencyMs?: number;
+}
+
 export interface TaskEvidenceRecord {
   id: string;
   taskId: string;
@@ -60,6 +69,16 @@ export interface TaskEvidenceRecord {
   implementationRunId?: string;
   findings?: string[];
   evidenceSet?: string[];
+  scenario?: string;
+  tool?: string;
+  taskGoal?: string;
+  startedAt?: string;
+  endedAt?: string;
+  failures?: string[];
+  retries?: number;
+  observations?: string[];
+  issues?: string[];
+  metrics?: TaskEvidenceMetrics;
 }
 
 export interface AddTaskEvidenceInput {
@@ -81,6 +100,16 @@ export interface AddTaskEvidenceInput {
   implementationRunId?: string;
   findings?: string[];
   evidenceSet?: string[];
+  scenario?: string;
+  tool?: string;
+  taskGoal?: string;
+  startedAt?: string;
+  endedAt?: string;
+  failures?: string[];
+  retries?: number;
+  observations?: string[];
+  issues?: string[];
+  metrics?: TaskEvidenceMetrics;
 }
 
 export type TaskEvidenceFreshness = "current" | "stale" | "unknown";
@@ -148,6 +177,8 @@ function optionalTextList(
   value: unknown,
   label: string,
   issues: string[],
+  maxItems = 32,
+  maxItemLength = 320,
 ): string[] | undefined {
   if (value === undefined) {
     return undefined;
@@ -156,10 +187,55 @@ function optionalTextList(
     issues.push(`${label} must be an array when provided.`);
     return undefined;
   }
-  if (value.length > 32) {
-    issues.push(`${label} must contain at most 32 items.`);
+  if (value.length > maxItems) {
+    issues.push(`${label} must contain at most ${maxItems} items.`);
   }
-  return value.map((item, index) => textValue(item, `${label}[${index}]`, issues, 320));
+  return value.map((item, index) => textValue(item, `${label}[${index}]`, issues, maxItemLength));
+}
+
+function optionalNonNegativeInteger(
+  value: unknown,
+  label: string,
+  issues: string[],
+  max = 1_000_000,
+): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0 || value > max) {
+    issues.push(`${label} must be a non-negative integer at most ${max}.`);
+    return undefined;
+  }
+  return value;
+}
+
+function optionalMetrics(
+  value: unknown,
+  label: string,
+  issues: string[],
+): TaskEvidenceMetrics | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    issues.push(`${label} must be an object when provided.`);
+    return undefined;
+  }
+
+  const allowed = new Set(["actionCount", "toolCallCount", "contextUnits", "durationMs", "latencyMs"]);
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) {
+      issues.push(`${label}.${key} is not a supported metric.`);
+    }
+  }
+
+  return {
+    actionCount: optionalNonNegativeInteger(value.actionCount, `${label}.actionCount`, issues),
+    toolCallCount: optionalNonNegativeInteger(value.toolCallCount, `${label}.toolCallCount`, issues),
+    contextUnits: optionalNonNegativeInteger(value.contextUnits, `${label}.contextUnits`, issues),
+    durationMs: optionalNonNegativeInteger(value.durationMs, `${label}.durationMs`, issues, 86_400_000),
+    latencyMs: optionalNonNegativeInteger(value.latencyMs, `${label}.latencyMs`, issues, 86_400_000),
+  };
 }
 
 function oneOf<T extends string>(
@@ -253,6 +329,32 @@ function normalizeEvidenceRecord(
     findings: optionalTextList(value.findings, `${prefix}.findings`, issues),
     evidenceSet: optionalTextList(value.evidenceSet, `${prefix}.evidenceSet`, issues),
   };
+
+  if (record.type === "dogfood") {
+    record.scenario = textValue(value.scenario, `${prefix}.scenario`, issues, 240);
+    record.tool = textValue(value.tool, `${prefix}.tool`, issues, 120);
+    record.taskGoal = textValue(value.taskGoal, `${prefix}.taskGoal`, issues, 320);
+    record.startedAt = textValue(value.startedAt, `${prefix}.startedAt`, issues, 40);
+    record.endedAt = textValue(value.endedAt, `${prefix}.endedAt`, issues, 40);
+    record.failures = optionalTextList(value.failures, `${prefix}.failures`, issues, 16);
+    record.retries = optionalNonNegativeInteger(value.retries, `${prefix}.retries`, issues, 1000) ?? 0;
+    record.observations = optionalTextList(value.observations, `${prefix}.observations`, issues, 16);
+    record.issues = optionalTextList(value.issues, `${prefix}.issues`, issues, 16);
+    record.metrics = optionalMetrics(value.metrics, `${prefix}.metrics`, issues);
+
+    if (record.result !== "pass" && record.result !== "fail") {
+      issues.push(`${prefix}.result must be pass or fail for dogfood evidence.`);
+    }
+    if (Number.isNaN(Date.parse(record.startedAt))) {
+      issues.push(`${prefix}.startedAt must be an ISO timestamp.`);
+    }
+    if (Number.isNaN(Date.parse(record.endedAt))) {
+      issues.push(`${prefix}.endedAt must be an ISO timestamp.`);
+    }
+    if (!Number.isNaN(Date.parse(record.startedAt)) && !Number.isNaN(Date.parse(record.endedAt)) && Date.parse(record.endedAt) < Date.parse(record.startedAt)) {
+      issues.push(`${prefix}.endedAt must not precede startedAt.`);
+    }
+  }
 
   if (Number.isNaN(Date.parse(record.time))) {
     issues.push(`${prefix}.time must be an ISO timestamp.`);
@@ -403,6 +505,22 @@ export function renderTaskEvidence(
     }
     if (record.findings && record.findings.length > 0) {
       lines.push(`    Findings: ${record.findings.join("; ")}`);
+    }
+    if (record.type === "dogfood") {
+      lines.push(`    Scenario: ${record.scenario}`);
+      lines.push(`    Tool: ${record.tool}`);
+      if (record.metrics) {
+        lines.push(`    Metrics: ${Object.entries(record.metrics)
+          .filter(([, value]) => value !== undefined)
+          .map(([key, value]) => `${key}=${value}`)
+          .join(", ") || "none"}`);
+      }
+      if (record.failures && record.failures.length > 0) {
+        lines.push(`    Failures: ${record.failures.join("; ")}`);
+      }
+      if (record.issues && record.issues.length > 0) {
+        lines.push(`    Issues: ${record.issues.join("; ")}`);
+      }
     }
   }
   lines.push("");

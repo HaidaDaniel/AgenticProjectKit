@@ -281,3 +281,19 @@ Affected implementation and tests should outrank unrelated documentation, but a 
 Implementation:
 
 Candidates and signals are local, bounded, and sorted by score then path. Suggestions expose `role`, `score`, and `reason`; task-forbidden or disallowed paths may remain context-only. Git and import failures degrade to deterministic lexical/path ranking without network, model, embedding, or dependency changes.
+
+## ADR-0021 - Dogfooding uses bounded vendor-neutral evidence
+
+Status: accepted
+
+Decision:
+
+Represent controlled agent usability sessions as a distinct `dogfood` evidence type. Start creates a protocol-versioned prompt and session metadata, reuses registered agents and run shards, and result appends one immutable pass/fail record with bounded observations and optional metrics.
+
+Reason:
+
+Agent usability evidence must be comparable across tools without pretending to be automated test or benchmark proof. Append-only result identity preserves failures and prevents later commands from silently promoting a failed session to pass.
+
+Implementation:
+
+`apk task dogfood start` claims todo tasks when needed and writes `.agentic/sessions/dogfood/<task-id>/<session-id>/`. `apk task dogfood result` validates the session owner, timestamps, bounded lists, outcome, and optional action/tool/context/duration/latency metrics before appending `.agentic/evidence.jsonl`; it records the current task subject and a linked run event. APK performs no model or external-service execution, and dogfood remains available for future policy requirements without changing current completion gates.

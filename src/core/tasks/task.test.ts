@@ -59,6 +59,10 @@ import {
   verifyTask,
   verifyTaskFileScope,
   renderTaskVerifyResult,
+  recordDogfoodResult,
+  renderDogfoodPrompt,
+  renderDogfoodResult,
+  startDogfoodSession,
   writeTaskFile,
   type ProjectTaskFile,
   type ProjectTask,
@@ -422,6 +426,158 @@ test("task evidence reports corrupted append-only records", async () => {
         return true;
       },
     );
+  });
+});
+
+test("dogfood sessions write bounded vendor-neutral evidence and preserve failures", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    const taskPath = join(directory, ".tasks", "0007-dogfood-task.md");
+    await writeTaskFile(taskPath, {
+      ...TASK,
+      state: "todo",
+      owner: "none",
+      dependsOn: [],
+      allowedFiles: ["src/core/tasks/**"],
+      forbiddenFiles: [],
+    });
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    const agent = await registerAgent(directory, {
+      id: "codex-dogfood",
+      developer: "alice",
+      platform: "generic-harness",
+      model: "vendor-neutral",
+    });
+
+    const started = await startDogfoodSession({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: agent.id,
+      tool: "generic-harness",
+      scenario: "Read the task prompt and report whether the workflow is understandable.",
+      sessionId: "dogfood-success",
+      startedAt: "2026-09-09T10:00:00Z",
+    });
+    assert.match(started.prompt, /Protocol: dogfood-v1/);
+    assert.match(started.prompt, /generic-harness/);
+    assert.match(renderDogfoodPrompt({
+      sessionId: started.sessionId,
+      task: { ...TASK, dependsOn: [], state: "doing", owner: agent.id },
+      agent,
+      tool: started.tool,
+      scenario: started.scenario,
+    }), /Session: dogfood-success/);
+    assert.match(await readFile(join(directory, started.promptPath), "utf8"), /Session rules:/);
+
+    const passed = await recordDogfoodResult({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: agent.id,
+      sessionId: started.sessionId,
+      outcome: "pass",
+      endedAt: "2026-09-09T10:00:05Z",
+      retries: 1,
+      observations: ["Prompt was concise."],
+      metrics: {
+        actionCount: 3,
+        toolCallCount: 2,
+        contextUnits: 120,
+        durationMs: 5000,
+        latencyMs: 300,
+      },
+    });
+    assert.equal(passed.evidence.type, "dogfood");
+    assert.equal(passed.evidence.result, "pass");
+    assert.equal(passed.evidence.tool, "generic-harness");
+    assert.equal(passed.evidence.retries, 1);
+    assert.equal(passed.evidence.metrics?.durationMs, 5000);
+    assert.match(renderDogfoodResult(passed), /Outcome: pass/);
+    assert.equal((await readTaskEvidence(directory, "0007")).length, 1);
+    assert.ok((await readRunLog(directory)).some((event) => event.runId === "dogfood-success"));
+
+    await assert.rejects(
+      () => startDogfoodSession({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        owner: agent.id,
+        tool: "generic-harness",
+        scenario: "Do not overwrite the completed session.",
+        sessionId: "dogfood-success",
+      }),
+      /already exists/,
+    );
+    await assert.rejects(
+      () => recordDogfoodResult({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        owner: agent.id,
+        sessionId: "..\\escape",
+        outcome: "pass",
+        endedAt: "2026-09-09T10:00:06Z",
+      }),
+      /compact id/,
+    );
+
+    await assert.rejects(
+      () => recordDogfoodResult({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        owner: agent.id,
+        sessionId: started.sessionId,
+        outcome: "fail",
+      }),
+      /already has a result/,
+    );
+
+    const failedSession = await startDogfoodSession({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: agent.id,
+      tool: "other-harness",
+      scenario: "Try the same workflow with a second tool.",
+      sessionId: "dogfood-failure",
+      startedAt: "2026-09-09T10:01:00Z",
+    });
+    const failed = await recordDogfoodResult({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: agent.id,
+      sessionId: failedSession.sessionId,
+      outcome: "fail",
+      endedAt: "2026-09-09T10:01:03Z",
+      failures: ["The result format was unclear."],
+      issues: ["Clarify the session handoff."],
+    });
+    assert.equal(failed.evidence.result, "fail");
+    assert.deepEqual(failed.evidence.failures, ["The result format was unclear."]);
+    assert.equal((await readTaskEvidence(directory, "0007")).filter((record) => record.type === "dogfood").length, 2);
+
+    await assert.rejects(
+      () => recordDogfoodResult({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        owner: agent.id,
+        sessionId: failedSession.sessionId,
+        outcome: "pass",
+      }),
+      /already has a result/,
+    );
+    assert.equal((await readTaskEvidence(directory, "0007")).find((record) => record.runId === "dogfood-failure")?.result, "fail");
   });
 });
 

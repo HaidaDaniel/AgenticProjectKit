@@ -42,6 +42,8 @@ When Agentic Project Kit is installed as a repository dev dependency, run comman
 - `apk task archive --all` - archive all done top-level tasks.
 - `apk task deps <task-id>` - inspect task prerequisites, dependents, and graph problems.
 - `apk task evidence <task-id>` - list append-only evidence records for a task.
+- `apk task dogfood start <task-id> --owner <agent-id> --tool <tool> --scenario <text>` - create a bounded dogfooding prompt/session.
+- `apk task dogfood result <task-id> --owner <agent-id> --session <session-id> --outcome <pass|fail>` - record bounded dogfooding evidence.
 - `apk task policy <task-id>` - resolve deterministic risk/tag requirements and print blockers without changing task state.
 - `apk task gate <task-id>` - preview completion blockers for the current candidate without changing task state.
 - `apk task verify <task-id> [--check-files-only] [--profile <profile|all>] [--owner <agent-id>]` - run eligible verification checks and record evidence.
@@ -88,6 +90,7 @@ pnpm exec apk task create --template bugfix --title "Fix Parser" --scope cli --a
 `--verification` keeps the legacy comma-separated command input and normalizes each command to a required local deterministic automated check. `--verification-json` accepts structured checks with `type`, `required`, `environment`, `profile`, `command` or `instruction`, and optional `artifact`/`evidence` fields. Legacy `## Verification commands` task files remain readable without migration.
 `--assumptions`, `--invariants`, `--required-evidence`, `--review-questions`, and `--counterexample-searches` populate optional correctness-contract sections. They are preserved through task parsing/rendering and included in implementation/review prompts only when non-empty.
 `apk task evidence <task-id>` reads `.agentic/evidence.jsonl`, filters by task ID, and prints bounded references and subject identities without command output blobs.
+`apk task dogfood start` writes a reproducible session prompt and metadata, registers the session/run through the existing agent/run infrastructure, and never launches a model. `apk task dogfood result` appends a separate vendor-neutral `dogfood` record with bounded observations, failures, retries, discovered issues, and optional metrics (`actionCount`, `toolCallCount`, `contextUnits`, `durationMs`, `latencyMs`). Results are immutable per session: a failed result remains `fail` and cannot be overwritten with `pass`.
 `apk task verify` checks `git diff` changed files against task allowed/forbidden files, then runs task verification commands unless `--check-files-only` is set.
 `apk task verify --profile` selects `deterministic`, `integration`, `trusted`, or `report` checks. Manual/live checks are reported as unavailable, unselected checks as not-run, and required non-pass results return exit code 1. Each check appends a revision-bound record to `.agentic/evidence.jsonl`; command output is never stored.
 After `apk claim`, verification compares changed paths with the claim baseline in `.agentic/task-baselines.jsonl`, excludes unchanged pre-existing dirty files and workflow bookkeeping, and reports attributed scope violations. Baseline diagnostics are included in the machine-readable `verifyTask` result.
