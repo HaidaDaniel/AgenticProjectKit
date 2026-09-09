@@ -1,6 +1,6 @@
 # Task 0073 - Compose implementation, review and fixer runs without owning the model runtime
 
-State: doing
+State: done
 Owner: codex-20260909
 Mode: product
 Lane: workflow
@@ -92,11 +92,11 @@ APK coordinates implement -> verify -> review -> fix -> verify -> review -> gate
 
 ## Verification
 
-- {"id":"lint","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm lint"}
-- {"id":"tests","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm test"}
-- {"id":"build","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}
-- {"id":"work-help","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx src/cli/index.ts work --help"}
-- {"id":"sync","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx src/cli/index.ts sync"}
+- `{"id":"lint","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm lint"}`
+- `{"id":"tests","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm test"}`
+- `{"id":"build","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}`
+- `{"id":"work-help","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx src/cli/index.ts work --help"}`
+- `{"id":"sync","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx src/cli/index.ts sync"}`
 
 ## Documentation updates
 
