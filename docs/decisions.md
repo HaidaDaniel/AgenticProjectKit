@@ -402,7 +402,7 @@ Decision:
 
 Resolve omitted worker roles from the current canonical gate projection, not the latest orchestration record. A current failed review selects `fix`; missing, stale, or failed canonical verification selects `verify`; a missing current independent PASS selects `review`; otherwise no worker role is issued. Issuing an independent review package transitions `doing` to `review` only after all issuance preconditions and immutable package publication succeed.
 
-Worker package provenance remains the issued/input candidate. Implement/fix/verify result submission recaptures the baseline-aware output candidate and stores it in non-gating lifecycle evidence; review results must match the issued prepared subject and canonical freshness check. Issued sessions are built in a temporary directory and atomically renamed; collision and incomplete temporary artifacts cannot overwrite or satisfy a result.
+Worker package provenance remains the issued/input candidate. Implement/fix/verify result submission recaptures the baseline-aware output candidate and stores it in non-gating lifecycle evidence; review results must match the issued prepared subject and canonical freshness check. Issued sessions are built in a temporary directory and atomically renamed; review issuance confirms the candidate again after the `doing -> review` transition, then writes an activation marker last. Collision, incomplete, unactivated, or mixed-revision sessions cannot satisfy a result. Worker run IDs use one safe path-segment grammar across package/result/review parsing.
 
 Reason:
 
@@ -410,4 +410,4 @@ The prior implementation selected roles from stale worker results, left `changes
 
 Regression invariant:
 
-`changes_requested -> fix` is executable without a hidden transition; current canonical evidence has priority over worker history; mutable runs preserve input A and output B; review B rejects mutation to C; an existing issued run remains byte-identical after collision; incomplete sessions never accept results.
+`changes_requested -> fix` is executable without a hidden transition; current canonical evidence has priority over worker history; mutable runs preserve input A and output B; review B rejects mutation to C; an existing issued run remains byte-identical after collision; incomplete/unactivated sessions never accept results; provenance exposes each issued subject joined to its output subject or a bounded orphan diagnostic; review issuance never advertises gate/done before a result.

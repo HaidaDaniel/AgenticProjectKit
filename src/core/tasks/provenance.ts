@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 import {
@@ -18,11 +20,13 @@ import {
   type TaskEvidenceRecord,
   type TaskEvidenceSubject,
 } from "./evidence.js";
+import { isSafeRunId } from "../work/contract.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_COMMITS = 64;
 const MAX_DIFF_FILES = 256;
 const MAX_RUNS = 128;
+const MAX_WORKER_RUNS = 128;
 
 export interface TaskProvenanceBaseline {
   baselineId: string;
@@ -93,6 +97,16 @@ export interface TaskProvenanceCompletion {
   currentFreshnessReason: string;
 }
 
+export interface TaskProvenanceWorkerRun {
+  runId: string;
+  role: string;
+  agent: string;
+  issuedSubject: TaskEvidenceCandidateSubject;
+  outputSubject?: TaskEvidenceCandidateSubject;
+  status: "pending" | "completed" | "failed" | "changes_requested";
+  evidenceId?: string;
+}
+
 export interface TaskProvenance {
   taskId: string;
   taskPath: string;
@@ -106,6 +120,7 @@ export interface TaskProvenance {
   diffFiles: TaskProvenanceDiffFile[];
   participants: TaskProvenanceParticipant[];
   runs: TaskProvenanceRun[];
+  workerRuns: TaskProvenanceWorkerRun[];
   evidence: TaskProvenanceEvidence[];
   completion?: TaskProvenanceCompletion;
   diagnostics: string[];
@@ -216,13 +231,118 @@ function evidenceWithProvenance(
   });
 }
 
+function workerSubject(value: unknown, taskId: string): TaskEvidenceCandidateSubject | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const raw = value as Record<string, unknown>;
+  if (
+    (raw.taskId !== undefined && raw.taskId !== taskId)
+    || (raw.repository !== "git" && raw.repository !== "none")
+    || typeof raw.baselineId !== "string"
+    || typeof raw.candidateId !== "string"
+    || typeof raw.worktreeId !== "string"
+    || (raw.headSha !== undefined && typeof raw.headSha !== "string")
+  ) return undefined;
+  return {
+    taskId,
+    repository: raw.repository,
+    ...(raw.headSha === undefined ? {} : { headSha: raw.headSha }),
+    baselineId: raw.baselineId,
+    candidateId: raw.candidateId,
+    worktreeId: raw.worktreeId,
+  };
+}
+
+function workerStatus(record: TaskEvidenceRecord | undefined): TaskProvenanceWorkerRun["status"] {
+  if (!record) return "pending";
+  if (record.workerStatus === "completed") return "completed";
+  if (record.workerStatus === "changes_requested") return "changes_requested";
+  if (record.workerStatus === "failed") return "failed";
+  if (record.result === "pass") return "completed";
+  if (record.result === "changes_requested") return "changes_requested";
+  return "failed";
+}
+
+async function readWorkerRuns(
+  rootDirectory: string,
+  taskId: string,
+  records: readonly TaskEvidenceRecord[],
+  diagnostics: string[],
+): Promise<TaskProvenanceWorkerRun[]> {
+  const taskDirectory = join(rootDirectory, ".agentic/sessions/work", taskId);
+  let entries: string[];
+  try {
+    entries = (await readdir(taskDirectory, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort();
+  } catch (error: unknown) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return [];
+    diagnostics.push(`Worker-run provenance unavailable for ${taskId}: ${error instanceof Error ? error.message : String(error)}.`);
+    return [];
+  }
+  if (entries.length > MAX_WORKER_RUNS) {
+    diagnostics.push(`Worker-run provenance truncated at ${MAX_WORKER_RUNS} runs for ${taskId}.`);
+  }
+  const workerRuns: TaskProvenanceWorkerRun[] = [];
+  for (const runId of entries.slice(0, MAX_WORKER_RUNS)) {
+    if (!isSafeRunId(runId)) {
+      diagnostics.push(`Worker-run provenance ignored unsafe run directory ${taskId}/${runId}.`);
+      continue;
+    }
+    let raw: Record<string, unknown>;
+    try {
+      const value: unknown = JSON.parse(await readFile(join(taskDirectory, runId, "metadata.json"), "utf8"));
+      if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("metadata is not an object");
+      raw = value as Record<string, unknown>;
+    } catch (error: unknown) {
+      diagnostics.push(`Worker-run provenance ignored malformed metadata for ${taskId}/${runId}: ${error instanceof Error ? error.message : String(error)}.`);
+      continue;
+    }
+    const issuedSubject = workerSubject(raw.issuedSubject, taskId);
+    if (
+      raw.protocol !== "apk-worker-v1"
+      || raw.taskId !== taskId
+      || raw.runId !== runId
+      || typeof raw.owner !== "string"
+      || typeof raw.role !== "string"
+      || issuedSubject === undefined
+    ) {
+      diagnostics.push(`Worker-run provenance ignored malformed metadata identity for ${taskId}/${runId}.`);
+      continue;
+    }
+    const evidence = [...records].reverse().find((record) => (
+      record.runId === runId
+      && (record.workerProtocol === "apk-worker-v1" || record.type === "review")
+    ));
+    const outputSubject = evidence ? workerSubject(evidence.subject, taskId) : undefined;
+    if (evidence && outputSubject === undefined) {
+      diagnostics.push(`Worker-run provenance found malformed output subject for ${taskId}/${runId}.`);
+    }
+    if (!evidence) {
+      diagnostics.push(`Worker run ${taskId}/${runId} has no matching evidence; status is pending.`);
+    }
+    workerRuns.push({
+      runId,
+      role: raw.role,
+      agent: evidence?.agent ?? raw.owner,
+      issuedSubject,
+      ...(outputSubject ? { outputSubject } : {}),
+      status: workerStatus(evidence),
+      ...(evidence ? { evidenceId: evidence.id } : {}),
+    });
+  }
+  return workerRuns;
+}
+
 function participantRecords(
   agents: readonly RegisteredAgent[],
   runs: readonly TaskProvenanceRun[],
+  workerRuns: readonly TaskProvenanceWorkerRun[],
   evidence: readonly TaskProvenanceEvidence[],
 ): TaskProvenanceParticipant[] {
   const ids = new Set([
     ...runs.map((run) => run.agent),
+    ...workerRuns.map((run) => run.agent),
     ...evidence.map((record) => record.agent),
   ]);
   const agentMap = new Map(agents.map((agent) => [agent.id, agent]));
@@ -235,6 +355,7 @@ function participantRecords(
       model: agent?.model ?? "unknown",
       runIds: [...new Set([
         ...runs.filter((run) => run.agent === agentId && run.runId).map((run) => run.runId!),
+        ...workerRuns.filter((run) => run.agent === agentId).map((run) => run.runId),
         ...evidence.filter((record) => record.agent === agentId).map((record) => record.runId),
       ])].sort(),
       evidenceIds: evidence.filter((record) => record.agent === agentId).map((record) => record.id),
@@ -298,6 +419,7 @@ export async function buildTaskProvenance(
     }
     : undefined;
   const diagnostics: string[] = [...candidate.diagnostics];
+  const workerRuns = await readWorkerRuns(rootDirectory, taskId, records, diagnostics);
   const commits = baseline?.headSha
     ? parseCommits(await gitLines(rootDirectory, ["log", "--no-decorate", "--format=%H%x09%aI%x09%an%x09%s", `--max-count=${MAX_COMMITS}`, `${baseline.headSha}..HEAD`]))
     : [];
@@ -342,8 +464,9 @@ export async function buildTaskProvenance(
     repositoryActivity,
     commits: repositoryActivity.commits,
     diffFiles: repositoryActivity.diffFiles,
-    participants: participantRecords(agents, allRuns, evidence),
+    participants: participantRecords(agents, allRuns, workerRuns, evidence),
     runs: allRuns,
+    workerRuns,
     evidence,
     ...(completion && completionFreshness ? {
       completion: {
@@ -388,6 +511,10 @@ export function renderTaskProvenance(provenance: TaskProvenance): string {
     "Runs:",
     ...(provenance.runs.length > 0
       ? provenance.runs.map((run) => `  - ${run.time} ${run.event}${run.runId ? ` ${run.runId}` : ""} agent=${run.agent} ${run.platform}/${run.model} outcome=${run.outcome}`)
+      : ["  - none"]),
+    "Worker runs:",
+    ...(provenance.workerRuns.length > 0
+      ? provenance.workerRuns.map((run) => `  - ${run.runId} ${run.role}: ${run.issuedSubject.candidateId} -> ${run.outputSubject?.candidateId ?? "pending"} status=${run.status}${run.evidenceId ? ` evidence=${run.evidenceId}` : ""}`)
       : ["  - none"]),
     "Evidence:",
     ...(provenance.evidence.length > 0

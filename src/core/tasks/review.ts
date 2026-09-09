@@ -17,6 +17,7 @@ import {
   type TaskEvidenceRecord,
   type TaskEvidenceFreshness,
 } from "./evidence.js";
+import { isSafeRunId } from "../work/contract.js";
 
 export const TASK_REVIEW_OUTCOMES = ["pass", "changes_requested", "fail"] as const;
 export type TaskReviewOutcome = (typeof TASK_REVIEW_OUTCOMES)[number];
@@ -106,7 +107,7 @@ function reviewSessionPath(rootDirectory: string, taskId: string, id: string): s
 }
 
 function validateReviewRunId(value: string): string {
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/.test(value)) {
+  if (!isSafeRunId(value)) {
     throw new Error("Review run id must be a compact identifier.");
   }
   return value;

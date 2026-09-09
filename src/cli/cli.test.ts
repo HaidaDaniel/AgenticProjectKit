@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -616,6 +616,21 @@ test("CLI work coordinates implementation, review, fixer, and gate roles", async
       await readFile(join(directory, ".agentic", "sessions", "work", "0001", implementationRunId, "package.json"), "utf8"),
     ) as { provenance: { candidateId: string } };
     assert.notEqual(implementationEvidence.subject.candidateId, issuedImplementation.provenance.candidateId);
+    const provenanceResult = await runCli(["task", "provenance", "0001", "--json"], directory);
+    assert.equal(provenanceResult.exitCode, 0);
+    const provenancePayload = JSON.parse(provenanceResult.stdout) as {
+      workerRuns: Array<{
+        runId: string;
+        issuedSubject: { candidateId: string };
+        outputSubject?: { candidateId: string };
+        status: string;
+      }>;
+    };
+    const implementationWorkerRun = provenancePayload.workerRuns.find((run) => run.runId === implementationRunId);
+    assert.ok(implementationWorkerRun);
+    assert.equal(implementationWorkerRun.issuedSubject.candidateId, issuedImplementation.provenance.candidateId);
+    assert.equal(implementationWorkerRun.outputSubject?.candidateId, implementationEvidence.subject.candidateId);
+    assert.equal(implementationWorkerRun.status, "completed");
 
     const blockedBeforeCanonicalVerification = await runCli(["task", "gate", "0001"], directory);
     assert.equal(blockedBeforeCanonicalVerification.exitCode, 1);
@@ -636,6 +651,54 @@ test("CLI work coordinates implementation, review, fixer, and gate roles", async
 
     const canonicalVerification = await runCli(["task", "verify", "0001", "--owner", "codex-owner"], directory);
     assert.equal(canonicalVerification.exitCode, 0);
+
+    await writeFile(join(tasksDir, ".apk.lock"), "stale\n", "utf8");
+    await assert.rejects(
+      () => startWork({
+        rootDirectory: directory,
+        taskId: "0001",
+        owner: "codex-reviewer",
+        target: "opencode",
+        level: "auto",
+        role: "review",
+      }),
+      /Task lock exists/,
+    );
+    await rm(join(tasksDir, ".apk.lock"), { force: true });
+    const issuedRunDirectory = join(directory, ".agentic", "sessions", "work", "0001");
+    const issuedRunIds = (await readdir(issuedRunDirectory)).filter((entry) => entry.startsWith("work-")).sort();
+    const failedTransitionRunId = issuedRunIds.at(-1);
+    assert.ok(failedTransitionRunId);
+    const inactiveTransitionResult = await runCli([
+      "work", "result", "0001", "--owner", "codex-reviewer", "--run-id", failedTransitionRunId,
+      "--role", "review", "--status", "completed",
+    ], directory);
+    assert.equal(inactiveTransitionResult.exitCode, 1);
+    assert.match(inactiveTransitionResult.stderr + inactiveTransitionResult.stdout, /not activated/);
+
+    await assert.rejects(
+      () => startWork({
+        rootDirectory: directory,
+        taskId: "0001",
+        owner: "codex-reviewer",
+        target: "opencode",
+        level: "auto",
+        role: "review",
+        beforeReviewActivation: async () => {
+          await writeFile(join(directory, "src", "fix.ts"), "export const rollbackHandled = \"race\";\n", "utf8");
+        },
+      }),
+      /candidate changed during issuance/,
+    );
+    const racedRunId = (await readdir(issuedRunDirectory)).filter((entry) => entry.startsWith("work-")).sort().at(-1);
+    assert.ok(racedRunId);
+    const inactiveRaceResult = await runCli([
+      "work", "result", "0001", "--owner", "codex-reviewer", "--run-id", racedRunId,
+      "--role", "review", "--status", "completed",
+    ], directory);
+    assert.equal(inactiveRaceResult.exitCode, 1);
+    assert.match(inactiveRaceResult.stderr + inactiveRaceResult.stdout, /not activated/);
+    assert.equal((await runCli(["task", "verify", "0001", "--owner", "codex-owner"], directory)).exitCode, 0);
 
     const selfReviewWork = await runCli([
       "work", "0001", "--owner", "codex-owner", "--target", "codex",
@@ -765,7 +828,18 @@ test("CLI work never accepts an incomplete issued session", async () => {
       "--role", "implement", "--status", "completed",
     ], directory);
     assert.equal(result.exitCode, 1);
-    assert.match(result.stderr + result.stdout, /Issued worker run not found|metadata is malformed|incomplete/i);
+    assert.match(result.stderr + result.stdout, /Issued worker run not found|metadata is malformed|not activated|incomplete/i);
+  });
+});
+
+test("CLI worker results reject unsafe run ids before filesystem access", async () => {
+  await withTempDirectory(async (directory) => {
+    const result = await runCli([
+      "work", "result", "0001", "--owner", "codex-owner", "--run-id", "../../unsafe",
+      "--role", "implement", "--status", "completed",
+    ], directory);
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stderr + result.stdout, /compact identifier/);
   });
 });
 
@@ -814,6 +888,10 @@ test("CLI review worker rejects an issued candidate after the implementation cha
     assert.equal(reviewPayload.workerPackage.review.reviewRunId, reviewRunId);
     assert.equal(reviewPayload.workerPackage.review.taskId, "0001");
     assert.equal(reviewPayload.workerPackage.review.reviewer, "codex-reviewer");
+    assert.equal(reviewPayload.nextRole, "pending review result");
+    assert.match(reviewPayload.next[0], /work result 0001/);
+    assert.match(reviewPayload.next[1], /After PASS:.*task gate 0001/);
+    assert.match(reviewPayload.next[2], /After changes_requested\/fail:.*--role fix/);
     assert.match(await readFile(join(directory, reviewPayload.session.prompt), "utf8"), /Review instructions:/);
     await mkdir(join(directory, "src"), { recursive: true });
     await writeFile(join(directory, "src", "fix.ts"), "export const changedAfterReviewIssue = true;\n", "utf8");

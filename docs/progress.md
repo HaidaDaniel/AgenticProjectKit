@@ -93,7 +93,7 @@ The repository now has:
 - a vendor-neutral `apk-worker-v1` package/result contract with implement/review/fix/verify roles, bounded evidence/provenance fields, work-loop integration, and Codex/OpenCode export guidance.
 - immutable issued worker sessions under `.agentic/sessions/work/`, JSON package exposure, exact owner/task/run/role binding, canonical prepared review-worker integration, non-gating orchestration records, and canonical verification-before-review progression.
 - fail-closed worker/gate trust, explicit non-Git candidate semantics, evidence-lock bookkeeping exclusions, stale/unknown status projections, and same-worktree diagnostics.
-- Task 0073 corrective regressions now cover canonical current-state role resolution, automatic `doing -> review`, executable `changes_requested -> fix`, issued/input versus output candidate provenance, collision-safe atomic session publication, incomplete-session rejection, and status `run fixer` projection.
+- Task 0073 corrective regressions now cover canonical current-state role resolution, transactional review activation with post-transition candidate confirmation, automatic `doing -> review`, executable `changes_requested -> fix`, issued/input versus output candidate provenance, `apk task provenance` worker-run joins, safe run IDs, collision-safe atomic session publication, incomplete-session rejection, review pending-result rendering, and status `run fixer` projection.
 
 ## Next step
 

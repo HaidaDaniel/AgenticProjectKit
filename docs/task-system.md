@@ -253,11 +253,12 @@ Completion accepts only current PASS evidence for the evaluated task/baseline/ca
 
 ## Task provenance
 
-`apk task provenance <task-id>` reconstructs a bounded end-to-end trace from the task file, claim baseline, existing run log, evidence records, and local Git state. The trace connects:
+`apk task provenance <task-id>` reconstructs a bounded end-to-end trace from the task file, claim baseline, existing run log, evidence records, worker-session metadata, and local Git state. The trace connects:
 
 - implementation/reviewer/completion runs to registered agent, developer, platform, model, and run IDs;
 - baseline HEAD, dirty-file attribution, bookkeeping exclusions, resulting commits, and changed paths;
 - verification, review, dogfood, and completion evidence without retaining raw stdout/stderr;
+- each APK worker run's issued/input subject to its matching output subject, status, agent, and evidence ID;
 - each evidence subject to its current `current`/`stale`/`unknown` freshness, decision-time freshness when selected by completion, and later superseding evidence IDs;
 - the exact completion evidence set and candidate subject used by the gate.
 
@@ -276,9 +277,9 @@ Human output is the default. `apk task provenance <task-id> --json` returns the 
 - validates the owner is registered;
 - claims a todo task or continues a task already doing under the same owner;
 - renders the task prompt;
-- persists every issued package and metadata through a private temporary directory followed by an atomic rename to `.agentic/sessions/work/<task-id>/<run-id>/`; an existing run ID is an explicit collision and is never deleted or overwritten; `--write-session` additionally writes `prompt.md`;
+- persists every issued package and metadata through a private temporary directory followed by an atomic rename to `.agentic/sessions/work/<task-id>/<run-id>/`; an existing run ID is an explicit collision and is never deleted or overwritten; the run is accepted only after the final `activation.json` marker is written; `--write-session` additionally writes `prompt.md`;
 - omitting `--role` resolves the next role from the current canonical gate projection: current failed review -> `fix`, missing/stale/failed canonical verification -> `verify`, missing independent review -> `review`, otherwise no worker role; an implementation owner receives an actionable independent-review command instead of a silent fallback;
-- `--json` exposes the exact serialized package, run ID, session paths, next role/action, and same-worktree warnings;
+- `--json` exposes the exact serialized package, run ID, session paths, next role/action, and same-worktree warnings; a newly issued review reports `pending review result` and conditional PASS/fix guidance;
 - prints next commands for `pnpm exec apk task verify`, `pnpm exec apk review`, and `pnpm exec apk done`.
 
 It does not launch external AI agents.
@@ -289,9 +290,9 @@ It does not launch external AI agents.
 
 `parseWorkerPackage`/`serializeWorkerPackage` and `parseWorkerResult`/`serializeWorkerResult` provide bounded JSON-compatible round trips. A worker result includes `taskId`, `role`, `runId`, `status`, optional `commitIds`, `diffId`, evidence references, review findings, provenance identities, and a reason. Failed or `changes_requested` results require a reason. The contract is core-only and has no Codex, OpenCode, Claude, or other vendor SDK dependency.
 
-Review worker packages reference the exact prepared review session (`reviewRunId`, reviewer, baseline/HEAD, candidate, worktree, and changed files). Review results map through `recordTaskReview`; APK never appends a worker-created review PASS from the current candidate. A review run is stale when its prepared subject no longer matches the current candidate.
+Review worker packages reference the exact prepared review session (`reviewRunId`, reviewer, baseline/HEAD, candidate, worktree, and changed files). Review issuance transitions `doing` to `review`, recaptures the candidate, and writes the activation marker only after the subject remains unchanged; transition or confirmation failures leave the persisted run inactive. Review results map through `recordTaskReview`; APK never appends a worker-created review PASS from the current candidate. A review run is stale when its prepared subject no longer matches the current candidate.
 
-Worker implement/fix/verify records are orchestration/provenance only and are always non-gating. Issuing an independent review package transitions `doing` to `review` only after reviewer, candidate, and canonical-verification preconditions pass; failed issuance does not leave that lifecycle state behind. A worker `verify` result does not advance to review until current check-specific canonical verification evidence exists. Only canonical verification and prepared independent-review evidence can satisfy completion policy. Gate trust requires both `gateEligible=true` and a currently registered local agent; the flag alone is not authentication.
+Worker implement/fix/verify records are orchestration/provenance only and are always non-gating. A result for any worker run must reference a safe compact run ID and a completed activation marker. Issuing an independent review package transitions `doing` to `review` only after reviewer, candidate, and canonical-verification preconditions pass; failed issuance does not leave an active result behind. A worker `verify` result does not advance to review until current check-specific canonical verification evidence exists. Only canonical verification and prepared independent-review evidence can satisfy completion policy. Gate trust requires both `gateEligible=true` and a currently registered local agent; the flag alone is not authentication.
 
 `Parallel: true` means tasks are semantically parallelizable. Concurrent mutable tasks in one working tree are unsafe for baseline attribution; use separate Git worktrees/branches. Issued worker metadata records a hashed worktree location and `apk work` warns when it detects another unsettled run in the same location. APK does not silently exclude another task's files or claim certain attribution.
 

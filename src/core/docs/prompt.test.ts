@@ -166,6 +166,10 @@ test("worker package and result round trips preserve role and provenance without
     () => parseWorkerResult({ ...workerResult, status: "failed", reason: undefined }),
     /reason is required/,
   );
+  assert.throws(
+    () => parseWorkerResult({ ...workerResult, runId: "../unsafe-run" }),
+    /compact identifier/,
+  );
 });
 
 test("renderTaskPrompt consumes a budgeted context pack", () => {

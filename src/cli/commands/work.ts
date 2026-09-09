@@ -136,9 +136,10 @@ export async function runWorkCommand(argv: string[]): Promise<number> {
         session: {
           package: result.packagePath,
           metadata: result.metadataPath,
+          activation: result.activationPath,
           ...(result.sessionPath ? { prompt: result.sessionPath } : {}),
         },
-        nextRole: result.nextRole ?? null,
+        nextRole: result.nextRole ?? (result.workerPackage.role === "review" ? "pending review result" : null),
         next: result.next,
         warnings: result.warnings,
       }, null, 2));

@@ -9,6 +9,12 @@ export type WorkerRole = (typeof WORKER_ROLES)[number];
 export const WORKER_STATUSES = ["completed", "failed", "changes_requested"] as const;
 export type WorkerStatus = (typeof WORKER_STATUSES)[number];
 
+export const SAFE_RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/;
+
+export function isSafeRunId(value: string): boolean {
+  return SAFE_RUN_ID_PATTERN.test(value);
+}
+
 /**
  * Worker package provenance identifies the candidate supplied to the worker.
  * Worker result provenance identifies the candidate produced by that run.
@@ -102,6 +108,13 @@ export class WorkerContractError extends Error {
     super(message);
     this.name = "WorkerContractError";
   }
+}
+
+export function validateWorkerRunId(value: string): string {
+  if (!isSafeRunId(value)) {
+    throw new WorkerContractError("worker run id must be a compact identifier.");
+  }
+  return value;
 }
 
 function text(value: unknown, label: string, maxLength = 320): string {
@@ -210,7 +223,7 @@ function parsePackage(value: unknown): WorkerPackage {
     ...(raw.review === undefined ? {} : { review: parseReviewBinding(raw.review) }),
     ...(raw.handoff === undefined ? {} : { handoff: parseHandoff(raw.handoff) }),
     provenance: {
-      runId: text(provenance.runId, "worker package.provenance.runId", 120),
+      runId: validateWorkerRunId(text(provenance.runId, "worker package.provenance.runId", 120)),
       ...(provenance.repository === "git" || provenance.repository === "none" ? { repository: provenance.repository } : {}),
       ...(optionalText(provenance.headSha, "worker package.provenance.headSha", 160) ? { headSha: provenance.headSha as string } : {}),
       ...(optionalText(provenance.baselineId, "worker package.provenance.baselineId", 240) ? { baselineId: provenance.baselineId as string } : {}),
@@ -244,7 +257,7 @@ function parseEvidenceList(value: unknown): WorkerEvidenceReference[] {
 function parseHandoff(value: unknown): WorkerHandoff {
   const raw = objectValue(value, "worker package.handoff");
   return {
-    fromRunId: text(raw.fromRunId, "worker package.handoff.fromRunId", 120),
+    fromRunId: validateWorkerRunId(text(raw.fromRunId, "worker package.handoff.fromRunId", 120)),
     fromRole: workerRole(raw.fromRole, "worker package.handoff.fromRole"),
     status: workerStatus(raw.status, "worker package.handoff.status"),
     findings: boundedList(raw.findings, "worker package.handoff.findings", 32),
@@ -255,7 +268,7 @@ function parseHandoff(value: unknown): WorkerHandoff {
 function parseReviewBinding(value: unknown): WorkerReviewBinding {
   const raw = objectValue(value, "worker package.review");
   return {
-    reviewRunId: text(raw.reviewRunId, "worker package.review.reviewRunId", 120),
+    reviewRunId: validateWorkerRunId(text(raw.reviewRunId, "worker package.review.reviewRunId", 120)),
     taskId: text(raw.taskId, "worker package.review.taskId", 120),
     reviewer: text(raw.reviewer, "worker package.review.reviewer", 120),
     baselineId: text(raw.baselineId, "worker package.review.baselineId", 240),
@@ -279,7 +292,7 @@ function parseResult(value: unknown): WorkerResult {
     protocol: WORKER_PROTOCOL,
     taskId: text(raw.taskId, "worker result.taskId", 120),
     role: workerRole(raw.role, "worker result.role"),
-    runId: text(raw.runId, "worker result.runId", 120),
+    runId: validateWorkerRunId(text(raw.runId, "worker result.runId", 120)),
     status,
     ...(optionalBoundedList(raw.commitIds, "worker result.commitIds") ? { commitIds: raw.commitIds as string[] } : {}),
     ...(optionalText(raw.diffId, "worker result.diffId", 160) ? { diffId: raw.diffId as string } : {}),

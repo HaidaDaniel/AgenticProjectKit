@@ -18,6 +18,7 @@ import {
   parseWorkerPackage,
   parseWorkerResult,
   serializeWorkerPackage,
+  validateWorkerRunId,
   WORKER_PROTOCOL,
   type WorkerPackage,
   type WorkerProvenance,
@@ -40,6 +41,8 @@ export interface WorkOptions {
   level: WorkLevel;
   role?: WorkerRole;
   writeSession?: boolean;
+  /** Test-only seam for exercising the review issuance transaction boundary. */
+  beforeReviewActivation?: () => Promise<void>;
 }
 
 export interface WorkResult {
@@ -51,6 +54,7 @@ export interface WorkResult {
   sessionPath?: string;
   packagePath: string;
   metadataPath: string;
+  activationPath: string;
   nextRole?: WorkerRole;
   next: string[];
   warnings: string[];
@@ -81,6 +85,14 @@ export interface IssuedWorkerRunMetadata {
   issuedSubject: WorkerProvenance;
 }
 
+export interface WorkerRunActivation {
+  protocol: typeof WORKER_PROTOCOL;
+  taskId: string;
+  runId: string;
+  packageHash: string;
+  activatedAt: string;
+}
+
 const WORK_SESSION_DIRECTORY = ".agentic/sessions/work";
 
 function resolveLevel(task: ProjectTask, level: WorkLevel): ContextLevel {
@@ -108,6 +120,10 @@ function issuedSessionDirectory(rootDirectory: string, taskId: string, runId: st
   return join(rootDirectory, WORK_SESSION_DIRECTORY, taskId, runId);
 }
 
+function issuedActivationPath(rootDirectory: string, taskId: string, runId: string): string {
+  return join(issuedSessionDirectory(rootDirectory, taskId, runId), "activation.json");
+}
+
 function packageHash(workerPackage: WorkerPackage): string {
   return hashText(serializeWorkerPackage(workerPackage));
 }
@@ -120,6 +136,18 @@ function provenanceForSubject(subject: TaskEvidenceCandidateSubject): WorkerProv
     candidateId: subject.candidateId,
     worktreeId: subject.worktreeId,
   };
+}
+
+function sameCandidateSubject(
+  left: TaskEvidenceCandidateSubject,
+  right: TaskEvidenceCandidateSubject,
+): boolean {
+  return left.taskId === right.taskId
+    && left.repository === right.repository
+    && left.headSha === right.headSha
+    && left.baselineId === right.baselineId
+    && left.candidateId === right.candidateId
+    && left.worktreeId === right.worktreeId;
 }
 
 function suppliedProvenanceMatches(
@@ -152,6 +180,7 @@ async function persistIssuedWorkerRun(options: {
   worktreeLocationId: string;
   writePrompt?: string;
 }): Promise<{ packagePath: string; metadataPath: string; promptPath?: string }> {
+  validateWorkerRunId(options.runId);
   const directory = issuedSessionDirectory(options.rootDirectory, options.taskId, options.runId);
   const parent = join(options.rootDirectory, WORK_SESSION_DIRECTORY, options.taskId);
   await mkdir(parent, { recursive: true });
@@ -221,27 +250,69 @@ async function persistIssuedWorkerRun(options: {
   }
 }
 
+async function activateIssuedWorkerRun(options: {
+  rootDirectory: string;
+  taskId: string;
+  runId: string;
+  workerPackage: WorkerPackage;
+}): Promise<string> {
+  validateWorkerRunId(options.runId);
+  const path = issuedActivationPath(options.rootDirectory, options.taskId, options.runId);
+  const activation: WorkerRunActivation = {
+    protocol: WORKER_PROTOCOL,
+    taskId: options.taskId,
+    runId: options.runId,
+    packageHash: packageHash(options.workerPackage),
+    activatedAt: new Date().toISOString(),
+  };
+  try {
+    await writeFile(path, `${JSON.stringify(activation)}\n`, { encoding: "utf8", flag: "wx" });
+  } catch (error: unknown) {
+    if (error && typeof error === "object" && "code" in error && error.code === "EEXIST") {
+      throw new Error(`Worker run ${options.runId} is already activated; issued sessions are immutable.`);
+    }
+    throw error;
+  }
+  return relative(options.rootDirectory, path).replace(/\\/g, "/");
+}
+
 async function readIssuedWorkerRun(
   rootDirectory: string,
   taskId: string,
   runId: string,
 ): Promise<{ workerPackage: WorkerPackage; metadata: IssuedWorkerRunMetadata }> {
+  validateWorkerRunId(runId);
   const directory = issuedSessionDirectory(rootDirectory, taskId, runId);
   let packageValue: string;
   let metadataValue: string;
+  let activationValue: string;
   try {
-    [packageValue, metadataValue] = await Promise.all([
+    [packageValue, metadataValue, activationValue] = await Promise.all([
       readFile(join(directory, "package.json"), "utf8"),
       readFile(join(directory, "metadata.json"), "utf8"),
+      readFile(join(directory, "activation.json"), "utf8"),
     ]);
   } catch (error: unknown) {
     if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      if (await pathExists(directory)) {
+        throw new Error(`Issued worker run ${runId} is not activated; startWork did not finish successfully.`);
+      }
       throw new Error(`Issued worker run not found: ${runId} for task ${taskId}.`);
     }
     throw error;
   }
   const workerPackage = parseWorkerPackage(packageValue);
   const raw = JSON.parse(metadataValue) as Partial<IssuedWorkerRunMetadata>;
+  const activation = JSON.parse(activationValue) as Partial<WorkerRunActivation>;
+  if (
+    activation.protocol !== WORKER_PROTOCOL ||
+    activation.taskId !== taskId ||
+    activation.runId !== runId ||
+    typeof activation.packageHash !== "string" ||
+    typeof activation.activatedAt !== "string"
+  ) {
+    throw new Error(`Issued worker run activation is malformed: ${runId}.`);
+  }
   const issuedSubject = raw.issuedSubject;
   if (
     raw.protocol !== WORKER_PROTOCOL ||
@@ -274,6 +345,9 @@ async function readIssuedWorkerRun(
   }
   if (raw.packageHash !== packageHash(workerPackage)) {
     throw new Error(`Issued worker package hash mismatch: ${runId}.`);
+  }
+  if (activation.packageHash !== raw.packageHash) {
+    throw new Error(`Issued worker run activation hash mismatch: ${runId}.`);
   }
   return { workerPackage, metadata: raw as IssuedWorkerRunMetadata };
 }
@@ -432,8 +506,8 @@ function workNextCommands(task: ProjectTask, target: string, owner: string, runI
       commands.push(`pnpm exec apk task gate ${task.id}`);
     }
   } else {
-    commands.push(`pnpm exec apk task gate ${task.id}`);
-    commands.push(`pnpm exec apk done ${task.id} --owner ${task.owner}`);
+    commands.push(`After PASS: pnpm exec apk task gate ${task.id}`);
+    commands.push(`After changes_requested/fail: pnpm exec apk work ${task.id} --owner <fixer> --target ${target} --role fix`);
   }
   return commands;
 }
@@ -613,6 +687,9 @@ export async function startWork(options: WorkOptions): Promise<WorkResult> {
     worktreeLocationId: worktreeId,
     ...(options.writeSession ? { writePrompt: prompt } : {}),
   });
+  if (role === "review" && options.beforeReviewActivation) {
+    await options.beforeReviewActivation();
+  }
   if (role === "review" && task.state === "doing") {
     task = await reviewTask({
       rootDirectory: options.rootDirectory,
@@ -620,6 +697,19 @@ export async function startWork(options: WorkOptions): Promise<WorkResult> {
       taskId: task.id,
       owner: task.owner,
     });
+  }
+  if (role === "review" && reviewPreparation) {
+    const confirmedCandidate = await captureTaskCompletionCandidate({
+      rootDirectory: options.rootDirectory,
+      taskDirectory: config.taskDirectory,
+      taskId: task.id,
+    });
+    if (
+      !sameCandidateSubject(confirmedCandidate.subject, reviewPreparation.subject)
+      || JSON.stringify([...confirmedCandidate.changedFiles].sort()) !== JSON.stringify([...reviewPreparation.changedFiles].sort())
+    ) {
+      throw new Error(`Review candidate changed during issuance for task ${task.id}; the issued review run remains inactive. Prepare a fresh review package.`);
+    }
   }
   const warnings = await sameWorktreeWarnings(options.rootDirectory, task.id, worktreeId);
 
@@ -632,6 +722,22 @@ export async function startWork(options: WorkOptions): Promise<WorkResult> {
     outcome: "ok",
     reason: `worker package ${persisted.packagePath}`,
   });
+  const nextRole = role === "review"
+    ? undefined
+    : await nextWorkerRoleAfterResult(options.rootDirectory, config.taskDirectory, task, {
+      protocol: WORKER_PROTOCOL,
+      taskId: task.id,
+      role,
+      runId,
+      status: "completed",
+    });
+  const next = workNextCommands(task, options.target, options.owner, runId, role);
+  const activationPath = await activateIssuedWorkerRun({
+    rootDirectory: options.rootDirectory,
+    taskId: task.id,
+    runId,
+    workerPackage,
+  });
 
   return {
     task,
@@ -642,16 +748,9 @@ export async function startWork(options: WorkOptions): Promise<WorkResult> {
     ...(persisted.promptPath ? { sessionPath: persisted.promptPath } : {}),
     packagePath: persisted.packagePath,
     metadataPath: persisted.metadataPath,
-    ...(role === "review" ? {} : {
-      nextRole: await nextWorkerRoleAfterResult(options.rootDirectory, config.taskDirectory, task, {
-        protocol: WORKER_PROTOCOL,
-        taskId: task.id,
-        role,
-        runId,
-        status: "completed",
-      }),
-    }),
-    next: workNextCommands(task, options.target, options.owner, runId, role),
+    activationPath,
+    ...(nextRole === undefined ? {} : { nextRole }),
+    next,
     warnings,
   };
 }
@@ -810,6 +909,8 @@ export function renderWorkerRunResult(result: WorkerRunResult): string {
 }
 
 export function renderWorkResult(result: WorkResult): string {
+  const nextRole = result.nextRole
+    ?? (result.workerPackage.role === "review" ? "pending review result" : "gate/done");
   return [
     `Task: ${result.task.id}`,
     `State: ${result.task.state}`,
@@ -818,7 +919,8 @@ export function renderWorkResult(result: WorkResult): string {
     `Worker role: ${result.workerPackage.role}`,
     `Package: ${result.packagePath}`,
     `Metadata: ${result.metadataPath}`,
-    `Next role: ${result.nextRole ?? "gate/done"}`,
+    `Activation: ${result.activationPath}`,
+    `Next role: ${nextRole}`,
     `Claimed: ${result.claimed ? "yes" : "no"}`,
     ...(result.sessionPath ? [`Session: ${result.sessionPath}`] : []),
     "",
