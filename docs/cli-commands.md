@@ -10,6 +10,7 @@ When Agentic Project Kit is installed as a repository dev dependency, run comman
 - `apk adopt` - add the kit to an existing repository after a lightweight scan.
 - `apk audit [directory]` - write lightweight kit/workflow and repository-readiness audit reports.
 - `apk lint [--json]` - read-only validation of task graph, paths, policy, ownership, and generated instruction drift.
+- `apk context <task-id> [--level 1|2|3] [--budget <units>]` - print legacy or budgeted task context.
 - `apk doctor` - run read-only local workflow health checks.
 - `apk agent register --id <id> --platform <platform> --model <model> [--developer <id>]` - register an agent.
 - `apk agent list` - list registered agents.
@@ -32,7 +33,7 @@ When Agentic Project Kit is installed as a repository dev dependency, run comman
 - `apk done <task-id> --owner <agent-id>` - mark a task done.
 - `apk cancel <task-id> --owner <agent-id> --reason <text>` - cancel a task.
 - `apk context <task-id>` - output the context files needed for a task.
-- `apk prompt <agent> --task <task-id>` - generate an agent-specific prompt.
+- `apk prompt <agent> --task <task-id> [--level 1|2|3] [--budget <units>]` - generate an agent-specific prompt from legacy or budgeted context.
 - `apk export <agent> [--force]` - export instructions for a specific agent tool.
 - `apk sync <agent> [--write]` - check or update generated instruction files.
 - `apk status` - print compact workflow status without writing files.
@@ -62,6 +63,7 @@ pnpm exec apk tasks --all
 pnpm exec apk export cursor --force
 pnpm exec apk audit
 pnpm exec apk lint --json
+pnpm exec apk context 0067 --budget 12000
 pnpm exec apk doctor
 pnpm exec apk sync cursor
 pnpm exec apk status
@@ -79,6 +81,7 @@ pnpm exec apk task create --template bugfix --title "Fix Parser" --scope cli --a
 `apk export` skips existing files by default. Use `--force` to overwrite generated instruction files.
 `apk sync` is check-only by default. Use `--write` to update missing or stale generated files.
 `apk lint` composes task/parser, dependency, path/policy, state/owner, and check-only sync findings without writing reports or generated files. Use `--json` for stable CI output; structural or generated-file errors return exit code 1.
+`apk context` and `apk prompt` retain existing `--level` behavior when no budget is supplied. With `--budget`, units approximate tokens as `ceil(UTF-8 bytes / 4)`, required files are never dropped, and an oversized required tier returns a diagnostic and exit code 1. Relevant files use task paths plus explicit changed/dependency/recent signals; no network or model is used.
 `apk analytics summary` includes active and archived task metadata when grouping task risk, mode, and lane.
 `apk task create` uses the task lock while allocating ids and writing files so concurrent creates cannot leave duplicate task ids.
 `apk task create --type` supports `feature`, `bugfix`, `refactor`, `migration`, `async-worker`, `provider-integration`, `deployment`, `benchmark`, `security`, and `release`, plus the existing `docs`, `audit`, and `test` templates. `--template` is an equivalent alias; `provider`/`integration` and `async` are accepted aliases. Typed defaults persist `Type`, structured verification, domain guardrails, and policy tags. Explicit flags override defaults, and generated task files remain editable.

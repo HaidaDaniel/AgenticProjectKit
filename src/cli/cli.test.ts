@@ -69,6 +69,8 @@ test("CLI help lists implemented commands", async () => {
   assert.match(result.stdout, /apk status/);
   assert.match(result.stdout, /apk doctor/);
   assert.match(result.stdout, /apk lint \[--json\]/);
+  assert.match(result.stdout, /apk context <task-id> \[--level 1\|2\|3\] \[--budget <units>\]/);
+  assert.match(result.stdout, /apk prompt <agent> --task <task-id> \[--level 1\|2\|3\] \[--budget <units>\]/);
   assert.match(result.stdout, /apk suggest-context/);
   assert.match(result.stdout, /apk work <task-id>/);
   assert.match(result.stdout, /apk task deps <task-id>/);
@@ -304,6 +306,26 @@ test("CLI work claims todo task and prints prompt", async () => {
     assert.match(result.stdout, /Claimed: yes/);
     assert.match(result.stdout, /pnpm exec apk task verify 0001 --owner codex-a/);
     assert.match(await readFile(join(directory, ".tasks", "0001-todo-task.md"), "utf8"), /State: doing/);
+  });
+});
+
+test("CLI context and prompt accept budgeted packs and report overflow", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(join(directory, ".tasks", "0001-todo-task.md"), buildTaskMarkdown("0001", "Todo Task", "todo"), "utf8");
+
+    const context = await runCli(["context", "0001", "--budget", "1000"], directory);
+    assert.equal(context.exitCode, 0);
+    assert.match(context.stdout, /Budget: 1000 units/);
+    assert.match(context.stdout, /Estimated units:/);
+
+    const prompt = await runCli(["prompt", "codex", "--task", "0001", "--budget", "1000"], directory);
+    assert.equal(prompt.exitCode, 0);
+    assert.match(prompt.stdout, /Context budget: 1000 units/);
+
+    const overflow = await runCli(["context", "0001", "--budget", "1"], directory);
+    assert.equal(overflow.exitCode, 1);
+    assert.match(overflow.stdout, /Required context uses .* exceeding budget 1/);
   });
 });
 

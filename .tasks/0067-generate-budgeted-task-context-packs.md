@@ -1,7 +1,7 @@
 # Task 0067 - Generate budgeted task context packs
 
-State: todo
-Owner: none
+State: done
+Owner: codex-20260909
 Mode: product
 Lane: context
 Scope: context,cli,tests,docs
@@ -36,6 +36,7 @@ Deterministic context packs fit explicit size budgets while preserving required 
 - src/core/exporters/index.ts
 - src/cli/commands/context.ts
 - src/cli/commands/prompt.ts
+- src/cli/index.ts
 - src/cli/cli.test.ts
 - docs/cli-commands.md
 - .tasks/0057-structured-task-verification-contract-with-backward-compatibility.md
@@ -50,6 +51,7 @@ Deterministic context packs fit explicit size budgets while preserving required 
 - src/core/tasks/task.test.ts
 - src/cli/commands/context.ts
 - src/cli/commands/prompt.ts
+- src/cli/index.ts
 - src/cli/cli.test.ts
 - docs/context-system.md
 - docs/cli-commands.md
@@ -85,13 +87,13 @@ Deterministic context packs fit explicit size budgets while preserving required 
 - Legacy --level behavior remains usable; operational run/registry/lock exclusions remain intact.
 - No network/model/embedding dependency; small-fixture tests cover selection, ordering and budget overflow.
 
-## Verification commands
+## Verification
 
-- pnpm lint
-- pnpm test
-- pnpm build
-- pnpm exec apk context --help
-- pnpm exec apk suggest-context --help
+- `{"id":"lint","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm lint"}`
+- `{"id":"tests","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm test"}`
+- `{"id":"build","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}`
+- `{"id":"context-help","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk context --help"}`
+- `{"id":"suggest-help","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk suggest-context --help"}`
 
 ## Documentation updates
 

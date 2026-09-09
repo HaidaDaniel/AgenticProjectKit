@@ -642,6 +642,65 @@ test("renderTaskContext prints explicit file list", () => {
   );
 });
 
+test("budgeted task context keeps required files and ranks relevant signals", () => {
+  const task = {
+    ...TASK,
+    title: "Context Pack",
+    contextFiles: ["AGENTS.md", "docs/context-system.md"],
+    allowedFiles: ["src/feature.ts"],
+  };
+  const availableFiles = [
+    "AGENTS.md",
+    "docs/project.md",
+    "docs/scope.md",
+    "docs/architecture.md",
+    ".tasks/0007-context-pack.md",
+    "docs/decisions.md",
+    "docs/context-system.md",
+    "src/feature.ts",
+    "src/feature.test.ts",
+    "docs/history.md",
+    ".agentic/runs/2026-09-09-codex.jsonl",
+  ];
+  const fileSizes = Object.fromEntries(availableFiles.map((file) => [file, 2]));
+  const selection = selectTaskContext(task, 2, {
+    budget: 17,
+    availableFiles,
+    fileSizes,
+    changedFiles: ["src/feature.test.ts"],
+    dependencyFiles: ["src/feature.ts"],
+    recentFiles: ["docs/history.md"],
+  });
+
+  assert.equal(selection.estimatedUnits, 16);
+  assert.ok(selection.entries?.every((entry) => entry.tier === "required" || entry.path === "src/feature.ts"));
+  assert.ok(selection.entries?.some((entry) => entry.path === "src/feature.ts" && entry.tier === "relevant"));
+  assert.equal(selection.files.includes("src/feature.test.ts"), false);
+  assert.equal(selection.files.includes("docs/history.md"), false);
+  assert.equal(selection.files.some((file) => file.includes(".agentic/runs/")), false);
+  assert.equal(selection.diagnostics, undefined);
+});
+
+test("budgeted task context reports required overflow without dropping contracts", () => {
+  const selection = selectTaskContext(TASK, 1, {
+    budget: 5,
+    fileSizes: {
+      "AGENTS.md": 10,
+      "docs/project.md": 10,
+      "docs/scope.md": 10,
+      "docs/architecture.md": 10,
+      ".tasks/0007-add-task-system.md": 10,
+      "docs/task-system.md": 10,
+    },
+  });
+
+  assert.ok((selection.estimatedUnits ?? 0) > 5);
+  assert.equal(selection.diagnostics?.[0]?.code, "required-over-budget");
+  assert.ok(selection.files.includes("AGENTS.md"));
+  assert.ok(selection.files.includes(".tasks/0007-add-task-system.md"));
+  assert.ok(selection.files.includes("docs/task-system.md"));
+});
+
 test("selectNextTask returns lowest-numbered todo task with done dependencies", () => {
   const files: ProjectTaskFile[] = [
     {

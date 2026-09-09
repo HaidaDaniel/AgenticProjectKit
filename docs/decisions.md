@@ -249,3 +249,19 @@ CI and agents need one stable surface for repository/task-contract drift without
 Implementation:
 
 Human output is concise and findings are sorted deterministically; `--json` exposes the structured result. Structural and generated-file drift findings are errors with a non-zero exit code. Legacy policy evidence gaps remain warnings until the task declares the required evidence category. The implementation reuses existing validators and leaves room for a stricter release profile without adding a plugin engine.
+
+## ADR-0019 - Budgeted context uses deterministic approximate units
+
+Status: accepted
+
+Decision:
+
+Keep existing level-based context selection as the compatibility path. Add opt-in budgeted packs with required, relevant, and optional tiers; account for text as `ceil(UTF-8 bytes / 4)` units and preserve every required entry when the budget is too small.
+
+Reason:
+
+Agents need bounded prompts without network, embeddings, or model-specific tokenizers. A documented approximate unit is stable enough for local planning, while an explicit overflow diagnostic prevents silent loss of task contracts.
+
+Implementation:
+
+Core selection accepts deterministic available-file sizes plus changed, dependency, recent, allowed-path, and lexical signals. Repository-backed context/prompt commands load local files only. Budgeted selection exposes entries, units, reasons, and diagnostics; legacy calls without `--budget` retain their prior files and rendering. A later task may deepen dependency/change-aware ranking without changing this no-network contract.

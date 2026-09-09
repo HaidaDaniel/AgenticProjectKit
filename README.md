@@ -65,10 +65,10 @@ Implemented commands:
 - `apk done`
 - `apk doctor`
 - `apk cancel`
-- `apk context <task-id>`
+- `apk context <task-id> [--level 1|2|3] [--budget <units>]`
 - `apk mode [mode]`
 - `apk next-task`
-- `apk prompt <agent> --task <task-id>`
+- `apk prompt <agent> --task <task-id> [--level 1|2|3] [--budget <units>]`
 - `apk export [agent]`
 - `apk sync [agent]`
 - `apk status`
@@ -255,6 +255,7 @@ pnpm exec tsx src/cli/index.ts context 0008 --level 2
 ```
 
 Use `--level 1` for minimum project context, `--level 2` for task docs, and `--level 3` to include source or support files explicitly named by the task contract.
+Use `--budget <units>` for a deterministic required/relevant/optional pack. Units approximate tokens as `ceil(UTF-8 bytes / 4)`; required files are never evicted, and an oversized required tier returns a diagnostic.
 
 Suggest candidate context before writing a task:
 
@@ -667,10 +668,10 @@ pnpm exec apk export --force
 
 ## Current status
 
-Tasks 0001 through 0066 are complete, including the CLI-focused backlog, structured verification, deterministic policy resolution, independent review evidence, correctness contracts, typed task templates, and read-only repository/task-contract linting.
+Tasks 0001 through 0067 are complete, including the CLI-focused backlog, structured verification, deterministic policy resolution, independent review evidence, correctness contracts, typed task templates, read-only repository/task-contract linting, and budgeted context packs.
 
 The repository now has a minimal TypeScript CLI scaffold, config schema, `init`, lightweight `adopt`, kit/workflow `audit`, `analytics summary`, `mode`, `next-task`, `tasks`, agent registration, task state transitions, sharded run analytics, `context`, `prompt`, `export`, `sync`, template rendering, doc generation helpers, Claude/Gemini/Codex/OpenCode/Cursor agent exporters, task archive/dependency commands, compact task parsing, and typed verification requirements.
 
 Default agent style for this repository: `caveman` when the active tool supports it.
 
-The next implementation task is budgeted task context packs; later workflow, harness, adoption, and release tasks remain planned.
+The next implementation task is dependency- and change-aware context suggestions; later workflow, harness, adoption, and release tasks remain planned.

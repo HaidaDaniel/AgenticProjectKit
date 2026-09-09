@@ -127,6 +127,40 @@ test("renderTaskPrompt preserves structured verification requirements", () => {
   assert.match(prompt, /Verification commands:\n/);
 });
 
+test("renderTaskPrompt consumes a budgeted context pack", () => {
+  const prompt = renderTaskPrompt(buildTaskPromptInput("codex", {
+    ...TASK,
+    contextFiles: ["AGENTS.md", "docs/context-system.md"],
+  }, 1, {
+    budget: 8,
+    availableFiles: [
+      "AGENTS.md",
+      "docs/project.md",
+      "docs/scope.md",
+      "docs/architecture.md",
+      ".tasks/0014-add-prompt-command.md",
+      "docs/task-system.md",
+      "src/cli/commands/prompt.ts",
+    ],
+    fileSizes: {
+      "AGENTS.md": 1,
+      "docs/project.md": 1,
+      "docs/scope.md": 1,
+      "docs/architecture.md": 1,
+      ".tasks/0014-add-prompt-command.md": 1,
+      "docs/context-system.md": 1,
+      "docs/task-system.md": 1,
+      "src/cli/commands/prompt.ts": 2,
+    },
+    changedFiles: ["src/cli/commands/prompt.ts"],
+  }));
+
+  assert.match(prompt, /Context budget: 8 units/);
+  assert.match(prompt, /Context estimated units: 8/);
+  assert.match(prompt, /Context files:\n- AGENTS\.md/);
+  assert.doesNotMatch(prompt, /Context diagnostics:/);
+});
+
 test("renderTaskPrompt includes populated correctness requirements only", () => {
   const prompt = renderTaskPrompt(buildTaskPromptInput("codex", {
     ...TASK,
