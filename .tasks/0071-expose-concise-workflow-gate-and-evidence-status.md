@@ -1,7 +1,7 @@
 # Task 0071 - Expose concise workflow, gate and evidence status
 
-State: todo
-Owner: none
+State: done
+Owner: codex-20260909
 Mode: product
 Lane: developer-experience
 Scope: developer-experience,cli,tests,docs
@@ -79,13 +79,13 @@ Compact status exposes active-task completion blockers and actionable next steps
 - Existing status/doctor/audit conventions remain coherent; preserve machine-readable mode if present by implementation time.
 - Regression tests cover ready/blocked tasks, detail mode and gate/status consistency.
 
-## Verification commands
+## Verification
 
-- pnpm lint
-- pnpm test
-- pnpm build
-- pnpm exec apk status
-- pnpm exec apk doctor
+- `{"id":"lint","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm lint"}`
+- `{"id":"tests","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm test"}`
+- `{"id":"build","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}`
+- `{"id":"status","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx src/cli/index.ts status"}`
+- `{"id":"doctor","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx src/cli/index.ts doctor"}`
 
 ## Documentation updates
 

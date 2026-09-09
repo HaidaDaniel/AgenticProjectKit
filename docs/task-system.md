@@ -263,6 +263,12 @@ Completion accepts only current PASS evidence for the evaluated task/baseline/ca
 
 Human output is the default. `apk task provenance <task-id> --json` returns the same bounded structure for automation. Missing Git commits, baseline HEAD, or run-log links are reported as explicit diagnostics; they do not discard non-code task history. Task lifecycle writes are bookkeeping and do not create a false implementation revision, while changed implementation files do.
 
+## Workflow status
+
+`apk status` retains the repository-level mode, task counts, next task, generated-instruction drift, and latest run, and adds one bounded line for every active task. Each line exposes state, owner, risk, effective policy summary, dependency readiness, required verification progress, scope result, review freshness, evidence current/total counts, gate status and the next action. Gate blockers come directly from `evaluateTaskCompletionGate`, so missing independent review and pending/unavailable live evidence use the same reasons as `apk task gate` and `done`.
+
+`apk status --detail` expands each active task with policy classifications/categories, dependency lists, verification counters, scope counts, review reason, evidence freshness counts, bounded gate blockers, provenance baseline/candidate/worktree/run counts, and diagnostics. It does not include raw command output or full run logs. Todo tasks are evaluated with an empty implementation path set so unrelated worktree changes do not make an unclaimed task appear to have implementation scope violations.
+
 ## CLI work loop
 
 `pnpm exec apk work <task-id> --owner <agent-id> --target <agent>` connects the existing task workflow:

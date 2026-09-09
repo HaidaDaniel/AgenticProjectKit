@@ -71,12 +71,13 @@ Implemented commands:
 - `apk prompt <agent> --task <task-id> [--level 1|2|3] [--budget <units>]`
 - `apk export [agent]`
 - `apk sync [agent]`
-- `apk status`
+- `apk status [--detail]`
 - `apk suggest-context "<task description>"`
 - `apk task deps <task-id>`
 - `apk task evidence <task-id>`
 - `apk task policy <task-id>`
 - `apk task gate <task-id>`
+- `apk task provenance <task-id> [--json]`
 - `apk task create`
 
 ## Using it in other repositories
@@ -367,6 +368,15 @@ pnpm exec apk done 0001 --owner codex-a
 ```
 
 `done` rejects missing, failed, stale, or wrong-candidate verification/review evidence and records a completion evidence set on success. There is no force bypass.
+
+Inspect the active workflow and actionable gate state:
+
+```bash
+pnpm exec apk status
+pnpm exec apk status --detail
+```
+
+The default status is concise. Detail mode adds bounded policy, verification, scope, review, evidence, gate-blocker and provenance summaries without raw logs. Status reuses the same gate evaluator as `apk task gate` and `apk done`.
 
 Run all eligible checks or one verification profile:
 
@@ -668,10 +678,10 @@ pnpm exec apk export --force
 
 ## Current status
 
-Tasks 0001 through 0067 are complete, including the CLI-focused backlog, structured verification, deterministic policy resolution, independent review evidence, correctness contracts, typed task templates, read-only repository/task-contract linting, and budgeted context packs.
+Tasks 0001 through 0070 are complete, and Task 0071 adds concise active-task gate/evidence status with optional bounded detail output.
 
 The repository now has a minimal TypeScript CLI scaffold, config schema, `init`, lightweight `adopt`, kit/workflow `audit`, `analytics summary`, `mode`, `next-task`, `tasks`, agent registration, task state transitions, sharded run analytics, `context`, `prompt`, `export`, `sync`, template rendering, doc generation helpers, Claude/Gemini/Codex/OpenCode/Cursor agent exporters, task archive/dependency commands, compact task parsing, and typed verification requirements.
 
 Default agent style for this repository: `caveman` when the active tool supports it.
 
-The next implementation task is dependency- and change-aware context suggestions; later workflow, harness, adoption, and release tasks remain planned.
+The next implementation task is 0072; later workflow, harness, adoption, and release tasks remain planned.

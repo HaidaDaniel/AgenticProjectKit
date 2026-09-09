@@ -36,7 +36,7 @@ When Agentic Project Kit is installed as a repository dev dependency, run comman
 - `apk prompt <agent> --task <task-id> [--level 1|2|3] [--budget <units>]` - generate an agent-specific prompt from legacy or budgeted context.
 - `apk export <agent> [--force]` - export instructions for a specific agent tool.
 - `apk sync <agent> [--write]` - check or update generated instruction files.
-- `apk status` - print compact workflow status without writing files.
+- `apk status [--detail]` - print compact active-task workflow status without writing files; detail adds bounded gate, evidence, and provenance fields.
 - `apk suggest-context "<task description>" [--limit <n>]` - suggest context and allowed files with reasons from local dependency/change-aware heuristics.
 - `apk task archive <task-id>` - archive a done task by moving it to `.tasks/archive/`.
 - `apk task archive --all` - archive all done top-level tasks.
@@ -151,6 +151,8 @@ Sync targets:
 - `cursor`
 
 `apk task provenance <task-id>` is read-only. Human output summarizes participants, runs, commits, changed files, evidence freshness, superseding links, and the exact completion evidence set. `--json` emits the same bounded fields for automation; unavailable Git or historical links appear in `diagnostics` rather than causing non-code task history to disappear.
+
+`apk status` keeps the existing repository counts and latest-run summary, then lists active tasks with owner, risk/effective policy, dependency readiness, verification progress, scope, review, evidence, gate state, and a bounded next action. `apk status --detail` adds blocker reasons, candidate/provenance identities, and bounded diagnostics. Status reuses the completion gate and provenance reader; it does not resolve policy independently.
 
 ## Behavior principles
 

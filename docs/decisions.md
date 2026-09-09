@@ -313,3 +313,19 @@ An implementation history must explain ownership, harness identity, baseline, co
 Implementation and invariant:
 
 `src/core/tasks/provenance.ts` reconstructs the chain by task ID, synthesizes bounded run nodes when old evidence predates run linkage, and retains every evidence record with current freshness, decision-time freshness, and superseding IDs. Completion exposes its exact evidence set and candidate subject. Lifecycle-only task-file writes are excluded from the implementation candidate hash; only attributed implementation paths can supersede evidence. This invariant is covered by the multi-run provenance regression.
+
+## ADR-0023 - Status is a concise projection of gate and provenance state
+
+Status: accepted
+
+Decision:
+
+Extend the existing read-only `apk status` output with bounded active-task summaries and an opt-in `--detail` projection. Derive completion blockers from the shared gate evaluator and derive evidence/run/candidate counts from the provenance reader; do not duplicate policy rules or emit raw logs.
+
+Reason:
+
+Agents need one quick workflow view that explains what is ready, blocked, or actionable while preserving the detailed gate/provenance commands for investigation. The default must remain scannable even in repositories with many tasks.
+
+Implementation:
+
+Active tasks are capped at 32 and blockers/diagnostics at 8 per task. Todo tasks use an empty implementation path set when evaluating the gate so unrelated worktree changes do not appear as their scope violations. Default output is one compact line per active task; `--detail` adds bounded policy, dependency, verification, scope, review, evidence, gate, provenance and next-action fields. Status remains read-only and keeps existing doctor/audit responsibilities separate.

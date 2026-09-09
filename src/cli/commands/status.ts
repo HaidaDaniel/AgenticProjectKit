@@ -6,9 +6,10 @@ const STATUS_HELP_TEXT = [
   "Agentic Project Kit",
   "",
   "Usage:",
-  "  apk status",
+  "  apk status [--detail]",
   "",
   "Print compact workflow status without modifying files.",
+  "Use --detail for bounded gate, evidence and provenance diagnostics.",
 ].join("\n");
 
 function hasHelpFlag(argv: string[]): boolean {
@@ -21,13 +22,15 @@ export async function runStatusCommand(argv: string[]): Promise<number> {
     return 0;
   }
 
-  if (argv.length > 0) {
-    console.error("Usage: apk status");
+  if (argv.some((arg) => arg !== "--detail")) {
+    console.error("Usage: apk status [--detail]");
     return 1;
   }
 
   try {
-    console.log(renderStatus(await summarizeStatus(resolve(process.cwd()))));
+    console.log(renderStatus(await summarizeStatus(resolve(process.cwd())), {
+      detail: argv.includes("--detail"),
+    }));
     return 0;
   } catch (error: unknown) {
     console.error(error instanceof Error ? error.message : String(error));

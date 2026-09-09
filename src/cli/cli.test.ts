@@ -210,6 +210,9 @@ test("CLI status shows compact workflow state", async () => {
     assert.match(result.stdout, /Next task: 0001 Todo Task/);
     assert.match(result.stdout, /Generated instructions:/);
     assert.match(result.stdout, /Latest run:/);
+    assert.match(result.stdout, /Active tasks:/);
+    assert.match(result.stdout, /0001 \[todo\]/);
+    assert.match(result.stdout, /gate=blocked/);
     assert.match(result.stdout, /Warnings:/);
   });
 });
@@ -218,7 +221,62 @@ test("CLI status help shows usage", async () => {
   const result = await runCli(["status", "--help"]);
 
   assert.equal(result.exitCode, 0);
-  assert.match(result.stdout, /apk status/);
+  assert.match(result.stdout, /apk status \[--detail\]/);
+  assert.match(result.stdout, /bounded gate, evidence and provenance/);
+});
+
+test("CLI status shows ready and dependency-blocked next actions", async () => {
+  await withTempDirectory(async (directory) => {
+    const tasksDir = join(directory, ".tasks");
+    await mkdir(tasksDir, { recursive: true });
+    await writeFile(join(tasksDir, "0001-done-task.md"), buildTaskMarkdown("0001", "Done Task", "done", "archive"), "utf8");
+    await writeFile(
+      join(tasksDir, "0002-ready-task.md"),
+      buildTaskMarkdown("0002", "Ready Task", "todo").replace("Depends on: none", "Depends on: 0001"),
+      "utf8",
+    );
+    await writeFile(
+      join(tasksDir, "0003-blocked-task.md"),
+      buildTaskMarkdown("0003", "Blocked Task", "todo").replace("Depends on: none", "Depends on: 0099"),
+      "utf8",
+    );
+
+    const result = await runCli(["status"], directory);
+
+    assert.equal(result.exitCode, 0);
+    assert.match(result.stdout, /0002 \[todo\].*deps=ready.*next=claim with --owner <agent-id>/);
+    assert.match(result.stdout, /0003 \[todo\].*deps=blocked\(0099\).*next=wait for dependencies: 0099/);
+  });
+});
+
+test("CLI status detail matches gate blockers and includes pending live review", async () => {
+  await withTempDirectory(async (directory) => {
+    const tasksDir = join(directory, ".tasks");
+    await mkdir(tasksDir, { recursive: true });
+    const task = buildTaskMarkdown("0001", "Live Task", "doing", "codex-owner")
+      .replace("Risk: low", "Risk: medium")
+      .replace(
+        "## Verification commands\n\n- pnpm test",
+        "## Verification\n\n- `{" +
+          "\"id\":\"live-smoke\",\"type\":\"manual\",\"required\":true,\"environment\":\"live\",\"profile\":\"trusted\",\"instruction\":\"Check the live candidate.\",\"evidence\":\"release URL\"" +
+          "}`",
+      );
+    await writeFile(join(tasksDir, "0001-live-task.md"), task, "utf8");
+
+    const status = await runCli(["status", "--detail"], directory);
+    const gate = await runCli(["task", "gate", "0001"], directory);
+
+    assert.equal(status.exitCode, 0);
+    assert.equal(gate.exitCode, 1);
+    assert.match(status.stdout, /Task 0001: Live Task/);
+    assert.match(status.stdout, /Policy: .*review=lightweight/);
+    assert.match(status.stdout, /Verification: required=1/);
+    assert.match(status.stdout, /Review: missing/);
+    assert.match(status.stdout, /Provenance:/);
+    assert.match(status.stdout, /missing independent review evidence/);
+    assert.match(gate.stdout, /missing independent review evidence/);
+    assert.match(status.stdout, /live-smoke/);
+  });
 });
 
 test("CLI status reports broken task files as warnings", async () => {
