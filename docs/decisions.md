@@ -410,7 +410,9 @@ The prior implementation selected roles from stale worker results, left `changes
 
 Regression invariant:
 
-`changes_requested -> fix` is executable without a hidden transition; current canonical evidence has priority over worker history; mutable runs preserve input A and output B; review B rejects mutation to C; an existing issued run remains byte-identical after collision; incomplete/unactivated sessions never accept results through either worker or standalone review APIs; provenance exposes each issued subject joined to activation/output status or a bounded orphan diagnostic; only activated unsettled mutable runs trigger same-worktree warnings; review issuance never advertises gate/done before a result.
+Worker-origin `changes_requested -> fix` is executable without a hidden transition; current canonical evidence has priority over worker history; mutable runs preserve input A and output B; review B rejects mutation to C; an existing issued run remains byte-identical after collision; incomplete/unactivated sessions never accept results through either worker or standalone review APIs; provenance exposes each issued subject joined to activation/output status or a bounded orphan diagnostic; only activated unsettled mutable runs trigger same-worktree warnings; review issuance never advertises gate/done before a result.
+
+Known P2 gaps from passing 0073 review remain release-blocking under Task 0080: duplicate result check is outside evidence-append critical section, failed worker review preparation can leave inert orphan, and standalone `changes_requested` while `doing` yields non-actionable fixer auto-role error.
 
 ## ADR-0029 - Explicit compatibility migration for gated workflow adoption
 
@@ -429,3 +431,26 @@ The gated workflow adds policy, evidence, and structured verification requiremen
 Implementation and invariant:
 
 `src/core/config/compatibility.ts` detects config and task-contract compatibility. Adoption reports legacy/gated/mixed counts and proposed changes. Future or invalid schema versions fail closed for migration. Preview performs no writes; apply is idempotent; old tasks remain parseable and existing files are never overwritten.
+
+## ADR-0030 - Repository quality policy names capabilities, not tools
+
+Status: accepted
+
+Decision:
+
+Define stable quality capability IDs for static analysis/typecheck, source lint, automated tests, build/package validation, coverage, local hooks and CI/clean-checkout validation. Detect bounded local evidence read-only; evaluate required versus recommended capability from optional repository policy. Keep tool/vendor names only in discovered evidence and executable command metadata.
+
+AgenticProjectKit may choose concrete lint, coverage, hook and GitHub Actions tooling for its own repository. Adoption/init/templates never install or require those choices. One shared detection result supplies deterministic human/JSON output and projections for doctor/audit; later task verification may consume capability IDs without vendor matching.
+
+Reason:
+
+Repositories use different languages, package managers, linters, test runners, hook managers and CI providers. Global ESLint/Husky/GitHub assumptions would make adoption destructive and confuse capability with implementation. APK owns workflow/quality contracts and evidence, not target toolchain provisioning.
+
+Proof boundaries:
+
+- local hook: fast developer feedback; bypassable, non-authoritative;
+- APK verify/gate: current task/candidate proof and policy enforcement;
+- CI: clean-checkout reproducibility for checked-out SHA;
+- release validation: frozen candidate proof combining required current evidence.
+
+No layer substitutes for missing/stale evidence from another. Hosted CI status may remain separate exact-SHA release evidence; no GitHub API coupling or CI-platform abstraction required.

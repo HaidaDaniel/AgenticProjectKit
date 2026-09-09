@@ -7,8 +7,8 @@ Lane: release
 Scope: release,cli,tests,docs
 Risk: high
 Parallel: false
-Depends on: 0057,0058,0059,0060,0061,0062,0063,0064,0065,0066,0067,0068,0069,0070,0071,0072,0073,0074,0076
-Tags: release,e2e,dogfood,gated-workflow
+Depends on: 0057,0058,0059,0060,0061,0062,0063,0064,0065,0066,0067,0068,0069,0070,0071,0072,0073,0074,0076,0077,0078,0079,0080
+Tags: release,e2e,dogfood,gated-workflow,quality,ci
 
 ## Goal
 
@@ -35,8 +35,10 @@ Frozen release candidate has reproducible, revision-current end-to-end gated-wor
 - src/core/agents/index.ts
 - src/core/work/index.ts
 - src/core/status/index.ts
+- src/core/quality/index.ts
 - src/core/templates/renderer.test.ts
 - src/core/sync/sync.test.ts
+- .github/workflows/quality.yml
 - scripts/clean-dist.mjs
 - scripts/copy-template-assets.mjs
 - docs/engineering/testing-strategy.md
@@ -61,6 +63,10 @@ Frozen release candidate has reproducible, revision-current end-to-end gated-wor
 - .tasks/0073-compose-implementation-review-and-fixer-runs-without-owning-the-model-runtime.md
 - .tasks/0074-provide-safe-adoption-path-for-the-new-gated-task-workflow.md
 - .tasks/0076-recover-stale-task-mutation-locks-safely.md
+- .tasks/0077-add-repository-quality-capability-detection-and-policy-contracts.md
+- .tasks/0078-add-first-class-local-quality-guardrails-for-agenticprojectkit-itself.md
+- .tasks/0079-add-minimal-clean-checkout-ci-and-release-quality-proof-for-agenticprojectkit.md
+- .tasks/0080-resolve-task-0073-independent-review-reliability-findings.md
 
 ## Files allowed to edit
 
@@ -93,24 +99,30 @@ Frozen release candidate has reproducible, revision-current end-to-end gated-wor
 
 ## Steps
 
-1. Preparation: refresh generated artifacts, sync writes, formatting/generated docs and preparation scripts before freeze within allowed scope; consume 0074 upgrade fixture. Resolve generated changes by acceptance/commit or include them in candidate identity.
+1. Preparation: refresh generated artifacts, sync writes, formatting/generated docs and preparation scripts before freeze within allowed scope; consume 0074 upgrade fixture, 0077 capability contract, 0078 quality surface, 0079 CI workflow and 0080 reliability regressions. Resolve generated changes by acceptance/commit or include them in candidate identity.
 2. Freeze: verify expected worktree state; record exact version, HEAD SHA and candidate tree/worktree identity. Declare candidate-controlled inputs and non-candidate build/evidence output locations before validation.
-3. Validation: run non-mutating checks against frozen candidate, including final read-only lint/audit surface from 0066, real CLI success/rejection scenarios and 0076 crash recovery. Use isolated repositories for scenario mutations.
-4. Record bounded dogfood/review/e2e outcomes from APK and fixture/adopted example against same frozen candidate. If validation changes candidate inputs, invalidate current evidence, prepare and freeze new candidate, then rerun relevant validation.
+3. Validation: run non-mutating checks against frozen candidate, including 0066 contract lint, 0077 capability detection, 0078 typecheck/lint/test/coverage/build surface, real CLI success/rejection scenarios, 0076 crash recovery and 0080 review reliability. Use isolated repositories for scenario mutations.
+4. Record bounded dogfood/review/e2e outcomes plus 0079 clean-checkout CI status for exact candidate where technically available. If validation changes candidate inputs, invalidate current evidence, prepare and freeze new candidate, then rerun relevant validation.
 5. Produce release report with exact SHA/tree/version and evidence set. Candidate-controlled documentation or post-validation changes require new freeze/revalidation; only predeclared non-candidate evidence artifacts may be appended without changing subject.
 
 ## Acceptance criteria
 
-- All selected milestone tasks 0057-0074 and 0076 complete before final release gate.
+- All prerequisite tasks 0057-0074 and 0076-0080 complete before final release gate.
 - Low-risk scenario covers claim, fixture implementation, verification and done.
 - High-risk scenario covers claim, verification, scope, independent review, evidence and done.
 - Scope violation and failed required verification each reject completion.
 - Missing live/manual evidence rejects completion when policy requires it; fixture pass cannot substitute for live evidence.
 - Failed review rejects completion; fixer iteration, re-verification and new independent review can then pass while preserving history.
 - v0.3.1-style fixture upgrades and old tasks remain readable.
+- Adopted repositories remain usable without APK's ESLint, hook, test, coverage or GitHub Actions choices; detection reports/recommends and setup remains explicit opt-in.
+- Capability detection distinguishes typecheck/static analysis, source lint, tests, build/package validation, coverage, hooks and CI; missing optional capabilities do not become global failures.
 - Alternate agent/export format preserves task/context/review contract.
 - Lock crash/recovery scenario preserves mutual exclusion; live owner cannot be stolen and concurrent stale recovery remains safe.
-- Deterministic automated tests, release checks and package build pass; real CLI workflow evidence accompanies unit fixtures.
+- 0073 P2 regressions prove atomic duplicate results, worker-review cleanup and actionable standalone-review fixer progression.
+- APK `typecheck`, real source `lint`, deterministic tests, coverage thresholds, fast quality, release checks and package build pass; real CLI workflow evidence accompanies unit fixtures.
+- Clean-checkout CI workflow exists and is green for exact release candidate where hosted status is technically available; recorded run URL/status/SHA remains separate release evidence if APK cannot consume it directly.
+- CI success cannot replace missing/stale APK verification, scope, independent-review, task-gate or candidate-bound evidence.
+- Local hook success is developer feedback only and never authoritative release evidence.
 - Bounded dogfood session is recorded; failure cannot be relabeled as pass.
 - Mutating preparation completes before freeze; expected worktree state documented and accepted generated changes committed or included in candidate identity.
 - Final release evidence and report bind exact version, HEAD SHA and candidate tree/worktree identity, including dirty state where present.
@@ -121,14 +133,21 @@ Frozen release candidate has reproducible, revision-current end-to-end gated-wor
 - Evidence recording/bookkeeping exclusions are declared before freeze and cannot exclude implementation, requirements or other candidate inputs merely to keep stale PASS valid.
 - Docs accurately describe implemented behavior; release evidence records commands, outcomes, candidate identity and fixture versus real-session limits.
 
-## Verification commands
+## Verification
 
-- pnpm lint
-- pnpm test
-- pnpm build
-- pnpm exec apk sync
-- pnpm exec apk doctor
-- pnpm exec apk status
+- `{"id":"typecheck","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm typecheck"}`
+- `{"id":"source-lint","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm lint"}`
+- `{"id":"tests","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm test"}`
+- `{"id":"coverage","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm test:coverage","artifact":"coverage/coverage-summary.json"}`
+- `{"id":"quality","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm quality"}`
+- `{"id":"build","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}`
+- `{"id":"release-check","type":"automated","required":true,"environment":"ci","profile":"report","command":"pnpm release:check","artifact":"docs/delivery/gated-workflow-release-evidence.md"}`
+- `{"id":"quality-detect","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"pnpm exec apk quality detect --json"}`
+- `{"id":"contract-lint","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"pnpm exec apk lint --json"}`
+- `{"id":"sync","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"pnpm exec apk sync"}`
+- `{"id":"doctor","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk doctor"}`
+- `{"id":"status","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk status"}`
+- `{"id":"clean-checkout-ci","type":"manual","required":true,"environment":"live","profile":"trusted","instruction":"Record green clean-checkout CI run for exact frozen candidate SHA, or explicit technically-unavailable evidence without substituting another revision.","evidence":"CI run URL/status/exact SHA or bounded unavailability record"}`
 
 ## Documentation updates
 
@@ -144,7 +163,10 @@ Frozen release candidate has reproducible, revision-current end-to-end gated-wor
 - Backlog reference: APK-RELEASE-02. Milestone 5.
 - Release validation task only; feature defects return to owning task with explicit scope update rather than expanding this task into implementation.
 - Existing pnpm release:check includes report-writing audit; do not use it as frozen-candidate validation. If used for preparation, run only within allowed scope or isolated preparation checkout; it provides no final frozen-candidate evidence. No publish, push or version bump authorized by this task.
-- Verification commands above are existing individual surfaces, not the entire final gate. Before execution, bind actual read-only lint/audit command delivered by 0066 in this contract; it is mandatory for final validation. Build is conditional on declared non-mutating candidate semantics; mutating build runs before freeze.
+- Verification entries consume scripts/contracts delivered by prerequisites; they are not permission to implement missing features in 0075. Build is conditional on declared non-mutating candidate semantics; mutating build runs before freeze.
+- No GitHub API/provider coupling required. Record hosted CI status as separate exact-SHA release evidence when direct APK consumption would add platform coupling or API complexity.
+- Hooks and CI remain non-authoritative for task-level proof. Neither may launder stale/missing APK evidence or bypass independent review/gate requirements.
+- APK-owned ESLint/hooks/coverage/GitHub tooling stays repository-local; no downstream repository mutation or mandatory tooling adoption.
 - Evidence report paths are planned new outputs; declare their treatment before freeze. Report-writing audit outputs are neither automatically permitted candidate mutations nor release proof. Refresh candidate-controlled docs during preparation; later edits require revalidation.
 - No downstream repository re-audit; use APK and controlled fixture/adopted example.
 - Context lists current files and prerequisite task contracts. Before implementation, read prerequisite changes and amend this task with their actual module paths if needed; do not invent missing Context files.

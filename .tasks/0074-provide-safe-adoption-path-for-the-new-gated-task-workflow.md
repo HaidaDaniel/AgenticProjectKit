@@ -7,7 +7,7 @@ Lane: release
 Scope: release,cli,tests,docs
 Risk: high
 Parallel: false
-Depends on: 0062,0065,0066,0071,0072
+Depends on: 0062,0065,0066,0071,0072,0073
 Tags: upgrade,migration,backward-compatibility,release
 
 ## Goal
@@ -128,6 +128,7 @@ Existing v0.3.1-style projects can adopt gated workflow safely, with readable le
 - Backlog reference: APK-RELEASE-01. Milestone 5.
 - init/adopt already preserve existing files; package version is 0.3.1 and release scripts build/check before version bump. Extend compatibility without redesigning release scripts here.
 - Harness phase is included in this planned release, hence dependency 0072.
+- Full implement/review/fix composition is adoption input, hence dependency 0073. Edge added after 0074 entered `doing`; owner, state and recorded baseline remain unchanged so historical lifecycle stays visible.
 - src/core/tasks/fixtures/** is a planned new fixture location, not an existing file to read. New upstream fixture only; no downstream repository audit.
 - Context lists current files and prerequisite task contracts. Before implementation, read prerequisite changes and amend this task with their actual module paths if needed; do not invent missing Context files.
 - Allowed new helper modules stay inside listed module patterns. Other task files and unrelated modules remain outside scope. If scope must expand, amend task before editing.

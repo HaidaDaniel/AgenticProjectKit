@@ -30,7 +30,7 @@
 
 ## Next gated-workflow release (planned)
 
-Tasks 0057-0076: todo, unowned. Milestone numbering below belongs to this release; earlier milestones remain historical.
+Tasks 0057-0073: done. Task 0074: doing. Tasks 0075-0080: planned `todo`, unowned. Milestone numbering below belongs to this release; earlier milestones remain historical.
 
 APK remains model-agnostic repository-first control plane. External harnesses own model execution; APK owns task contracts, verification, scope, evidence, review and completion.
 
@@ -49,6 +49,7 @@ Policy resolution in 0061 and review capability in 0063 precede final done enfor
 #### Reliability / Foundation
 
 - [0076 - Recover stale task mutation locks safely](../../.tasks/0076-recover-stale-task-mutation-locks-safely.md): independent prerequisite for final release; serialize edits to shared workflow files.
+- [0080 - Resolve Task 0073 independent-review reliability findings](../../.tasks/0080-resolve-task-0073-independent-review-reliability-findings.md): bounded P2 follow-up; serialize with 0076 because evidence/workflow files overlap.
 
 ### Milestone 2 - Independent Correctness
 
@@ -69,9 +70,12 @@ Policy resolution in 0061 and review capability in 0063 precede final done enfor
 - [0072 - Define model-agnostic worker and harness integration contract](../../.tasks/0072-define-model-agnostic-worker-and-harness-integration-contract.md)
 - [0073 - Compose implementation, review and fixer runs without owning the model runtime](../../.tasks/0073-compose-implementation-review-and-fixer-runs-without-owning-the-model-runtime.md)
 
-### Milestone 5 - Upgrade and Release
+### Milestone 5 - Upgrade, Quality and Release
 
 - [0074 - Provide safe adoption path for the new gated task workflow](../../.tasks/0074-provide-safe-adoption-path-for-the-new-gated-task-workflow.md)
+- [0077 - Add repository quality capability detection and policy contracts](../../.tasks/0077-add-repository-quality-capability-detection-and-policy-contracts.md)
+- [0078 - Add first-class local quality guardrails for AgenticProjectKit itself](../../.tasks/0078-add-first-class-local-quality-guardrails-for-agenticprojectkit-itself.md)
+- [0079 - Add minimal clean-checkout CI and release-quality proof for AgenticProjectKit](../../.tasks/0079-add-minimal-clean-checkout-ci-and-release-quality-proof-for-agenticprojectkit.md)
 - [0075 - Validate next AgenticProjectKit release against gated workflow](../../.tasks/0075-validate-next-agenticprojectkit-release-against-gated-workflow.md)
 
 ### Dependency map
@@ -97,15 +101,22 @@ Each row lists direct prerequisites; all IDs numeric. Release validation include
 | 0071 | 0062, 0070 |
 | 0072 | 0063, 0067, 0070 |
 | 0073 | 0072, 0063, 0062 |
-| 0074 | 0062, 0065, 0066, 0071, 0072 |
-| 0075 | 0057, 0058, 0059, 0060, 0061, 0062, 0063, 0064, 0065, 0066, 0067, 0068, 0069, 0070, 0071, 0072, 0073, 0074, 0076 |
+| 0074 | 0062, 0065, 0066, 0071, 0072, 0073 |
+| 0075 | 0057, 0058, 0059, 0060, 0061, 0062, 0063, 0064, 0065, 0066, 0067, 0068, 0069, 0070, 0071, 0072, 0073, 0074, 0076, 0077, 0078, 0079, 0080 |
 | 0076 | none |
+| 0077 | 0074 |
+| 0078 | 0077 |
+| 0079 | 0078 |
+| 0080 | 0073 |
 
 - 0069 includes 0064, preserving requested review-contract -> dogfood phase edge.
-- 0074 includes 0072 because harness interoperability belongs to this release.
+- 0074 includes 0072 and 0073 because adoption covers complete worker/harness workflow. 0073 edge was added after 0074 entered `doing`; historical claim/baseline remain unchanged.
+- 0077 -> 0078 -> 0079 separates vendor-neutral capability contracts, APK-local tooling and clean-checkout CI.
+- 0076 and 0080 remain graph-independent but implementation must be serialized due evidence/workflow file overlap.
 - Parallel metadata preserved; overlapping allowed files still require serialized edits.
 - Foundation 0001-0056 already done; 0057 needs no unfinished existing prerequisite.
 - Gates fail closed: failed/unavailable checks remain unresolved; fixture evidence never substitutes for required live evidence.
-- Final release evidence binds actual candidate tree/version and real CLI/dogfood outcomes.
+- Final release evidence binds actual candidate tree/version, real CLI/dogfood outcomes and exact-SHA hosted CI status where available.
+- Hooks provide local feedback; APK verify/gate provides task proof; CI proves clean checkout; 0075 proves frozen release candidate. No layer substitutes for missing evidence from another.
 - Evidence binds evaluated HEAD/baseline/worktree identity; stale/superseded records stay visible but cannot satisfy gate. 0070 reports history; 0062 owns enforcement.
 - 0075 lifecycle: mutating preparation -> exact candidate freeze -> non-mutating validation using 0066 read-only lint/audit -> evidence. Candidate-input mutation invalidates evidence and requires new freeze/revalidation.

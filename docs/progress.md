@@ -2,7 +2,7 @@
 
 ## Current status
 
-Phase 1 documentation is in place, and Tasks 0001 through 0072 are complete.
+Phase 1 documentation is in place, Tasks 0001 through 0073 are complete, and Task 0074 is `doing`.
 
 The repository now has:
 
@@ -93,29 +93,36 @@ The repository now has:
 - a vendor-neutral `apk-worker-v1` package/result contract with implement/review/fix/verify roles, bounded evidence/provenance fields, work-loop integration, and Codex/OpenCode export guidance.
 - immutable issued worker sessions under `.agentic/sessions/work/`, JSON package exposure, exact owner/task/run/role binding, canonical prepared review-worker integration, non-gating orchestration records, and canonical verification-before-review progression.
 - fail-closed worker/gate trust, explicit non-Git candidate semantics, evidence-lock bookkeeping exclusions, stale/unknown status projections, and same-worktree diagnostics.
-- Task 0073 corrective regressions now cover canonical current-state role resolution, transactional review activation with post-transition candidate confirmation, worker-vs-standalone review origin binding, automatic `doing -> review`, executable `changes_requested -> fix`, issued/input versus output candidate provenance, activation-aware `apk task provenance`, safe run IDs, collision-safe atomic session publication, inactive-session warning suppression, incomplete-session rejection, review pending-result rendering, and status `run fixer` projection.
-- Task 0074 adds explicit legacy/gated compatibility detection, read-only adoption preview, idempotent `--apply` migration, preserved custom config/instructions/tasks, and v0.3.1 fixture regressions.
+- Task 0073 corrective regressions cover canonical current-state role resolution, post-publication review activation confirmation, worker-vs-standalone review origin binding, worker-origin `changes_requested -> fix`, issued/input versus output candidate provenance, activation-aware `apk task provenance`, safe run IDs, collision-safe atomic session publication, inactive-session warning suppression, incomplete-session rejection, review pending-result rendering, and status `run fixer` projection. Three retained P2 gaps are contracted in 0080.
+- Task 0074 currently contains explicit legacy/gated compatibility detection, read-only adoption preview, idempotent `--apply` migration, preserved custom config/instructions/tasks, and v0.3.1 fixture regressions; lifecycle remains `doing` pending its canonical close.
 
 ## Next step
 
 Current task: 0074 - Provide safe adoption path for the new gated task workflow.
 
-Planning only: tasks 0074-0076 remain todo with Owner: none. Corrective pass fixes worker package/result binding, review-before-gate progression, revision/freshness semantics, non-Git comparison, runtime-state policy, and bookkeeping exclusions. Lock recovery remains contracted in 0076; this pass only makes the evidence lock harmless and included in that future recovery scope.
+Planned pre-release chain: 0074 -> 0077 capability contract -> 0078 APK-local quality guardrails -> 0079 clean-checkout CI -> 0075 frozen release validation. Tasks 0076 lock recovery and 0080 Task 0073 P2 fixes must also finish before 0075. New tasks stay `todo` with `Owner: none`.
+
+0074 dependency on completed 0073 was added after 0074 entered `doing`. Recorded owner/state/baseline were not reset. Historical start before 0073 terminal transition remains visible; final release validation must assess integrated candidate rather than treat retroactive edge as historical gate proof.
 
 ## Remaining task plan
 
-- Tasks 0001 through 0072 are complete.
+- Tasks 0001 through 0073 are complete.
 - Task 0062: Meaningful Done; review capability now precedes completion enforcement.
-- Task 0076: Milestone 1 Reliability / Foundation; no dependencies, required by final release 0075.
+- Task 0074: doing; safe gated-workflow adoption, now explicitly dependent on 0073.
+- Task 0076: lock recovery; no dependencies, required by final release 0075.
+- Task 0080: bounded 0073 review-finding fixes; depends on 0073 and must serialize with 0076 where files overlap.
 - Tasks 0064-0066: Independent Correctness (complete; 0066 provides a no-write graph/path/policy/export consistency gate).
 - Tasks 0067-0071: Efficient Agent Workflow (0067-0071 complete).
-- Task 0073: Harness Interoperability; implementation/review/fixer run composition is next.
-- Tasks 0074-0075: Upgrade and Release.
+- Task 0073: Harness Interoperability complete.
+- Tasks 0077-0079: vendor-neutral capability detection -> APK-local tooling -> clean-checkout CI.
+- Task 0075: final frozen-candidate release validation after 0074, 0076 and 0077-0080.
 - Contracts extend existing task verify, templates, graph validation, context, sync and work loop.
 - Task links and dependency graph: [delivery milestones](delivery/milestones.md#next-gated-workflow-release-planned).
 
 ## Notes
 
+- Quality-guardrail planning pass: 80 active tasks parse and round-trip; no duplicate IDs, missing dependencies or cycles. Context validation resolves 972 existing paths, 4 explicit prerequisite outputs and 3 valid glob references; all 24 milestone links resolve. `apk lint --json`, `apk tasks`, `apk status`, `apk task deps 0075` and `git diff --check` pass; lint retains only pre-existing legacy policy warnings. Tasks 0077-0080 remain `todo`/unowned; no feature implementation or task claim performed.
+- 0074 lifecycle warning: recorded baseline predates 0073 terminal task-file commit and this planning pass. Current read-only status reports 8 out-of-scope paths: `.tasks/0073-*`, `.tasks/0075-*`, `.tasks/0077-*` through `.tasks/0080-*`, `docs/delivery/milestones.md`, and `docs/roadmap.md`. 0074 allowed scope, state, owner and baseline were not expanded/reset; owner must resolve attribution without treating retroactive dependency or planning commit as historical gate proof.
 - Worker-contract verification passed with bounded role/result round trips, immutable issued package/metadata persistence, exact role/owner/run binding, canonical review-worker freshness checks, non-gating lifecycle records, Codex/OpenCode guidance, `pnpm lint`, focused worker/status regressions, and the full suite after final validation.
 
 - Corrective-pass validation: 76 tasks parse; all 20 backlog tasks remain todo/unowned and round-trip. No missing dependencies, cycles, self-dependencies or duplicate IDs; 461 context references and milestone links resolve. Task/dependency docs agree on 0063 before 0062 and 0076 before final release 0075.
