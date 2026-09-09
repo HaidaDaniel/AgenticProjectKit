@@ -8,7 +8,7 @@ const SUGGEST_CONTEXT_HELP_TEXT = [
   "Usage:",
   '  apk suggest-context "<task description>" [--limit <n>]',
   "",
-  "Suggest task context and allowed files using local deterministic heuristics.",
+  "Suggest task context and allowed files using local dependency/change-aware heuristics.",
 ].join("\n");
 
 function hasHelpFlag(argv: string[]): boolean {

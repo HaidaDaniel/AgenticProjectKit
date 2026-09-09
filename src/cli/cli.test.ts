@@ -279,6 +279,8 @@ test("CLI suggest-context returns deterministic local candidates", async () => {
     const result = await runCli(["suggest-context", "Add auth middleware", "--limit", "4"], directory);
 
     assert.equal(result.exitCode, 0);
+    assert.match(result.stdout, /Suggestions/);
+    assert.match(result.stdout, /\[implementation; score=.*; /);
     assert.match(result.stdout, /Context files/);
     assert.match(result.stdout, /Files allowed to edit/);
     assert.match(result.stdout, /src\/auth\/middleware\.ts/);

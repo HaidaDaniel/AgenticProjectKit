@@ -1,7 +1,7 @@
 # Task 0068 - Make context suggestions dependency- and change-aware
 
-State: todo
-Owner: none
+State: done
+Owner: codex-20260909
 Mode: product
 Lane: context
 Scope: context,cli,tests,docs
@@ -76,13 +76,13 @@ Context suggestions rank affected dependencies and tests using local changes and
 - Small fixture tests cover dependency ranking, change signals, related tests, scope filtering and repeated identical results.
 - No LLM or external service required.
 
-## Verification commands
+## Verification
 
-- pnpm lint
-- pnpm test
-- pnpm build
-- pnpm exec apk context --help
-- pnpm exec apk suggest-context --help
+- `{"id":"lint","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm lint"}`
+- `{"id":"tests","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm test"}`
+- `{"id":"build","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}`
+- `{"id":"context-help","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx src/cli/index.ts context --help"}`
+- `{"id":"suggest-help","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx src/cli/index.ts suggest-context --help"}`
 
 ## Documentation updates
 

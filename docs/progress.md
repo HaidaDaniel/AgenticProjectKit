@@ -2,7 +2,7 @@
 
 ## Current status
 
-Phase 1 documentation is in place, and Tasks 0001 through 0067 are complete.
+Phase 1 documentation is in place, and Tasks 0001 through 0068 are complete.
 
 The repository now has:
 
@@ -45,6 +45,7 @@ The repository now has:
 - README and CLI docs updated for the implemented v0.1 command surface.
 - a read-only `apk lint` command for task graph, metadata, path/policy, ownership, and generated-instruction drift with stable human and JSON output.
 - budgeted context packs with required/relevant/optional tiers, deterministic approximate token units, and explicit required-overflow diagnostics.
+- dependency/change-aware context suggestions with local Git/import/test signals, deterministic reasons, and forbidden-path edit filtering.
 - post-readiness fixes for init/adopt workflow validity, config-aware task lookup, command-specific help, safe exports, and package bin/build support.
 - compact task metadata with `State`, `Owner`, `Lane`, `Scope`, `Parallel`, and `Tags`.
 - registered agent workflow backed by `.agentic/agents/<agent-id>.json`.
@@ -89,17 +90,17 @@ The repository now has:
 
 ## Next step
 
-Next planned task: 0068 - Make context suggestions dependency- and change-aware.
+Next planned task: 0069 - Add bounded agent dogfooding evidence.
 
-Planning only: tasks 0068-0076 remain todo with Owner: none. Corrective pass fixes review-before-gate bootstrap, revision/freshness semantics, lock recovery and candidate freeze.
+Planning only: tasks 0069-0076 remain todo with Owner: none. Corrective pass fixes review-before-gate bootstrap, revision/freshness semantics, lock recovery and candidate freeze.
 
 ## Remaining task plan
 
-- Tasks 0001 through 0067 are complete.
+- Tasks 0001 through 0068 are complete.
 - Task 0062: Meaningful Done; review capability now precedes completion enforcement.
 - Task 0076: Milestone 1 Reliability / Foundation; no dependencies, required by final release 0075.
 - Tasks 0064-0066: Independent Correctness (complete; 0066 provides a no-write graph/path/policy/export consistency gate).
-- Tasks 0067-0071: Efficient Agent Workflow (0067 complete).
+- Tasks 0067-0071: Efficient Agent Workflow (0067-0068 complete).
 - Tasks 0072-0073: Harness Interoperability.
 - Tasks 0074-0075: Upgrade and Release.
 - Contracts extend existing task verify, templates, graph validation, context, sync and work loop.
@@ -111,6 +112,7 @@ Planning only: tasks 0068-0076 remain todo with Owner: none. Corrective pass fix
 - Corrective-pass doctor/status and task deps checks passed; git diff --check clean. Doctor retains three existing warnings (typecheck script, .env.example, GitHub Actions); no claim, product implementation, report-writing audit, commit or push performed.
 - Contract-lint verification passed with graph/path/policy/state-owner and stale-export regressions; lint JSON remains read-only and reports generated-file drift with exit code 1.
 - Context-pack verification passed with deterministic budget selection, required-tier overflow diagnostics, prompt integration, and legacy level compatibility.
+- Change-aware context suggestion verification passed with deterministic dependency/import/test/Git ranking, task-scope filtering, per-suggestion reasons, and fallback behavior for unsupported project shapes.
 - Initial backlog planning validation: 75 tasks parsed; 19 new todo/unowned contracts round-tripped; no duplicate IDs, missing dependencies or cycles. All 445 initial context references and milestone links resolved; direct dependencies matched milestone table.
 - Read-only checks passed: task parser/dependency API (same validation used by audit), tasks --state todo, task deps 0075, status, sync and doctor. Doctor has no failures; existing warnings: no typecheck script, .env.example or GitHub Actions. Report-writing audit and implementation test suites not run during planning.
 - `apk init` verification passed with `pnpm test`, `pnpm lint`, CLI help, and a temp-directory smoke test.

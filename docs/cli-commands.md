@@ -37,7 +37,7 @@ When Agentic Project Kit is installed as a repository dev dependency, run comman
 - `apk export <agent> [--force]` - export instructions for a specific agent tool.
 - `apk sync <agent> [--write]` - check or update generated instruction files.
 - `apk status` - print compact workflow status without writing files.
-- `apk suggest-context "<task description>" [--limit <n>]` - suggest context and allowed files using local heuristics.
+- `apk suggest-context "<task description>" [--limit <n>]` - suggest context and allowed files with reasons from local dependency/change-aware heuristics.
 - `apk task archive <task-id>` - archive a done task by moving it to `.tasks/archive/`.
 - `apk task archive --all` - archive all done top-level tasks.
 - `apk task deps <task-id>` - inspect task prerequisites, dependents, and graph problems.
@@ -96,6 +96,7 @@ After `apk claim`, verification compares changed paths with the claim baseline i
 `apk task gate <task-id>` and `apk done <task-id> --owner <agent-id>` use the same evaluator. The gate rejects unfinished dependencies, scope violations, unresolved policy blockers, and missing/failed/stale/different-candidate verification or independent-review evidence. A successful done transition records a completion evidence set; there is no `--force` bypass.
 `apk audit` uses static inspection only. It reports lightweight readiness facts such as package scripts, lockfiles, CI presence, env examples, tests, license, README, Docker files, monorepo indicators, and TypeScript strict mode.
 `apk suggest-context` is heuristic and local. It scans bounded project paths and suggests candidates; it does not guarantee deep code understanding.
+It also reads local Git changes and simple relative JavaScript/TypeScript imports when available, then ranks affected modules and related tests ahead of unrelated lexical matches. Unsupported project shapes use deterministic path/keyword fallback. Output separates context suggestions from edit targets and never emits task-forbidden files as edit targets.
 
 ## Supported values
 

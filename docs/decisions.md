@@ -265,3 +265,19 @@ Agents need bounded prompts without network, embeddings, or model-specific token
 Implementation:
 
 Core selection accepts deterministic available-file sizes plus changed, dependency, recent, allowed-path, and lexical signals. Repository-backed context/prompt commands load local files only. Budgeted selection exposes entries, units, reasons, and diagnostics; legacy calls without `--budget` retain their prior files and rendering. A later task may deepen dependency/change-aware ranking without changing this no-network contract.
+
+## ADR-0020 - Context suggestions use bounded local dependency heuristics
+
+Status: accepted
+
+Decision:
+
+Extend `suggest-context` with read-only Git change detection, a small relative-import scan for JavaScript/TypeScript, importer/dependent and related-test signals, task scope filtering, and explicit reasons. Keep lexical/path scoring as the fallback for unsupported languages and repository shapes.
+
+Reason:
+
+Affected implementation and tests should outrank unrelated documentation, but a compiler-grade multi-language graph would violate the repository-first lightweight scope. Scope filtering must distinguish context relevance from edit permission so forbidden paths cannot become implementation targets.
+
+Implementation:
+
+Candidates and signals are local, bounded, and sorted by score then path. Suggestions expose `role`, `score`, and `reason`; task-forbidden or disallowed paths may remain context-only. Git and import failures degrade to deterministic lexical/path ranking without network, model, embedding, or dependency changes.
