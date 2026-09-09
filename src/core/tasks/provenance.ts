@@ -70,6 +70,11 @@ export interface TaskProvenanceParticipant {
   evidenceIds: string[];
 }
 
+export interface TaskRepositoryActivity {
+  commits: TaskProvenanceCommit[];
+  diffFiles: TaskProvenanceDiffFile[];
+}
+
 export interface TaskProvenanceEvidence extends TaskEvidenceRecord {
   freshness: TaskEvidenceFreshness;
   freshnessReason: string;
@@ -94,6 +99,9 @@ export interface TaskProvenance {
   currentSubject: TaskEvidenceCandidateSubject;
   changedFiles: string[];
   baseline?: TaskProvenanceBaseline;
+  taskAttributedFiles: string[];
+  repositoryActivity: TaskRepositoryActivity;
+  /** Backward-compatible aliases for repositoryActivity. */
   commits: TaskProvenanceCommit[];
   diffFiles: TaskProvenanceDiffFile[];
   participants: TaskProvenanceParticipant[];
@@ -289,7 +297,7 @@ export async function buildTaskProvenance(
       bookkeepingPaths: [...candidate.baseline.bookkeepingPaths].sort(),
     }
     : undefined;
-  const diagnostics: string[] = [];
+  const diagnostics: string[] = [...candidate.diagnostics];
   const commits = baseline?.headSha
     ? parseCommits(await gitLines(rootDirectory, ["log", "--no-decorate", "--format=%H%x09%aI%x09%an%x09%s", `--max-count=${MAX_COMMITS}`, `${baseline.headSha}..HEAD`]))
     : [];
@@ -313,16 +321,27 @@ export async function buildTaskProvenance(
     : undefined;
   const agents = await listAgents(rootDirectory);
 
+  const repositoryActivity = {
+    commits,
+    diffFiles: [...uniqueDiffFiles.values()]
+      .sort((left, right) => left.path.localeCompare(right.path) || left.status.localeCompare(right.status))
+      .slice(0, MAX_DIFF_FILES),
+  };
+  const taskAttributedFiles = candidate.changedFiles
+    .filter((file) => !candidate.scope.outOfScopeFiles.includes(file))
+    .filter((file) => !candidate.scope.forbiddenTouchedFiles.includes(file))
+    .sort();
+
   return {
     taskId,
     taskPath: candidate.taskPath.replace(/\\/g, "/"),
     currentSubject: candidate.subject,
     changedFiles: [...candidate.changedFiles].sort(),
     ...(baseline ? { baseline } : {}),
-    commits,
-    diffFiles: [...uniqueDiffFiles.values()]
-      .sort((left, right) => left.path.localeCompare(right.path) || left.status.localeCompare(right.status))
-      .slice(0, MAX_DIFF_FILES),
+    taskAttributedFiles,
+    repositoryActivity,
+    commits: repositoryActivity.commits,
+    diffFiles: repositoryActivity.diffFiles,
     participants: participantRecords(agents, allRuns, evidence),
     runs: allRuns,
     evidence,
@@ -354,13 +373,17 @@ export function renderTaskProvenance(provenance: TaskProvenance): string {
     ...(provenance.participants.length > 0
       ? provenance.participants.map((participant) => `  - ${participant.agent} (${participant.platform}/${participant.model}; runs=${participant.runIds.length}; evidence=${participant.evidenceIds.length})`)
       : ["  - none"]),
-    "Commits:",
-    ...(provenance.commits.length > 0
-      ? provenance.commits.map((commit) => `  - ${commit.sha} ${commit.time} ${commit.author}: ${commit.subject}`)
+    "Task-attributed changed files:",
+    ...(provenance.taskAttributedFiles.length > 0
+      ? provenance.taskAttributedFiles.map((file) => `  - ${file}`)
+      : ["  - none"]),
+    "Repository activity since task baseline:",
+    ...(provenance.repositoryActivity.commits.length > 0
+      ? provenance.repositoryActivity.commits.map((commit) => `  - ${commit.sha} ${commit.time} ${commit.author}: ${commit.subject}`)
       : ["  - none" ]),
-    "Diff files:",
-    ...(provenance.diffFiles.length > 0
-      ? provenance.diffFiles.map((file) => `  - ${file.status} ${file.path}`)
+    "Repository diff files:",
+    ...(provenance.repositoryActivity.diffFiles.length > 0
+      ? provenance.repositoryActivity.diffFiles.map((file) => `  - ${file.status} ${file.path}`)
       : ["  - none"]),
     "Runs:",
     ...(provenance.runs.length > 0

@@ -432,6 +432,118 @@ test("CLI work can write a session prompt", async () => {
   });
 });
 
+test("CLI work coordinates implementation, review, fixer, and gate roles", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    const tasksDir = join(directory, ".tasks");
+    await mkdir(tasksDir, { recursive: true });
+    const task = buildTaskMarkdown("0001", "Worker Cycle", "todo")
+      .replace("Risk: low", "Risk: medium")
+      .replace("Tags: none", "Tags: worker")
+      .replace("- .tasks/0001-task.md", "- src/fix.ts")
+      .replace("- pnpm test", "- node -e \"process.exit(0)\"")
+      .replace(
+        '## Verification commands\n\n- node -e "process.exit(0)"',
+        '## Verification\n\n- `{"id":"worker-check","type":"automated","required":true,"environment":"local","profile":"report","command":"node -e \\"process.exit(0)\\"","evidence":"worker result"}`',
+      );
+    await writeFile(join(tasksDir, "0001-worker-cycle.md"), task, "utf8");
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+
+    for (const id of ["codex-owner", "codex-reviewer", "opencode-fixer"]) {
+      const registered = await runCli([
+        "agent", "register", "--id", id, "--platform", "codex", "--model", "gpt-5",
+      ], directory);
+      assert.equal(registered.exitCode, 0);
+    }
+
+    const workRun = await runCli([
+      "work", "0001", "--owner", "codex-owner", "--target", "codex", "--role", "implement",
+    ], directory);
+    assert.equal(workRun.exitCode, 0);
+    const implementationRunId = workRun.stdout.match(/Run: (work-[^\n]+)/)?.[1];
+    assert.ok(implementationRunId);
+    assert.match(workRun.stdout, /Next role: verify/);
+
+    const implementationResult = await runCli([
+      "work", "result", "0001", "--owner", "codex-owner", "--run-id", implementationRunId,
+      "--role", "implement", "--status", "completed", "--json",
+    ], directory);
+    assert.equal(implementationResult.exitCode, 0);
+    assert.equal(JSON.parse(implementationResult.stdout).nextRole, "verify");
+
+    const verifyWork = await runCli([
+      "work", "0001", "--owner", "codex-owner", "--target", "codex", "--role", "verify",
+    ], directory);
+    const verifyRunId = verifyWork.stdout.match(/Run: (work-[^\n]+)/)?.[1];
+    assert.ok(verifyRunId);
+    const verifyResult = await runCli([
+      "work", "result", "0001", "--owner", "codex-owner", "--run-id", verifyRunId,
+      "--role", "verify", "--status", "completed",
+    ], directory);
+    assert.equal(verifyResult.exitCode, 0);
+    assert.match(verifyResult.stdout, /Next role: review/);
+
+    const transition = await runCli(["review", "0001", "--owner", "codex-owner"], directory);
+    assert.equal(transition.exitCode, 0);
+    const reviewWork = await runCli([
+      "work", "0001", "--owner", "codex-reviewer", "--target", "opencode", "--role", "review",
+    ], directory);
+    const reviewRunId = reviewWork.stdout.match(/Run: (work-[^\n]+)/)?.[1];
+    assert.ok(reviewRunId);
+    const failedReview = await runCli([
+      "work", "result", "0001", "--owner", "codex-reviewer", "--run-id", reviewRunId,
+      "--role", "review", "--status", "changes_requested", "--finding", "Handle rollback path.",
+      "--reason", "Review found an actionable rollback gap.", "--json",
+    ], directory);
+    assert.equal(failedReview.exitCode, 1);
+    const failedReviewPayload = JSON.parse(failedReview.stdout);
+    assert.equal(failedReviewPayload.nextRole, "fix");
+    assert.equal(failedReviewPayload.nextPackage.role, "fix");
+    assert.deepEqual(failedReviewPayload.nextPackage.handoff.findings, ["Handle rollback path."]);
+
+    const fixerWork = await runCli([
+      "work", "0001", "--owner", "opencode-fixer", "--target", "opencode", "--role", "fix",
+    ], directory);
+    assert.equal(fixerWork.exitCode, 0, `${fixerWork.stdout}${fixerWork.stderr}`);
+    assert.match(fixerWork.stdout, /Worker role: fix/);
+    await mkdir(join(directory, "src"), { recursive: true });
+    await writeFile(join(directory, "src", "fix.ts"), "export const rollbackHandled = true;\n", "utf8");
+    const fixerRunId = fixerWork.stdout.match(/Run: (work-[^\n]+)/)?.[1];
+    assert.ok(fixerRunId, `${fixerWork.stdout}${fixerWork.stderr}`);
+    const fixerResult = await runCli([
+      "work", "result", "0001", "--owner", "opencode-fixer", "--run-id", fixerRunId,
+      "--role", "fix", "--status", "completed",
+    ], directory);
+    assert.equal(fixerResult.exitCode, 0, `${fixerResult.stdout}${fixerResult.stderr}`);
+    assert.match(fixerResult.stdout, /Next role: verify/);
+
+    const verification = await runCli(["task", "verify", "0001", "--owner", "codex-owner"], directory);
+    assert.equal(verification.exitCode, 0);
+    const finalReviewWork = await runCli([
+      "work", "0001", "--owner", "codex-reviewer", "--target", "opencode", "--role", "review",
+    ], directory);
+    const finalReviewRunId = finalReviewWork.stdout.match(/Run: (work-[^\n]+)/)?.[1];
+    assert.ok(finalReviewRunId);
+    const finalReview = await runCli([
+      "work", "result", "0001", "--owner", "codex-reviewer", "--run-id", finalReviewRunId,
+      "--role", "review", "--status", "completed",
+    ], directory);
+    assert.equal(finalReview.exitCode, 0);
+    const gate = await runCli(["task", "gate", "0001"], directory);
+    assert.equal(gate.exitCode, 0, `${gate.stdout}${gate.stderr}`);
+    assert.match(gate.stdout, /Gate: pass/);
+    const done = await runCli(["done", "0001", "--owner", "codex-owner"], directory);
+    assert.equal(done.exitCode, 0);
+    assert.match((await runCli(["task", "evidence", "0001"], directory)).stdout, /changes_requested/);
+  });
+});
+
 test("CLI dogfood starts a reproducible session and records pass or fail", async () => {
   await withTempDirectory(async (directory) => {
     await mkdir(join(directory, ".tasks"), { recursive: true });
@@ -826,9 +938,11 @@ test("CLI review supports a separate reviewer prompt and review evidence", async
     assert.match(prompt.stdout, /Evaluated HEAD:/);
     assert.match(prompt.stdout, /do not continue implementation work/);
     assert.match(prompt.stdout, /Green tests alone are not correctness proof/);
+    const reviewRunId = prompt.stdout.match(/Review run: ([^\n]+)/)?.[1];
+    assert.ok(reviewRunId);
 
     const review = await runCli([
-      "review", "0001", "--reviewer", "codex-reviewer", "--result", "changes_requested",
+      "review", "0001", "--reviewer", "codex-reviewer", "--review-run", reviewRunId!, "--result", "changes_requested",
       "--finding", "Inspect the failure path.", "--implementation-run", "verify-a",
     ], directory);
     assert.equal(review.exitCode, 1);
@@ -837,7 +951,7 @@ test("CLI review supports a separate reviewer prompt and review evidence", async
     assert.match(review.stdout, /Inspect the failure path\./);
 
     const selfReview = await runCli([
-      "review", "0001", "--reviewer", "codex-owner", "--result", "pass",
+      "review", "0001", "--reviewer", "codex-owner", "--review-run", reviewRunId!, "--result", "pass",
     ], directory);
     assert.equal(selfReview.exitCode, 1);
     assert.ok(selfReview.stdout.match(/cannot certify the same task/) || selfReview.stderr.match(/cannot certify the same task/));

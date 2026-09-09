@@ -1135,6 +1135,24 @@ export interface TaskFileScopeResult {
   attribution?: TaskScopeAttribution;
 }
 
+export interface TaskScopeSnapshot extends TaskFileScopeResult {
+  comparisonKnown: boolean;
+  diagnostics: string[];
+}
+
+export class TaskGitComparisonError extends Error {
+  readonly args: string[];
+
+  constructor(args: readonly string[], cause?: unknown) {
+    const detail = (cause instanceof Error ? cause.message : String(cause ?? "unknown error"))
+      .replace(/\s+/g, " ")
+      .slice(0, 320);
+    super(`Git comparison failed for ${args.join(" ")}: ${detail}`);
+    this.name = "TaskGitComparisonError";
+    this.args = [...args];
+  }
+}
+
 export interface TaskScopeAttribution {
   baselineId: string;
   attributedFiles: string[];
@@ -1192,6 +1210,7 @@ export interface TaskVerifyResult extends TaskFileScopeResult {
   commandsSkipped: boolean;
   passed: boolean;
   nextStep: string;
+  diagnostics: string[];
 }
 
 export interface TaskVerifyOptions {
@@ -1463,12 +1482,12 @@ async function gitLines(rootDirectory: string, args: readonly string[]): Promise
 async function gitOutput(
   rootDirectory: string,
   args: readonly string[],
-): Promise<string | undefined> {
+): Promise<string> {
   try {
     const result = await execFileAsync("git", args, { cwd: rootDirectory, maxBuffer: 8 * 1024 * 1024 });
     return result.stdout;
-  } catch {
-    return undefined;
+  } catch (error: unknown) {
+    throw new TaskGitComparisonError(args, error);
   }
 }
 
@@ -1516,10 +1535,11 @@ const DEFAULT_BOOKKEEPING_PATHS = [
   ".agentic/agents.jsonl",
   ".agentic/agents/",
   ".agentic/sessions/",
+  ".agentic/reviews/",
 ];
 
 function isBookkeepingPath(path: string, baseline: TaskClaimBaseline): boolean {
-  return [baseline.taskFile, ...baseline.bookkeepingPaths]
+  return [baseline.taskFile, ...baseline.bookkeepingPaths, ...DEFAULT_BOOKKEEPING_PATHS]
     .map(normalizeRepoPath)
     .some((entry) => path === entry || (entry.endsWith("/") && path.startsWith(entry)));
 }
@@ -1595,13 +1615,24 @@ export async function captureTaskBaseline(
   owner: string,
   taskFile: string,
 ): Promise<TaskClaimBaseline> {
-  const changedFiles = await listGitChangedFiles(rootDirectory).catch(() => []);
+  let changedFiles: string[] = [];
+  const diagnostics: string[] = [];
+  try {
+    changedFiles = await listGitChangedFiles(rootDirectory);
+  } catch (error: unknown) {
+    diagnostics.push(error instanceof Error ? error.message : String(error));
+  }
   const fingerprints = await fingerprintChangedFiles(rootDirectory, changedFiles);
-  const headSha = (await gitOutput(rootDirectory, ["rev-parse", "HEAD"]))?.trim() || undefined;
+  let headSha: string | undefined;
+  try {
+    headSha = (await gitOutput(rootDirectory, ["rev-parse", "HEAD"])).trim() || undefined;
+  } catch (error: unknown) {
+    diagnostics.push(error instanceof Error ? error.message : String(error));
+  }
   const repository = headSha ? "git" : "none";
-  const diagnostics = repository === "git"
-    ? []
-    : ["Git HEAD unavailable; dirty-file attribution is limited to explicit current paths."];
+  if (repository !== "git") {
+    diagnostics.push("Git HEAD unavailable; dirty-file attribution is limited to explicit current paths.");
+  }
   const time = new Date().toISOString();
   const bookkeepingPaths = [...DEFAULT_BOOKKEEPING_PATHS];
   const baselineId = `baseline:${hashCandidatePart({ taskId, owner, time, headSha, changedFiles })}`;
@@ -1674,7 +1705,64 @@ export async function listTaskChangedFilesSinceBaseline(
     ].map(normalizeRepoPath).filter((path) => path.length > 0))].sort();
   }
 
-  return listGitChangedFiles(rootDirectory).catch(() => []);
+  throw new TaskGitComparisonError(
+    ["baseline"],
+    new Error("task baseline has no resolvable Git HEAD; current paths must be supplied explicitly"),
+  );
+}
+
+export async function captureTaskScope(options: {
+  rootDirectory: string;
+  task: ProjectTask;
+  taskPath?: string;
+  baseline?: TaskClaimBaseline;
+  changedFiles?: readonly string[];
+}): Promise<TaskScopeSnapshot> {
+  const diagnostics: string[] = [];
+  let comparisonKnown = options.changedFiles !== undefined;
+  let rawChangedFiles: readonly string[] = options.changedFiles ?? [];
+
+  if (options.changedFiles === undefined) {
+    try {
+      rawChangedFiles = options.baseline
+        ? await listTaskChangedFilesSinceBaseline(options.rootDirectory, options.baseline)
+        : await listGitChangedFiles(options.rootDirectory);
+      comparisonKnown = true;
+    } catch (error: unknown) {
+      diagnostics.push(error instanceof Error ? error.message : String(error));
+      rawChangedFiles = [];
+      if (options.baseline?.repository === "none") {
+        comparisonKnown = true;
+        diagnostics.push("Non-Git task baseline uses explicit non-Git scope semantics; repository-wide change discovery is unavailable.");
+      }
+    }
+  }
+
+  const normalizedTaskPath = options.taskPath
+    ? normalizeRepoPath(options.taskPath)
+    : undefined;
+  const scope = options.baseline
+    ? await verifyTaskFileScopeSinceBaseline(
+      options.rootDirectory,
+      options.task,
+      rawChangedFiles,
+      options.baseline,
+    )
+    : verifyTaskFileScope(
+      options.task,
+      normalizedTaskPath
+        ? rawChangedFiles.filter((path) => !isDefaultBookkeepingPath(normalizeRepoPath(path), normalizedTaskPath))
+        : rawChangedFiles,
+    );
+
+  return {
+    ...scope,
+    comparisonKnown,
+    diagnostics: [...new Set([
+      ...(scope.attribution?.diagnostics ?? []),
+      ...diagnostics,
+    ])],
+  };
 }
 
 export async function verifyTaskFileScopeSinceBaseline(
@@ -1724,9 +1812,14 @@ export async function captureTaskEvidenceSubject(
     .filter((path) => path.length > 0)
     .sort();
   const fingerprints = await fingerprintChangedFiles(rootDirectory, normalizedChangedFiles);
-  const isGit = (await gitOutput(rootDirectory, ["rev-parse", "--is-inside-work-tree"]))?.trim() === "true";
+  let isGit = false;
+  try {
+    isGit = (await gitOutput(rootDirectory, ["rev-parse", "--is-inside-work-tree"])).trim() === "true";
+  } catch {
+    isGit = false;
+  }
   const headSha = isGit
-    ? (await gitOutput(rootDirectory, ["rev-parse", "HEAD"]))?.trim() || undefined
+    ? (await gitOutput(rootDirectory, ["rev-parse", "HEAD"])).trim() || undefined
     : undefined;
   const repository = headSha ? "git" : "none";
   const diff = isGit
@@ -1735,7 +1828,7 @@ export async function captureTaskEvidenceSubject(
       // paths may change the evidence subject revision.
       await gitOutput(rootDirectory, ["diff", "--no-ext-diff", "--binary", "HEAD", "--", ...normalizedChangedFiles]),
       await gitOutput(rootDirectory, ["diff", "--cached", "--no-ext-diff", "--binary", "HEAD", "--", ...normalizedChangedFiles]),
-    ].map((part) => part ?? "")
+    ]
     : [];
   const candidateId = `candidate:${hashCandidatePart({
     // Lifecycle state/owner changes (doing -> review -> done) are not implementation changes.
@@ -1826,6 +1919,31 @@ function isSelectedVerificationProfile(
   return profile === undefined || profile === "all" || check.profile === profile;
 }
 
+function sameTaskEvidenceSubject(
+  left: TaskEvidenceCandidateSubject,
+  right: TaskEvidenceCandidateSubject,
+): boolean {
+  return left.taskId === right.taskId
+    && left.repository === right.repository
+    && left.headSha === right.headSha
+    && left.baselineId === right.baselineId
+    && left.candidateId === right.candidateId
+    && left.worktreeId === right.worktreeId;
+}
+
+function unknownTaskEvidenceSubject(
+  task: ProjectTask,
+  baseline: TaskClaimBaseline | undefined,
+): TaskEvidenceCandidateSubject {
+  return {
+    taskId: task.id,
+    repository: "none",
+    baselineId: baseline?.baselineId ?? "unknown",
+    candidateId: "candidate:unknown",
+    worktreeId: "worktree:unknown",
+  };
+}
+
 export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerifyResult> {
   const taskPath = await findTaskFile(
     options.rootDirectory,
@@ -1834,33 +1952,40 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
   );
   const { task } = await loadTaskFile(taskPath);
   const baseline = await readTaskBaseline(options.rootDirectory, task.id);
-  const changedFiles = options.changedFiles ?? (
-    baseline
-      ? await listTaskChangedFilesSinceBaseline(options.rootDirectory, baseline)
-      : await listGitChangedFiles(options.rootDirectory).catch(() => [])
-  );
-  const scope = baseline
-    ? await verifyTaskFileScopeSinceBaseline(options.rootDirectory, task, changedFiles, baseline)
-    : verifyTaskFileScope(
-      task,
-      changedFiles.filter((path) => !isDefaultBookkeepingPath(
-        normalizeRepoPath(path),
-        normalizeRepoPath(relative(options.rootDirectory, taskPath)),
-      )),
-    );
-  const runId = verificationRunId();
-  const capturedSubject = await captureTaskEvidenceSubject(
-    options.rootDirectory,
+  const ownerAgent = options.owner
+    ? await requireAgent(options.rootDirectory, options.owner)
+    : undefined;
+  const beforeSnapshot = await captureTaskScope({
+    rootDirectory: options.rootDirectory,
     task,
-    scope.changedFiles,
-  );
+    taskPath,
+    baseline,
+    changedFiles: options.changedFiles,
+  });
+  const scope = beforeSnapshot;
+  const runId = verificationRunId();
+  let capturedSubject: TaskEvidenceCandidateSubject;
+  const diagnostics = [...beforeSnapshot.diagnostics];
+  try {
+    capturedSubject = await captureTaskEvidenceSubject(
+      options.rootDirectory,
+      task,
+      scope.changedFiles,
+    );
+  } catch (error: unknown) {
+    diagnostics.push(error instanceof Error ? error.message : String(error));
+    beforeSnapshot.comparisonKnown = false;
+    capturedSubject = unknownTaskEvidenceSubject(task, baseline);
+  }
   const subject: TaskEvidenceCandidateSubject = baseline
     ? { ...capturedSubject, baselineId: baseline.baselineId }
     : capturedSubject;
   const checks = getTaskVerification(task);
   const commandsRun: TaskVerifyCommandResult[] = [];
   const checkResults: TaskVerifyCheckResult[] = [];
-  let passed = scope.outOfScopeFiles.length === 0 && scope.forbiddenTouchedFiles.length === 0;
+  let passed = beforeSnapshot.comparisonKnown
+    && scope.outOfScopeFiles.length === 0
+    && scope.forbiddenTouchedFiles.length === 0;
 
   for (const check of checks) {
     let status: TaskVerifyCheckStatus = "not-run";
@@ -1910,18 +2035,53 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
     });
   }
 
-  const afterSubject = await captureTaskEvidenceSubject(
-    options.rootDirectory,
+  let afterSnapshot = await captureTaskScope({
+    rootDirectory: options.rootDirectory,
     task,
-    scope.changedFiles,
-  );
-  if (afterSubject.candidateId !== subject.candidateId || afterSubject.worktreeId !== subject.worktreeId) {
+    taskPath,
+    baseline,
+  });
+  if (!afterSnapshot.comparisonKnown && options.changedFiles !== undefined && baseline === undefined) {
+    afterSnapshot = beforeSnapshot;
+  }
+  diagnostics.push(...afterSnapshot.diagnostics);
+
+  let afterSubject: TaskEvidenceCandidateSubject;
+  try {
+    afterSubject = await captureTaskEvidenceSubject(
+      options.rootDirectory,
+      task,
+      afterSnapshot.changedFiles,
+    );
+  } catch (error: unknown) {
+    diagnostics.push(error instanceof Error ? error.message : String(error));
+    afterSnapshot.comparisonKnown = false;
+    afterSubject = unknownTaskEvidenceSubject(task, baseline);
+  }
+
+  if (!afterSnapshot.comparisonKnown) {
+    for (const check of checkResults) {
+      if (check.status === "pass") {
+        check.status = "fail";
+        check.reason = "baseline-aware candidate comparison unavailable; result is mixed-revision";
+      }
+    }
+    passed = false;
+  }
+  const normalizedAfterSubject = baseline
+    ? { ...afterSubject, baselineId: baseline.baselineId }
+    : afterSubject;
+  if (!sameTaskEvidenceSubject(subject, normalizedAfterSubject)) {
     for (const check of checkResults) {
       if (check.status === "pass") {
         check.status = "fail";
         check.reason = "candidate changed during verification; result is mixed-revision";
       }
     }
+    passed = false;
+  }
+
+  if (afterSnapshot.outOfScopeFiles.length > 0 || afterSnapshot.forbiddenTouchedFiles.length > 0) {
     passed = false;
   }
 
@@ -1936,6 +2096,7 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
       taskId: task.id,
       runId,
       agent: options.owner ?? "unknown",
+      gateEligible: Boolean(ownerAgent),
       type: verificationEvidenceType(check),
       result: result.status,
       subject,
@@ -1950,10 +2111,9 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
   }
 
   if (options.owner) {
-    const agent = await requireAgent(options.rootDirectory, options.owner);
     await appendRunLog(options.rootDirectory, {
       event: "verify",
-      agent,
+      agent: ownerAgent!,
       task: task.id,
       runId,
       state: task.state,
@@ -1964,17 +2124,18 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
 
   return {
     taskId: task.id,
-    attribution: scope.attribution,
+    attribution: afterSnapshot.attribution,
     runId,
     subject,
     checkResults,
     evidenceWritten,
-    changedFiles: scope.changedFiles,
-    outOfScopeFiles: scope.outOfScopeFiles,
-    forbiddenTouchedFiles: scope.forbiddenTouchedFiles,
+    changedFiles: afterSnapshot.changedFiles,
+    outOfScopeFiles: afterSnapshot.outOfScopeFiles,
+    forbiddenTouchedFiles: afterSnapshot.forbiddenTouchedFiles,
     commandsRun,
     commandsSkipped: options.checkFilesOnly ?? false,
     passed,
+    diagnostics: [...new Set(diagnostics)],
     nextStep: verifyNextStep({
       passed,
       owner: options.owner,
@@ -2003,6 +2164,10 @@ export function renderTaskVerifyResult(result: TaskVerifyResult): string {
     for (const file of result.forbiddenTouchedFiles) {
       lines.push(`  - ${file}`);
     }
+  }
+
+  if (result.diagnostics.length > 0) {
+    lines.push("Diagnostics:", ...result.diagnostics.map((diagnostic) => `  - ${diagnostic}`));
   }
 
   if (result.commandsSkipped) {

@@ -231,6 +231,7 @@ export async function doneTask(options: TaskTransitionOptions): Promise<ProjectT
       agent: agent.id,
       type: "completion",
       result: "pass",
+      gateEligible: true,
       subject: gate.subject,
       evidenceSet: gate.evidenceIds,
       summary: "Completion gate passed for the evaluated candidate.",

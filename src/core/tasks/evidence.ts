@@ -1,7 +1,8 @@
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { appendFile, mkdir, open, readFile, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 export const TASK_EVIDENCE_PATH = ".agentic/evidence.jsonl";
+export const TASK_EVIDENCE_LOCK_PATH = ".agentic/evidence.append.lock";
 
 export const TASK_EVIDENCE_TYPES = [
   "automated-test",
@@ -55,6 +56,7 @@ export interface TaskEvidenceRecord {
   taskId: string;
   runId: string;
   agent: string;
+  gateEligible?: boolean;
   type: TaskEvidenceType;
   result: TaskEvidenceResult;
   time: string;
@@ -67,6 +69,12 @@ export interface TaskEvidenceRecord {
   summary?: string;
   reviewer?: string;
   implementationRunId?: string;
+  workerProtocol?: string;
+  workerRole?: string;
+  workerStatus?: string;
+  workerCommitIds?: string[];
+  workerDiffId?: string;
+  workerEvidence?: string[];
   findings?: string[];
   evidenceSet?: string[];
   scenario?: string;
@@ -86,6 +94,7 @@ export interface AddTaskEvidenceInput {
   taskId: string;
   runId: string;
   agent: string;
+  gateEligible?: boolean;
   type: TaskEvidenceType;
   result: TaskEvidenceResult;
   time?: string;
@@ -98,6 +107,12 @@ export interface AddTaskEvidenceInput {
   summary?: string;
   reviewer?: string;
   implementationRunId?: string;
+  workerProtocol?: string;
+  workerRole?: string;
+  workerStatus?: string;
+  workerCommitIds?: string[];
+  workerDiffId?: string;
+  workerEvidence?: string[];
   findings?: string[];
   evidenceSet?: string[];
   scenario?: string;
@@ -191,6 +206,19 @@ function optionalTextList(
     issues.push(`${label} must contain at most ${maxItems} items.`);
   }
   return value.map((item, index) => textValue(item, `${label}[${index}]`, issues, maxItemLength));
+}
+
+function optionalBoolean(
+  value: unknown,
+  label: string,
+  issues: string[],
+): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "boolean") {
+    issues.push(`${label} must be true or false when provided.`);
+    return undefined;
+  }
+  return value;
 }
 
 function optionalNonNegativeInteger(
@@ -311,6 +339,7 @@ function normalizeEvidenceRecord(
     taskId: textValue(value.taskId, `${prefix}.taskId`, issues),
     runId: textValue(value.runId, `${prefix}.runId`, issues, 120),
     agent: textValue(value.agent, `${prefix}.agent`, issues, 120),
+    gateEligible: optionalBoolean(value.gateEligible, `${prefix}.gateEligible`, issues),
     type: oneOf(value.type, TASK_EVIDENCE_TYPES, `${prefix}.type`, issues),
     result: oneOf(value.result, TASK_EVIDENCE_RESULTS, `${prefix}.result`, issues),
     time: textValue(value.time, `${prefix}.time`, issues, 40),
@@ -326,6 +355,12 @@ function normalizeEvidenceRecord(
     summary: optionalText(value.summary, `${prefix}.summary`, issues, 320),
     reviewer: optionalText(value.reviewer, `${prefix}.reviewer`, issues, 120),
     implementationRunId: optionalText(value.implementationRunId, `${prefix}.implementationRunId`, issues, 120),
+    workerProtocol: optionalText(value.workerProtocol, `${prefix}.workerProtocol`, issues, 80),
+    workerRole: optionalText(value.workerRole, `${prefix}.workerRole`, issues, 40),
+    workerStatus: optionalText(value.workerStatus, `${prefix}.workerStatus`, issues, 40),
+    workerCommitIds: optionalTextList(value.workerCommitIds, `${prefix}.workerCommitIds`, issues, 64, 160),
+    workerDiffId: optionalText(value.workerDiffId, `${prefix}.workerDiffId`, issues, 160),
+    workerEvidence: optionalTextList(value.workerEvidence, `${prefix}.workerEvidence`, issues, 64, 160),
     findings: optionalTextList(value.findings, `${prefix}.findings`, issues),
     evidenceSet: optionalTextList(value.evidenceSet, `${prefix}.evidenceSet`, issues),
   };
@@ -377,6 +412,38 @@ function generatedEvidenceId(): string {
   return `evidence-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+async function withEvidenceAppendLock<T>(
+  rootDirectory: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  const lockPath = join(rootDirectory, TASK_EVIDENCE_LOCK_PATH);
+  await mkdir(dirname(lockPath), { recursive: true });
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
+  const deadline = Date.now() + 10_000;
+  while (!handle) {
+    try {
+      handle = await open(lockPath, "wx");
+      await handle.writeFile(`${process.pid}\n`);
+    } catch (error: unknown) {
+      const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+      if (code !== "EEXIST" && code !== "EPERM") {
+        throw error;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(`Evidence append lock timed out: ${lockPath}.`);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  }
+
+  try {
+    return await run();
+  } finally {
+    await handle.close();
+    await rm(lockPath, { force: true });
+  }
+}
+
 export async function appendTaskEvidence(
   rootDirectory: string,
   input: AddTaskEvidenceInput,
@@ -393,8 +460,10 @@ export async function appendTaskEvidence(
   });
   const path = join(rootDirectory, TASK_EVIDENCE_PATH);
 
-  await mkdir(dirname(path), { recursive: true });
-  await appendFile(path, `${JSON.stringify(record)}\n`, "utf8");
+  await withEvidenceAppendLock(rootDirectory, async () => {
+    await mkdir(dirname(path), { recursive: true });
+    await appendFile(path, `${JSON.stringify(record)}\n`, "utf8");
+  });
   return record;
 }
 
@@ -502,6 +571,12 @@ export function renderTaskEvidence(
     lines.push(`    Subject: baseline=${record.subject.baselineId} candidate=${record.subject.candidateId} worktree=${record.subject.worktreeId}`);
     if (record.summary) {
       lines.push(`    Summary: ${record.summary}`);
+    }
+    if (record.gateEligible !== undefined) {
+      lines.push(`    Trust: ${record.gateEligible ? "gate-eligible" : "diagnostic-only"}`);
+    }
+    if (record.workerRole || record.workerStatus) {
+      lines.push(`    Worker: role=${record.workerRole ?? "unknown"} status=${record.workerStatus ?? "unknown"}`);
     }
     if (record.findings && record.findings.length > 0) {
       lines.push(`    Findings: ${record.findings.join("; ")}`);

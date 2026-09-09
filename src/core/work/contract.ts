@@ -36,6 +36,7 @@ export interface WorkerPackage {
     reviewFindings: boolean;
     reason: boolean;
   };
+  handoff?: WorkerHandoff;
   provenance: {
     runId: string;
     baselineId?: string;
@@ -49,6 +50,14 @@ export interface WorkerEvidenceReference {
   type: string;
   result: string;
   reference?: string;
+}
+
+export interface WorkerHandoff {
+  fromRunId: string;
+  fromRole: WorkerRole;
+  status: WorkerStatus;
+  findings: string[];
+  reason?: string;
 }
 
 export interface WorkerResult {
@@ -179,6 +188,7 @@ function parsePackage(value: unknown): WorkerPackage {
       reviewFindings: expectations.reviewFindings === true,
       reason: expectations.reason === true,
     },
+    ...(raw.handoff === undefined ? {} : { handoff: parseHandoff(raw.handoff) }),
     provenance: {
       runId: text(provenance.runId, "worker package.provenance.runId", 120),
       ...(optionalText(provenance.baselineId, "worker package.provenance.baselineId", 240) ? { baselineId: provenance.baselineId as string } : {}),
@@ -207,6 +217,17 @@ function parseEvidenceList(value: unknown): WorkerEvidenceReference[] {
     throw new WorkerContractError("worker result.evidence must contain at most 64 items.");
   }
   return value.map(parseEvidence);
+}
+
+function parseHandoff(value: unknown): WorkerHandoff {
+  const raw = objectValue(value, "worker package.handoff");
+  return {
+    fromRunId: text(raw.fromRunId, "worker package.handoff.fromRunId", 120),
+    fromRole: workerRole(raw.fromRole, "worker package.handoff.fromRole"),
+    status: workerStatus(raw.status, "worker package.handoff.status"),
+    findings: boundedList(raw.findings, "worker package.handoff.findings", 32),
+    ...(optionalText(raw.reason, "worker package.handoff.reason") ? { reason: raw.reason as string } : {}),
+  };
 }
 
 function parseResult(value: unknown): WorkerResult {
@@ -245,6 +266,10 @@ export function parseWorkerRole(value: string): WorkerRole {
   return workerRole(value, "worker role");
 }
 
+export function parseWorkerStatus(value: string): WorkerStatus {
+  return workerStatus(value, "worker status");
+}
+
 export function createWorkerPackage(
   task: ProjectTask,
   context: TaskContextSelection,
@@ -254,6 +279,7 @@ export function createWorkerPackage(
     baselineId?: string;
     candidateId?: string;
     worktreeId?: string;
+    handoff?: WorkerHandoff;
   },
 ): WorkerPackage {
   const verification = task.verification
@@ -288,6 +314,7 @@ export function createWorkerPackage(
       reviewFindings: options.role === "review",
       reason: true,
     },
+    ...(options.handoff === undefined ? {} : { handoff: options.handoff }),
     provenance: {
       runId: options.runId,
       ...(options.baselineId ? { baselineId: options.baselineId } : {}),

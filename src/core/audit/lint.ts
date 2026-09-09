@@ -199,11 +199,74 @@ function patternsMayOverlap(left: string, right: string): boolean {
   if (!leftGlob) return pathMatchesPattern(leftNormalized, rightNormalized);
   if (!rightGlob) return pathMatchesPattern(rightNormalized, leftNormalized);
 
-  const leftPrefix = leftNormalized.split("*")[0];
-  const rightPrefix = rightNormalized.split("*")[0];
-  return leftPrefix.length === 0 || rightPrefix.length === 0
-    || leftPrefix.startsWith(rightPrefix)
-    || rightPrefix.startsWith(leftPrefix);
+  type GlobToken = { kind: "literal"; value: string }
+    | { kind: "star" | "globstar" };
+  const tokenize = (pattern: string): GlobToken[] => {
+    const tokens: GlobToken[] = [];
+    for (let index = 0; index < pattern.length; index += 1) {
+      if (pattern[index] === "*" && pattern[index + 1] === "*") {
+        tokens.push({ kind: "globstar" });
+        index += 1;
+      } else if (pattern[index] === "*") {
+        tokens.push({ kind: "star" });
+      } else {
+        tokens.push({ kind: "literal", value: pattern[index] });
+      }
+    }
+    return tokens;
+  };
+  const leftTokens = tokenize(leftNormalized);
+  const rightTokens = tokenize(rightNormalized);
+  const queue: Array<[number, number]> = [[0, 0]];
+  const visited = new Set<string>();
+  const enqueue = (leftIndex: number, rightIndex: number): void => {
+    const key = `${leftIndex}:${rightIndex}`;
+    if (!visited.has(key)) {
+      visited.add(key);
+      queue.push([leftIndex, rightIndex]);
+    }
+  };
+  const closure = (leftIndex: number, rightIndex: number): void => {
+    const leftToken = leftTokens[leftIndex];
+    const rightToken = rightTokens[rightIndex];
+    if (leftToken && (leftToken.kind === "star" || leftToken.kind === "globstar")) {
+      enqueue(leftIndex + 1, rightIndex);
+    }
+    if (rightToken && (rightToken.kind === "star" || rightToken.kind === "globstar")) {
+      enqueue(leftIndex, rightIndex + 1);
+    }
+  };
+  const choices = (tokens: GlobToken[], index: number): Array<{ next: number; kind: "literal" | "non-slash" | "any"; value?: string }> => {
+    const token = tokens[index];
+    if (!token) return [];
+    if (token.kind === "literal") return [{ next: index + 1, kind: "literal", value: token.value }];
+    return [{ next: index, kind: token.kind === "star" ? "non-slash" : "any" }];
+  };
+  const intersects = (
+    leftChoice: ReturnType<typeof choices>[number],
+    rightChoice: ReturnType<typeof choices>[number],
+  ): boolean => {
+    if (leftChoice.kind === "literal" && rightChoice.kind === "literal") {
+      return leftChoice.value === rightChoice.value;
+    }
+    if (leftChoice.kind === "literal") return rightChoice.kind === "any" || leftChoice.value !== "/";
+    if (rightChoice.kind === "literal") return leftChoice.kind === "any" || rightChoice.value !== "/";
+    return true;
+  };
+
+  while (queue.length > 0) {
+    const [leftIndex, rightIndex] = queue.shift()!;
+    if (leftIndex === leftTokens.length && rightIndex === rightTokens.length) return true;
+    closure(leftIndex, rightIndex);
+    for (const leftChoice of choices(leftTokens, leftIndex)) {
+      for (const rightChoice of choices(rightTokens, rightIndex)) {
+        if (intersects(leftChoice, rightChoice)) {
+          enqueue(leftChoice.next, rightChoice.next);
+        }
+      }
+    }
+  }
+  return false;
 }
 
 function lintPathContracts(

@@ -345,3 +345,19 @@ Different coding harnesses must be able to implement, review, fix, or verify the
 Implementation and invariant:
 
 `src/core/work/contract.ts` validates and round-trips the shared package/result shape; `src/core/work/index.ts` creates a package for every work run; Codex and OpenCode templates publish the same guidance. Failed and `changes_requested` results require a reason, and no core module imports a vendor SDK. Role/result round-trip and generated-export drift tests cover the boundary.
+
+## ADR-0025 - Gate evidence is bound, trusted, and fail-closed
+
+Status: accepted
+
+Decision:
+
+Prepared review sessions persist an immutable candidate identity. Verification recaptures the complete baseline-aware path set after checks. Gate-eligible evidence must carry explicit trust status and a non-anonymous actor/run identity; Git comparison failures remain unknown rather than becoming empty diffs.
+
+Reason:
+
+A PASS is only useful if it proves the exact candidate that was reviewed or verified. Shared repositories, concurrent workers, and failed Git lookups otherwise allow mixed revisions or anonymous evidence to satisfy completion.
+
+Implementation and invariant:
+
+Review sessions live under `.agentic/reviews/`; stale result submission is rejected without rebasing. Evidence append uses a dedicated lock. Provenance labels broad commit history as repository activity and reports task-attributed paths separately. Glob lint proves overlap under the runtime path semantics before emitting a blocking contradiction.

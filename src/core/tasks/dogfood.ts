@@ -15,13 +15,10 @@ import {
 } from "./evidence.js";
 import {
   captureTaskEvidenceSubject,
+  captureTaskScope,
   findTaskFile,
-  listGitChangedFiles,
-  listTaskChangedFilesSinceBaseline,
   loadTaskFile,
   readTaskBaseline,
-  verifyTaskFileScope,
-  verifyTaskFileScopeSinceBaseline,
   type ProjectTask,
 } from "./index.js";
 import { claimTask } from "./workflow.js";
@@ -345,16 +342,14 @@ export async function startDogfoodSession(options: StartDogfoodOptions): Promise
 async function dogfoodSubject(
   rootDirectory: string,
   task: ProjectTask,
-): Promise<TaskEvidenceCandidateSubject> {
+): Promise<{ subject: TaskEvidenceCandidateSubject; comparisonKnown: boolean }> {
   const baseline = await readTaskBaseline(rootDirectory, task.id);
-  const rawChangedFiles = baseline
-    ? await listTaskChangedFilesSinceBaseline(rootDirectory, baseline)
-    : await listGitChangedFiles(rootDirectory).catch(() => []);
-  const scope = baseline
-    ? await verifyTaskFileScopeSinceBaseline(rootDirectory, task, rawChangedFiles, baseline)
-    : verifyTaskFileScope(task, rawChangedFiles);
-  const captured = await captureTaskEvidenceSubject(rootDirectory, task, scope.changedFiles);
-  return baseline ? { ...captured, baselineId: baseline.baselineId } : captured;
+  const snapshot = await captureTaskScope({ rootDirectory, task, baseline });
+  const captured = await captureTaskEvidenceSubject(rootDirectory, task, snapshot.changedFiles);
+  return {
+    subject: baseline ? { ...captured, baselineId: baseline.baselineId } : captured,
+    comparisonKnown: snapshot.comparisonKnown,
+  };
 }
 
 export async function recordDogfoodResult(options: RecordDogfoodOptions): Promise<DogfoodResult> {
@@ -388,14 +383,15 @@ export async function recordDogfoodResult(options: RecordDogfoodOptions): Promis
 
   const taskPath = await findTaskFile(options.rootDirectory, options.taskId, options.taskDirectory);
   const task = (await loadTaskFile(taskPath)).task;
-  const subject = await dogfoodSubject(options.rootDirectory, task);
+  const dogfood = await dogfoodSubject(options.rootDirectory, task);
   const evidence = await appendTaskEvidence(options.rootDirectory, {
     taskId: task.id,
     runId: sessionId,
     agent: agent.id,
+    gateEligible: dogfood.comparisonKnown,
     type: "dogfood",
     result: options.outcome,
-    subject,
+    subject: dogfood.subject,
     summary: `${options.outcome} dogfood session for ${stored.tool}.`,
     scenario: stored.scenario,
     tool: stored.tool,

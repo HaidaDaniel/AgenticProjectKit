@@ -74,8 +74,8 @@ function helpText(command: TaskCommand): string {
   if (command === "review") {
     return [
       "Usage: apk review <task-id> --owner <agent-id>",
-      "Usage: apk review <task-id> --reviewer <reviewer-id> --result <pass|changes_requested|fail> [--finding <text>] [--implementation-run <run-id>]",
       "Usage: apk review <task-id> --reviewer <reviewer-id> --prompt",
+      "Usage: apk review <task-id> --reviewer <reviewer-id> --review-run <review-run-id> --result <pass|changes_requested|fail> [--finding <text>] [--implementation-run <run-id>]",
     ].join("\n");
   }
   return `Usage: apk ${command} <task-id> --owner <agent-id>${reason}`;
@@ -104,9 +104,9 @@ export async function runTaskStateCommand(
       argv.includes("--result") ||
       argv.includes("--prompt")
     )) {
-      const allowedReviewFlags = ["--reviewer", "--result", "--finding", "--implementation-run", "--prompt"];
+      const allowedReviewFlags = ["--reviewer", "--result", "--review-run", "--finding", "--implementation-run", "--prompt"];
       rejectUnknownOptions(argv, allowedReviewFlags);
-      const taskId = readTaskId(argv, ["--reviewer", "--result", "--finding", "--implementation-run"]);
+      const taskId = readTaskId(argv, ["--reviewer", "--result", "--review-run", "--finding", "--implementation-run"]);
       const reviewer = readFlagValue(argv, "--reviewer");
       if (!taskId || !reviewer) {
         throw new Error(helpText(command));
@@ -131,6 +131,10 @@ export async function runTaskStateCommand(
         return 0;
       }
       const outcome = readFlagValue(argv, "--result");
+      const reviewRunId = readFlagValue(argv, "--review-run");
+      if (!reviewRunId) {
+        throw new Error("--review-run is required when recording a review result; run --prompt first.");
+      }
       if (!outcome || !(TASK_REVIEW_OUTCOMES as readonly string[]).includes(outcome)) {
         throw new Error(`--result must be one of: ${TASK_REVIEW_OUTCOMES.join(", ")}.`);
       }
@@ -142,6 +146,7 @@ export async function runTaskStateCommand(
         taskDirectory: config.taskDirectory,
         taskId,
         reviewer,
+        reviewRunId,
         outcome: outcome as (typeof TASK_REVIEW_OUTCOMES)[number],
         findings: readFlagValues(argv, "--finding"),
         implementationRunId: readFlagValue(argv, "--implementation-run"),

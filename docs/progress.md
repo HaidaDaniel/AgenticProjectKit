@@ -94,9 +94,9 @@ The repository now has:
 
 ## Next step
 
-Next planned task: 0073 - Compose implementation, review, and fixer runs without owning model runtime.
+Current task: 0073 - Compose implementation, review, and fixer runs without owning model runtime.
 
-Planning only: tasks 0073-0076 remain todo with Owner: none. Corrective pass fixes review-before-gate bootstrap, revision/freshness semantics, lock recovery and candidate freeze.
+Planning only: tasks 0074-0076 remain todo with Owner: none. Corrective pass fixes review-before-gate bootstrap, revision/freshness semantics, lock recovery and candidate freeze.
 
 ## Remaining task plan
 

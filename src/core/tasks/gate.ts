@@ -1,14 +1,14 @@
 import {
+  listAgents,
+} from "../agents/index.js";
+import {
   allTaskFiles,
+  captureTaskScope,
   captureTaskEvidenceSubject,
   findTaskFile,
   getTaskVerification,
-  listGitChangedFiles,
-  listTaskChangedFilesSinceBaseline,
   loadTaskFile,
   readTaskBaseline,
-  verifyTaskFileScope,
-  verifyTaskFileScopeSinceBaseline,
   type ProjectTask,
   type TaskClaimBaseline,
   type TaskFileScopeResult,
@@ -37,6 +37,8 @@ export interface TaskCompletionCandidate {
   subject: TaskEvidenceCandidateSubject;
   changedFiles: string[];
   scope: TaskFileScopeResult;
+  comparisonKnown: boolean;
+  diagnostics: string[];
 }
 
 export interface TaskGateVerification {
@@ -90,6 +92,19 @@ function subjectWithBaseline(
   return baseline ? { ...subject, baselineId: baseline.baselineId } : subject;
 }
 
+function unknownSubject(
+  task: ProjectTask,
+  baseline: TaskClaimBaseline | undefined,
+): TaskEvidenceCandidateSubject {
+  return {
+    taskId: task.id,
+    repository: "none",
+    baselineId: baseline?.baselineId ?? "unknown",
+    candidateId: "candidate:unknown",
+    worktreeId: "worktree:unknown",
+  };
+}
+
 export async function captureTaskCompletionCandidate(options: {
   rootDirectory: string;
   taskDirectory: string;
@@ -99,22 +114,27 @@ export async function captureTaskCompletionCandidate(options: {
   const taskPath = await findTaskFile(options.rootDirectory, options.taskId, options.taskDirectory);
   const { task } = await loadTaskFile(taskPath);
   const baseline = await readTaskBaseline(options.rootDirectory, task.id);
-  const changedFiles = [...(options.changedFiles ?? (
-    baseline
-      ? await listTaskChangedFilesSinceBaseline(options.rootDirectory, baseline)
-      : await listGitChangedFiles(options.rootDirectory).catch(() => [])
-  ))]
-    .map((path) => path.replace(/\\/g, "/").replace(/^\.\//, ""))
-    .filter((path) => path.length > 0)
-    .sort();
-  const scope = baseline
-    ? await verifyTaskFileScopeSinceBaseline(options.rootDirectory, task, changedFiles, baseline)
-    : verifyTaskFileScope(task, changedFiles);
-  const capturedSubject = await captureTaskEvidenceSubject(
-    options.rootDirectory,
+  const snapshot = await captureTaskScope({
+    rootDirectory: options.rootDirectory,
     task,
-    scope.changedFiles,
-  );
+    taskPath,
+    baseline,
+    changedFiles: options.changedFiles,
+  });
+  const changedFiles = snapshot.changedFiles;
+  const scope = snapshot;
+  let capturedSubject: TaskEvidenceCandidateSubject;
+  try {
+    capturedSubject = await captureTaskEvidenceSubject(
+      options.rootDirectory,
+      task,
+      scope.changedFiles,
+    );
+  } catch (error: unknown) {
+    snapshot.diagnostics.push(error instanceof Error ? error.message : String(error));
+    snapshot.comparisonKnown = false;
+    capturedSubject = unknownSubject(task, baseline);
+  }
   return {
     task,
     taskPath,
@@ -122,6 +142,8 @@ export async function captureTaskCompletionCandidate(options: {
     subject: subjectWithBaseline(capturedSubject, baseline),
     changedFiles: scope.changedFiles,
     scope,
+    comparisonKnown: snapshot.comparisonKnown,
+    diagnostics: snapshot.diagnostics,
   };
 }
 
@@ -146,6 +168,16 @@ function currentRecord(
 
 function isOtherCandidate(record: TaskEvidenceRecord, subject: TaskEvidenceCandidateSubject): boolean {
   return record.subject.candidateId !== subject.candidateId;
+}
+
+function isGateEligibleEvidence(
+  record: TaskEvidenceRecord,
+  registeredAgents: ReadonlySet<string>,
+): boolean {
+  if (record.agent.trim().length === 0 || record.agent === "unknown" || record.gateEligible === false) {
+    return false;
+  }
+  return record.gateEligible === true || registeredAgents.has(record.agent);
 }
 
 function evidenceCategoryMatches(
@@ -186,11 +218,16 @@ export async function evaluateTaskCompletionGate(options: {
   const { task, scope, subject } = candidate;
   const policy = resolveTaskPolicy(task);
   const records = await readTaskEvidence(options.rootDirectory, task.id);
+  const registeredAgents = new Set((await listAgents(options.rootDirectory)).map((agent) => agent.id));
   const blockers = [...policy.blockers];
   const diagnostics = [
+    ...candidate.diagnostics,
     ...(scope.attribution?.diagnostics ?? []),
     ...policy.diagnostics,
   ];
+  if (!candidate.comparisonKnown) {
+    blockers.push("Baseline-aware Git comparison could not be established; gate-eligible evidence is blocked.");
+  }
   const evidenceIds: string[] = [];
 
   for (const file of scope.outOfScopeFiles) {
@@ -219,6 +256,7 @@ export async function evaluateTaskCompletionGate(options: {
     const checkRecords = records.filter((record) => (
       record.type !== "review" &&
       record.type !== "completion" &&
+      isGateEligibleEvidence(record, registeredAgents) &&
       record.checkId === check.id
     ));
     const selected = currentRecord(checkRecords, subject);
@@ -264,6 +302,7 @@ export async function evaluateTaskCompletionGate(options: {
     const categoryRecords = records.filter((record) => (
       record.type !== "review" &&
       record.type !== "completion" &&
+      isGateEligibleEvidence(record, registeredAgents) &&
       record.result === "pass" &&
       evidenceCategoryMatches(record, category)
     ));
@@ -282,7 +321,8 @@ export async function evaluateTaskCompletionGate(options: {
 
   const review: TaskGateReview = { freshness: "missing", reason: "independent review is not required" };
   if (policy.requirements.independentReview) {
-    const reviewRecords = await listTaskReviews(options.rootDirectory, task.id);
+    const reviewRecords = (await listTaskReviews(options.rootDirectory, task.id))
+      .filter((record) => isGateEligibleEvidence(record, registeredAgents));
     const assessments = assessTaskReviews(reviewRecords, subject);
     const selected = reviewAssessment(assessments, subject);
     if (!selected) {

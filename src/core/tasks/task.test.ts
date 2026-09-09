@@ -431,6 +431,31 @@ test("task evidence reports corrupted append-only records", async () => {
   });
 });
 
+test("task evidence serializes concurrent appenders without corrupting JSONL", async () => {
+  await withTempDirectory(async (directory) => {
+    const subject = {
+      taskId: "0007",
+      repository: "none" as const,
+      baselineId: "base-none",
+      candidateId: "candidate-none",
+      worktreeId: "worktree-none",
+    };
+    await Promise.all(Array.from({ length: 64 }, (_, index) => appendTaskEvidence(directory, {
+      id: `evidence-concurrent-${index}`,
+      taskId: "0007",
+      runId: `run-concurrent-${index}`,
+      agent: `agent-${index}`,
+      type: "automated-test",
+      result: "pass",
+      subject,
+      gateEligible: false,
+    })));
+    const records = await readTaskEvidence(directory, "0007");
+    assert.equal(records.length, 64);
+    assert.equal(new Set(records.map((record) => record.id)).size, 64);
+  });
+});
+
 test("dogfood sessions write bounded vendor-neutral evidence and preserve failures", async () => {
   await withTempDirectory(async (directory) => {
     const git = async (...args: string[]) => {
@@ -705,6 +730,128 @@ test("independent review uses a separate reviewer run and revision-bound evidenc
       }),
       /cannot certify the same task/,
     );
+  });
+});
+
+test("prepared review rejects a mixed revision and keeps the reviewed subject immutable", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await mkdir(join(directory, "src"), { recursive: true });
+    await writeTaskFile(join(directory, ".tasks", "0007-reviewable-task.md"), {
+      ...TASK,
+      state: "todo",
+      owner: "none",
+      dependsOn: [],
+      allowedFiles: ["src/**"],
+      forbiddenFiles: [],
+    });
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await registerAgent(directory, { id: "codex-owner", developer: "alice", platform: "codex", model: "gpt-5" });
+    await registerAgent(directory, { id: "codex-reviewer", developer: "bob", platform: "codex", model: "gpt-5" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-owner" });
+
+    const changedFile = join(directory, "src", "candidate.ts");
+    await writeFile(changedFile, "export const version = 1;\n", "utf8");
+    const preparedA = await prepareTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+    });
+    assert.match(preparedA.prompt, new RegExp(`Review run: ${preparedA.reviewRunId}`));
+    assert.match(preparedA.prompt, new RegExp(`Candidate: ${preparedA.subject.candidateId}`));
+    assert.match(await readFile(join(directory, ".agentic", "reviews", "0007", `${preparedA.reviewRunId}.json`), "utf8"), /review-v1/);
+
+    await writeFile(changedFile, "export const version = 2;\n", "utf8");
+    await assert.rejects(
+      () => recordTaskReview({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        reviewer: "codex-reviewer",
+        reviewRunId: preparedA.reviewRunId,
+        outcome: "pass",
+      }),
+      /stale\/mixed-revision/,
+    );
+    assert.equal((await readTaskEvidence(directory, "0007")).filter((record) => record.type === "review").length, 0);
+    const blocked = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.ok(blocked.blockers.some((blocker) => blocker.includes("Missing independent review")));
+
+    const preparedB = await prepareTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+    });
+    const pass = await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      reviewRunId: preparedB.reviewRunId,
+      outcome: "pass",
+    });
+    assert.equal(pass.evidence.subject.candidateId, preparedB.subject.candidateId);
+    assert.equal((await listTaskReviews(directory, "0007")).length, 1);
+  });
+});
+
+test("review history preserves changes_requested then pass across prepared candidates", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await mkdir(join(directory, "src"), { recursive: true });
+    await writeTaskFile(join(directory, ".tasks", "0007-reviewable-task.md"), {
+      ...TASK,
+      state: "todo",
+      owner: "none",
+      dependsOn: [],
+      allowedFiles: ["src/**"],
+      forbiddenFiles: [],
+    });
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await registerAgent(directory, { id: "codex-owner", developer: "alice", platform: "codex", model: "gpt-5" });
+    await registerAgent(directory, { id: "codex-reviewer", developer: "bob", platform: "codex", model: "gpt-5" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-owner" });
+
+    const changedFile = join(directory, "src", "candidate.ts");
+    await writeFile(changedFile, "export const version = 1;\n", "utf8");
+    const preparedA = await prepareTaskReview({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", reviewer: "codex-reviewer" });
+    const requested = await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      reviewRunId: preparedA.reviewRunId,
+      outcome: "changes_requested",
+      findings: ["Check the transition."],
+    });
+    await writeFile(changedFile, "export const version = 2;\n", "utf8");
+    const preparedB = await prepareTaskReview({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", reviewer: "codex-reviewer" });
+    const passed = await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      reviewRunId: preparedB.reviewRunId,
+      outcome: "pass",
+    });
+    assert.deepEqual((await listTaskReviews(directory, "0007")).map((record) => record.result), ["changes_requested", "pass"]);
+    assert.notEqual(requested.evidence.subject.candidateId, passed.evidence.subject.candidateId);
   });
 });
 
@@ -1231,6 +1378,132 @@ test("verifyTask rejects a pass when candidate changes during execution", async 
   });
 });
 
+test("verifyTask recaptures new files and reports mixed revision scope", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await mkdir(join(directory, "src"), { recursive: true });
+    await writeTaskFile(join(directory, ".tasks", "0007-add-task-system.md"), {
+      ...TASK,
+      state: "todo",
+      owner: "none",
+      dependsOn: [],
+      allowedFiles: ["src/**"],
+      forbiddenFiles: [],
+      verification: [{ id: "mutating-check", type: "automated", required: true, environment: "local", profile: "deterministic", command: "mutate" }],
+      verificationCommands: ["mutate"],
+    });
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await registerAgent(directory, { id: "codex-a", developer: "alice", platform: "codex", model: "gpt-5" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a" });
+    await writeFile(join(directory, "src", "a.ts"), "export const a = true;\n", "utf8");
+
+    const result = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      runCommand: async () => {
+        await writeFile(join(directory, "src", "new.ts"), "export const newFile = true;\n", "utf8");
+        return 0;
+      },
+    });
+    assert.equal(result.passed, false);
+    assert.deepEqual(result.changedFiles, ["src/a.ts", "src/new.ts"]);
+    assert.equal(result.checkResults[0].status, "fail");
+    assert.match(result.checkResults[0].reason ?? "", /mixed-revision/);
+    assert.equal((await readTaskEvidence(directory, "0007"))[0].result, "fail");
+  });
+});
+
+test("verifyTask surfaces forbidden files created during a check", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeTaskFile(join(directory, ".tasks", "0007-add-task-system.md"), {
+      ...TASK,
+      state: "todo",
+      owner: "none",
+      dependsOn: [],
+      allowedFiles: ["src/**"],
+      forbiddenFiles: ["secret.txt"],
+      verification: [{ id: "mutating-check", type: "automated", required: true, environment: "local", profile: "deterministic", command: "mutate" }],
+      verificationCommands: ["mutate"],
+    });
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await registerAgent(directory, { id: "codex-a", developer: "alice", platform: "codex", model: "gpt-5" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a" });
+    const result = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      runCommand: async () => {
+        await writeFile(join(directory, "secret.txt"), "not allowed\n", "utf8");
+        await writeFile(join(directory, "outside.txt"), "out of scope\n", "utf8");
+        return 0;
+      },
+    });
+    assert.equal(result.passed, false);
+    assert.deepEqual(result.forbiddenTouchedFiles, ["secret.txt"]);
+    assert.deepEqual(result.outOfScopeFiles, ["outside.txt", "secret.txt"]);
+  });
+});
+
+test("verifyTask recaptures deletion during a check", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeTaskFile(join(directory, ".tasks", "0007-add-task-system.md"), {
+      ...TASK,
+      state: "todo",
+      owner: "none",
+      dependsOn: [],
+      allowedFiles: ["src/**"],
+      forbiddenFiles: [],
+      verification: [{ id: "mutating-check", type: "automated", required: true, environment: "local", profile: "deterministic", command: "mutate" }],
+      verificationCommands: ["mutate"],
+    });
+    await mkdir(join(directory, "src"), { recursive: true });
+    await writeFile(join(directory, "src", "delete.ts"), "export const oldValue = true;\n", "utf8");
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await registerAgent(directory, { id: "codex-a", developer: "alice", platform: "codex", model: "gpt-5" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a" });
+    await writeFile(join(directory, "src", "delete.ts"), "export const oldValue = false;\n", "utf8");
+    const result = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      runCommand: async () => {
+        await rm(join(directory, "src", "delete.ts"));
+        return 0;
+      },
+    });
+    assert.equal(result.passed, false);
+    assert.equal(result.checkResults[0].status, "fail");
+    assert.match(result.checkResults[0].reason ?? "", /mixed-revision/);
+  });
+});
+
 test("verifyTask records run log event when owner is supplied", async () => {
   await withTempDirectory(async (directory) => {
     await writeTaskFile(join(directory, ".tasks", "0007-add-task-system.md"), TASK);
@@ -1258,6 +1531,78 @@ test("verifyTask records run log event when owner is supplied", async () => {
       event.agent === "codex-a" &&
       event.outcome === "ok"
     )));
+  });
+});
+
+test("anonymous verification remains diagnostic and cannot satisfy the completion gate", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeTaskFile(join(directory, ".tasks", "0007-gated-task.md"), {
+      ...TASK,
+      state: "todo",
+      owner: "none",
+      risk: "low",
+      dependsOn: [],
+      verificationCommands: ["pass"],
+    });
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await registerAgent(directory, { id: "codex-a", developer: "alice", platform: "codex", model: "gpt-5" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a" });
+
+    const anonymous = await verifyTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", runCommand: async () => 0 });
+    assert.equal(anonymous.passed, true);
+    assert.equal((await readTaskEvidence(directory, "0007"))[0].gateEligible, false);
+    const blocked = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(blocked.passed, false);
+    assert.ok(blocked.blockers.some((blocker) => blocker.includes("missing verification evidence")));
+
+    const trusted = await verifyTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a", runCommand: async () => 0 });
+    assert.equal(trusted.passed, true);
+    const ready = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(ready.passed, true);
+  });
+});
+
+test("baseline Git failures block gate-eligible verification while empty diffs remain valid", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeTaskFile(join(directory, ".tasks", "0007-gated-task.md"), {
+      ...TASK,
+      state: "todo",
+      owner: "none",
+      risk: "low",
+      dependsOn: [],
+      verificationCommands: ["pass"],
+    });
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await registerAgent(directory, { id: "codex-a", developer: "alice", platform: "codex", model: "gpt-5" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a" });
+
+    const baselinePath = join(directory, ".agentic", "task-baselines.jsonl");
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.ok(baseline);
+    await writeFile(baselinePath, `${JSON.stringify({ ...baseline, headSha: "not-a-real-commit" })}\n`, "utf8");
+    const failed = await verifyTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a", runCommand: async () => 0 });
+    assert.equal(failed.passed, false);
+    assert.ok(failed.diagnostics.some((diagnostic) => diagnostic.includes("Git comparison failed")));
+    assert.notEqual((await readTaskEvidence(directory, "0007"))[0].result, "pass");
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(gate.passed, false);
+    assert.ok(gate.blockers.some((blocker) => blocker.includes("Git comparison")));
   });
 });
 
@@ -1546,6 +1891,45 @@ test("task provenance reconstructs stale and superseded runs plus final evidence
     assert.equal(latestReview?.freshnessAtDecision, "current");
     assert.match(renderTaskProvenance(provenance), /superseded-by=/);
     assert.match(renderTaskProvenance(provenance), /Completion: .*evidence-set=/);
+  });
+});
+
+test("task provenance separates task-attributed files from repository-wide activity", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeTaskFile(join(directory, ".tasks", "0007-provenance-task.md"), {
+      ...TASK,
+      state: "todo",
+      owner: "none",
+      dependsOn: [],
+      allowedFiles: ["src/**"],
+      forbiddenFiles: [],
+    });
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await registerAgent(directory, { id: "codex-owner", developer: "alice", platform: "codex", model: "gpt-5" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-owner" });
+    await mkdir(join(directory, "src"), { recursive: true });
+    await writeFile(join(directory, "src", "task.ts"), "export const task = true;\n", "utf8");
+    await git("add", "src/task.ts");
+    await git("commit", "--quiet", "-m", "task change");
+    await writeFile(join(directory, "unrelated.txt"), "other agent\n", "utf8");
+    await git("add", "unrelated.txt");
+    await git("commit", "--quiet", "-m", "unrelated change");
+
+    const provenance = await buildTaskProvenance(directory, ".tasks", "0007");
+    assert.deepEqual(provenance.taskAttributedFiles, ["src/task.ts"]);
+    assert.equal(provenance.repositoryActivity.commits.length, 2);
+    assert.ok(provenance.repositoryActivity.commits.some((commit) => commit.subject === "unrelated change"));
+    const rendered = renderTaskProvenance(provenance);
+    assert.match(rendered, /Task-attributed changed files:/);
+    assert.match(rendered, /Repository activity since task baseline:/);
   });
 });
 

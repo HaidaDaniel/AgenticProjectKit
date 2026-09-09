@@ -138,3 +138,38 @@ test("contract lint detects export drift without writing files", async () => {
     assert.equal(await readFile(join(directory, "AGENTS.md"), "utf8"), "stale\n");
   });
 });
+
+test("contract lint proves glob overlaps instead of using shared prefixes", async () => {
+  await withTempDirectory(async (directory) => {
+    await initProject(directory);
+    await writeAllAgentExports(directory, undefined, { force: true });
+    await writeTask(directory, "0010-exact.md", task("0010", {
+      allowedFiles: ["src/a.ts"],
+      forbiddenFiles: ["src/a.ts"],
+    }));
+    await writeTask(directory, "0011-covered.md", task("0011", {
+      allowedFiles: ["src/**"],
+      forbiddenFiles: ["src/a.ts"],
+    }));
+    await writeTask(directory, "0012-prefix.md", task("0012", {
+      allowedFiles: ["docs/foo/**"],
+      forbiddenFiles: ["docs/foobar/**"],
+    }));
+    await writeTask(directory, "0013-suffix.md", task("0013", {
+      allowedFiles: ["src/*/a.ts"],
+      forbiddenFiles: ["src/*/b.ts"],
+    }));
+    await writeTask(directory, "0014-wildcard.md", task("0014", {
+      allowedFiles: ["src/*/**"],
+      forbiddenFiles: ["src/**/a.ts"],
+    }));
+
+    const result = await lintRepositoryContracts(directory);
+    const contradictions = result.findings
+      .filter((finding) => finding.code === "path-contract-contradiction")
+      .map((finding) => finding.taskId);
+    assert.deepEqual(contradictions, ["0010", "0011", "0014"]);
+    assert.equal(contradictions.includes("0012"), false);
+    assert.equal(contradictions.includes("0013"), false);
+  });
+});
