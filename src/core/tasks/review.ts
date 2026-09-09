@@ -18,9 +18,11 @@ import {
   type TaskEvidenceFreshness,
 } from "./evidence.js";
 import { isSafeRunId } from "../work/contract.js";
+import { readActiveWorkerSession } from "../work/session.js";
 
 export const TASK_REVIEW_OUTCOMES = ["pass", "changes_requested", "fail"] as const;
 export type TaskReviewOutcome = (typeof TASK_REVIEW_OUTCOMES)[number];
+export type TaskReviewOrigin = "standalone" | "worker";
 
 export interface TaskReviewPromptInput {
   task: ProjectTask;
@@ -96,6 +98,8 @@ interface StoredTaskReviewPreparation {
   reviewRunId: string;
   taskId: string;
   reviewer: string;
+  origin: TaskReviewOrigin;
+  workerRunId?: string;
   subject: TaskEvidenceCandidateSubject;
   changedFiles: string[];
   baselineHeadSha?: string;
@@ -157,11 +161,27 @@ async function readPreparedReview(
   if (!Array.isArray(raw.changedFiles) || typeof raw.preparedAt !== "string") {
     throw new Error(`Prepared review run is malformed: ${reviewRunIdValue}.`);
   }
+  const origin = raw.origin === undefined ? "standalone" : raw.origin;
+  if (origin !== "standalone" && origin !== "worker") {
+    throw new Error(`Prepared review run is malformed: ${reviewRunIdValue}.`);
+  }
+  let workerRunId: string | undefined;
+  if (raw.workerRunId !== undefined) {
+    if (typeof raw.workerRunId !== "string") {
+      throw new Error(`Prepared review run origin binding is malformed: ${reviewRunIdValue}.`);
+    }
+    workerRunId = validateReviewRunId(raw.workerRunId);
+  }
+  if ((origin === "worker" && workerRunId !== reviewRunIdValue) || (origin === "standalone" && workerRunId !== undefined)) {
+    throw new Error(`Prepared review run origin binding is malformed: ${reviewRunIdValue}.`);
+  }
   return {
     protocol: "review-v1",
     reviewRunId: reviewRunIdValue,
     taskId,
     reviewer: raw.reviewer,
+    origin,
+    ...(workerRunId ? { workerRunId } : {}),
     subject: raw.subject as TaskEvidenceCandidateSubject,
     changedFiles: raw.changedFiles.filter((path): path is string => typeof path === "string"),
     ...(typeof raw.baselineHeadSha === "string" ? { baselineHeadSha: raw.baselineHeadSha } : {}),
@@ -275,6 +295,8 @@ export async function prepareTaskReview(
     reviewer: string;
     changedFiles?: readonly string[];
     reviewRunId?: string;
+    origin?: TaskReviewOrigin;
+    workerRunId?: string;
   },
 ): Promise<TaskReviewPreparation> {
   const reviewer = await requireAgent(options.rootDirectory, options.reviewer);
@@ -302,11 +324,18 @@ export async function prepareTaskReview(
   const subject = reviewSubject(capturedSubject, baseline?.baselineId);
   const preparedAt = new Date().toISOString();
   const preparedRunId = validateReviewRunId(options.reviewRunId ?? reviewRunId());
+  const origin = options.origin ?? "standalone";
+  const workerRunId = options.workerRunId === undefined ? undefined : validateReviewRunId(options.workerRunId);
+  if ((origin === "worker" && workerRunId !== preparedRunId) || (origin === "standalone" && workerRunId !== undefined)) {
+    throw new Error(`Review run origin binding is malformed: ${preparedRunId}.`);
+  }
   await writePreparedReview(options.rootDirectory, {
     protocol: "review-v1",
     reviewRunId: preparedRunId,
     taskId: task.id,
     reviewer: reviewer.id,
+    origin,
+    ...(workerRunId ? { workerRunId } : {}),
     subject,
     changedFiles,
     ...(baseline?.headSha ? { baselineHeadSha: baseline.headSha } : {}),
@@ -362,6 +391,27 @@ export async function recordTaskReview(options: TaskReviewOptions): Promise<Task
     requireReviewableTask(task, reviewer.id);
     if (stored.reviewer !== reviewer.id) {
       throw new Error(`Prepared review run ${stored.reviewRunId} belongs to reviewer ${stored.reviewer}, not ${reviewer.id}.`);
+    }
+    if (stored.origin === "worker") {
+      const workerRunId = stored.workerRunId;
+      if (!workerRunId) {
+        throw new Error(`Worker-bound review run ${stored.reviewRunId} has no worker run binding.`);
+      }
+      const activeSession = await readActiveWorkerSession(
+        options.rootDirectory,
+        task.id,
+        workerRunId,
+      );
+      if (
+        activeSession.runId !== stored.reviewRunId
+        || activeSession.owner !== reviewer.id
+        || activeSession.role !== "review"
+        || activeSession.workerPackage.review?.reviewRunId !== stored.reviewRunId
+        || activeSession.workerPackage.review?.taskId !== task.id
+        || activeSession.workerPackage.review?.reviewer !== reviewer.id
+      ) {
+        throw new Error(`Worker-bound review run ${stored.reviewRunId} does not match an active worker session.`);
+      }
     }
     const baseline = await readTaskBaseline(options.rootDirectory, task.id);
     const snapshot = await captureTaskScope({

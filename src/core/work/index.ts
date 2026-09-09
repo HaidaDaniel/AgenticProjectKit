@@ -28,6 +28,7 @@ import {
   type WorkerHandoff,
   type WorkerReviewBinding,
 } from "./contract.js";
+import { readActiveWorkerSession } from "./session.js";
 
 export * from "./contract.js";
 
@@ -570,6 +571,12 @@ async function sameWorktreeWarnings(
           "utf8",
         )) as Partial<IssuedWorkerRunMetadata>;
         if (metadata.worktreeLocationId !== locationId) continue;
+        if (metadata.role !== "implement" && metadata.role !== "fix" && metadata.role !== "verify") continue;
+        try {
+          await readActiveWorkerSession(rootDirectory, otherTaskId, otherRunId);
+        } catch {
+          continue;
+        }
         const evidence = await readTaskEvidence(rootDirectory, otherTaskId);
         const settled = evidence.some((record) => record.runId === otherRunId && (
           record.workerProtocol === WORKER_PROTOCOL || record.type === "review"
@@ -646,6 +653,8 @@ export async function startWork(options: WorkOptions): Promise<WorkResult> {
       taskId: task.id,
       reviewer: options.owner,
       reviewRunId: runId,
+      origin: "worker",
+      workerRunId: runId,
     })
     : undefined;
   const prompt = reviewPreparation?.prompt ?? renderTaskPrompt(promptInput);

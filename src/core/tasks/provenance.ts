@@ -21,6 +21,7 @@ import {
   type TaskEvidenceSubject,
 } from "./evidence.js";
 import { isSafeRunId } from "../work/contract.js";
+import { readActiveWorkerSession } from "../work/session.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_COMMITS = 64;
@@ -101,9 +102,10 @@ export interface TaskProvenanceWorkerRun {
   runId: string;
   role: string;
   agent: string;
+  activated: boolean;
   issuedSubject: TaskEvidenceCandidateSubject;
   outputSubject?: TaskEvidenceCandidateSubject;
-  status: "pending" | "completed" | "failed" | "changes_requested";
+  status: "unactivated" | "pending" | "completed" | "failed" | "changes_requested";
   evidenceId?: string;
 }
 
@@ -314,6 +316,13 @@ async function readWorkerRuns(
       record.runId === runId
       && (record.workerProtocol === "apk-worker-v1" || record.type === "review")
     ));
+    let activated = false;
+    try {
+      await readActiveWorkerSession(rootDirectory, taskId, runId);
+      activated = true;
+    } catch (error: unknown) {
+      diagnostics.push(`Worker run ${taskId}/${runId} is unactivated: ${error instanceof Error ? error.message : String(error)}.`);
+    }
     const outputSubject = evidence ? workerSubject(evidence.subject, taskId) : undefined;
     if (evidence && outputSubject === undefined) {
       diagnostics.push(`Worker-run provenance found malformed output subject for ${taskId}/${runId}.`);
@@ -325,9 +334,10 @@ async function readWorkerRuns(
       runId,
       role: raw.role,
       agent: evidence?.agent ?? raw.owner,
+      activated,
       issuedSubject,
       ...(outputSubject ? { outputSubject } : {}),
-      status: workerStatus(evidence),
+      status: activated ? workerStatus(evidence) : "unactivated",
       ...(evidence ? { evidenceId: evidence.id } : {}),
     });
   }
@@ -514,7 +524,7 @@ export function renderTaskProvenance(provenance: TaskProvenance): string {
       : ["  - none"]),
     "Worker runs:",
     ...(provenance.workerRuns.length > 0
-      ? provenance.workerRuns.map((run) => `  - ${run.runId} ${run.role}: ${run.issuedSubject.candidateId} -> ${run.outputSubject?.candidateId ?? "pending"} status=${run.status}${run.evidenceId ? ` evidence=${run.evidenceId}` : ""}`)
+      ? provenance.workerRuns.map((run) => `  - ${run.runId} ${run.role}: ${run.issuedSubject.candidateId} -> ${run.outputSubject?.candidateId ?? "pending"} activated=${run.activated} status=${run.status}${run.evidenceId ? ` evidence=${run.evidenceId}` : ""}`)
       : ["  - none"]),
     "Evidence:",
     ...(provenance.evidence.length > 0
