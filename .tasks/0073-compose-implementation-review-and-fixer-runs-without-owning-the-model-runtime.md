@@ -44,18 +44,25 @@ APK coordinates implement -> verify -> review -> fix -> verify -> review -> gate
 
 - src/core/work/*.ts
 - src/core/tasks/*.ts
+- src/core/status/*.ts
+- src/core/docs/context.ts
+- src/core/audit/*.ts
 - src/core/agents/*.ts
 - src/core/docs/prompt.ts
 - src/core/docs/prompt.test.ts
 - src/cli/commands/work.ts
 - src/cli/commands/task.ts
+- src/cli/commands/task-state.ts
 - src/cli/cli.test.ts
 - docs/task-system.md
 - docs/cli-commands.md
 - docs/agent-exporters.md
 - README.md
+- docs/architecture.md
 - docs/progress.md
 - docs/decisions.md
+- .gitignore
+- .tasks/0076-recover-stale-task-mutation-locks-safely.md
 - .tasks/0073-compose-implementation-review-and-fixer-runs-without-owning-the-model-runtime.md
 
 ## Files forbidden to edit
@@ -70,14 +77,14 @@ APK coordinates implement -> verify -> review -> fix -> verify -> review -> gate
 
 ## Steps
 
-1. Extend current CLI-only work loop to select next role/package from recorded outcomes.
+1. Extend current CLI-only work loop to select next role/action from recorded outcomes and persist every issued package.
 2. Pass findings to fixer, preserve review history and register completed runs through worker contract.
 3. Test manual CLI lifecycle with failed review, fix, re-verification, new review and common completion gate.
 
 ## Acceptance criteria
 
 - Workflow state machine is vendor-neutral and usable manually via CLI plus any external harness.
-- APK creates next work package, registers completed run and explains next required role.
+- APK persists each issued work package, registers completed runs, and explains the next required role; the next actor explicitly issues the next real package.
 - Failed review yields actionable fixer package containing findings.
 - Fix preserves earlier review history; new verification and independent review required as policy dictates.
 - Implementation agent cannot declare its own mandatory independent review successful.

@@ -8,6 +8,11 @@ dist/
 !.agentic/agents/.gitkeep
 .agentic/runs/*
 !.agentic/runs/.gitkeep
+.agentic/evidence.jsonl
+.agentic/task-baselines.jsonl
+.agentic/evidence.append.lock
+.agentic/reviews/*
+.agentic/sessions/*
 docs/audit-report.md
 docs/project-map.md
 .opencode/node_modules/

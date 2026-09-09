@@ -36,13 +36,28 @@ export interface WorkerPackage {
     reviewFindings: boolean;
     reason: boolean;
   };
+  review?: WorkerReviewBinding;
   handoff?: WorkerHandoff;
   provenance: {
     runId: string;
+    repository?: "git" | "none";
+    headSha?: string;
     baselineId?: string;
     candidateId?: string;
     worktreeId?: string;
   };
+}
+
+export interface WorkerReviewBinding {
+  reviewRunId: string;
+  taskId: string;
+  reviewer: string;
+  baselineId: string;
+  repository: "git" | "none";
+  headSha?: string;
+  candidateId: string;
+  worktreeId: string;
+  changedFiles: string[];
 }
 
 export interface WorkerEvidenceReference {
@@ -72,6 +87,8 @@ export interface WorkerResult {
   reviewFindings?: string[];
   reason?: string;
   provenance?: {
+    repository?: "git" | "none";
+    headSha?: string;
     baselineId?: string;
     candidateId?: string;
     worktreeId?: string;
@@ -188,9 +205,12 @@ function parsePackage(value: unknown): WorkerPackage {
       reviewFindings: expectations.reviewFindings === true,
       reason: expectations.reason === true,
     },
+    ...(raw.review === undefined ? {} : { review: parseReviewBinding(raw.review) }),
     ...(raw.handoff === undefined ? {} : { handoff: parseHandoff(raw.handoff) }),
     provenance: {
       runId: text(provenance.runId, "worker package.provenance.runId", 120),
+      ...(provenance.repository === "git" || provenance.repository === "none" ? { repository: provenance.repository } : {}),
+      ...(optionalText(provenance.headSha, "worker package.provenance.headSha", 160) ? { headSha: provenance.headSha as string } : {}),
       ...(optionalText(provenance.baselineId, "worker package.provenance.baselineId", 240) ? { baselineId: provenance.baselineId as string } : {}),
       ...(optionalText(provenance.candidateId, "worker package.provenance.candidateId", 240) ? { candidateId: provenance.candidateId as string } : {}),
       ...(optionalText(provenance.worktreeId, "worker package.provenance.worktreeId", 240) ? { worktreeId: provenance.worktreeId as string } : {}),
@@ -230,6 +250,23 @@ function parseHandoff(value: unknown): WorkerHandoff {
   };
 }
 
+function parseReviewBinding(value: unknown): WorkerReviewBinding {
+  const raw = objectValue(value, "worker package.review");
+  return {
+    reviewRunId: text(raw.reviewRunId, "worker package.review.reviewRunId", 120),
+    taskId: text(raw.taskId, "worker package.review.taskId", 120),
+    reviewer: text(raw.reviewer, "worker package.review.reviewer", 120),
+    baselineId: text(raw.baselineId, "worker package.review.baselineId", 240),
+    repository: raw.repository === "git" || raw.repository === "none"
+      ? raw.repository
+      : (() => { throw new WorkerContractError("worker package.review.repository must be git or none."); })(),
+    ...(optionalText(raw.headSha, "worker package.review.headSha", 160) ? { headSha: raw.headSha as string } : {}),
+    candidateId: text(raw.candidateId, "worker package.review.candidateId", 240),
+    worktreeId: text(raw.worktreeId, "worker package.review.worktreeId", 240),
+    changedFiles: boundedList(raw.changedFiles, "worker package.review.changedFiles"),
+  };
+}
+
 function parseResult(value: unknown): WorkerResult {
   const raw = objectValue(value, "worker result");
   if (raw.protocol !== WORKER_PROTOCOL) {
@@ -254,6 +291,8 @@ function parseResult(value: unknown): WorkerResult {
   if (raw.provenance !== undefined) {
     const provenance = objectValue(raw.provenance, "worker result.provenance");
     result.provenance = {
+      ...(provenance.repository === "git" || provenance.repository === "none" ? { repository: provenance.repository } : {}),
+      ...(optionalText(provenance.headSha, "worker result.provenance.headSha", 160) ? { headSha: provenance.headSha as string } : {}),
       ...(optionalText(provenance.baselineId, "worker result.provenance.baselineId", 240) ? { baselineId: provenance.baselineId as string } : {}),
       ...(optionalText(provenance.candidateId, "worker result.provenance.candidateId", 240) ? { candidateId: provenance.candidateId as string } : {}),
       ...(optionalText(provenance.worktreeId, "worker result.provenance.worktreeId", 240) ? { worktreeId: provenance.worktreeId as string } : {}),
@@ -276,9 +315,12 @@ export function createWorkerPackage(
   options: {
     role: WorkerRole;
     runId: string;
+    repository?: "git" | "none";
+    headSha?: string;
     baselineId?: string;
     candidateId?: string;
     worktreeId?: string;
+    review?: WorkerReviewBinding;
     handoff?: WorkerHandoff;
   },
 ): WorkerPackage {
@@ -314,9 +356,12 @@ export function createWorkerPackage(
       reviewFindings: options.role === "review",
       reason: true,
     },
+    ...(options.review === undefined ? {} : { review: options.review }),
     ...(options.handoff === undefined ? {} : { handoff: options.handoff }),
     provenance: {
       runId: options.runId,
+      ...(options.repository ? { repository: options.repository } : {}),
+      ...(options.headSha ? { headSha: options.headSha } : {}),
       ...(options.baselineId ? { baselineId: options.baselineId } : {}),
       ...(options.candidateId ? { candidateId: options.candidateId } : {}),
       ...(options.worktreeId ? { worktreeId: options.worktreeId } : {}),

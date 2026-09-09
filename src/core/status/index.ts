@@ -45,6 +45,8 @@ export interface ActiveTaskStatus {
     failed: number;
     pending: number;
     missing: number;
+    stale: number;
+    unknown: number;
   };
   scope: {
     status: "pass" | "fail" | "not-started" | "unavailable";
@@ -162,7 +164,9 @@ function verificationStatus(gate: TaskCompletionGateResult): ActiveTaskStatus["v
     passed: gate.verification.filter((check) => check.result === "pass" && check.freshness === "current").length,
     failed: gate.verification.filter((check) => check.result === "fail" || check.result === "changes_requested").length,
     pending: gate.verification.filter((check) => check.result === "pending" || check.result === "unavailable" || check.result === "not-run").length,
-    missing: gate.verification.filter((check) => check.result === "missing").length,
+    missing: gate.verification.filter((check) => check.result === "missing" && check.freshness === "missing").length,
+    stale: gate.verification.filter((check) => check.freshness === "stale").length,
+    unknown: gate.verification.filter((check) => check.freshness === "unknown").length,
   };
 }
 
@@ -182,7 +186,7 @@ function provenanceStatus(provenance: TaskProvenance | undefined, gate: TaskComp
     candidateId: provenance.currentSubject.candidateId,
     worktreeId: provenance.currentSubject.worktreeId,
     runs: provenance.runs.length,
-    changedFiles: provenance.diffFiles.length,
+    changedFiles: provenance.taskAttributedFiles.length,
     completion: provenance.completion
       ? provenance.completion.currentFreshness === "current" ? "pass" : "stale"
       : "none",
@@ -264,7 +268,7 @@ async function summarizeActiveTask(
         evidenceCategories: [],
       },
       dependencies: { ready: [], blocked: [...file.task.dependsOn] },
-      verification: { required: 0, passed: 0, failed: 0, pending: 0, missing: 0 },
+      verification: { required: 0, passed: 0, failed: 0, pending: 0, missing: 0, stale: 0, unknown: 0 },
       scope: { status: "unavailable", changed: 0, outOfScope: 0, forbidden: 0 },
       review: { status: "unknown", reason: message },
       evidence: { total: 0, current: 0, stale: 0, unknown: 0 },
@@ -294,6 +298,8 @@ async function summarizeActiveTask(
   const verification = verificationStatus(gate);
   const scopeStatus = file.task.state === "todo"
     ? "not-started"
+    : !gate.comparisonKnown
+      ? "unavailable"
     : gate.outOfScopeFiles.length > 0 || gate.forbiddenTouchedFiles.length > 0 ? "fail" : "pass";
   return {
     id: file.task.id,
@@ -318,7 +324,7 @@ async function summarizeActiveTask(
       forbidden: gate.forbiddenTouchedFiles.length,
     },
     review: {
-      status: gate.review.freshness,
+      status: !gate.policy.requirements.independentReview ? "not-required" : gate.review.freshness,
       ...(gate.review.reviewer ? { reviewer: gate.review.reviewer } : {}),
       ...(gate.review.outcome ? { outcome: gate.review.outcome } : {}),
       reason: gate.review.reason,
@@ -435,7 +441,7 @@ function renderActiveTaskDetail(task: ActiveTaskStatus): string[] {
     `  State: ${task.state}; owner=${task.owner}; risk=${task.risk}`,
     `  Policy: review=${task.policy.review}; verification=${task.policy.verification}; scope=${task.policy.scope}; evidence=${task.policy.evidence}; classifications=${task.policy.classifications.join(",") || "none"}; categories=${task.policy.evidenceCategories.join(",") || "none"}`,
     `  Dependencies: ready=${task.dependencies.ready.join(",") || "none"}; blocked=${task.dependencies.blocked.join(",") || "none"}`,
-    `  Verification: required=${task.verification.required}; passed=${task.verification.passed}; failed=${task.verification.failed}; pending=${task.verification.pending}; missing=${task.verification.missing}`,
+    `  Verification: required=${task.verification.required}; passed=${task.verification.passed}; failed=${task.verification.failed}; pending=${task.verification.pending}; missing=${task.verification.missing}; stale=${task.verification.stale}; unknown=${task.verification.unknown}`,
     `  Scope: ${task.scope.status}; changed=${task.scope.changed}; out-of-scope=${task.scope.outOfScope}; forbidden=${task.scope.forbidden}`,
     `  Review: ${task.review.status}${task.review.reviewer ? ` reviewer=${task.review.reviewer}` : ""}${task.review.outcome ? ` outcome=${task.review.outcome}` : ""}; ${task.review.reason}`,
     `  Evidence: total=${task.evidence.total}; current=${task.evidence.current}; stale=${task.evidence.stale}; unknown=${task.evidence.unknown}`,

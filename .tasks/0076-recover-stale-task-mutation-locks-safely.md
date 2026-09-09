@@ -61,7 +61,7 @@ Task mutation locks recover safely after owner crashes without manual deletion o
 
 ## Steps
 
-1. Extend existing workflow/task mutation lock paths with ownership metadata and shared live/dead/unknown classification; preserve exclusive acquisition.
+1. Extend existing workflow/task mutation lock paths with ownership metadata and shared live/dead/unknown classification; preserve exclusive acquisition across `.tasks/.apk.lock`, `.agentic/evidence.append.lock`, and any future local mutation lock.
 2. Provide race-safe normal crash recovery and actionable malformed/unknown-owner recovery path; align doctor/status diagnostics.
 3. Add deterministic process/concurrency regressions for normal release, crashed owner, live owner, malformed locks and competing recoverers; document recovery.
 
@@ -74,6 +74,7 @@ Task mutation locks recover safely after owner crashes without manual deletion o
 - Malformed metadata fails with actionable diagnostic and documented explicit recovery path; no blind automatic deletion.
 - Concurrent stale recovery preserves mutual exclusion: two contenders cannot simultaneously acquire ownership; old-owner cleanup cannot delete a successor's lock.
 - Normal acquisition/release and concurrent mutations remain mutually exclusive across workflow transitions and task create/archive mutation paths.
+- The same primitive covers the evidence append lock: live owners cannot be stolen, dead owners are recoverable, malformed locks are diagnosed, TTL is secondary, and an old owner cannot remove a successor lock.
 - Doctor/status distinguish live, stale/dead, malformed and uncertain lock state using same semantics rather than age-only claims.
 - Tests cover normal acquisition/release, crashed/dead owner, old live owner, malformed metadata, concurrent stale recovery and normal concurrent mutation exclusion.
 
@@ -94,7 +95,7 @@ Task mutation locks recover safely after owner crashes without manual deletion o
 ## Notes
 
 - Milestone 1 - Reliability / Foundation; included in 0075 planned release. No evidence/policy prerequisite.
-- Existing withTaskLock in src/core/tasks/workflow.ts and withTaskMutationLock in src/core/tasks/index.ts both use exclusive open plus pid/created metadata; EEXIST currently requires manual removal. Complete both paths without changing task ownership semantics.
+- Existing withTaskLock in src/core/tasks/workflow.ts and withTaskMutationLock in src/core/tasks/index.ts both use exclusive open plus pid/created metadata; EEXIST currently requires manual removal. The evidence append lock in src/core/tasks/evidence.ts is currently a separate exclusive lock; 0076 must align it with the shared recovery semantics without changing task ownership semantics.
 - Current doctor/status use five-minute age threshold; align with process ownership rather than TTL-only stale diagnosis.
 - Parallel: false because allowed task/workflow and doctor/status files overlap other planned work. Independence of dependencies does not imply concurrent edits are safe.
 - Non-goals: distributed locking, Redis, database lock services, network consensus or cross-machine orchestration.

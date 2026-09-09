@@ -161,6 +161,9 @@ function isOperationalFile(path: string): boolean {
     normalized === ".agentic/runs.jsonl" ||
     normalized === ".agentic/evidence.jsonl" ||
     normalized === ".agentic/task-baselines.jsonl" ||
+    normalized === ".agentic/evidence.append.lock" ||
+    normalized.startsWith(".agentic/reviews/") ||
+    normalized.startsWith(".agentic/sessions/") ||
     normalized.startsWith(".agentic/agents/") ||
     normalized.startsWith(".agentic/runs/") ||
     normalized.startsWith(".tasks/archive/")

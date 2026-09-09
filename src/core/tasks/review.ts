@@ -51,6 +51,11 @@ export interface TaskReviewOptions {
   findings?: readonly string[];
   implementationRunId?: string;
   changedFiles?: readonly string[];
+  workerProtocol?: string;
+  workerRole?: string;
+  workerStatus?: string;
+  expectedSubject?: TaskEvidenceCandidateSubject;
+  expectedChangedFiles?: readonly string[];
 }
 
 export interface TaskReviewRecord extends TaskEvidenceRecord {
@@ -401,6 +406,12 @@ export async function recordTaskReview(options: TaskReviewOptions): Promise<Task
       reviewRunId: reviewRunId(),
     });
   }
+  if (options.expectedSubject && !sameReviewSubject(options.expectedSubject, prepared.subject)) {
+    throw new Error(`Review run ${prepared.reviewRunId} does not match the issued worker review subject.`);
+  }
+  if (options.expectedChangedFiles && JSON.stringify([...options.expectedChangedFiles].sort()) !== JSON.stringify([...prepared.changedFiles].sort())) {
+    throw new Error(`Review run ${prepared.reviewRunId} changed files do not match the issued worker review package.`);
+  }
   const runId = prepared.reviewRunId;
   if ((await readTaskEvidence(options.rootDirectory, prepared.task.id)).some((record) => record.type === "review" && record.runId === runId)) {
     throw new Error(`Review run already has a result: ${runId}.`);
@@ -416,6 +427,9 @@ export async function recordTaskReview(options: TaskReviewOptions): Promise<Task
     subject: prepared.subject,
     reviewer: prepared.reviewer,
     implementationRunId: options.implementationRunId,
+    workerProtocol: options.workerProtocol,
+    workerRole: options.workerRole,
+    workerStatus: options.workerStatus,
     findings,
     summary: options.outcome === "pass" ? "Independent review passed." : findings.join("; ") || `Independent review ${options.outcome}.`,
   });

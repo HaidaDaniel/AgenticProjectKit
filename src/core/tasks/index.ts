@@ -1530,6 +1530,7 @@ const DEFAULT_BOOKKEEPING_PATHS = [
   ".tasks/.apk.lock",
   ".agentic/task-baselines.jsonl",
   ".agentic/evidence.jsonl",
+  ".agentic/evidence.append.lock",
   ".agentic/runs.jsonl",
   ".agentic/runs/",
   ".agentic/agents.jsonl",
@@ -1732,8 +1733,7 @@ export async function captureTaskScope(options: {
       diagnostics.push(error instanceof Error ? error.message : String(error));
       rawChangedFiles = [];
       if (options.baseline?.repository === "none") {
-        comparisonKnown = true;
-        diagnostics.push("Non-Git task baseline uses explicit non-Git scope semantics; repository-wide change discovery is unavailable.");
+        diagnostics.push("Non-Git task baseline has no explicit candidate paths; repository-wide change discovery is unavailable.");
       }
     }
   }
@@ -1822,7 +1822,7 @@ export async function captureTaskEvidenceSubject(
     ? (await gitOutput(rootDirectory, ["rev-parse", "HEAD"])).trim() || undefined
     : undefined;
   const repository = headSha ? "git" : "none";
-  const diff = isGit
+  const diff = isGit && normalizedChangedFiles.length > 0
     ? [
       // Lifecycle writes to the task file are bookkeeping; only implementation
       // paths may change the evidence subject revision.
@@ -2040,6 +2040,7 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
     task,
     taskPath,
     baseline,
+    changedFiles: baseline?.repository === "none" ? options.changedFiles : undefined,
   });
   if (!afterSnapshot.comparisonKnown && options.changedFiles !== undefined && baseline === undefined) {
     afterSnapshot = beforeSnapshot;
@@ -2089,6 +2090,12 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
     passed = false;
   }
 
+  const candidateStable = beforeSnapshot.comparisonKnown
+    && afterSnapshot.comparisonKnown
+    && sameTaskEvidenceSubject(subject, normalizedAfterSubject)
+    && afterSnapshot.outOfScopeFiles.length === 0
+    && afterSnapshot.forbiddenTouchedFiles.length === 0;
+
   let evidenceWritten = 0;
   for (const [index, check] of checks.entries()) {
     const result = checkResults[index];
@@ -2096,7 +2103,7 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
       taskId: task.id,
       runId,
       agent: options.owner ?? "unknown",
-      gateEligible: Boolean(ownerAgent),
+      gateEligible: Boolean(ownerAgent) && candidateStable,
       type: verificationEvidenceType(check),
       result: result.status,
       subject,

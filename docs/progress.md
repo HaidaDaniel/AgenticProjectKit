@@ -91,12 +91,14 @@ The repository now has:
 - bounded end-to-end task provenance joining agents, runs, baselines, commits/diff, revision-bound evidence, stale/superseded history, and exact completion evidence sets with human/JSON output.
 - concise active-task status with effective policy, dependency readiness, verification/scope/review/evidence progress, shared gate blockers, provenance counts, and bounded next actions; `status --detail` adds diagnostics.
 - a vendor-neutral `apk-worker-v1` package/result contract with implement/review/fix/verify roles, bounded evidence/provenance fields, work-loop integration, and Codex/OpenCode export guidance.
+- immutable issued worker sessions under `.agentic/sessions/work/`, JSON package exposure, exact owner/task/run/role binding, canonical prepared review-worker integration, non-gating orchestration records, and canonical verification-before-review progression.
+- fail-closed worker/gate trust, explicit non-Git candidate semantics, evidence-lock bookkeeping exclusions, stale/unknown status projections, and same-worktree diagnostics.
 
 ## Next step
 
 Current task: 0073 - Compose implementation, review, and fixer runs without owning model runtime.
 
-Planning only: tasks 0074-0076 remain todo with Owner: none. Corrective pass fixes review-before-gate bootstrap, revision/freshness semantics, lock recovery and candidate freeze.
+Planning only: tasks 0074-0076 remain todo with Owner: none. Corrective pass fixes worker package/result binding, review-before-gate progression, revision/freshness semantics, non-Git comparison, runtime-state policy, and bookkeeping exclusions. Lock recovery remains contracted in 0076; this pass only makes the evidence lock harmless and included in that future recovery scope.
 
 ## Remaining task plan
 
@@ -112,7 +114,7 @@ Planning only: tasks 0074-0076 remain todo with Owner: none. Corrective pass fix
 
 ## Notes
 
-- Worker-contract verification passed with bounded role/result round trips, current run/provenance identities, Codex/OpenCode guidance, `pnpm lint`, 207 tests, `pnpm build`, work help, sync, and an independent review.
+- Worker-contract verification passed with bounded role/result round trips, immutable issued package/metadata persistence, exact role/owner/run binding, canonical review-worker freshness checks, non-gating lifecycle records, Codex/OpenCode guidance, `pnpm lint`, focused worker/status regressions, and the full suite after final validation.
 
 - Corrective-pass validation: 76 tasks parse; all 20 backlog tasks remain todo/unowned and round-trip. No missing dependencies, cycles, self-dependencies or duplicate IDs; 461 context references and milestone links resolve. Task/dependency docs agree on 0063 before 0062 and 0076 before final release 0075.
 - Corrective-pass doctor/status and task deps checks passed; git diff --check clean. Doctor retains three existing warnings (typecheck script, .env.example, GitHub Actions); no claim, product implementation, report-writing audit, commit or push performed.

@@ -73,6 +73,7 @@ export interface TaskCompletionGateResult {
   evidenceIds: string[];
   blockers: string[];
   diagnostics: string[];
+  comparisonKnown: boolean;
 }
 
 export class TaskCompletionGateError extends Error {
@@ -163,7 +164,11 @@ function currentRecord(
     const latest = current[current.length - 1];
     return { record: latest.record, freshness: "current" };
   }
-  return { freshness: "stale" };
+  return {
+    freshness: assessments.some((assessment) => assessment.freshness.freshness === "unknown")
+      ? "unknown"
+      : "stale",
+  };
 }
 
 function isOtherCandidate(record: TaskEvidenceRecord, subject: TaskEvidenceCandidateSubject): boolean {
@@ -177,7 +182,7 @@ function isGateEligibleEvidence(
   if (record.agent.trim().length === 0 || record.agent === "unknown" || record.gateEligible === false) {
     return false;
   }
-  return record.gateEligible === true || registeredAgents.has(record.agent);
+  return record.gateEligible === true && registeredAgents.has(record.agent);
 }
 
 function evidenceCategoryMatches(
@@ -371,6 +376,7 @@ export async function evaluateTaskCompletionGate(options: {
     evidenceIds: [...new Set(evidenceIds)],
     blockers: [...new Set(blockers)],
     diagnostics: [...new Set(diagnostics)],
+    comparisonKnown: candidate.comparisonKnown,
   };
 }
 

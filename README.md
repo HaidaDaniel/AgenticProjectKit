@@ -57,7 +57,7 @@ Implemented commands:
 - `apk audit`
 - `apk lint [--json]`
 - `apk tasks`
-- `apk work <task-id> --owner <agent-id> --target <agent> [--role implement|review|fix|verify]`
+- `apk work <task-id> --owner <agent-id> --target <agent> [--role implement|review|fix|verify] [--json]`
 - `apk claim`
 - `apk release`
 - `apk block`
@@ -369,7 +369,7 @@ pnpm exec apk done 0001 --owner codex-a
 
 `done` rejects missing, failed, stale, or wrong-candidate verification/review evidence and records a completion evidence set on success. There is no force bypass.
 
-The work loop also exposes the vendor-neutral `apk-worker-v1` package/result contract. Select `--role implement|review|fix|verify`; the package carries task context, constraints, output/evidence expectations, and run provenance, while results carry status, evidence, optional commit/diff identities, review findings, and a bounded reason. The role is independent from the Codex, OpenCode, or other harness target.
+The work loop also exposes the vendor-neutral `apk-worker-v1` package/result contract. Select `--role implement|review|fix|verify`, or omit the role for evidence-based next-role resolution. Every issued package is persisted at `.agentic/sessions/work/<task-id>/<run-id>/package.json` with immutable `metadata.json`; `--json` returns the exact package and session paths. Results are accepted only when protocol, task, run, owner, role, and supplied provenance match that issued package. Review workers reuse the canonical prepared review session and prompt; stale candidates are rejected. Worker implement/fix/verify records are diagnostic-only and cannot satisfy report/live/benchmark/manual/CI/artifact/evidence policy categories. Canonical `apk task verify` evidence is required before review progression.
 
 Inspect the active workflow and actionable gate state:
 
@@ -416,7 +416,7 @@ Start or continue a task through the CLI work loop:
 pnpm exec apk work 0001 --owner codex-a --target codex --level auto
 ```
 
-`work` claims a todo task, renders the prompt, and prints verify/review/done commands. Use `--write-session` to store the prompt under `.agentic/sessions/`. It does not launch external AI agents.
+`work` claims a todo task, renders the prompt, persists the package/metadata, and prints role-valid next commands. Use `--write-session` to store the exact prompt beside the package. It warns when another unsettled mutable run is detected in the same worktree; concurrent mutable tasks should use separate Git worktrees/branches. It does not launch external AI agents.
 
 List registered agents:
 

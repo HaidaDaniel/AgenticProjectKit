@@ -18,7 +18,7 @@ const WORK_HELP_TEXT = [
   "Agentic Project Kit",
   "",
   "Usage:",
-  `  apk work <task-id> --owner <agent-id> --target <agent> [--role ${WORKER_ROLES.join("|")}] [--level 1|2|3|auto] [--write-session]`,
+  `  apk work <task-id> --owner <agent-id> --target <agent> [--role ${WORKER_ROLES.join("|")}] [--level 1|2|3|auto] [--write-session] [--json]`,
   "  apk work result <task-id> --owner <agent-id> --run-id <run-id> --role <role> --status <status> [--result-json <json>] [--json]",
   "",
   "Claim or continue a task, render its prompt, or record a result from an external worker.",
@@ -96,7 +96,7 @@ export async function runWorkCommand(argv: string[]): Promise<number> {
     if (argv[0] === "result") {
       return runWorkResultCommand(argv.slice(1));
     }
-    const knownFlags = new Set(["--owner", "--target", "--role", "--level", "--write-session"]);
+    const knownFlags = new Set(["--owner", "--target", "--role", "--level", "--write-session", "--json"]);
     for (const arg of argv) {
       if (arg.startsWith("-") && !knownFlags.has(arg)) {
         throw new Error(`Unknown option: ${arg}`);
@@ -117,17 +117,34 @@ export async function runWorkCommand(argv: string[]): Promise<number> {
       throw new Error("--target is required.");
     }
 
+    const roleValue = readFlagValue(argv, "--role");
     const result = await startWork({
       rootDirectory: resolve(process.cwd()),
       taskId: positional[0],
       owner,
       target,
-      role: parseWorkerRole(readFlagValue(argv, "--role") ?? "implement"),
+      ...(roleValue === undefined ? {} : { role: parseWorkerRole(roleValue) }),
       level: parseLevel(readFlagValue(argv, "--level")),
       writeSession: argv.includes("--write-session"),
     });
 
-    console.log(renderWorkResult(result));
+    if (argv.includes("--json")) {
+      console.log(JSON.stringify({
+        task: result.task.id,
+        runId: result.runId,
+        workerPackage: result.workerPackage,
+        session: {
+          package: result.packagePath,
+          metadata: result.metadataPath,
+          ...(result.sessionPath ? { prompt: result.sessionPath } : {}),
+        },
+        nextRole: result.nextRole ?? null,
+        next: result.next,
+        warnings: result.warnings,
+      }, null, 2));
+    } else {
+      console.log(renderWorkResult(result));
+    }
     return 0;
   } catch (error: unknown) {
     console.error(error instanceof Error ? error.message : String(error));
@@ -195,7 +212,6 @@ async function runWorkResultCommand(argv: string[]): Promise<number> {
       result: coordination.result,
       evidence: coordination.evidence,
       nextRole: coordination.nextRole ?? null,
-      nextPackage: coordination.nextPackage ?? null,
       nextAction: coordination.nextAction,
     }, null, 2));
   } else {

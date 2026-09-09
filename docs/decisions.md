@@ -361,3 +361,35 @@ A PASS is only useful if it proves the exact candidate that was reviewed or veri
 Implementation and invariant:
 
 Review sessions live under `.agentic/reviews/`; stale result submission is rejected without rebasing. Evidence append uses a dedicated lock. Provenance labels broad commit history as repository activity and reports task-attributed paths separately. Glob lint proves overlap under the runtime path semantics before emitting a blocking contradiction.
+
+## ADR-0026 - Issued worker packages are immutable and review-bound
+
+Status: accepted
+
+Decision:
+
+Persist every issued worker package and metadata under `.agentic/sessions/work/<task>/<run>/`; accept results only when protocol, task, run, owner, role, and optional provenance match the issued record. Review worker runs reuse `prepareTaskReview` and `recordTaskReview` with the worker run as `reviewRunId`.
+
+Reason:
+
+Run-log events alone cannot prove what an external harness received. Rebinding a review PASS to a newer candidate or accepting a role-swapped result breaks the worker/candidate invariant.
+
+Implementation:
+
+`apk work --json` exposes the persisted package. Review packages carry the prepared review subject. Worker implement/fix/verify evidence is `gateEligible=false`; canonical check evidence and canonical prepared review evidence are the only worker-related completion proof. Result responses contain next role/action only; the next actor issues the next real package.
+
+## ADR-0027 - Runtime evidence and same-worktree policy
+
+Status: accepted
+
+Decision:
+
+`.agentic/evidence.jsonl`, `.agentic/task-baselines.jsonl`, `.agentic/evidence.append.lock`, `.agentic/reviews/`, and `.agentic/sessions/` are local runtime state and are ignored. Existing tracked JSONL state is untracked with `git rm --cached` without deleting local files. `Parallel: true` permits semantic parallelism, not concurrent mutable tasks in one working tree; separate Git worktrees/branches are required for safe attribution.
+
+Reason:
+
+Continuously mutating operational JSONL creates merge/concurrency hazards and can make two same-worktree tasks attribute each other's changes. Release evidence should be an intentional immutable artifact, not a live store commit.
+
+Implementation:
+
+Candidate/context bookkeeping excludes the evidence append lock and review/session paths. Issued worker metadata records a hashed worktree location and warns on detected unsettled runs in the same location. Unknown non-Git comparison remains diagnostic-only unless explicit candidate paths are supplied. Gate trust requires both explicit eligibility and a registered agent.

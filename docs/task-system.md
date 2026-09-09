@@ -218,7 +218,7 @@ After the controlled session, `apk task dogfood result <task-id> --owner <agent-
 
 Each check produces a distinct `pass`, `fail`, `pending`, `unavailable`, or `not-run` result. Required non-pass checks fail verification; optional failures do not. A verification run records one run ID and subject identity for every check. If the candidate changes during execution, pass results are converted to mixed-revision failures.
 
-Claiming a task records a baseline in `.agentic/task-baselines.jsonl`: HEAD when available, dirty-file fingerprints, task file, and workflow bookkeeping paths. Later scope verification compares committed, working-tree, new, deleted, and renamed paths against that baseline. Unchanged pre-claim dirty files are reported as `preExistingFiles` and excluded from violations; edits after claim are attributed to the task. Task/evidence/run/agent bookkeeping paths are excluded explicitly.
+Claiming a task records a baseline in `.agentic/task-baselines.jsonl`: HEAD when available, dirty-file fingerprints, task file, and workflow bookkeeping paths. Later scope verification compares committed, working-tree, new, deleted, and renamed paths against that baseline. Unchanged pre-claim dirty files are reported as `preExistingFiles` and excluded from violations; edits after claim are attributed to the task. Task/evidence/run/agent/session/review bookkeeping paths, including the transient `.agentic/evidence.append.lock`, are excluded explicitly. A non-Git baseline without explicit candidate paths remains `comparisonKnown=false`; diagnostic checks may run, but their PASS cannot satisfy the gate. Explicit non-Git callers may provide changed paths for fingerprinted comparison.
 
 `verifyTask` exposes machine-readable attribution with `baselineId`, `attributedFiles`, `preExistingFiles`, `bookkeepingFiles`, and diagnostics. No-git or unavailable-HEAD work remains supported but reports limited attribution instead of claiming certainty.
 
@@ -267,7 +267,7 @@ Human output is the default. `apk task provenance <task-id> --json` returns the 
 
 `apk status` retains the repository-level mode, task counts, next task, generated-instruction drift, and latest run, and adds one bounded line for every active task. Each line exposes state, owner, risk, effective policy summary, dependency readiness, required verification progress, scope result, review freshness, evidence current/total counts, gate status and the next action. Gate blockers come directly from `evaluateTaskCompletionGate`, so missing independent review and pending/unavailable live evidence use the same reasons as `apk task gate` and `done`.
 
-`apk status --detail` expands each active task with policy classifications/categories, dependency lists, verification counters, scope counts, review reason, evidence freshness counts, bounded gate blockers, provenance baseline/candidate/worktree/run counts, and diagnostics. It does not include raw command output or full run logs. Todo tasks are evaluated with an empty implementation path set so unrelated worktree changes do not make an unclaimed task appear to have implementation scope violations.
+`apk status --detail` expands each active task with policy classifications/categories, dependency lists, verification counters (including stale/unknown), scope counts, review reason, evidence freshness counts, bounded gate blockers, provenance baseline/candidate/worktree/run counts, and diagnostics. It does not include raw command output or full run logs. Scope is `unavailable` when candidate comparison is unknown; low-risk review is `not-required`; task-level provenance counts task-attributed files, while repository activity remains separate. Todo tasks are evaluated with an empty implementation path set so unrelated worktree changes do not make an unclaimed task appear to have implementation scope violations.
 
 ## CLI work loop
 
@@ -276,16 +276,24 @@ Human output is the default. `apk task provenance <task-id> --json` returns the 
 - validates the owner is registered;
 - claims a todo task or continues a task already doing under the same owner;
 - renders the task prompt;
-- optionally writes `.agentic/sessions/<task-id>/<run-id>/prompt.md` with `--write-session`;
+- persists every issued package and metadata atomically under `.agentic/sessions/work/<task-id>/<run-id>/package.json` and `metadata.json`; `--write-session` additionally writes `prompt.md`;
+- omitting `--role` resolves the next role from canonical evidence; an implementation owner receives an actionable independent-review command instead of a silent fallback;
+- `--json` exposes the exact serialized package, run ID, session paths, next role/action, and same-worktree warnings;
 - prints next commands for `pnpm exec apk task verify`, `pnpm exec apk review`, and `pnpm exec apk done`.
 
 It does not launch external AI agents.
 
 ## Model-agnostic worker handoff
 
-`src/core/work/contract.ts` defines the shared `apk-worker-v1` boundary for any coding harness. `createWorkerPackage` supplies task identity, selected context, constraints, acceptance and verification requirements, output/evidence expectations, role, and run provenance. The allowed roles are `implement`, `review`, `fix`, and `verify`; vendor or harness identity stays outside the role field.
+`src/core/work/contract.ts` defines the shared `apk-worker-v1` boundary for any coding harness. `createWorkerPackage` supplies task identity, selected context, constraints, acceptance and verification requirements, output/evidence expectations, role, and run provenance. The allowed roles are `implement`, `review`, `fix`, and `verify`; vendor or harness identity stays outside the role field. Issued package metadata binds protocol, task, run, owner, target, role, issued time, candidate identity, worktree identity, comparison status, and a package hash. Result submission loads that immutable record and rejects unknown runs, owner/task/role mismatches, and mismatched supplied provenance.
 
 `parseWorkerPackage`/`serializeWorkerPackage` and `parseWorkerResult`/`serializeWorkerResult` provide bounded JSON-compatible round trips. A worker result includes `taskId`, `role`, `runId`, `status`, optional `commitIds`, `diffId`, evidence references, review findings, provenance identities, and a reason. Failed or `changes_requested` results require a reason. The contract is core-only and has no Codex, OpenCode, Claude, or other vendor SDK dependency.
+
+Review worker packages reference the exact prepared review session (`reviewRunId`, reviewer, baseline/HEAD, candidate, worktree, and changed files). Review results map through `recordTaskReview`; APK never appends a worker-created review PASS from the current candidate. A review run is stale when its prepared subject no longer matches the current candidate.
+
+Worker implement/fix/verify records are orchestration/provenance only and are always non-gating. A worker `verify` result does not advance to review until current check-specific canonical verification evidence exists. Only canonical verification and prepared independent-review evidence can satisfy completion policy. Gate trust requires both `gateEligible=true` and a currently registered local agent; the flag alone is not authentication.
+
+`Parallel: true` means tasks are semantically parallelizable. Concurrent mutable tasks in one working tree are unsafe for baseline attribution; use separate Git worktrees/branches. Issued worker metadata records a hashed worktree location and `apk work` warns when it detects another unsettled run in the same location. APK does not silently exclude another task's files or claim certain attribution.
 
 The work loop selects a role independently of the target; the independent-review command keeps reviewer ownership separate:
 

@@ -26,6 +26,7 @@ import {
   buildTaskProvenance,
   buildTaskFileName,
   captureTaskEvidenceSubject,
+  captureTaskCompletionCandidate,
   createTask,
   compareTaskEvidenceFreshness,
   evaluateTaskCompletionGate,
@@ -57,6 +58,7 @@ import {
   TaskFormatError,
   TaskEvidenceFormatError,
   TASK_EVIDENCE_PATH,
+  TASK_EVIDENCE_LOCK_PATH,
   validateTaskDependencies,
   verifyTask,
   verifyTaskFileScope,
@@ -1559,6 +1561,19 @@ test("anonymous verification remains diagnostic and cannot satisfy the completio
     const anonymous = await verifyTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", runCommand: async () => 0 });
     assert.equal(anonymous.passed, true);
     assert.equal((await readTaskEvidence(directory, "0007"))[0].gateEligible, false);
+    const fakeCandidate = await captureTaskCompletionCandidate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    await appendTaskEvidence(directory, {
+      id: "fake-trusted-flag",
+      taskId: "0007",
+      runId: "fake-trusted-flag-run",
+      agent: "fake-agent",
+      gateEligible: true,
+      type: "automated-test",
+      result: "pass",
+      subject: fakeCandidate.subject,
+      checkId: "check-1",
+      profile: "deterministic",
+    });
     const blocked = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
     assert.equal(blocked.passed, false);
     assert.ok(blocked.blockers.some((blocker) => blocker.includes("missing verification evidence")));
@@ -1629,6 +1644,78 @@ test("completion gate reports dependencies, scope, evidence, and review blockers
     assert.ok(gate.blockers.some((blocker) => blocker.includes("missing verification evidence")));
     assert.ok(gate.blockers.some((blocker) => blocker.includes("Missing independent review")));
     assert.match(renderTaskCompletionGate(gate), /Gate: blocked/);
+  });
+});
+
+test("non-Git verification stays unknown without explicit inputs and supports explicit inputs", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeTaskFile(join(directory, ".tasks", "0007-non-git.md"), {
+      ...TASK,
+      state: "todo",
+      owner: "none",
+      risk: "low",
+      dependsOn: [],
+      allowedFiles: ["src/**"],
+      forbiddenFiles: [],
+      verificationCommands: ["pass"],
+    });
+    await registerAgent(directory, { id: "codex-a", developer: "alice", platform: "codex", model: "gpt-5" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a" });
+
+    const ambiguous = await verifyTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a", runCommand: async () => 0 });
+    assert.equal(ambiguous.passed, false);
+    assert.equal((await readTaskEvidence(directory, "0007"))[0].gateEligible, false);
+    const blocked = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(blocked.comparisonKnown, false);
+    assert.equal(blocked.passed, false);
+
+    await mkdir(join(directory, "src"), { recursive: true });
+    await writeFile(join(directory, "src", "explicit.ts"), "export const explicit = true;\n", "utf8");
+    const explicit = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      changedFiles: ["src/explicit.ts"],
+      runCommand: async () => 0,
+    });
+    assert.equal(explicit.passed, true);
+    assert.equal((await readTaskEvidence(directory, "0007"))[1].gateEligible, true);
+    const ready = await evaluateTaskCompletionGate({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      changedFiles: ["src/explicit.ts"],
+    });
+    assert.equal(ready.passed, true);
+  });
+});
+
+test("evidence append lock is bookkeeping during candidate inspection", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeTaskFile(join(directory, ".tasks", "0007-lock-task.md"), {
+      ...TASK,
+      state: "todo",
+      owner: "none",
+      dependsOn: [],
+    });
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await registerAgent(directory, { id: "codex-a", developer: "alice", platform: "codex", model: "gpt-5" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a" });
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, TASK_EVIDENCE_LOCK_PATH), "pid\n", "utf8");
+
+    const candidate = await captureTaskCompletionCandidate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(candidate.changedFiles.includes(TASK_EVIDENCE_LOCK_PATH), false);
+    assert.equal(candidate.scope.attribution?.bookkeepingFiles.includes(TASK_EVIDENCE_LOCK_PATH), true);
   });
 });
 
@@ -1935,6 +2022,12 @@ test("task provenance separates task-attributed files from repository-wide activ
 
 test("task transitions require registered owner and log events", async () => {
   await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
     const tasksDirectory = join(directory, ".tasks");
     const taskPath = join(tasksDirectory, "0007-add-task-system.md");
     const transitionTask = {
@@ -1943,6 +2036,8 @@ test("task transitions require registered owner and log events", async () => {
       dependsOn: [],
     };
     await writeTaskFile(taskPath, transitionTask);
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
 
     await assert.rejects(
       () => claimTask({
