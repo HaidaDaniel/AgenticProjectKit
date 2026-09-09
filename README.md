@@ -538,6 +538,14 @@ pnpm exec apk adopt
 
 `adopt` performs a lightweight repository-shape scan and writes missing kit files such as docs, config, task files, and agent instructions. It skips existing files instead of overwriting them.
 
+For an existing v0.3.1-style repository, preview compatibility and exact proposed changes before writing:
+
+```bash
+pnpm exec apk adopt --preview
+```
+
+Apply the compatibility marker and missing kit files explicitly with `pnpm exec apk adopt --apply`. Legacy task Markdown remains readable and is not rewritten; customized instructions and unknown config keys are preserved. Repeating `--apply` is idempotent. Use `--dry-run` as an alias for `--preview`.
+
 After adoption:
 
 ```bash
@@ -686,4 +694,4 @@ The repository now has a minimal TypeScript CLI scaffold, config schema, `init`,
 
 Default agent style for this repository: `caveman` when the active tool supports it.
 
-The next implementation task is 0072; later workflow, harness, adoption, and release tasks remain planned.
+Tasks 0072 and 0073 provide the model-agnostic worker boundary and corrective lifecycle safeguards. Task 0074 adds the explicit compatibility preview/apply path for adopting the gated workflow; release validation remains planned in 0075.

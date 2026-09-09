@@ -10,6 +10,13 @@ import {
   type OperatingMode,
 } from "./types.js";
 
+export const LEGACY_CONFIG_SCHEMA_VERSION = 1 as const;
+export const CURRENT_CONFIG_SCHEMA_VERSION = 2 as const;
+export const CONFIG_SCHEMA_VERSIONS = [
+  LEGACY_CONFIG_SCHEMA_VERSION,
+  CURRENT_CONFIG_SCHEMA_VERSION,
+] as const;
+
 type PlainRecord = Record<string, unknown>;
 
 function isPlainRecord(value: unknown): value is PlainRecord {
@@ -67,6 +74,23 @@ function readOneOf<T extends string>(
   return text;
 }
 
+function readSchemaVersion(value: unknown, issues: string[]): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (
+    typeof value !== "number"
+    || !Number.isInteger(value)
+    || !(CONFIG_SCHEMA_VERSIONS as readonly number[]).includes(value)
+  ) {
+    issues.push(`schemaVersion must be one of: ${CONFIG_SCHEMA_VERSIONS.join(", ")}.`);
+    return undefined;
+  }
+
+  return value;
+}
+
 export function parseAgenticConfig(raw: unknown): AgenticConfig {
   if (raw === undefined || raw === null) {
     return { ...DEFAULT_CONFIG };
@@ -77,6 +101,7 @@ export function parseAgenticConfig(raw: unknown): AgenticConfig {
   }
 
   const issues: string[] = [];
+  const schemaVersion = readSchemaVersion(raw.schemaVersion, issues);
 
   const projectName = readString(
     raw.projectName,
@@ -128,6 +153,7 @@ export function parseAgenticConfig(raw: unknown): AgenticConfig {
   }
 
   return {
+    ...(schemaVersion === undefined ? {} : { schemaVersion }),
     projectName,
     defaultMode,
     documentationProfile,

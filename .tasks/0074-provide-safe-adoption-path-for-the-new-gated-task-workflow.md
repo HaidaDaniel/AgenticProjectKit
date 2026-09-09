@@ -1,7 +1,7 @@
 # Task 0074 - Provide safe adoption path for the new gated task workflow
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-20260909
 Mode: production
 Lane: release
 Scope: release,cli,tests,docs
@@ -104,13 +104,15 @@ Existing v0.3.1-style projects can adopt gated workflow safely, with readable le
 - Upgrade guidance covers compatibility, optional migration and safe adoption of mandatory gates.
 - Regression fixture covers v0.3.1 tasks, customized instructions, dry-run no-write and repeated apply.
 
-## Verification commands
+## Verification
 
-- pnpm lint
-- pnpm test
-- pnpm build
-- pnpm exec apk task create --help
-- pnpm exec apk doctor
+- `{"id":"lint","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm lint"}`
+- `{"id":"tests","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test"}`
+- `{"id":"build","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}`
+- `{"id":"task-create-help","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk task create --help"}`
+- `{"id":"doctor","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk doctor"}`
+- `{"id":"adoption-report","type":"automated","required":false,"environment":"local","profile":"report","command":"pnpm exec apk adopt --preview"}`
+- `{"id":"adoption-live","type":"automated","required":false,"environment":"live","profile":"trusted","command":"pnpm exec apk adopt --preview"}`
 
 ## Documentation updates
 

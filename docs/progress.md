@@ -94,10 +94,11 @@ The repository now has:
 - immutable issued worker sessions under `.agentic/sessions/work/`, JSON package exposure, exact owner/task/run/role binding, canonical prepared review-worker integration, non-gating orchestration records, and canonical verification-before-review progression.
 - fail-closed worker/gate trust, explicit non-Git candidate semantics, evidence-lock bookkeeping exclusions, stale/unknown status projections, and same-worktree diagnostics.
 - Task 0073 corrective regressions now cover canonical current-state role resolution, transactional review activation with post-transition candidate confirmation, worker-vs-standalone review origin binding, automatic `doing -> review`, executable `changes_requested -> fix`, issued/input versus output candidate provenance, activation-aware `apk task provenance`, safe run IDs, collision-safe atomic session publication, inactive-session warning suppression, incomplete-session rejection, review pending-result rendering, and status `run fixer` projection.
+- Task 0074 adds explicit legacy/gated compatibility detection, read-only adoption preview, idempotent `--apply` migration, preserved custom config/instructions/tasks, and v0.3.1 fixture regressions.
 
 ## Next step
 
-Current task: 0073 - Compose implementation, review, and fixer runs without owning model runtime.
+Current task: 0074 - Provide safe adoption path for the new gated task workflow.
 
 Planning only: tasks 0074-0076 remain todo with Owner: none. Corrective pass fixes worker package/result binding, review-before-gate progression, revision/freshness semantics, non-Git comparison, runtime-state policy, and bookkeeping exclusions. Lock recovery remains contracted in 0076; this pass only makes the evidence lock harmless and included in that future recovery scope.
 

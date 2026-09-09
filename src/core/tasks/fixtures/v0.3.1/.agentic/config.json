@@ -1,0 +1,9 @@
+{
+  "projectName": "Legacy Fixture",
+  "defaultMode": "maintenance",
+  "documentationProfile": "standard",
+  "agentStyle": "normal",
+  "taskDirectory": ".tasks",
+  "docsDirectory": "docs",
+  "customSetting": "preserve-me"
+}

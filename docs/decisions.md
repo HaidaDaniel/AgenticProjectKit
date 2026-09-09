@@ -411,3 +411,21 @@ The prior implementation selected roles from stale worker results, left `changes
 Regression invariant:
 
 `changes_requested -> fix` is executable without a hidden transition; current canonical evidence has priority over worker history; mutable runs preserve input A and output B; review B rejects mutation to C; an existing issued run remains byte-identical after collision; incomplete/unactivated sessions never accept results through either worker or standalone review APIs; provenance exposes each issued subject joined to activation/output status or a bounded orphan diagnostic; only activated unsettled mutable runs trigger same-worktree warnings; review issuance never advertises gate/done before a result.
+
+## ADR-0029 - Explicit compatibility migration for gated workflow adoption
+
+Status:
+
+accepted
+
+Decision:
+
+Treat configs without an explicit schema marker, or with schema version 1, as legacy v0.3.1-style inputs. New `init` and applied adoption write schema version 2. `apk adopt --preview`/`--dry-run` builds a read-only exact change plan; `apk adopt --apply` explicitly applies only the config marker update and missing kit-file creates. Existing instructions, task Markdown, and unknown config keys are preserved. Legacy flat verification remains readable and is normalized in memory rather than mass-rewritten.
+
+Reason:
+
+The gated workflow adds policy, evidence, and structured verification requirements that should not surprise an existing repository or overwrite customized instructions. A visible plan plus explicit apply gives operators a reversible inspection point, while repeated apply must be safe.
+
+Implementation and invariant:
+
+`src/core/config/compatibility.ts` detects config and task-contract compatibility. Adoption reports legacy/gated/mixed counts and proposed changes. Future or invalid schema versions fail closed for migration. Preview performs no writes; apply is idempotent; old tasks remain parseable and existing files are never overwritten.

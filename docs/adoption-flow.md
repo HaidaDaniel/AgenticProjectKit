@@ -21,6 +21,27 @@ Adoption is the process of introducing Agentic Project Kit into an existing repo
 7. Create cleanup or documentation tasks.
 8. Add exporter files where appropriate.
 
+## Compatibility and migration
+
+New `init` and explicit adoption migrations write `schemaVersion: 2` to `.agentic/config.json`. A config without a marker, or with `schemaVersion: 1`, is treated as a legacy v0.3.1-style config. Legacy task Markdown remains readable: flat `## Verification commands` sections are normalized in memory and are not rewritten automatically. Structured `## Verification` tasks are reported as gated; mixed repositories are reported as mixed.
+
+Preview the exact adoption changes without writing anything:
+
+```bash
+pnpm exec apk adopt --preview
+# --dry-run is an alias
+```
+
+Apply the migration explicitly:
+
+```bash
+pnpm exec apk adopt --apply
+```
+
+The apply path preserves recognized and unknown config keys, never overwrites existing instructions or task files, and only creates missing kit files plus the explicit config schema marker. Repeating `--apply` is idempotent. An invalid or newer unsupported config schema fails closed instead of rewriting the repository.
+
+The generated `docs/adoption-report.md` records detected compatibility, task-contract counts, and pre-adoption gaps. `doctor`, `lint`, read-only `audit`, and `status` remain usable on legacy repositories before migration; mandatory gates may still report missing current evidence until the repository opts into them.
+
 ## Guardrails
 
 - Do not rewrite existing application code.

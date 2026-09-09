@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -77,6 +77,53 @@ test("CLI help lists implemented commands", async () => {
   assert.match(result.stdout, /apk work <task-id>/);
   assert.match(result.stdout, /apk task deps <task-id>/);
   assert.match(result.stdout, /apk tasks \[--all\] \[--state <state>\] \[--owner <agent-id>\]/);
+});
+
+test("CLI adopt previews legacy migration without writes and applies it idempotently", async () => {
+  await withTempDirectory(async (directory) => {
+    await cp(
+      join(process.cwd(), "src/core/tasks/fixtures/v0.3.1"),
+      directory,
+      { recursive: true },
+    );
+    const configPath = join(directory, ".agentic/config.json");
+    const agentsPath = join(directory, "AGENTS.md");
+    const taskPath = join(directory, ".tasks/0001-legacy-task.md");
+    const beforeConfig = await readFile(configPath, "utf8");
+    const beforeAgents = await readFile(agentsPath, "utf8");
+    const beforeTask = await readFile(taskPath, "utf8");
+
+    for (const command of [["doctor"], ["lint", "--json"], ["status"]] as const) {
+      const result = await runCli(command, directory);
+      assert.ok(
+        command[0] === "lint" ? [0, 1].includes(result.exitCode) : result.exitCode === 0,
+        `${command.join(" ")}: ${result.stdout}${result.stderr}`,
+      );
+      if (command[0] === "lint") {
+        assert.match(result.stdout, /generated-file-missing/);
+      }
+    }
+
+    const preview = await runCli(["adopt", "--preview"], directory);
+    assert.equal(preview.exitCode, 0, `${preview.stdout}${preview.stderr}`);
+    assert.match(preview.stdout, /Compatibility: legacy/);
+    assert.match(preview.stdout, /update \.agentic\/config\.json/);
+    assert.match(preview.stdout, /No files were written/);
+    assert.equal(await readFile(configPath, "utf8"), beforeConfig);
+    assert.equal(await readFile(agentsPath, "utf8"), beforeAgents);
+    assert.equal(await readFile(taskPath, "utf8"), beforeTask);
+
+    const applied = await runCli(["adopt", "--apply"], directory);
+    assert.equal(applied.exitCode, 0, `${applied.stdout}${applied.stderr}`);
+    assert.match(applied.stdout, /Updated 1 file/);
+    assert.equal((JSON.parse(await readFile(configPath, "utf8")) as { schemaVersion: number }).schemaVersion, 2);
+    assert.equal(await readFile(agentsPath, "utf8"), beforeAgents);
+    assert.equal(await readFile(taskPath, "utf8"), beforeTask);
+
+    const repeated = await runCli(["adopt", "--apply"], directory);
+    assert.equal(repeated.exitCode, 0, `${repeated.stdout}${repeated.stderr}`);
+    assert.match(repeated.stdout, /Updated 0 file/);
+  });
 });
 
 function buildTaskMarkdown(id: string, title: string, state: string, owner = "none"): string {

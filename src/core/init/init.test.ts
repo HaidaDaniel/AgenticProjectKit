@@ -36,6 +36,7 @@ test("initProject creates starter kit files", async () => {
     );
 
     assert.equal(parseAgenticConfigJson(configText).agentStyle, "caveman");
+    assert.equal(parseAgenticConfigJson(configText).schemaVersion, 2);
     assert.equal(
       await readFile(join(directory, "docs/project.md"), "utf8"),
       "# Project\n\nDescribe the project, users, goals, and durable context here.\n",

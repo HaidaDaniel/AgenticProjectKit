@@ -1,7 +1,11 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import { DEFAULT_CONFIG, serializeAgenticConfig } from "../config/index.js";
+import {
+  CURRENT_CONFIG_SCHEMA_VERSION,
+  DEFAULT_CONFIG,
+  serializeAgenticConfig,
+} from "../config/index.js";
 
 export interface InitResult {
   created: string[];
@@ -16,7 +20,10 @@ interface StarterFile {
 const STARTER_FILES: StarterFile[] = [
   {
     path: ".agentic/config.json",
-    content: serializeAgenticConfig(DEFAULT_CONFIG),
+    content: serializeAgenticConfig({
+      ...DEFAULT_CONFIG,
+      schemaVersion: CURRENT_CONFIG_SCHEMA_VERSION,
+    }),
   },
   {
     path: ".agentic/agents/.gitkeep",

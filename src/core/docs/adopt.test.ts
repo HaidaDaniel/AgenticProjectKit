@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -9,7 +9,7 @@ import {
   renderContextSuggestion,
   suggestContext,
 } from "../context-suggestions/index.js";
-import { adoptRepository } from "./adopt.js";
+import { adoptRepository, planAdoption } from "./adopt.js";
 import type { ProjectTask } from "../tasks/index.js";
 
 async function withTempRepository(
@@ -105,6 +105,66 @@ test("adoptRepository skips existing files instead of overwriting them", async (
       "custom instructions\n",
     );
     assert.ok(result.created.includes("docs/adoption-report.md"));
+  });
+});
+
+test("adoption preview and explicit migration preserve legacy projects and are idempotent", async () => {
+  await withTempRepository(async (directory) => {
+    await cp(
+      join(process.cwd(), "src/core/tasks/fixtures/v0.3.1"),
+      directory,
+      { recursive: true },
+    );
+    const configPath = join(directory, ".agentic/config.json");
+    const taskPath = join(directory, ".tasks/0001-legacy-task.md");
+    const agentsPath = join(directory, "AGENTS.md");
+    const beforeConfig = await readFile(configPath, "utf8");
+    const beforeTask = await readFile(taskPath, "utf8");
+    const beforeAgents = await readFile(agentsPath, "utf8");
+
+    const preview = await planAdoption(directory, { includeMigration: true });
+    assert.equal(preview.compatibility.overall, "legacy");
+    assert.equal(preview.compatibility.config.state, "legacy");
+    assert.equal(preview.compatibility.tasks.contract, "legacy");
+    assert.ok(preview.changes.some((change) => (
+      change.action === "update" && change.path === ".agentic/config.json"
+    )));
+    assert.equal(await readFile(configPath, "utf8"), beforeConfig);
+    assert.equal(await readFile(taskPath, "utf8"), beforeTask);
+    assert.equal(await readFile(agentsPath, "utf8"), beforeAgents);
+
+    const applied = await adoptRepository(directory, { applyMigration: true });
+    assert.deepEqual(applied.updated, [".agentic/config.json"]);
+    const migratedConfig = JSON.parse(await readFile(configPath, "utf8")) as Record<string, unknown>;
+    assert.equal(migratedConfig.schemaVersion, 2);
+    assert.equal(migratedConfig.customSetting, "preserve-me");
+    assert.equal(await readFile(taskPath, "utf8"), beforeTask);
+    assert.equal(await readFile(agentsPath, "utf8"), beforeAgents);
+
+    const repeated = await adoptRepository(directory, { applyMigration: true });
+    assert.deepEqual(repeated.updated, []);
+    assert.deepEqual(repeated.created, []);
+    assert.equal((await planAdoption(directory, { includeMigration: true })).changes.length, 0);
+  });
+});
+
+test("adoption refuses to migrate an unsupported future config schema", async () => {
+  await withTempRepository(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(
+      join(directory, ".agentic/config.json"),
+      JSON.stringify({ schemaVersion: 99, projectName: "Future" }, null, 2),
+      "utf8",
+    );
+
+    await assert.rejects(
+      () => planAdoption(directory, { includeMigration: true }),
+      /Unsupported .*schemaVersion: 99/,
+    );
+    assert.equal(
+      await readFile(join(directory, ".agentic/config.json"), "utf8"),
+      JSON.stringify({ schemaVersion: 99, projectName: "Future" }, null, 2),
+    );
   });
 });
 

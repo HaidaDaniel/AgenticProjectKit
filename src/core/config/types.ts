@@ -23,6 +23,8 @@ export const AGENT_STYLES = ["caveman", "normal"] as const;
 export type AgentStyle = (typeof AGENT_STYLES)[number];
 
 export interface AgenticConfig {
+  /** Explicitly present in newly generated configs; absent means legacy config. */
+  schemaVersion?: number;
   projectName: string;
   defaultMode: OperatingMode;
   documentationProfile: DocumentationProfile;
@@ -30,4 +32,3 @@ export interface AgenticConfig {
   taskDirectory: string;
   docsDirectory: string;
 }
-

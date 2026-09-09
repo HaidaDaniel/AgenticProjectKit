@@ -1,7 +1,15 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import { DEFAULT_CONFIG, serializeAgenticConfig } from "../config/index.js";
+import {
+  CURRENT_CONFIG_SCHEMA_VERSION,
+  DEFAULT_CONFIG,
+  detectCompatibility,
+  parseAgenticConfigJson,
+  serializeAgenticConfig,
+  type CompatibilityReport,
+} from "../config/index.js";
+import { CONFIG_PATH } from "../config/file.js";
 import {
   DEFAULT_AGENT_POLICY,
   renderAgentExportFiles,
@@ -13,10 +21,29 @@ export interface AdoptResult {
   scan: RepositoryScan;
   created: string[];
   skipped: string[];
+  updated: string[];
+  compatibility: CompatibilityReport;
+}
+
+export interface AdoptionChange {
+  action: "create" | "update";
+  path: string;
+  reason: string;
+}
+
+export interface AdoptionPlan {
+  scan: RepositoryScan;
+  compatibility: CompatibilityReport;
+  changes: AdoptionChange[];
+  skipped: string[];
 }
 
 interface AdoptFile {
   path: string;
+  content: string;
+}
+
+interface AdoptionOperation extends AdoptionChange {
   content: string;
 }
 
@@ -65,7 +92,7 @@ function renderProjectMap(scan: RepositoryScan): string {
   ].join("\n");
 }
 
-function renderAdoptionReport(scan: RepositoryScan): string {
+function renderAdoptionReport(scan: RepositoryScan, compatibility: CompatibilityReport): string {
   return [
     "# Adoption Report",
     "",
@@ -88,6 +115,13 @@ function renderAdoptionReport(scan: RepositoryScan): string {
     `- Missing agent exports: ${scan.agentExports.missing.length}`,
     `- Agentic config present: ${scan.hasAgenticConfig ? "yes" : "no"}`,
     `- Existing task files: ${scan.taskFiles.length}`,
+    "",
+    "## Compatibility",
+    "",
+    `- Contract: ${compatibility.overall}`,
+    `- Config schema: ${compatibility.config.state}${compatibility.config.schemaVersion ? ` v${compatibility.config.schemaVersion}` : ""}`,
+    `- Task contract: ${compatibility.tasks.contract} (legacy=${compatibility.tasks.legacy}, gated=${compatibility.tasks.gated}, unknown=${compatibility.tasks.unknown})`,
+    `- Migration required: ${compatibility.migrationRequired ? "yes" : "no"}`,
     "",
     "## Missing Kit Docs",
     "",
@@ -149,28 +183,39 @@ function createDocumentationCleanupTask(): ProjectTask {
   };
 }
 
-async function writeAdoptFile(
-  rootDirectory: string,
-  file: AdoptFile,
-  created: string[],
-  skipped: string[],
-): Promise<void> {
-  const path = join(rootDirectory, file.path);
-
-  if (await fileExists(path)) {
-    skipped.push(file.path);
-    return;
+async function migrateConfigContent(rootDirectory: string): Promise<string> {
+  const path = join(rootDirectory, CONFIG_PATH);
+  const text = await readFile(path, "utf8");
+  const parsed = JSON.parse(text) as unknown;
+  parseAgenticConfigJson(text);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`${CONFIG_PATH} must contain a JSON object.`);
   }
 
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, file.content, "utf8");
-  created.push(file.path);
+  return `${JSON.stringify({
+    ...(parsed as Record<string, unknown>),
+    schemaVersion: CURRENT_CONFIG_SCHEMA_VERSION,
+  }, null, 2)}\n`;
 }
 
-export async function adoptRepository(rootDirectory: string): Promise<AdoptResult> {
+async function buildAdoptionPlan(
+  rootDirectory: string,
+  includeMigration: boolean,
+): Promise<{ plan: AdoptionPlan; operations: AdoptionOperation[] }> {
   const scan = await scanRepository(rootDirectory);
-  const created: string[] = [];
+  const compatibility = await detectCompatibility(rootDirectory);
   const skipped: string[] = [];
+  const operations: AdoptionOperation[] = [];
+
+  if (
+    includeMigration
+    && (compatibility.config.state === "invalid" || compatibility.config.state === "unsupported")
+  ) {
+    throw new Error(
+      compatibility.diagnostics[0] ?? `Cannot migrate ${CONFIG_PATH}: unsupported compatibility state.`,
+    );
+  }
+
   const exportFiles = await renderAgentExportFiles({
     ...DEFAULT_AGENT_POLICY,
     summary: "Repository docs and task files are the source of truth for this adopted project.",
@@ -180,6 +225,7 @@ export async function adoptRepository(rootDirectory: string): Promise<AdoptResul
       path: ".agentic/config.json",
       content: serializeAgenticConfig({
         ...DEFAULT_CONFIG,
+        schemaVersion: CURRENT_CONFIG_SCHEMA_VERSION,
         projectName: scan.rootName,
         defaultMode: "adopt",
       }),
@@ -198,7 +244,7 @@ export async function adoptRepository(rootDirectory: string): Promise<AdoptResul
     },
     {
       path: "docs/adoption-report.md",
-      content: renderAdoptionReport(scan),
+      content: renderAdoptionReport(scan, compatibility),
     },
     {
       path: "docs/project.md",
@@ -401,13 +447,75 @@ export async function adoptRepository(rootDirectory: string): Promise<AdoptResul
     })),
   ];
 
+  let migrationOperation: AdoptionOperation | undefined;
+  if (includeMigration && compatibility.config.state === "legacy") {
+    migrationOperation = {
+      action: "update",
+      path: CONFIG_PATH,
+      reason: `mark legacy config as gated schema v${CURRENT_CONFIG_SCHEMA_VERSION}; preserve all existing keys`,
+      content: await migrateConfigContent(rootDirectory),
+    };
+  }
+
   for (const file of files) {
-    await writeAdoptFile(rootDirectory, file, created, skipped);
+    if (await fileExists(join(rootDirectory, file.path))) {
+      skipped.push(file.path);
+    } else {
+      operations.push({
+        action: "create",
+        path: file.path,
+        reason: "missing adoption file",
+        content: file.content,
+      });
+    }
+  }
+
+  if (migrationOperation) operations.push(migrationOperation);
+
+  return {
+    plan: {
+      scan,
+      compatibility,
+      changes: operations.map(({ action, path, reason }) => ({ action, path, reason })),
+      skipped,
+    },
+    operations,
+  };
+}
+
+export async function planAdoption(
+  rootDirectory: string,
+  options: { includeMigration?: boolean } = {},
+): Promise<AdoptionPlan> {
+  return (await buildAdoptionPlan(rootDirectory, options.includeMigration ?? true)).plan;
+}
+
+export async function adoptRepository(
+  rootDirectory: string,
+  options: { applyMigration?: boolean } = {},
+): Promise<AdoptResult> {
+  const built = await buildAdoptionPlan(rootDirectory, options.applyMigration ?? false);
+  const created: string[] = [];
+  const updated: string[] = [];
+  const skipped = [...built.plan.skipped];
+
+  for (const operation of built.operations) {
+    const path = join(rootDirectory, operation.path);
+    await mkdir(dirname(path), { recursive: true });
+    if (operation.action === "create" && await fileExists(path)) {
+      skipped.push(operation.path);
+      continue;
+    }
+    await writeFile(path, operation.content, "utf8");
+    if (operation.action === "create") created.push(operation.path);
+    else updated.push(operation.path);
   }
 
   return {
-    scan,
+    scan: built.plan.scan,
     created,
     skipped,
+    updated,
+    compatibility: built.plan.compatibility,
   };
 }

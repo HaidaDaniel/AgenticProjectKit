@@ -91,3 +91,12 @@ test("parseAgenticConfigJson parses and serializeAgenticConfig emits stable JSON
     ].join("\n"),
   );
 });
+
+test("config schema markers distinguish legacy and gated formats without rewriting legacy input", () => {
+  assert.equal(parseAgenticConfig({ schemaVersion: 1 }).schemaVersion, 1);
+  assert.equal(parseAgenticConfig({ schemaVersion: 2 }).schemaVersion, 2);
+  assert.throws(
+    () => parseAgenticConfig({ schemaVersion: 99 }),
+    /schemaVersion must be one of: 1, 2/,
+  );
+});

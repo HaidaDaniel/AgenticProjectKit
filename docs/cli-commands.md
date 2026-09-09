@@ -7,7 +7,7 @@ When Agentic Project Kit is installed as a repository dev dependency, run comman
 ## Implemented commands
 
 - `apk init` - create the kit structure in a new repository.
-- `apk adopt` - add the kit to an existing repository after a lightweight scan.
+- `apk adopt [directory] [--preview|--dry-run|--apply]` - add the kit to an existing repository and optionally preview/apply legacy compatibility migration.
 - `apk audit [directory]` - write lightweight kit/workflow and repository-readiness audit reports.
 - `apk lint [--json]` - read-only validation of task graph, paths, policy, ownership, and generated instruction drift.
 - `apk context <task-id> [--level 1|2|3] [--budget <units>]` - print legacy or budgeted task context.
@@ -83,6 +83,7 @@ pnpm exec apk task create --template bugfix --title "Fix Parser" --scope cli --a
 
 `apk export` skips existing files by default. Use `--force` to overwrite generated instruction files.
 `apk sync` is check-only by default. Use `--write` to update missing or stale generated files.
+`apk adopt --preview`/`--dry-run` reports compatibility, legacy versus gated task contracts, and every proposed create/update without writing. `apk adopt --apply` explicitly adds the current config schema marker to a legacy config while preserving all keys, creates only missing kit files, and is idempotent. Existing customized instructions and task Markdown are never overwritten; unsupported future config schemas fail closed.
 `apk lint` composes task/parser, dependency, path/policy, state/owner, and check-only sync findings without writing reports or generated files. Use `--json` for stable CI output; structural or generated-file errors return exit code 1.
 `apk context` and `apk prompt` retain existing `--level` behavior when no budget is supplied. With `--budget`, units approximate tokens as `ceil(UTF-8 bytes / 4)`, required files are never dropped, and an oversized required tier returns a diagnostic and exit code 1. Relevant files use task paths plus explicit changed/dependency/recent signals; no network or model is used.
 `apk work` accepts `--role implement|review|fix|verify` and returns an `apk-worker-v1` package with task context, constraints, output/evidence expectations, and run identity. Every issued package is written in a private temporary directory and atomically renamed under `.agentic/sessions/work/<task-id>/<run-id>/`; an existing run ID is immutable and causes a collision diagnostic. `metadata.json` preserves the issued/input subject and package hash; `activation.json` is written last, after issuance completes, and is required for result submission. `--json` exposes the same serialized package and paths to external harnesses. Worker results are accepted only for that exact issued task/run/owner/role/protocol. Worker results use the same role-independent contract across exporters; APK does not launch or depend on a vendor runtime.

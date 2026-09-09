@@ -175,6 +175,8 @@ Checks declare `type` (`automated` or `manual`), `required`, `environment` (`sta
 
 The legacy `## Verification commands` section remains valid and is normalized in memory to required automated checks with `environment: local` and `profile: deterministic`. Legacy task files are not migrated automatically. The compatible `verificationCommands` projection remains available to existing command execution until profile-aware verification is enabled.
 
+Adoption compatibility is explicit: newly generated config writes `schemaVersion: 2`; a missing marker or version `1` is a legacy v0.3.1-style config. `apk adopt --preview`/`--dry-run` reports the exact missing files and optional config-marker update without writing. `apk adopt --apply` applies that marker update only when explicitly requested, preserves unknown config keys and customized files, and is idempotent. Invalid or newer config schemas fail closed for migration.
+
 Use structured verification directly from the API or through the CLI:
 
 ```bash

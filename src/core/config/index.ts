@@ -15,6 +15,18 @@ export {
   serializeAgenticConfig,
 } from "./schema.js";
 export {
+  CONFIG_SCHEMA_VERSIONS,
+  CURRENT_CONFIG_SCHEMA_VERSION,
+  LEGACY_CONFIG_SCHEMA_VERSION,
+} from "./schema.js";
+export {
+  detectCompatibility,
+  type CompatibilityConfigState,
+  type CompatibilityOverallState,
+  type CompatibilityReport,
+  type CompatibilityTaskContract,
+} from "./compatibility.js";
+export {
   AGENT_STYLES,
   DOCUMENTATION_PROFILES,
   OPERATING_MODES,

@@ -8,4 +8,3 @@ export const DEFAULT_CONFIG: AgenticConfig = {
   taskDirectory: ".tasks",
   docsDirectory: "docs",
 };
-
