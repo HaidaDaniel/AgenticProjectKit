@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 
-import { appendRunLog, readRunLog, requireAgent } from "../agents/index.js";
+import { appendRunLog, requireAgent } from "../agents/index.js";
 import { readAgenticConfigFile } from "../config/index.js";
 import { buildTaskPromptInput, renderTaskPrompt } from "../docs/prompt.js";
 import type { ContextLevel } from "../docs/context.js";
@@ -10,8 +10,9 @@ import { appendTaskEvidence, readTaskEvidence, type TaskEvidenceRecord } from ".
 import { captureTaskCompletionCandidate, evaluateTaskCompletionGate } from "../tasks/gate.js";
 import { resolveTaskPolicy } from "../tasks/policy.js";
 import { prepareTaskReview, recordTaskReview, type TaskReviewOutcome } from "../tasks/review.js";
-import { claimTask } from "../tasks/workflow.js";
+import { claimTask, reviewTask } from "../tasks/workflow.js";
 import { findTaskFile, loadTaskFile, type ProjectTask } from "../tasks/index.js";
+import type { TaskEvidenceCandidateSubject } from "../tasks/evidence.js";
 import {
   createWorkerPackage,
   parseWorkerPackage,
@@ -19,6 +20,7 @@ import {
   serializeWorkerPackage,
   WORKER_PROTOCOL,
   type WorkerPackage,
+  type WorkerProvenance,
   type WorkerResult,
   type WorkerRole,
   type WorkerStatus,
@@ -76,6 +78,7 @@ export interface IssuedWorkerRunMetadata {
   comparisonKnown: boolean;
   worktreeLocationId: string;
   packageHash: string;
+  issuedSubject: WorkerProvenance;
 }
 
 const WORK_SESSION_DIRECTORY = ".agentic/sessions/work";
@@ -109,6 +112,34 @@ function packageHash(workerPackage: WorkerPackage): string {
   return hashText(serializeWorkerPackage(workerPackage));
 }
 
+function provenanceForSubject(subject: TaskEvidenceCandidateSubject): WorkerProvenance {
+  return {
+    repository: subject.repository,
+    ...(subject.headSha ? { headSha: subject.headSha } : {}),
+    baselineId: subject.baselineId,
+    candidateId: subject.candidateId,
+    worktreeId: subject.worktreeId,
+  };
+}
+
+function suppliedProvenanceMatches(
+  supplied: WorkerProvenance | undefined,
+  expected: WorkerProvenance,
+): boolean {
+  if (!supplied) return true;
+  return (["repository", "headSha", "baselineId", "candidateId", "worktreeId"] as const)
+    .every((field) => supplied[field] === undefined || supplied[field] === expected[field]);
+}
+
+function pathExists(path: string): Promise<boolean> {
+  return stat(path).then(() => true).catch((error: unknown) => {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  });
+}
+
 async function persistIssuedWorkerRun(options: {
   rootDirectory: string;
   taskId: string;
@@ -122,11 +153,18 @@ async function persistIssuedWorkerRun(options: {
   writePrompt?: string;
 }): Promise<{ packagePath: string; metadataPath: string; promptPath?: string }> {
   const directory = issuedSessionDirectory(options.rootDirectory, options.taskId, options.runId);
-  await mkdir(join(options.rootDirectory, WORK_SESSION_DIRECTORY, options.taskId), { recursive: true });
+  const parent = join(options.rootDirectory, WORK_SESSION_DIRECTORY, options.taskId);
+  await mkdir(parent, { recursive: true });
+  if (await pathExists(directory)) {
+    throw new Error(`Worker run collision: issued run ${options.runId} already exists; existing session is immutable.`);
+  }
+  const temporaryDirectory = join(parent, `.${options.runId}.tmp-${Math.random().toString(36).slice(2, 8)}`);
+  let temporaryCreated = false;
   try {
-    await mkdir(directory);
-    const packagePath = join(directory, "package.json");
-    const metadataPath = join(directory, "metadata.json");
+    await mkdir(temporaryDirectory);
+    temporaryCreated = true;
+    const packagePath = join(temporaryDirectory, "package.json");
+    const metadataPath = join(temporaryDirectory, "metadata.json");
     const packageContent = `${serializeWorkerPackage(options.workerPackage)}\n`;
     const metadata: IssuedWorkerRunMetadata = {
       protocol: WORKER_PROTOCOL,
@@ -142,21 +180,43 @@ async function persistIssuedWorkerRun(options: {
       comparisonKnown: options.comparisonKnown,
       worktreeLocationId: options.worktreeLocationId,
       packageHash: packageHash(options.workerPackage),
+      issuedSubject: provenanceForSubject({
+        taskId: options.taskId,
+        repository: options.workerPackage.provenance.repository ?? "none",
+        ...(options.workerPackage.provenance.headSha ? { headSha: options.workerPackage.provenance.headSha } : {}),
+        baselineId: options.workerPackage.provenance.baselineId ?? "unknown",
+        candidateId: options.workerPackage.provenance.candidateId ?? "unknown",
+        worktreeId: options.workerPackage.provenance.worktreeId ?? "unknown",
+      }),
     };
     await writeFile(packagePath, packageContent, { encoding: "utf8", flag: "wx" });
     await writeFile(metadataPath, `${JSON.stringify(metadata)}\n`, { encoding: "utf8", flag: "wx" });
     let promptPath: string | undefined;
     if (options.writePrompt !== undefined) {
-      promptPath = join(directory, "prompt.md");
+      promptPath = join(temporaryDirectory, "prompt.md");
       await writeFile(promptPath, options.writePrompt, { encoding: "utf8", flag: "wx" });
     }
+    try {
+      await rename(temporaryDirectory, directory);
+      temporaryCreated = false;
+    } catch (error: unknown) {
+      if (await pathExists(directory)) {
+        throw new Error(`Worker run collision: issued run ${options.runId} already exists; existing session is immutable.`);
+      }
+      throw error;
+    }
+    const finalPackagePath = join(directory, "package.json");
+    const finalMetadataPath = join(directory, "metadata.json");
+    const finalPromptPath = options.writePrompt === undefined ? undefined : join(directory, "prompt.md");
     return {
-      packagePath: relative(options.rootDirectory, packagePath).replace(/\\/g, "/"),
-      metadataPath: relative(options.rootDirectory, metadataPath).replace(/\\/g, "/"),
-      ...(promptPath ? { promptPath: relative(options.rootDirectory, promptPath).replace(/\\/g, "/") } : {}),
+      packagePath: relative(options.rootDirectory, finalPackagePath).replace(/\\/g, "/"),
+      metadataPath: relative(options.rootDirectory, finalMetadataPath).replace(/\\/g, "/"),
+      ...(finalPromptPath ? { promptPath: relative(options.rootDirectory, finalPromptPath).replace(/\\/g, "/") } : {}),
     };
   } catch (error: unknown) {
-    await rm(directory, { recursive: true, force: true });
+    if (temporaryCreated) {
+      await rm(temporaryDirectory, { recursive: true, force: true });
+    }
     throw error;
   }
 }
@@ -182,6 +242,7 @@ async function readIssuedWorkerRun(
   }
   const workerPackage = parseWorkerPackage(packageValue);
   const raw = JSON.parse(metadataValue) as Partial<IssuedWorkerRunMetadata>;
+  const issuedSubject = raw.issuedSubject;
   if (
     raw.protocol !== WORKER_PROTOCOL ||
     raw.taskId !== taskId ||
@@ -192,9 +253,24 @@ async function readIssuedWorkerRun(
     typeof raw.issuedAt !== "string" ||
     typeof raw.packageHash !== "string" ||
     typeof raw.comparisonKnown !== "boolean" ||
-    typeof raw.worktreeLocationId !== "string"
+    typeof raw.worktreeLocationId !== "string" ||
+    !issuedSubject ||
+    typeof issuedSubject !== "object" ||
+    typeof issuedSubject.repository !== "string" ||
+    typeof issuedSubject.baselineId !== "string" ||
+    typeof issuedSubject.candidateId !== "string" ||
+    typeof issuedSubject.worktreeId !== "string"
   ) {
     throw new Error(`Issued worker run metadata is malformed: ${runId}.`);
+  }
+  if (
+    issuedSubject.repository !== (workerPackage.provenance.repository ?? "none") ||
+    issuedSubject.headSha !== workerPackage.provenance.headSha ||
+    issuedSubject.baselineId !== (workerPackage.provenance.baselineId ?? "unknown") ||
+    issuedSubject.candidateId !== (workerPackage.provenance.candidateId ?? "unknown") ||
+    issuedSubject.worktreeId !== (workerPackage.provenance.worktreeId ?? "unknown")
+  ) {
+    throw new Error(`Issued worker run metadata subject mismatch: ${runId}.`);
   }
   if (raw.packageHash !== packageHash(workerPackage)) {
     throw new Error(`Issued worker package hash mismatch: ${runId}.`);
@@ -208,16 +284,30 @@ function evidenceResult(status: WorkerStatus): TaskEvidenceRecord["result"] {
   return "changes_requested";
 }
 
-function nextWorkerRole(task: ProjectTask, result: WorkerResult): WorkerRole | undefined {
-  if (result.status !== "completed") {
-    return result.role === "review" ? "fix" : result.role;
-  }
+async function resolveCanonicalWorkerRole(
+  rootDirectory: string,
+  taskDirectory: string,
+  task: ProjectTask,
+): Promise<WorkerRole | undefined> {
+  if (task.state === "todo") return "implement";
+  if (task.state !== "doing" && task.state !== "review") return undefined;
 
-  if (result.role === "implement" || result.role === "fix") {
+  const gate = await evaluateTaskCompletionGate({
+    rootDirectory,
+    taskDirectory,
+    taskId: task.id,
+  });
+  if (gate.review.freshness === "current" && gate.review.outcome !== undefined && gate.review.outcome !== "pass") {
+    return "fix";
+  }
+  if (gate.verification.some((check) => check.result !== "pass" || check.freshness !== "current")) {
     return "verify";
   }
-  if (result.role === "verify") {
-    return resolveTaskPolicy(task).requirements.independentReview ? "review" : undefined;
+  if (gate.policy.requirements.independentReview) {
+    const currentIndependentPass = gate.review.freshness === "current"
+      && gate.review.outcome === "pass"
+      && gate.review.reviewer !== task.owner;
+    if (!currentIndependentPass) return "review";
   }
   return undefined;
 }
@@ -228,57 +318,18 @@ async function nextWorkerRoleAfterResult(
   task: ProjectTask,
   result: WorkerResult,
 ): Promise<WorkerRole | undefined> {
-  const role = nextWorkerRole(task, result);
-  if (role !== "review") {
-    return role;
+  if (result.status !== "completed") {
+    return result.role === "review" ? "fix" : result.role;
   }
-  const gate = await evaluateTaskCompletionGate({
-    rootDirectory,
-    taskDirectory,
-    taskId: task.id,
-  });
-  const verificationCurrent = gate.verification.every((check) => (
-    check.result === "pass" && check.freshness === "current"
-  ));
-  return verificationCurrent
-    ? "review"
-    : result.role === "verify"
-      ? "verify"
-      : undefined;
-}
-
-function latestWorkerRecord(records: readonly TaskEvidenceRecord[]): TaskEvidenceRecord | undefined {
-  return [...records]
-    .filter((record) => record.workerProtocol === WORKER_PROTOCOL && record.workerRole && record.workerStatus)
-    .sort((left, right) => left.time.localeCompare(right.time))
-    .at(-1);
+  return resolveCanonicalWorkerRole(rootDirectory, taskDirectory, task);
 }
 
 async function resolveWorkRole(
   rootDirectory: string,
   task: ProjectTask,
 ): Promise<WorkerRole | undefined> {
-  const latest = latestWorkerRecord(await readTaskEvidence(rootDirectory, task.id));
-  if (latest?.workerRole && latest.workerStatus) {
-    return nextWorkerRoleAfterResult(rootDirectory, (await readAgenticConfigFile(rootDirectory)).taskDirectory, task, {
-      protocol: WORKER_PROTOCOL,
-      taskId: task.id,
-      role: latest.workerRole as WorkerRole,
-      runId: latest.runId,
-      status: latest.workerStatus as WorkerStatus,
-    });
-  }
-
-  if (task.state === "review") {
-    const reviews = (await readTaskEvidence(rootDirectory, task.id))
-      .filter((record) => record.type === "review")
-      .sort((left, right) => left.time.localeCompare(right.time));
-    const latestReview = reviews.at(-1);
-    if (latestReview && latestReview.result !== "pass") {
-      return "fix";
-    }
-  }
-  return task.state === "todo" || task.state === "doing" ? "implement" : undefined;
+  const config = await readAgenticConfigFile(rootDirectory);
+  return resolveCanonicalWorkerRole(rootDirectory, config.taskDirectory, task);
 }
 
 function workerFindings(result: WorkerResult): string[] {
@@ -401,7 +452,13 @@ function workerNextAction(
     return `Resolve the ${result.role} result and issue a fresh ${result.role} package for task ${task.id}.`;
   }
   if (result.role === "implement" || result.role === "fix") {
-    return `Run canonical verification: pnpm exec apk task verify ${task.id} --owner ${task.owner}`;
+    if (nextRole === "review") {
+      return `Request an independent reviewer: pnpm exec apk work ${task.id} --owner <reviewer> --target ${target} --role review`;
+    }
+    if (nextRole === "verify") {
+      return `Run canonical verification: pnpm exec apk task verify ${task.id} --owner ${task.owner}`;
+    }
+    return `Run pnpm exec apk task gate ${task.id}, then inspect the remaining blocker.`;
   }
   if (result.role === "verify") {
     return nextRole === "review"
@@ -556,6 +613,14 @@ export async function startWork(options: WorkOptions): Promise<WorkResult> {
     worktreeLocationId: worktreeId,
     ...(options.writeSession ? { writePrompt: prompt } : {}),
   });
+  if (role === "review" && task.state === "doing") {
+    task = await reviewTask({
+      rootDirectory: options.rootDirectory,
+      taskDirectory: config.taskDirectory,
+      taskId: task.id,
+      owner: task.owner,
+    });
+  }
   const warnings = await sameWorktreeWarnings(options.rootDirectory, task.id, worktreeId);
 
   await appendRunLog(options.rootDirectory, {
@@ -577,12 +642,14 @@ export async function startWork(options: WorkOptions): Promise<WorkResult> {
     ...(persisted.promptPath ? { sessionPath: persisted.promptPath } : {}),
     packagePath: persisted.packagePath,
     metadataPath: persisted.metadataPath,
-    nextRole: await nextWorkerRoleAfterResult(options.rootDirectory, config.taskDirectory, task, {
-      protocol: WORKER_PROTOCOL,
-      taskId: task.id,
-      role,
-      runId,
-      status: "completed",
+    ...(role === "review" ? {} : {
+      nextRole: await nextWorkerRoleAfterResult(options.rootDirectory, config.taskDirectory, task, {
+        protocol: WORKER_PROTOCOL,
+        taskId: task.id,
+        role,
+        runId,
+        status: "completed",
+      }),
     }),
     next: workNextCommands(task, options.target, options.owner, runId, role),
     warnings,
@@ -615,14 +682,6 @@ export async function recordWorkerResult(options: {
   if (issued.workerPackage.role !== result.role || issued.metadata.role !== result.role) {
     throw new Error(`Worker result role ${result.role} does not match issued role ${issued.workerPackage.role}.`);
   }
-  for (const field of ["repository", "headSha", "baselineId", "candidateId", "worktreeId"] as const) {
-    const supplied = result.provenance?.[field];
-    const issuedValue = issued.workerPackage.provenance[field];
-    if (supplied !== undefined && supplied !== issuedValue) {
-      throw new Error(`Worker result provenance ${field} does not match the issued package.`);
-    }
-  }
-
   const existing = await readTaskEvidence(options.rootDirectory, task.id);
   if (existing.some((record) => record.runId === result.runId && (
     record.workerProtocol === WORKER_PROTOCOL || record.type === "review"
@@ -631,6 +690,13 @@ export async function recordWorkerResult(options: {
   }
 
   const findings = workerFindings(result);
+  const resultCandidate = result.role === "review"
+    ? undefined
+    : await captureTaskCompletionCandidate({
+      rootDirectory: options.rootDirectory,
+      taskDirectory: options.taskDirectory,
+      taskId: task.id,
+    });
   let evidence: TaskEvidenceRecord;
   if (result.role === "review") {
     const binding = issued.workerPackage.review;
@@ -639,6 +705,15 @@ export async function recordWorkerResult(options: {
     }
     if (binding.reviewRunId !== result.runId || binding.taskId !== task.id || binding.reviewer !== options.owner) {
       throw new Error(`Issued review run ${result.runId} has a mismatched canonical review binding.`);
+    }
+    if (!suppliedProvenanceMatches(result.provenance, {
+      repository: binding.repository,
+      ...(binding.headSha ? { headSha: binding.headSha } : {}),
+      baselineId: binding.baselineId,
+      candidateId: binding.candidateId,
+      worktreeId: binding.worktreeId,
+    })) {
+      throw new Error(`Worker review result provenance does not match the issued review subject.`);
     }
     const review = await recordTaskReview({
       rootDirectory: options.rootDirectory,
@@ -663,9 +738,12 @@ export async function recordWorkerResult(options: {
     });
     evidence = review.evidence;
   } else {
-    const provenance = issued.workerPackage.provenance;
-    if (!provenance.repository || !provenance.baselineId || !provenance.candidateId || !provenance.worktreeId) {
-      throw new Error(`Issued worker run ${result.runId} has incomplete candidate identity.`);
+    if (!resultCandidate) {
+      throw new Error(`Worker result ${result.runId} has no captured output candidate.`);
+    }
+    const outputProvenance = provenanceForSubject(resultCandidate.subject);
+    if (!suppliedProvenanceMatches(result.provenance, outputProvenance)) {
+      throw new Error(`Worker result provenance does not match the captured output candidate.`);
     }
     evidence = await appendTaskEvidence(options.rootDirectory, {
       taskId: task.id,
@@ -676,11 +754,11 @@ export async function recordWorkerResult(options: {
       result: evidenceResult(result.status),
       subject: {
         taskId: task.id,
-        repository: provenance.repository,
-        ...(provenance.headSha ? { headSha: provenance.headSha } : {}),
-        baselineId: provenance.baselineId,
-        candidateId: provenance.candidateId,
-        worktreeId: provenance.worktreeId,
+        repository: resultCandidate.subject.repository,
+        ...(resultCandidate.subject.headSha ? { headSha: resultCandidate.subject.headSha } : {}),
+        baselineId: resultCandidate.subject.baselineId,
+        candidateId: resultCandidate.subject.candidateId,
+        worktreeId: resultCandidate.subject.worktreeId,
       },
       ...(findings.length > 0 ? { findings } : {}),
       ...(summarizeWorkerEvidence(result) ? { evidence: summarizeWorkerEvidence(result) } : {}),

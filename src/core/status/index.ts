@@ -221,6 +221,9 @@ function nextTaskAction(
   if (gate.passed) {
     return `mark done with --owner ${task.owner}`;
   }
+  if (gate.review.freshness === "current" && gate.review.outcome !== undefined && gate.review.outcome !== "pass") {
+    return `run fixer for ${task.id}`;
+  }
   if (gate.verification.some((check) => check.result !== "pass" || check.freshness !== "current")) {
     return `run verification for ${task.id}`;
   }

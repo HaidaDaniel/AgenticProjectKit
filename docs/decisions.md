@@ -393,3 +393,21 @@ Continuously mutating operational JSONL creates merge/concurrency hazards and ca
 Implementation:
 
 Candidate/context bookkeeping excludes the evidence append lock and review/session paths. Issued worker metadata records a hashed worktree location and warns on detected unsettled runs in the same location. Unknown non-Git comparison remains diagnostic-only unless explicit candidate paths are supplied. Gate trust requires both explicit eligibility and a registered agent.
+
+## ADR-0028 - Canonical worker progression and immutable session publication
+
+Status: accepted
+
+Decision:
+
+Resolve omitted worker roles from the current canonical gate projection, not the latest orchestration record. A current failed review selects `fix`; missing, stale, or failed canonical verification selects `verify`; a missing current independent PASS selects `review`; otherwise no worker role is issued. Issuing an independent review package transitions `doing` to `review` only after all issuance preconditions and immutable package publication succeed.
+
+Worker package provenance remains the issued/input candidate. Implement/fix/verify result submission recaptures the baseline-aware output candidate and stores it in non-gating lifecycle evidence; review results must match the issued prepared subject and canonical freshness check. Issued sessions are built in a temporary directory and atomically renamed; collision and incomplete temporary artifacts cannot overwrite or satisfy a result.
+
+Reason:
+
+The prior implementation selected roles from stale worker results, left `changes_requested` in `doing` while requiring `review` for `fix`, conflated mutable input/output candidates, and removed an existing run directory when a duplicate issuance hit `EEXIST`. These are one invariant family: workflow state, canonical gate state, and provenance must describe the same lifecycle.
+
+Regression invariant:
+
+`changes_requested -> fix` is executable without a hidden transition; current canonical evidence has priority over worker history; mutable runs preserve input A and output B; review B rejects mutation to C; an existing issued run remains byte-identical after collision; incomplete sessions never accept results.

@@ -7,6 +7,8 @@ import { promisify } from "node:util";
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { startWork } from "../core/work/index.js";
+
 const execFileAsync = promisify(execFile);
 const CLI_PATH = join(process.cwd(), "src/cli/index.ts");
 const TSX_LOADER = pathToFileURL(join(process.cwd(), "node_modules/tsx/dist/loader.mjs")).href;
@@ -591,6 +593,8 @@ test("CLI work coordinates implementation, review, fixer, and gate roles", async
     assert.equal(wrongOwner.exitCode, 1);
     assert.match(wrongOwner.stderr + wrongOwner.stdout, /belongs to codex-owner/);
 
+    await mkdir(join(directory, "src"), { recursive: true });
+    await writeFile(join(directory, "src", "fix.ts"), "export const rollbackHandled = false;\n", "utf8");
     const implementationResult = await runCli([
       "work", "result", "0001", "--owner", "codex-owner", "--run-id", implementationRunId,
       "--role", "implement", "--status", "completed", "--json",
@@ -600,6 +604,19 @@ test("CLI work coordinates implementation, review, fixer, and gate roles", async
     assert.equal(implementationPayload.nextRole, "verify");
     assert.equal(implementationPayload.evidence.gateEligible, false);
     assert.equal(implementationPayload.nextPackage, undefined);
+
+    const evidenceLines = (await readFile(join(directory, ".agentic", "evidence.jsonl"), "utf8"))
+      .trim().split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line) as {
+        runId: string;
+        subject: { candidateId: string };
+      });
+    const implementationEvidence = evidenceLines.find((record) => record.runId === implementationRunId);
+    assert.ok(implementationEvidence);
+    const issuedImplementation = JSON.parse(
+      await readFile(join(directory, ".agentic", "sessions", "work", "0001", implementationRunId, "package.json"), "utf8"),
+    ) as { provenance: { candidateId: string } };
+    assert.notEqual(implementationEvidence.subject.candidateId, issuedImplementation.provenance.candidateId);
+
     const blockedBeforeCanonicalVerification = await runCli(["task", "gate", "0001"], directory);
     assert.equal(blockedBeforeCanonicalVerification.exitCode, 1);
     assert.match(blockedBeforeCanonicalVerification.stdout, /missing verification evidence/);
@@ -626,11 +643,10 @@ test("CLI work coordinates implementation, review, fixer, and gate roles", async
     assert.equal(selfReviewWork.exitCode, 1);
     assert.match(selfReviewWork.stderr + selfReviewWork.stdout, /Independent review requires a reviewer/);
 
-    const transition = await runCli(["review", "0001", "--owner", "codex-owner"], directory);
-    assert.equal(transition.exitCode, 0);
     const reviewWork = await runCli([
       "work", "0001", "--owner", "codex-reviewer", "--target", "opencode", "--role", "review",
     ], directory);
+    assert.match((await readFile(join(tasksDir, "0001-worker-cycle.md"), "utf8")), /State: review/);
     const reviewRunId = reviewWork.stdout.match(/Run: (work-[^\n]+)/)?.[1];
     assert.ok(reviewRunId, `${reviewWork.stdout}${reviewWork.stderr}`);
     const failedReview = await runCli([
@@ -643,6 +659,9 @@ test("CLI work coordinates implementation, review, fixer, and gate roles", async
     assert.equal(failedReviewPayload.nextRole, "fix");
     assert.equal(failedReviewPayload.nextPackage, undefined);
     assert.match(failedReviewPayload.nextAction, /--owner <fixer>.*--role fix/);
+    const afterChangesRequested = await runCli(["status", "--detail"], directory);
+    assert.equal(afterChangesRequested.exitCode, 0);
+    assert.match(afterChangesRequested.stdout, /Next: run fixer for 0001/);
 
     const fixerWork = await runCli([
       "work", "0001", "--owner", "opencode-fixer", "--target", "opencode", "--role", "fix",
@@ -663,7 +682,7 @@ test("CLI work coordinates implementation, review, fixer, and gate roles", async
     const verification = await runCli(["task", "verify", "0001", "--owner", "codex-owner"], directory);
     assert.equal(verification.exitCode, 0);
     const finalReviewWork = await runCli([
-      "work", "0001", "--owner", "codex-reviewer", "--target", "opencode", "--role", "review",
+      "work", "0001", "--owner", "codex-reviewer", "--target", "opencode",
     ], directory);
     const finalReviewRunId = finalReviewWork.stdout.match(/Run: (work-[^\n]+)/)?.[1];
     assert.ok(finalReviewRunId);
@@ -678,6 +697,75 @@ test("CLI work coordinates implementation, review, fixer, and gate roles", async
     const done = await runCli(["done", "0001", "--owner", "codex-owner"], directory);
     assert.equal(done.exitCode, 0);
     assert.match((await runCli(["task", "evidence", "0001"], directory)).stdout, /changes_requested/);
+  });
+});
+
+test("CLI work rejects issued-run collisions without deleting the original session", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(join(directory, ".tasks", "0001-collision.md"), buildTaskMarkdown("0001", "Collision", "todo"), "utf8");
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await runCli(["agent", "register", "--id", "codex-owner", "--platform", "codex", "--model", "gpt-5"], directory);
+
+    const originalNow = Date.now;
+    const originalRandom = Math.random;
+    Date.now = () => 1700000000000;
+    Math.random = () => 0.123456;
+    try {
+      const first = await startWork({
+        rootDirectory: directory,
+        taskId: "0001",
+        owner: "codex-owner",
+        target: "codex",
+        level: "auto",
+        role: "implement",
+      });
+      const packagePath = join(directory, first.packagePath);
+      const metadataPath = join(directory, first.metadataPath);
+      const originalPackage = await readFile(packagePath, "utf8");
+      const originalMetadata = await readFile(metadataPath, "utf8");
+      await assert.rejects(
+        () => startWork({
+          rootDirectory: directory,
+          taskId: "0001",
+          owner: "codex-owner",
+          target: "codex",
+          level: "auto",
+          role: "implement",
+        }),
+        /already exists|collision/i,
+      );
+      assert.equal(await readFile(packagePath, "utf8"), originalPackage);
+      assert.equal(await readFile(metadataPath, "utf8"), originalMetadata);
+    } finally {
+      Date.now = originalNow;
+      Math.random = originalRandom;
+    }
+  });
+});
+
+test("CLI work never accepts an incomplete issued session", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(join(directory, ".tasks", "0001-incomplete.md"), buildTaskMarkdown("0001", "Incomplete", "doing", "codex-owner"), "utf8");
+    await runCli(["agent", "register", "--id", "codex-owner", "--platform", "codex", "--model", "gpt-5"], directory);
+    const incomplete = join(directory, ".agentic", "sessions", "work", "0001", "work-incomplete");
+    await mkdir(incomplete, { recursive: true });
+    await writeFile(join(incomplete, "package.json"), "{}\n", "utf8");
+
+    const result = await runCli([
+      "work", "result", "0001", "--owner", "codex-owner", "--run-id", "work-incomplete",
+      "--role", "implement", "--status", "completed",
+    ], directory);
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stderr + result.stdout, /Issued worker run not found|metadata is malformed|incomplete/i);
   });
 });
 

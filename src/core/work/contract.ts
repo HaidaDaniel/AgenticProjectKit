@@ -9,6 +9,18 @@ export type WorkerRole = (typeof WORKER_ROLES)[number];
 export const WORKER_STATUSES = ["completed", "failed", "changes_requested"] as const;
 export type WorkerStatus = (typeof WORKER_STATUSES)[number];
 
+/**
+ * Worker package provenance identifies the candidate supplied to the worker.
+ * Worker result provenance identifies the candidate produced by that run.
+ */
+export interface WorkerProvenance {
+  repository?: "git" | "none";
+  headSha?: string;
+  baselineId?: string;
+  candidateId?: string;
+  worktreeId?: string;
+}
+
 export interface WorkerPackage {
   protocol: typeof WORKER_PROTOCOL;
   task: {
@@ -38,13 +50,8 @@ export interface WorkerPackage {
   };
   review?: WorkerReviewBinding;
   handoff?: WorkerHandoff;
-  provenance: {
+  provenance: WorkerProvenance & {
     runId: string;
-    repository?: "git" | "none";
-    headSha?: string;
-    baselineId?: string;
-    candidateId?: string;
-    worktreeId?: string;
   };
 }
 
@@ -86,13 +93,8 @@ export interface WorkerResult {
   evidence?: WorkerEvidenceReference[];
   reviewFindings?: string[];
   reason?: string;
-  provenance?: {
-    repository?: "git" | "none";
-    headSha?: string;
-    baselineId?: string;
-    candidateId?: string;
-    worktreeId?: string;
-  };
+  /** Output candidate produced by this worker run; it is not the issued input candidate. */
+  provenance?: WorkerProvenance;
 }
 
 export class WorkerContractError extends Error {

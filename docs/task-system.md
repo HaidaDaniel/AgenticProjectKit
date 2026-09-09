@@ -276,8 +276,8 @@ Human output is the default. `apk task provenance <task-id> --json` returns the 
 - validates the owner is registered;
 - claims a todo task or continues a task already doing under the same owner;
 - renders the task prompt;
-- persists every issued package and metadata atomically under `.agentic/sessions/work/<task-id>/<run-id>/package.json` and `metadata.json`; `--write-session` additionally writes `prompt.md`;
-- omitting `--role` resolves the next role from canonical evidence; an implementation owner receives an actionable independent-review command instead of a silent fallback;
+- persists every issued package and metadata through a private temporary directory followed by an atomic rename to `.agentic/sessions/work/<task-id>/<run-id>/`; an existing run ID is an explicit collision and is never deleted or overwritten; `--write-session` additionally writes `prompt.md`;
+- omitting `--role` resolves the next role from the current canonical gate projection: current failed review -> `fix`, missing/stale/failed canonical verification -> `verify`, missing independent review -> `review`, otherwise no worker role; an implementation owner receives an actionable independent-review command instead of a silent fallback;
 - `--json` exposes the exact serialized package, run ID, session paths, next role/action, and same-worktree warnings;
 - prints next commands for `pnpm exec apk task verify`, `pnpm exec apk review`, and `pnpm exec apk done`.
 
@@ -285,13 +285,13 @@ It does not launch external AI agents.
 
 ## Model-agnostic worker handoff
 
-`src/core/work/contract.ts` defines the shared `apk-worker-v1` boundary for any coding harness. `createWorkerPackage` supplies task identity, selected context, constraints, acceptance and verification requirements, output/evidence expectations, role, and run provenance. The allowed roles are `implement`, `review`, `fix`, and `verify`; vendor or harness identity stays outside the role field. Issued package metadata binds protocol, task, run, owner, target, role, issued time, candidate identity, worktree identity, comparison status, and a package hash. Result submission loads that immutable record and rejects unknown runs, owner/task/role mismatches, and mismatched supplied provenance.
+`src/core/work/contract.ts` defines the shared `apk-worker-v1` boundary for any coding harness. `createWorkerPackage` supplies task identity, selected context, constraints, acceptance and verification requirements, output/evidence expectations, role, and issued/input provenance. The allowed roles are `implement`, `review`, `fix`, and `verify`; vendor or harness identity stays outside the role field. Issued package metadata binds protocol, task, run, owner, target, role, issued time, issued subject, worktree identity, comparison status, and a package hash. Result submission loads that immutable record; mutable implement/fix runs recapture and store their output subject, while review results must match the issued/current subject.
 
 `parseWorkerPackage`/`serializeWorkerPackage` and `parseWorkerResult`/`serializeWorkerResult` provide bounded JSON-compatible round trips. A worker result includes `taskId`, `role`, `runId`, `status`, optional `commitIds`, `diffId`, evidence references, review findings, provenance identities, and a reason. Failed or `changes_requested` results require a reason. The contract is core-only and has no Codex, OpenCode, Claude, or other vendor SDK dependency.
 
 Review worker packages reference the exact prepared review session (`reviewRunId`, reviewer, baseline/HEAD, candidate, worktree, and changed files). Review results map through `recordTaskReview`; APK never appends a worker-created review PASS from the current candidate. A review run is stale when its prepared subject no longer matches the current candidate.
 
-Worker implement/fix/verify records are orchestration/provenance only and are always non-gating. A worker `verify` result does not advance to review until current check-specific canonical verification evidence exists. Only canonical verification and prepared independent-review evidence can satisfy completion policy. Gate trust requires both `gateEligible=true` and a currently registered local agent; the flag alone is not authentication.
+Worker implement/fix/verify records are orchestration/provenance only and are always non-gating. Issuing an independent review package transitions `doing` to `review` only after reviewer, candidate, and canonical-verification preconditions pass; failed issuance does not leave that lifecycle state behind. A worker `verify` result does not advance to review until current check-specific canonical verification evidence exists. Only canonical verification and prepared independent-review evidence can satisfy completion policy. Gate trust requires both `gateEligible=true` and a currently registered local agent; the flag alone is not authentication.
 
 `Parallel: true` means tasks are semantically parallelizable. Concurrent mutable tasks in one working tree are unsafe for baseline attribution; use separate Git worktrees/branches. Issued worker metadata records a hashed worktree location and `apk work` warns when it detects another unsettled run in the same location. APK does not silently exclude another task's files or claim certain attribution.
 
