@@ -2,7 +2,7 @@
 
 ## Current status
 
-Phase 1 documentation is in place, and Tasks 0001 through 0065 are complete.
+Phase 1 documentation is in place, and Tasks 0001 through 0066 are complete.
 
 The repository now has:
 
@@ -43,6 +43,7 @@ The repository now has:
 - task create command tests for success, invalid metadata, missing dependencies, duplicate slugs, and generated filenames.
 - prompt command tests wired into `pnpm test`.
 - README and CLI docs updated for the implemented v0.1 command surface.
+- a read-only `apk lint` command for task graph, metadata, path/policy, ownership, and generated-instruction drift with stable human and JSON output.
 - post-readiness fixes for init/adopt workflow validity, config-aware task lookup, command-specific help, safe exports, and package bin/build support.
 - compact task metadata with `State`, `Owner`, `Lane`, `Scope`, `Parallel`, and `Tags`.
 - registered agent workflow backed by `.agentic/agents/<agent-id>.json`.
@@ -87,16 +88,16 @@ The repository now has:
 
 ## Next step
 
-Next planned task: 0066 - Add built-in repository and task-contract linting.
+Next planned task: 0067 - Generate budgeted task context packs.
 
-Planning only: tasks 0066-0076 remain todo with Owner: none. Corrective pass fixes review-before-gate bootstrap, revision/freshness semantics, lock recovery and candidate freeze.
+Planning only: tasks 0067-0076 remain todo with Owner: none. Corrective pass fixes review-before-gate bootstrap, revision/freshness semantics, lock recovery and candidate freeze.
 
 ## Remaining task plan
 
-- Tasks 0001 through 0065 are complete.
+- Tasks 0001 through 0066 are complete.
 - Task 0062: Meaningful Done; review capability now precedes completion enforcement.
 - Task 0076: Milestone 1 Reliability / Foundation; no dependencies, required by final release 0075.
-- Tasks 0064-0066: Independent Correctness.
+- Tasks 0064-0066: Independent Correctness (complete; 0066 provides a no-write graph/path/policy/export consistency gate).
 - Tasks 0067-0071: Efficient Agent Workflow.
 - Tasks 0072-0073: Harness Interoperability.
 - Tasks 0074-0075: Upgrade and Release.
@@ -107,6 +108,7 @@ Planning only: tasks 0066-0076 remain todo with Owner: none. Corrective pass fix
 
 - Corrective-pass validation: 76 tasks parse; all 20 backlog tasks remain todo/unowned and round-trip. No missing dependencies, cycles, self-dependencies or duplicate IDs; 461 context references and milestone links resolve. Task/dependency docs agree on 0063 before 0062 and 0076 before final release 0075.
 - Corrective-pass doctor/status and task deps checks passed; git diff --check clean. Doctor retains three existing warnings (typecheck script, .env.example, GitHub Actions); no claim, product implementation, report-writing audit, commit or push performed.
+- Contract-lint verification passed with graph/path/policy/state-owner and stale-export regressions; lint JSON remains read-only and reports generated-file drift with exit code 1.
 - Initial backlog planning validation: 75 tasks parsed; 19 new todo/unowned contracts round-tripped; no duplicate IDs, missing dependencies or cycles. All 445 initial context references and milestone links resolved; direct dependencies matched milestone table.
 - Read-only checks passed: task parser/dependency API (same validation used by audit), tasks --state todo, task deps 0075, status, sync and doctor. Doctor has no failures; existing warnings: no typecheck script, .env.example or GitHub Actions. Report-writing audit and implementation test suites not run during planning.
 - `apk init` verification passed with `pnpm test`, `pnpm lint`, CLI help, and a temp-directory smoke test.

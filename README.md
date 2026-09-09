@@ -55,6 +55,7 @@ Implemented commands:
 - `apk analytics summary`
 - `apk agent prompt`
 - `apk audit`
+- `apk lint [--json]`
 - `apk tasks`
 - `apk work <task-id> --owner <agent-id> --target <agent>`
 - `apk claim`
@@ -610,11 +611,13 @@ Use this when you want to check kit/workflow readiness without changing applicat
 
 ```bash
 pnpm exec apk audit
+pnpm exec apk lint --json
 pnpm exec apk sync
 pnpm exec apk sync codex --write
 ```
 
 `audit` writes `docs/audit-report.md` and `docs/project-map.md` from lightweight repository and kit checks. It reports static readiness facts such as package scripts, lockfiles, CI presence, env examples, tests, license, README, Docker files, monorepo indicators, and TypeScript strict mode. It does not perform deep application architecture, security, coverage, or production-readiness analysis. `sync` is check-only unless `--write` is present.
+`lint` is a read-only contract check for task graph, metadata, paths, policy, ownership, and generated-instruction drift. It never writes audit reports or generated files; `--json` is suitable for CI and structural/sync failures return exit code 1.
 
 ### Scenario 6: Move from MVP to product work
 
@@ -664,10 +667,10 @@ pnpm exec apk export --force
 
 ## Current status
 
-Tasks 0001 through 0065 are complete, including the CLI-focused backlog, structured verification, deterministic policy resolution, independent review evidence, correctness contracts, and typed task templates.
+Tasks 0001 through 0066 are complete, including the CLI-focused backlog, structured verification, deterministic policy resolution, independent review evidence, correctness contracts, typed task templates, and read-only repository/task-contract linting.
 
 The repository now has a minimal TypeScript CLI scaffold, config schema, `init`, lightweight `adopt`, kit/workflow `audit`, `analytics summary`, `mode`, `next-task`, `tasks`, agent registration, task state transitions, sharded run analytics, `context`, `prompt`, `export`, `sync`, template rendering, doc generation helpers, Claude/Gemini/Codex/OpenCode/Cursor agent exporters, task archive/dependency commands, compact task parsing, and typed verification requirements.
 
 Default agent style for this repository: `caveman` when the active tool supports it.
 
-The next implementation task is built-in repository and task-contract linting; later context, workflow, harness, adoption, and release tasks remain planned.
+The next implementation task is budgeted task context packs; later workflow, harness, adoption, and release tasks remain planned.

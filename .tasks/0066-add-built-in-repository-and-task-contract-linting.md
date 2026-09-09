@@ -1,7 +1,7 @@
 # Task 0066 - Add built-in repository and task-contract linting
 
-State: todo
-Owner: none
+State: done
+Owner: codex-20260909
 Mode: product
 Lane: quality
 Scope: quality,cli,tests,docs
@@ -88,13 +88,14 @@ One built-in read-only command validates generic task graph, path/policy contrac
 - Regression tests cover graph cycles, sibling-prefix path matching, stale exports and no-write behavior.
 - Design permits stricter release profile without implementing a generic plugin system.
 
-## Verification commands
+## Verification
 
-- pnpm lint
-- pnpm test
-- pnpm build
-- pnpm exec apk task create --help
-- pnpm exec apk doctor
+- `{"id":"lint","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm lint"}`
+- `{"id":"tests","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm test"}`
+- `{"id":"build","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}`
+- `{"id":"task-create-help","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk task create --help"}`
+- `{"id":"doctor","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk doctor"}`
+- `{"id":"lint-report","type":"automated","required":true,"environment":"local","profile":"report","command":"pnpm exec apk lint --json","evidence":"task lint JSON output"}`
 
 ## Documentation updates
 

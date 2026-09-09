@@ -8,6 +8,7 @@ import { runContextCommand } from "./commands/context.js";
 import { runDoctorCommand } from "./commands/doctor.js";
 import { runExportCommand } from "./commands/export.js";
 import { runInitCommand } from "./commands/init.js";
+import { runLintCommand } from "./commands/lint.js";
 import { runModeCommand } from "./commands/mode.js";
 import { runNextTaskCommand } from "./commands/next-task.js";
 import { runPromptCommand } from "./commands/prompt.js";
@@ -36,6 +37,7 @@ const HELP_TEXT = [
   "  apk done <task-id> --owner <agent-id>",
   "  apk doctor",
   "  apk init [directory]",
+  "  apk lint [--json]",
   "  apk context <task-id> [--level 1|2|3]",
   "  apk export [agent]",
   "  apk mode [mode]",
@@ -68,6 +70,7 @@ const HELP_TEXT = [
   "  doctor  Run local workflow health checks.",
   "  export  Write generated agent instruction files.",
   "  init  Create starter kit files in a repository.",
+  "  lint  Validate task and generated-file contracts without writing.",
   "  mode  Print or update the active operating mode.",
   "  next-task  Print the next actionable task.",
   "  prompt  Generate an agent-specific task prompt.",
@@ -117,6 +120,10 @@ async function main(): Promise<number> {
 
   if (command === "init") {
     return runInitCommand(commandArgs);
+  }
+
+  if (command === "lint") {
+    return runLintCommand(commandArgs);
   }
 
   if (command === "context") {

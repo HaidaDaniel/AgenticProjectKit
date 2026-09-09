@@ -233,3 +233,19 @@ Reusable domain guardrails reduce omissions in high-risk task contracts without 
 Implementation:
 
 Template defaults live in `src/core/templates/task-templates.ts`. They use existing structured verification and optional correctness fields; `--type` is canonical, `--template` remains an alias, and explicit flags override defaults. Provider/integration and async aliases normalize to canonical types. Policy consumes persisted type mappings in addition to explicit tags, so classification remains deterministic even when tags are overridden.
+
+## ADR-0018 - Repository contract lint is a read-only aggregate
+
+Status: accepted
+
+Decision:
+
+Expose `apk lint` as one deterministic, read-only result composed from task parsing, dependency validation, path/policy checks, state/owner checks, and check-only generated-instruction sync. Preserve malformed task diagnostics by loading raw active and archived Markdown instead of delegating only to the fail-fast task listing API.
+
+Reason:
+
+CI and agents need one stable surface for repository/task-contract drift without triggering audit report generation or mutating exports. Exact planned output paths must remain valid, and free-form task steps must not be interpreted with NLP guesses.
+
+Implementation:
+
+Human output is concise and findings are sorted deterministically; `--json` exposes the structured result. Structural and generated-file drift findings are errors with a non-zero exit code. Legacy policy evidence gaps remain warnings until the task declares the required evidence category. The implementation reuses existing validators and leaves room for a stricter release profile without adding a plugin engine.

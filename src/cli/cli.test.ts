@@ -68,6 +68,7 @@ test("CLI help lists implemented commands", async () => {
   assert.match(result.stdout, /apk sync \[agent\] \[--write\]/);
   assert.match(result.stdout, /apk status/);
   assert.match(result.stdout, /apk doctor/);
+  assert.match(result.stdout, /apk lint \[--json\]/);
   assert.match(result.stdout, /apk suggest-context/);
   assert.match(result.stdout, /apk work <task-id>/);
   assert.match(result.stdout, /apk task deps <task-id>/);
@@ -357,6 +358,36 @@ test("CLI audit writes reports in a temp repository", async () => {
     assert.match(result.stdout, /Audit: warnings/);
     assert.match(await readFile(join(directory, "docs/audit-report.md"), "utf8"), /# Audit Report/);
     assert.match(await readFile(join(directory, "docs/project-map.md"), "utf8"), /# Project Map/);
+  });
+});
+
+test("CLI lint is read-only, supports JSON, and returns drift failures", async () => {
+  await withTempDirectory(async (directory) => {
+    const init = await runCli(["init"], directory);
+    assert.equal(init.exitCode, 0);
+    const sync = await runCli(["sync", "--write"], directory);
+    assert.equal(sync.exitCode, 0);
+
+    const clean = await runCli(["lint", "--json"], directory);
+    assert.equal(clean.exitCode, 0, `${clean.stdout}${clean.stderr}`);
+    const parsed = JSON.parse(clean.stdout) as {
+      hasErrors: boolean;
+      taskCount: number;
+      findings: unknown[];
+    };
+    assert.equal(parsed.hasErrors, false);
+    assert.equal(parsed.taskCount, 1);
+    assert.deepEqual(parsed.findings, []);
+
+    await writeFile(join(directory, "AGENTS.md"), "stale\n", "utf8");
+    const drift = await runCli(["lint"], directory);
+    assert.equal(drift.exitCode, 1);
+    assert.match(drift.stdout, /generated-file-stale/);
+    assert.equal(await readFile(join(directory, "AGENTS.md"), "utf8"), "stale\n");
+    assert.equal(
+      await readFile(join(directory, "docs", "audit-report.md"), "utf8").catch(() => undefined),
+      undefined,
+    );
   });
 });
 

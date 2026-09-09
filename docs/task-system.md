@@ -88,8 +88,13 @@ Legacy `.agentic/agents.jsonl` and `.agentic/runs.jsonl` are migration inputs on
 - Include concrete verification commands.
 - Do not mark a task done until verification passes.
 - Use `pnpm exec apk task verify <task-id>` to check changed files against allowed/forbidden files before review or done.
+- Use `pnpm exec apk lint` for the read-only repository/task-contract lint surface before review or done.
 - Update `docs/progress.md` when task status changes.
 - Use `Lane`, `Scope`, `Tags`, and `Parallel` to split work across agents.
+
+## Contract lint
+
+`pnpm exec apk lint` is a read-only aggregate check for task graph, metadata, path/policy, ownership, and generated-instruction drift. It reports malformed task files, duplicate or invalid dependencies, path contradictions, policy conflicts, state/owner violations, and missing or stale generated files through check-only sync. Exact planned output paths remain valid, and free-form steps are not interpreted with NLP guesses. Human output is concise; `--json` emits stable machine-readable findings. The command does not write reports, task files, or generated instructions; structural and sync errors return exit code 1.
 
 ## Dependency graph rules
 
