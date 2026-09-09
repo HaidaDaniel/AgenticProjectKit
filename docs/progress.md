@@ -2,7 +2,7 @@
 
 ## Current status
 
-Phase 1 documentation is in place, and Tasks 0001 through 0071 are complete.
+Phase 1 documentation is in place, and Tasks 0001 through 0072 are complete.
 
 The repository now has:
 
@@ -90,26 +90,29 @@ The repository now has:
 - typed task templates for generic and domain work, with editable structured contracts, correctness guardrails, canonical type metadata, aliases, and deterministic policy mapping.
 - bounded end-to-end task provenance joining agents, runs, baselines, commits/diff, revision-bound evidence, stale/superseded history, and exact completion evidence sets with human/JSON output.
 - concise active-task status with effective policy, dependency readiness, verification/scope/review/evidence progress, shared gate blockers, provenance counts, and bounded next actions; `status --detail` adds diagnostics.
+- a vendor-neutral `apk-worker-v1` package/result contract with implement/review/fix/verify roles, bounded evidence/provenance fields, work-loop integration, and Codex/OpenCode export guidance.
 
 ## Next step
 
-Next planned task: 0072 - Define model-agnostic worker and harness integration contract.
+Next planned task: 0073 - Compose implementation, review, and fixer runs without owning model runtime.
 
-Planning only: tasks 0072-0076 remain todo with Owner: none. Corrective pass fixes review-before-gate bootstrap, revision/freshness semantics, lock recovery and candidate freeze.
+Planning only: tasks 0073-0076 remain todo with Owner: none. Corrective pass fixes review-before-gate bootstrap, revision/freshness semantics, lock recovery and candidate freeze.
 
 ## Remaining task plan
 
-- Tasks 0001 through 0071 are complete.
+- Tasks 0001 through 0072 are complete.
 - Task 0062: Meaningful Done; review capability now precedes completion enforcement.
 - Task 0076: Milestone 1 Reliability / Foundation; no dependencies, required by final release 0075.
 - Tasks 0064-0066: Independent Correctness (complete; 0066 provides a no-write graph/path/policy/export consistency gate).
 - Tasks 0067-0071: Efficient Agent Workflow (0067-0071 complete).
-- Tasks 0072-0073: Harness Interoperability.
+- Task 0073: Harness Interoperability; implementation/review/fixer run composition is next.
 - Tasks 0074-0075: Upgrade and Release.
 - Contracts extend existing task verify, templates, graph validation, context, sync and work loop.
 - Task links and dependency graph: [delivery milestones](delivery/milestones.md#next-gated-workflow-release-planned).
 
 ## Notes
+
+- Worker-contract verification passed with bounded role/result round trips, current run/provenance identities, Codex/OpenCode guidance, `pnpm lint`, 207 tests, `pnpm build`, work help, sync, and an independent review.
 
 - Corrective-pass validation: 76 tasks parse; all 20 backlog tasks remain todo/unowned and round-trip. No missing dependencies, cycles, self-dependencies or duplicate IDs; 461 context references and milestone links resolve. Task/dependency docs agree on 0063 before 0062 and 0076 before final release 0075.
 - Corrective-pass doctor/status and task deps checks passed; git diff --check clean. Doctor retains three existing warnings (typecheck script, .env.example, GitHub Actions); no claim, product implementation, report-writing audit, commit or push performed.

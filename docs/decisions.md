@@ -329,3 +329,19 @@ Agents need one quick workflow view that explains what is ready, blocked, or act
 Implementation:
 
 Active tasks are capped at 32 and blockers/diagnostics at 8 per task. Todo tasks use an empty implementation path set when evaluating the gate so unrelated worktree changes do not appear as their scope violations. Default output is one compact line per active task; `--detail` adds bounded policy, dependency, verification, scope, review, evidence, gate, provenance and next-action fields. Status remains read-only and keeps existing doctor/audit responsibilities separate.
+
+## ADR-0024 - Worker handoffs use a vendor-neutral package and result contract
+
+Status: accepted
+
+Decision:
+
+Define `apk-worker-v1` in the core work module. Packages carry task/context/constraint/output expectations and one role (`implement`, `review`, `fix`, or `verify`); results carry task and run identity, status, optional commit/diff identities, evidence, review findings, reason, and provenance. Keep vendor and harness names in the surrounding workflow/exporter layer rather than the contract.
+
+Reason:
+
+Different coding harnesses must be able to implement, review, fix, or verify the same task without coupling the task model to an SDK or losing revision and run provenance. A bounded JSON-compatible contract is sufficient for local handoff and preserves existing prompt/export/sync behavior.
+
+Implementation and invariant:
+
+`src/core/work/contract.ts` validates and round-trips the shared package/result shape; `src/core/work/index.ts` creates a package for every work run; Codex and OpenCode templates publish the same guidance. Failed and `changes_requested` results require a reason, and no core module imports a vendor SDK. Role/result round-trip and generated-export drift tests cover the boundary.

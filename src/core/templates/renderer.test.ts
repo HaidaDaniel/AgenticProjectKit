@@ -179,6 +179,18 @@ test("default agent exports use repo-local apk commands for task workflow", asyn
   }
 });
 
+test("Codex and OpenCode exports expose the shared worker contract", async () => {
+  const exports = await renderAgentExportFiles();
+  const codex = exports.find((file) => file.outputPath === ".codex/instructions.md");
+  const opencode = exports.find((file) => file.outputPath === ".opencode/AGENTS.md");
+
+  assert.ok(codex);
+  assert.ok(opencode);
+  assert.match(codex.content, /apk-worker-v1/);
+  assert.match(codex.content, /role is implement, review, fix, or verify/);
+  assert.match(opencode.content, /Return a JSON-compatible result/);
+});
+
 async function withTempDirectory(
   run: (directory: string) => Promise<void>,
 ): Promise<void> {

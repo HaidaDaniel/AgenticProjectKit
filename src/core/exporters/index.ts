@@ -38,6 +38,7 @@ export interface NeutralAgentPolicy extends TemplateData {
   taskRules: string[];
   architectureRules: string[];
   localModelRules: string[];
+  workerContract: string[];
 }
 
 export interface AgentExporter {
@@ -159,6 +160,12 @@ export const DEFAULT_AGENT_POLICY: NeutralAgentPolicy = {
     "Avoid architectural inference.",
     "Avoid unrelated refactors.",
     "Prefer explicit steps and acceptance criteria.",
+  ],
+  workerContract: [
+    "Use the vendor-neutral apk-worker-v1 package; role is implement, review, fix, or verify.",
+    "Return a JSON-compatible result with runId, status, evidence references, and reason.",
+    "Include commitIds, diffId, provenance identities, and reviewFindings when available.",
+    "Keep vendor or harness identity separate from the worker role.",
   ],
 };
 

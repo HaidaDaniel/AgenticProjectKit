@@ -7,6 +7,13 @@ import { buildTaskPromptInput, renderTaskPrompt } from "../docs/prompt.js";
 import type { ContextLevel } from "../docs/context.js";
 import { claimTask } from "../tasks/workflow.js";
 import { findTaskFile, loadTaskFile, type ProjectTask } from "../tasks/index.js";
+import {
+  createWorkerPackage,
+  type WorkerPackage,
+  type WorkerRole,
+} from "./contract.js";
+
+export * from "./contract.js";
 
 export type WorkLevel = ContextLevel | "auto";
 
@@ -16,12 +23,14 @@ export interface WorkOptions {
   owner: string;
   target: string;
   level: WorkLevel;
+  role?: WorkerRole;
   writeSession?: boolean;
 }
 
 export interface WorkResult {
   task: ProjectTask;
   runId: string;
+  workerPackage: WorkerPackage;
   prompt: string;
   claimed: boolean;
   sessionPath?: string;
@@ -37,7 +46,7 @@ function resolveLevel(task: ProjectTask, level: WorkLevel): ContextLevel {
 }
 
 function workRunId(): string {
-  return new Date().toISOString().replace(/[^0-9TZ]/g, "");
+  return `work-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 async function writeSessionPrompt(
@@ -73,7 +82,7 @@ export async function startWork(options: WorkOptions): Promise<WorkResult> {
     throw new Error(`Task ${task.id} is ${task.state} owned by ${task.owner}; expected todo or doing owned by ${options.owner}.`);
   }
 
-  const prompt = renderTaskPrompt(buildTaskPromptInput(
+  const promptInput = buildTaskPromptInput(
     options.target,
     task,
     resolveLevel(task, options.level),
@@ -82,8 +91,13 @@ export async function startWork(options: WorkOptions): Promise<WorkResult> {
       taskDirectory: config.taskDirectory,
       taskFile: relative(options.rootDirectory, taskFile).replace(/\\/g, "/"),
     },
-  ));
+  );
+  const prompt = renderTaskPrompt(promptInput);
   const runId = workRunId();
+  const workerPackage = createWorkerPackage(task, promptInput.context, {
+    role: options.role ?? "implement",
+    runId,
+  });
   const sessionPath = options.writeSession
     ? await writeSessionPrompt(options.rootDirectory, task.id, runId, prompt)
     : undefined;
@@ -101,6 +115,7 @@ export async function startWork(options: WorkOptions): Promise<WorkResult> {
   return {
     task,
     runId,
+    workerPackage,
     prompt,
     claimed,
     sessionPath,
@@ -118,6 +133,7 @@ export function renderWorkResult(result: WorkResult): string {
     `State: ${result.task.state}`,
     `Owner: ${result.task.owner}`,
     `Run: ${result.runId}`,
+    `Worker role: ${result.workerPackage.role}`,
     `Claimed: ${result.claimed ? "yes" : "no"}`,
     ...(result.sessionPath ? [`Session: ${result.sessionPath}`] : []),
     "",

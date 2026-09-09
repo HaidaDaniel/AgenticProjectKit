@@ -8,6 +8,13 @@ import {
   PromptAgentError,
   renderTaskPrompt,
 } from "./prompt.js";
+import {
+  createWorkerPackage,
+  parseWorkerPackage,
+  parseWorkerResult,
+  serializeWorkerPackage,
+  serializeWorkerResult,
+} from "../work/contract.js";
 
 const TASK: ProjectTask = {
   id: "0014",
@@ -125,6 +132,40 @@ test("renderTaskPrompt preserves structured verification requirements", () => {
   assert.match(prompt, /smoke \[required\] type=manual; environment=live; profile=trusted/);
   assert.match(prompt, /instruction=Check the deployed smoke path\.; artifact=smoke-report\.md; evidence=release URL/);
   assert.match(prompt, /Verification commands:\n/);
+});
+
+test("worker package and result round trips preserve role and provenance without vendor coupling", () => {
+  const workerPackage = createWorkerPackage(TASK, buildTaskPromptInput("codex", TASK, 2).context, {
+    role: "review",
+    runId: "work-review-1",
+    baselineId: "baseline-1",
+    candidateId: "candidate-1",
+    worktreeId: "worktree-1",
+  });
+  const parsedPackage = parseWorkerPackage(serializeWorkerPackage(workerPackage));
+
+  assert.deepEqual(parsedPackage, workerPackage);
+  assert.equal(parsedPackage.role, "review");
+  assert.equal("vendor" in parsedPackage, false);
+  const workerResult = {
+    protocol: "apk-worker-v1" as const,
+    taskId: TASK.id,
+    role: "review" as const,
+    runId: "work-review-1",
+    status: "changes_requested" as const,
+    commitIds: ["abc123"],
+    diffId: "diff-1",
+    evidence: [{ id: "evidence-1", type: "review", result: "changes_requested", reference: "review record" }],
+    reviewFindings: ["Inspect the rollback path."],
+    reason: "Fixes are required before completion.",
+    provenance: { baselineId: "baseline-1", candidateId: "candidate-1", worktreeId: "worktree-1" },
+  };
+
+  assert.deepEqual(parseWorkerResult(serializeWorkerResult(workerResult)), workerResult);
+  assert.throws(
+    () => parseWorkerResult({ ...workerResult, status: "failed", reason: undefined }),
+    /reason is required/,
+  );
 });
 
 test("renderTaskPrompt consumes a budgeted context pack", () => {

@@ -57,7 +57,7 @@ Implemented commands:
 - `apk audit`
 - `apk lint [--json]`
 - `apk tasks`
-- `apk work <task-id> --owner <agent-id> --target <agent>`
+- `apk work <task-id> --owner <agent-id> --target <agent> [--role implement|review|fix|verify]`
 - `apk claim`
 - `apk release`
 - `apk block`
@@ -368,6 +368,8 @@ pnpm exec apk done 0001 --owner codex-a
 ```
 
 `done` rejects missing, failed, stale, or wrong-candidate verification/review evidence and records a completion evidence set on success. There is no force bypass.
+
+The work loop also exposes the vendor-neutral `apk-worker-v1` package/result contract. Select `--role implement|review|fix|verify`; the package carries task context, constraints, output/evidence expectations, and run provenance, while results carry status, evidence, optional commit/diff identities, review findings, and a bounded reason. The role is independent from the Codex, OpenCode, or other harness target.
 
 Inspect the active workflow and actionable gate state:
 

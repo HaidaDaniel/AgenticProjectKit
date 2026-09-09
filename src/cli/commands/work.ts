@@ -1,12 +1,18 @@
 import { resolve } from "node:path";
 
-import { renderWorkResult, startWork, type WorkLevel } from "../../core/work/index.js";
+import {
+  parseWorkerRole,
+  renderWorkResult,
+  startWork,
+  WORKER_ROLES,
+  type WorkLevel,
+} from "../../core/work/index.js";
 
 const WORK_HELP_TEXT = [
   "Agentic Project Kit",
   "",
   "Usage:",
-  "  apk work <task-id> --owner <agent-id> --target <agent> [--level 1|2|3|auto] [--write-session]",
+  `  apk work <task-id> --owner <agent-id> --target <agent> [--role ${WORKER_ROLES.join("|")}] [--level 1|2|3|auto] [--write-session]`,
   "",
   "Claim or continue a task, render its prompt, and print verify/review guidance.",
   "Does not launch external AI agents.",
@@ -46,7 +52,7 @@ export async function runWorkCommand(argv: string[]): Promise<number> {
   }
 
   try {
-    const knownFlags = new Set(["--owner", "--target", "--level", "--write-session"]);
+    const knownFlags = new Set(["--owner", "--target", "--role", "--level", "--write-session"]);
     for (const arg of argv) {
       if (arg.startsWith("-") && !knownFlags.has(arg)) {
         throw new Error(`Unknown option: ${arg}`);
@@ -77,6 +83,7 @@ export async function runWorkCommand(argv: string[]): Promise<number> {
       taskId: positional[0],
       owner,
       target,
+      role: parseWorkerRole(readFlagValue(argv, "--role") ?? "implement"),
       level: parseLevel(readFlagValue(argv, "--level")),
       writeSession: argv.includes("--write-session"),
     });

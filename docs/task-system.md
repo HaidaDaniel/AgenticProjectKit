@@ -281,6 +281,21 @@ Human output is the default. `apk task provenance <task-id> --json` returns the 
 
 It does not launch external AI agents.
 
+## Model-agnostic worker handoff
+
+`src/core/work/contract.ts` defines the shared `apk-worker-v1` boundary for any coding harness. `createWorkerPackage` supplies task identity, selected context, constraints, acceptance and verification requirements, output/evidence expectations, role, and run provenance. The allowed roles are `implement`, `review`, `fix`, and `verify`; vendor or harness identity stays outside the role field.
+
+`parseWorkerPackage`/`serializeWorkerPackage` and `parseWorkerResult`/`serializeWorkerResult` provide bounded JSON-compatible round trips. A worker result includes `taskId`, `role`, `runId`, `status`, optional `commitIds`, `diffId`, evidence references, review findings, provenance identities, and a reason. Failed or `changes_requested` results require a reason. The contract is core-only and has no Codex, OpenCode, Claude, or other vendor SDK dependency.
+
+The work loop selects a role independently of the target; the independent-review command keeps reviewer ownership separate:
+
+```bash
+pnpm exec apk work 0072 --owner codex-a --target codex --role implement
+pnpm exec apk review 0072 --reviewer review-a --prompt
+```
+
+Exporter templates add shared contract guidance to Codex and OpenCode outputs. Run identity and task provenance remain the APK workflow's responsibility, so implementation and independent review can use different harnesses without losing continuity.
+
 ## Task archiving
 
 Completed tasks can be archived to reduce noise in the active task list.

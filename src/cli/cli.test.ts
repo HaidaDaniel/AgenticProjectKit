@@ -364,6 +364,8 @@ test("CLI work claims todo task and prints prompt", async () => {
     assert.equal(result.exitCode, 0);
     assert.match(result.stdout, /Agent: codex/);
     assert.match(result.stdout, /Claimed: yes/);
+    assert.match(result.stdout, /Worker role: implement/);
+    assert.match(result.stdout, /Run:/);
     assert.match(result.stdout, /pnpm exec apk task verify 0001 --owner codex-a/);
     assert.match(await readFile(join(directory, ".tasks", "0001-todo-task.md"), "utf8"), /State: doing/);
   });

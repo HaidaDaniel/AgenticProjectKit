@@ -73,3 +73,9 @@ Claim baselines use a parallel append-only `.agentic/task-baselines.jsonl` store
 ## Task provenance reporting
 
 `src/core/tasks/provenance.ts` is a read-only reporting layer over those existing stores. It joins task identity, claim baseline, run-log events, registered agents, revision-bound evidence, completion gate evidence IDs, and bounded Git commit/diff metadata by task ID. It does not introduce a second policy or telemetry store and never emits raw command logs. Evidence history remains append-only: current freshness is evaluated against the present candidate, while completion retains the exact candidate and decision-time freshness used at persistence. Lifecycle-only task-file changes are excluded from the implementation subject hash; attributed implementation paths still create new candidate revisions. `apk task provenance` exposes human output and `--json` machine output, with explicit diagnostics for unavailable baseline, commits, or links.
+
+## Model-agnostic worker boundary
+
+`src/core/work/contract.ts` is the vendor-neutral boundary between APK task orchestration and a coding harness. `apk-worker-v1` packages task/context/constraints/output expectations with one of four roles: `implement`, `review`, `fix`, or `verify`. A result carries status, run identity, optional commit/diff identities, evidence and review findings, a bounded reason, and provenance identities. Parsing and serialization are bounded and SDK-free; exporter templates only adapt the common guidance to each tool.
+
+`src/core/work/index.ts` creates the package alongside the existing prompt and run log. This keeps the task contract and provenance in the core workflow while allowing one harness to implement a task and another to review or fix it.

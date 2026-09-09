@@ -1,7 +1,7 @@
 # Task 0072 - Define model-agnostic worker and harness integration contract
 
-State: todo
-Owner: none
+State: done
+Owner: codex-20260909
 Mode: product
 Lane: integration
 Scope: integration,cli,tests,docs
@@ -98,13 +98,13 @@ Vendor-neutral worker packages and results let different coding harnesses implem
 - Run provenance survives export/import; one or two existing exporter paths demonstrate common contract.
 - Existing exports remain compatible and generated instruction drift tests pass; regression tests cover role and result round trips.
 
-## Verification commands
+## Verification
 
-- pnpm lint
-- pnpm test
-- pnpm build
-- pnpm exec apk work --help
-- pnpm exec apk sync
+- `{"id":"lint","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm lint"}`
+- `{"id":"tests","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm test"}`
+- `{"id":"build","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}`
+- `{"id":"work-help","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx src/cli/index.ts work --help"}`
+- `{"id":"sync","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx src/cli/index.ts sync"}`
 
 ## Documentation updates
 

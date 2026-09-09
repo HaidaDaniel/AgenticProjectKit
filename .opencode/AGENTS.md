@@ -28,3 +28,10 @@ Repository docs and task files are the source of truth.
 
 - Default to `caveman`.
 - Prefer short, explicit notes.
+
+## Worker Contract
+
+- Use the vendor-neutral apk-worker-v1 package; role is implement, review, fix, or verify.
+- Return a JSON-compatible result with runId, status, evidence references, and reason.
+- Include commitIds, diffId, provenance identities, and reviewFindings when available.
+- Keep vendor or harness identity separate from the worker role.
