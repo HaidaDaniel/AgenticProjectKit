@@ -282,6 +282,7 @@ export async function recordTaskReview(options: TaskReviewOptions): Promise<Task
     event: "review",
     agent: reviewerAgent,
     task: prepared.task.id,
+    runId,
     state: prepared.task.state,
     outcome: "ok",
     reason: `independent review ${options.outcome} (${runId})`,

@@ -1731,8 +1731,10 @@ export async function captureTaskEvidenceSubject(
   const repository = headSha ? "git" : "none";
   const diff = isGit
     ? [
-      await gitOutput(rootDirectory, ["diff", "--no-ext-diff", "--binary", "HEAD"]),
-      await gitOutput(rootDirectory, ["diff", "--cached", "--no-ext-diff", "--binary", "HEAD"]),
+      // Lifecycle writes to the task file are bookkeeping; only implementation
+      // paths may change the evidence subject revision.
+      await gitOutput(rootDirectory, ["diff", "--no-ext-diff", "--binary", "HEAD", "--", ...normalizedChangedFiles]),
+      await gitOutput(rootDirectory, ["diff", "--cached", "--no-ext-diff", "--binary", "HEAD", "--", ...normalizedChangedFiles]),
     ].map((part) => part ?? "")
     : [];
   const candidateId = `candidate:${hashCandidatePart({
@@ -1953,6 +1955,7 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
       event: "verify",
       agent,
       task: task.id,
+      runId,
       state: task.state,
       outcome: passed ? "ok" : "error",
       reason: `${passed ? "verify passed" : "verify failed"} (${runId})`,
@@ -2084,3 +2087,4 @@ export * from "./policy.js";
 export * from "./review.js";
 export * from "./gate.js";
 export * from "./dogfood.js";
+export * from "./provenance.js";

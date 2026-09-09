@@ -655,6 +655,7 @@ test("CLI task create --help shows usage", async () => {
   assert.match(taskHelp.stdout, /apk task evidence <task-id>/);
   assert.match(taskHelp.stdout, /apk task policy <task-id>/);
   assert.match(taskHelp.stdout, /apk task gate <task-id>/);
+  assert.match(taskHelp.stdout, /apk task provenance <task-id>/);
   assert.match(taskHelp.stdout, /apk task dogfood start <task-id>/);
   assert.match(taskHelp.stdout, /apk task dogfood result <task-id>/);
   assert.match(result.stdout, /--title/);
@@ -662,6 +663,27 @@ test("CLI task create --help shows usage", async () => {
   assert.match(result.stdout, /--mode/);
   assert.match(result.stdout, /--risk/);
   assert.match(result.stdout, /--verification/);
+});
+
+test("CLI task provenance renders bounded human and JSON traces without Git commits", async () => {
+  await withTempDirectory(async (directory) => {
+    const tasksDir = join(directory, ".tasks");
+    await mkdir(tasksDir, { recursive: true });
+    await writeFile(join(tasksDir, "0001-provenance-task.md"), buildTaskMarkdown("0001", "Provenance Task", "todo"), "utf8");
+
+    const human = await runCli(["task", "provenance", "0001"], directory);
+    const machine = await runCli(["task", "provenance", "0001", "--json"], directory);
+
+    assert.equal(human.exitCode, 0);
+    assert.match(human.stdout, /Task: 0001/);
+    assert.match(human.stdout, /Baseline: none/);
+    assert.match(human.stdout, /Diagnostics:/);
+    assert.equal(machine.exitCode, 0);
+    const provenance = JSON.parse(machine.stdout) as { taskId: string; commits: unknown[]; diagnostics: string[] };
+    assert.equal(provenance.taskId, "0001");
+    assert.deepEqual(provenance.commits, []);
+    assert.ok(provenance.diagnostics.some((diagnostic) => diagnostic.includes("baseline HEAD")));
+  });
 });
 
 test("CLI task policy renders effective requirements without mutation", async () => {

@@ -12,6 +12,7 @@ import {
   allTaskFiles,
   archiveAllTasks,
   archiveTask,
+  buildTaskProvenance,
   buildTaskDeps,
   createTask,
   evaluateTaskCompletionGate,
@@ -24,6 +25,7 @@ import {
   renderTaskDeps,
   renderTaskEvidence,
   renderTaskCompletionGate,
+  renderTaskProvenance,
   renderTaskVerifyResult,
   renderDogfoodResult,
   renderDogfoodSession,
@@ -49,6 +51,7 @@ const TASK_HELP_TEXT = [
   "  apk task evidence <task-id>",
   "  apk task policy <task-id>",
   "  apk task gate <task-id>",
+  "  apk task provenance <task-id> [--json]",
   "  apk task dogfood start <task-id> --owner <agent-id> --tool <tool> --scenario <text>",
   "  apk task dogfood result <task-id> --owner <agent-id> --session <session-id> --outcome <pass|fail>",
   "  apk task verify <task-id> [--check-files-only] [--profile <profile|all>] [--owner <agent-id>]",
@@ -60,6 +63,7 @@ const TASK_HELP_TEXT = [
   "  evidence List append-only evidence records for a task.",
   "  policy  Resolve deterministic risk and tag requirements.",
   "  gate    Preview completion blockers for the current candidate.",
+  "  provenance Show bounded task/run/evidence provenance.",
   "  dogfood Start a bounded agent usability session or record its result.",
   "  verify  Check files, resolve profiles, and record per-check evidence.",
   "  create  Generate a new task file with validated metadata.",
@@ -101,6 +105,16 @@ const TASK_GATE_HELP_TEXT = [
   "",
   "Preview verification, scope, dependency, policy, evidence, and review gates.",
   "The command is read-only and reports blockers for the current candidate.",
+].join("\n");
+
+const TASK_PROVENANCE_HELP_TEXT = [
+  "Agentic Project Kit",
+  "",
+  "Usage:",
+  "  apk task provenance <task-id> [--json]",
+  "",
+  "Show baseline, commits/diff, run identities, evidence freshness, superseded links, and completion evidence.",
+  "Output is bounded and excludes raw logs.",
 ].join("\n");
 
 const TASK_DOGFOOD_HELP_TEXT = [
@@ -481,6 +495,33 @@ async function runEvidenceSubcommand(argv: string[]): Promise<number> {
   return 0;
 }
 
+async function runProvenanceSubcommand(argv: string[]): Promise<number> {
+  if (hasHelpFlag(argv)) {
+    console.log(TASK_PROVENANCE_HELP_TEXT);
+    return 0;
+  }
+
+  for (const arg of argv) {
+    if (arg.startsWith("-") && arg !== "--json") {
+      throw new Error(`Unknown option: ${arg}`);
+    }
+  }
+  const positional = argv.filter((arg) => !arg.startsWith("-"));
+  if (positional.length !== 1) {
+    throw new Error(TASK_PROVENANCE_HELP_TEXT);
+  }
+
+  const rootDirectory = resolve(process.cwd());
+  const config = await readAgenticConfigFile(rootDirectory);
+  const provenance = await buildTaskProvenance(rootDirectory, config.taskDirectory, positional[0]);
+  if (argv.includes("--json")) {
+    console.log(JSON.stringify(provenance, null, 2));
+  } else {
+    console.log(renderTaskProvenance(provenance));
+  }
+  return 0;
+}
+
 function parseDogfoodMetrics(value: string | undefined): TaskEvidenceMetrics | undefined {
   if (value === undefined) return undefined;
   let parsed: unknown;
@@ -721,6 +762,10 @@ export async function runTaskCommand(argv: string[]): Promise<number> {
 
     if (subcommand === "dogfood") {
       return await runDogfoodSubcommand(subArgs);
+    }
+
+    if (subcommand === "provenance") {
+      return await runProvenanceSubcommand(subArgs);
     }
 
     if (subcommand === "policy") {

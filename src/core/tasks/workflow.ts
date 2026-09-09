@@ -246,6 +246,7 @@ export async function doneTask(options: TaskTransitionOptions): Promise<ProjectT
       event: "done",
       agent,
       task: task.id,
+      runId: completionRunId,
       state: nextTask.state,
       outcome: "ok",
       reason: options.reason,

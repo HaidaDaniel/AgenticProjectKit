@@ -1,7 +1,7 @@
 # Task 0070 - Add end-to-end task execution provenance
 
-State: todo
-Owner: none
+State: done
+Owner: codex-20260909
 Mode: product
 Lane: observability
 Scope: observability,cli,tests,docs
@@ -46,6 +46,7 @@ Task provenance traces implementation runs, baseline, commits/diff, revision-bou
 - src/core/analytics/index.ts
 - src/core/analytics/analytics.test.ts
 - src/core/tasks/*.ts
+- src/core/work/index.ts
 - src/cli/commands/task.ts
 - src/cli/cli.test.ts
 - docs/task-system.md
@@ -82,13 +83,13 @@ Task provenance traces implementation runs, baseline, commits/diff, revision-bou
 - Absent commits do not break non-code tasks; missing links are explicit.
 - Output supports humans and automation without dumping raw logs; regression tests cover chain integrity and multi-run history.
 
-## Verification commands
+## Verification
 
-- pnpm lint
-- pnpm test
-- pnpm build
-- pnpm exec apk task create --help
-- pnpm exec apk doctor
+- `{"id":"lint","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm lint"}`
+- `{"id":"tests","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm test"}`
+- `{"id":"build","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}`
+- `{"id":"task-help","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx src/cli/index.ts task --help"}`
+- `{"id":"doctor","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx src/cli/index.ts doctor"}`
 
 ## Documentation updates
 
@@ -103,6 +104,7 @@ Task provenance traces implementation runs, baseline, commits/diff, revision-bou
 - Backlog reference: APK-PROVENANCE-01. Milestone 3.
 - Existing run log records lifecycle events and analytics aggregates them; add linkage/query semantics rather than duplicate telemetry storage.
 - Reporting only: reuse evidence freshness semantics and gate decision records. Completion enforcement stays in 0062; provenance adds no parallel policy/gate layer.
+- Backprop invariant: lifecycle-only task-file writes must not change the implementation candidate subject; provenance hashes only attributed implementation paths.
 - Context lists current files and prerequisite task contracts. Before implementation, read prerequisite changes and amend this task with their actual module paths if needed; do not invent missing Context files.
 - Allowed new helper modules stay inside listed module patterns. Other task files and unrelated modules remain outside scope. If scope must expand, amend task before editing.
 - Use existing test files included in pnpm test; no dependency or package-script change planned. Update docs/decisions.md for chosen architecture.

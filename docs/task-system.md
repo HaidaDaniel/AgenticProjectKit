@@ -251,6 +251,18 @@ Reviewers must be registered and cannot equal the implementation owner. Review r
 
 Completion accepts only current PASS evidence for the evaluated task/baseline/candidate/worktree. Missing, failed, pending, unavailable, not-run, stale, or different-candidate verification/review evidence blocks completion. A successful transition appends a `completion` evidence record containing the exact evidence ID set before writing `State: done`; persistence or candidate-mutation errors fail closed. Existing task readability is preserved, but legacy tasks still need current verification evidence and any policy-required review/evidence.
 
+## Task provenance
+
+`apk task provenance <task-id>` reconstructs a bounded end-to-end trace from the task file, claim baseline, existing run log, evidence records, and local Git state. The trace connects:
+
+- implementation/reviewer/completion runs to registered agent, developer, platform, model, and run IDs;
+- baseline HEAD, dirty-file attribution, bookkeeping exclusions, resulting commits, and changed paths;
+- verification, review, dogfood, and completion evidence without retaining raw stdout/stderr;
+- each evidence subject to its current `current`/`stale`/`unknown` freshness, decision-time freshness when selected by completion, and later superseding evidence IDs;
+- the exact completion evidence set and candidate subject used by the gate.
+
+Human output is the default. `apk task provenance <task-id> --json` returns the same bounded structure for automation. Missing Git commits, baseline HEAD, or run-log links are reported as explicit diagnostics; they do not discard non-code task history. Task lifecycle writes are bookkeeping and do not create a false implementation revision, while changed implementation files do.
+
 ## CLI work loop
 
 `pnpm exec apk work <task-id> --owner <agent-id> --target <agent>` connects the existing task workflow:

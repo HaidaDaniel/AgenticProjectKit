@@ -297,3 +297,19 @@ Agent usability evidence must be comparable across tools without pretending to b
 Implementation:
 
 `apk task dogfood start` claims todo tasks when needed and writes `.agentic/sessions/dogfood/<task-id>/<session-id>/`. `apk task dogfood result` validates the session owner, timestamps, bounded lists, outcome, and optional action/tool/context/duration/latency metrics before appending `.agentic/evidence.jsonl`; it records the current task subject and a linked run event. APK performs no model or external-service execution, and dogfood remains available for future policy requirements without changing current completion gates.
+
+## ADR-0022 - Provenance is a bounded read-only join over existing task records
+
+Status: accepted
+
+Decision:
+
+Expose per-task provenance by joining task files, claim baselines, run shards, registered agents, append-only evidence, completion gate records, and local Git metadata. Keep the output bounded and provide human and JSON renderings; do not create a parallel telemetry or completion-policy store.
+
+Reason:
+
+An implementation history must explain ownership, harness identity, baseline, commits/diff, verification, review, stale/superseded revisions, and the exact completion decision without replaying raw logs. Missing Git or historical links must be explicit so non-code tasks remain queryable.
+
+Implementation and invariant:
+
+`src/core/tasks/provenance.ts` reconstructs the chain by task ID, synthesizes bounded run nodes when old evidence predates run linkage, and retains every evidence record with current freshness, decision-time freshness, and superseding IDs. Completion exposes its exact evidence set and candidate subject. Lifecycle-only task-file writes are excluded from the implementation candidate hash; only attributed implementation paths can supersede evidence. This invariant is covered by the multi-run provenance regression.

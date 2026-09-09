@@ -23,6 +23,7 @@ import {
   archiveAllTasks,
   archiveTask,
   buildTaskDeps,
+  buildTaskProvenance,
   buildTaskFileName,
   captureTaskEvidenceSubject,
   createTask,
@@ -47,6 +48,7 @@ import {
   renderNextTask,
   renderTaskDeps,
   renderTaskPolicy,
+  renderTaskProvenance,
   readTaskEvidence,
   readTaskBaseline,
   renderTasksTable,
@@ -1417,6 +1419,133 @@ test("completion gate accepts current evidence, rejects stale candidates, and re
     assert.ok(freshVerificationEvidence);
     assert.ok(completion?.evidenceSet?.includes(freshVerificationEvidence!.id));
     assert.ok(completion?.evidenceSet?.includes(freshReview.evidence.id));
+  });
+});
+
+test("task provenance reconstructs stale and superseded runs plus final evidence set", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await mkdir(join(directory, "src", "core", "tasks"), { recursive: true });
+    const taskPath = join(directory, ".tasks", "0007-provenance-task.md");
+    await writeTaskFile(taskPath, {
+      ...TASK,
+      state: "todo",
+      owner: "none",
+      dependsOn: [],
+      allowedFiles: ["src/core/tasks/**"],
+      forbiddenFiles: [],
+    });
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await registerAgent(directory, {
+      id: "codex-owner",
+      developer: "alice",
+      platform: "codex",
+      model: "gpt-5",
+    });
+    await registerAgent(directory, {
+      id: "codex-reviewer",
+      developer: "bob",
+      platform: "generic-harness",
+      model: "vendor-neutral",
+    });
+    await claimTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-owner",
+    });
+
+    const changedPath = join(directory, "src", "core", "tasks", "provenance.ts");
+    await writeFile(changedPath, "export const revision = 1;\n", "utf8");
+    const verificationA = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-owner",
+      runCommand: async () => 0,
+    });
+    const reviewA = await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      outcome: "pass",
+      implementationRunId: verificationA.runId,
+      changedFiles: ["src/core/tasks/provenance.ts"],
+    });
+
+    await writeFile(changedPath, "export const revision = 2;\n", "utf8");
+    const verificationB = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-owner",
+      runCommand: async () => 0,
+    });
+    const reviewB = await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      outcome: "pass",
+      implementationRunId: verificationB.runId,
+      changedFiles: ["src/core/tasks/provenance.ts"],
+    });
+    assert.equal(reviewB.subject.candidateId, verificationB.subject.candidateId);
+    const currentTask = (await loadTaskFile(taskPath)).task;
+    const currentSubject = await captureTaskEvidenceSubject(
+      directory,
+      currentTask,
+      ["src/core/tasks/provenance.ts"],
+    );
+    assert.equal(currentSubject.candidateId, reviewB.subject.candidateId);
+    await reviewTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-owner",
+    });
+    const reviewStateTask = (await loadTaskFile(taskPath)).task;
+    const reviewStateSubject = await captureTaskEvidenceSubject(
+      directory,
+      reviewStateTask,
+      ["src/core/tasks/provenance.ts"],
+    );
+    assert.equal(reviewStateSubject.candidateId, reviewB.subject.candidateId);
+    await doneTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-owner",
+    });
+
+    const provenance = await buildTaskProvenance(directory, ".tasks", "0007");
+    const firstVerification = provenance.evidence.find((record) => record.runId === verificationA.runId);
+    const latestVerification = provenance.evidence.find((record) => record.runId === verificationB.runId);
+    const firstReview = provenance.evidence.find((record) => record.id === reviewA.evidence.id);
+    const latestReview = provenance.evidence.find((record) => record.id === reviewB.evidence.id);
+    assert.equal(provenance.commits.length, 0);
+    assert.ok(provenance.diffFiles.some((file) => file.path === "src/core/tasks/provenance.ts"));
+    assert.equal(firstVerification?.freshness, "stale");
+    assert.ok(firstVerification?.supersededBy.includes(latestVerification!.id));
+    assert.equal(firstReview?.freshness, "stale");
+    assert.ok(firstReview?.supersededBy.includes(latestReview!.id));
+    assert.equal(latestVerification?.freshness, "current");
+    assert.equal(latestReview?.freshness, "current");
+    assert.equal(provenance.completion?.result, "pass");
+    assert.ok(provenance.completion?.evidenceSet.includes(latestVerification!.id));
+    assert.ok(provenance.completion?.evidenceSet.includes(latestReview!.id));
+    assert.equal(latestVerification?.freshnessAtDecision, "current");
+    assert.equal(latestReview?.freshnessAtDecision, "current");
+    assert.match(renderTaskProvenance(provenance), /superseded-by=/);
+    assert.match(renderTaskProvenance(provenance), /Completion: .*evidence-set=/);
   });
 });
 

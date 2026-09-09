@@ -46,6 +46,7 @@ When Agentic Project Kit is installed as a repository dev dependency, run comman
 - `apk task dogfood result <task-id> --owner <agent-id> --session <session-id> --outcome <pass|fail>` - record bounded dogfooding evidence.
 - `apk task policy <task-id>` - resolve deterministic risk/tag requirements and print blockers without changing task state.
 - `apk task gate <task-id>` - preview completion blockers for the current candidate without changing task state.
+- `apk task provenance <task-id> [--json]` - reconstruct bounded task runs, baseline, commits/diff, evidence freshness/supersession, and completion evidence.
 - `apk task verify <task-id> [--check-files-only] [--profile <profile|all>] [--owner <agent-id>]` - run eligible verification checks and record evidence.
 - `apk task create --title <title> --scope <csv> --allowed <csv> [--type <name>|--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>] [--assumptions <csv>] [--invariants <csv>] [--required-evidence <csv>] [--review-questions <csv>] [--counterexample-searches <csv>]` - generate a new validated task file.
 
@@ -148,6 +149,8 @@ Sync targets:
 - `gemini`
 - `opencode`
 - `cursor`
+
+`apk task provenance <task-id>` is read-only. Human output summarizes participants, runs, commits, changed files, evidence freshness, superseding links, and the exact completion evidence set. `--json` emits the same bounded fields for automation; unavailable Git or historical links appear in `diagnostics` rather than causing non-code task history to disappear.
 
 ## Behavior principles
 

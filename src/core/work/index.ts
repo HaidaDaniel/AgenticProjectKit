@@ -21,6 +21,7 @@ export interface WorkOptions {
 
 export interface WorkResult {
   task: ProjectTask;
+  runId: string;
   prompt: string;
   claimed: boolean;
   sessionPath?: string;
@@ -35,16 +36,17 @@ function resolveLevel(task: ProjectTask, level: WorkLevel): ContextLevel {
   return task.risk === "high" ? 3 : 2;
 }
 
-function runId(): string {
+function workRunId(): string {
   return new Date().toISOString().replace(/[^0-9TZ]/g, "");
 }
 
 async function writeSessionPrompt(
   rootDirectory: string,
   taskId: string,
+  runId: string,
   prompt: string,
 ): Promise<string> {
-  const sessionPath = join(".agentic", "sessions", taskId, runId(), "prompt.md");
+  const sessionPath = join(".agentic", "sessions", taskId, runId, "prompt.md");
   const absolute = join(rootDirectory, sessionPath);
   await mkdir(join(absolute, ".."), { recursive: true });
   await writeFile(absolute, prompt, "utf8");
@@ -81,23 +83,24 @@ export async function startWork(options: WorkOptions): Promise<WorkResult> {
       taskFile: relative(options.rootDirectory, taskFile).replace(/\\/g, "/"),
     },
   ));
+  const runId = workRunId();
   const sessionPath = options.writeSession
-    ? await writeSessionPrompt(options.rootDirectory, task.id, prompt)
+    ? await writeSessionPrompt(options.rootDirectory, task.id, runId, prompt)
     : undefined;
 
-  if (sessionPath) {
-    await appendRunLog(options.rootDirectory, {
-      event: "work",
-      agent,
-      task: task.id,
-      state: task.state,
-      outcome: "ok",
-      reason: `session ${sessionPath}`,
-    });
-  }
+  await appendRunLog(options.rootDirectory, {
+    event: "work",
+    agent,
+    task: task.id,
+    runId,
+    state: task.state,
+    outcome: "ok",
+    ...(sessionPath ? { reason: `session ${sessionPath}` } : {}),
+  });
 
   return {
     task,
+    runId,
     prompt,
     claimed,
     sessionPath,
@@ -114,6 +117,7 @@ export function renderWorkResult(result: WorkResult): string {
     `Task: ${result.task.id}`,
     `State: ${result.task.state}`,
     `Owner: ${result.task.owner}`,
+    `Run: ${result.runId}`,
     `Claimed: ${result.claimed ? "yes" : "no"}`,
     ...(result.sessionPath ? [`Session: ${result.sessionPath}`] : []),
     "",
