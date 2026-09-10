@@ -1,7 +1,7 @@
 # Task 0085 - Adaptive Assurance and Review Budget
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-resource-aware
 Mode: product
 Lane: review
 Scope: assurance,policy,review,gate,evidence,workflow,cli,tests,docs
@@ -74,7 +74,6 @@ Replace near-Boolean review policy with adaptive assurance levels trigger-based 
 3. Enforce deterministic-first ordering and bounded review/frontier budgets in existing work orchestration, review evidence, status, and the single completion gate.
 4. Add critical-risk parsing/templates where required and regressions for escalation, freshness, identity, budget exhaustion, unavailable assurance, and fix/re-review loops.
 
-
 ## Acceptance criteria
 
 - Canonical assurance levels are ordered and documented as `none`, `self-check`, `fresh-context`, `independent`, and `diverse`; existing lightweight/independent policy data has an explicit backward-compatible normalization.
@@ -88,7 +87,6 @@ Replace near-Boolean review policy with adaptive assurance levels trigger-based 
 - Self-check/fresh/independent/diverse outcomes reuse the append-only evidence and canonical gate. No second review store, task classifier, gate, or provenance chain is introduced.
 - Regression tests cover constrained medium local/conditional review, high fresh-context frontier review, critical/trigger escalation, stale candidate evidence, resource unavailability, budget exhaustion, allowed re-review, and forbidden self-certification.
 
-
 ## Verification
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm lint"}`
@@ -98,7 +96,6 @@ Replace near-Boolean review policy with adaptive assurance levels trigger-based 
 ## Documentation updates
 
 - Update execution-profile, architecture, task-system, CLI, README, decisions, and progress docs for implemented assurance, trigger, budget, and degraded-state behavior.
-
 
 ## Notes
 

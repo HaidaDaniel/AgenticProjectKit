@@ -283,6 +283,7 @@ test("task policy applies deterministic risk defaults", () => {
   assert.equal(low.requirements.scope, false);
   assert.equal(low.requirements.independentReview, false);
   assert.equal(low.requirements.reviewLevel, "none");
+  assert.equal(low.requirements.assurance, "none");
   assert.deepEqual(low.blockers, []);
 
   const medium = resolveTaskPolicy(TASK);
@@ -290,6 +291,7 @@ test("task policy applies deterministic risk defaults", () => {
   assert.equal(medium.requirements.scope, true);
   assert.equal(medium.requirements.independentReview, true);
   assert.equal(medium.requirements.reviewLevel, "lightweight");
+  assert.equal(medium.requirements.assurance, "self-check");
   assert.equal(medium.requirements.evidenceRequired, false);
   assert.deepEqual(medium.blockers, []);
 });
@@ -304,6 +306,7 @@ test("task policy requires declared high-risk evidence and explains tags", () =>
   assert.ok(high.blockers.some((blocker) => blocker.includes("evidence category")));
   assert.equal(high.requirements.independentReview, true);
   assert.equal(high.requirements.reviewLevel, "independent");
+  assert.equal(high.requirements.assurance, "independent");
 
   const release = resolveTaskPolicy({
     ...TASK,
@@ -334,6 +337,27 @@ test("task policy requires declared high-risk evidence and explains tags", () =>
   assert.deepEqual(release.declaredEvidenceCategories, ["artifact", "evidence", "live", "manual", "report"]);
   assert.deepEqual(release.blockers, []);
   assert.match(renderTaskPolicy(release), /independent review: not required/);
+});
+
+test("task policy raises assurance for critical and stable escalation triggers", () => {
+  const critical = resolveTaskPolicy({
+    ...TASK,
+    risk: "critical",
+    tags: ["security", "migration"],
+  });
+
+  assert.equal(critical.requirements.assurance, "independent");
+  assert.deepEqual(critical.requirements.assuranceTriggers?.map((trigger) => trigger.id), [
+    "security-auth",
+    "schema-migration",
+    "critical-risk",
+  ]);
+  assert.deepEqual(critical.requirements.reviewBudget, {
+    maxReviewPasses: 3,
+    maxFrontierReviewPasses: 2,
+    maxFrontierRuns: 2,
+    paidEscalation: true,
+  });
 });
 
 test("task policy diagnoses tag conflicts and preserves legacy compatibility", () => {

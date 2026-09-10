@@ -53,7 +53,7 @@ export const TASK_MODES = [
 ] as const;
 export type TaskMode = (typeof TASK_MODES)[number];
 
-export const TASK_RISKS = ["low", "medium", "high"] as const;
+export const TASK_RISKS = ["low", "medium", "high", "critical"] as const;
 export type TaskRisk = (typeof TASK_RISKS)[number];
 
 export const TASK_BASELINES_PATH = ".agentic/task-baselines.jsonl";

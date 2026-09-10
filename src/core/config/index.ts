@@ -66,6 +66,7 @@ export {
   parseExecutionOverride,
   parseExecutionProfile,
   renderExecutionRoute,
+  resolveAssurancePlan,
   resolveExecutionRoute,
   ExecutionValidationError,
   type ExecutionCandidate,
@@ -76,4 +77,6 @@ export {
   type ExecutionRoute,
   type ExecutionRouteKind,
   type ExecutionRouteRequest,
+  type AssurancePlan,
+  type AssurancePlanRequest,
 } from "../execution/index.js";

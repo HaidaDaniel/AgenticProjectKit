@@ -330,10 +330,12 @@ export async function evaluateTaskCompletionGate(options: {
       .filter((record) => isGateEligibleEvidence(record, registeredAgents));
     const assessments = assessTaskReviews(reviewRecords, subject);
     const selected = reviewAssessment(assessments, subject);
+    const reviewBudget = policy.requirements.reviewBudget;
+    const budgetExhausted = reviewBudget !== undefined && reviewRecords.length >= reviewBudget.maxReviewPasses;
     if (!selected) {
       review.freshness = "missing";
-      review.reason = "missing independent review evidence";
-      blockers.push("Missing independent review evidence.");
+      review.reason = budgetExhausted ? "review budget exhausted" : "missing independent review evidence";
+      blockers.push(budgetExhausted ? "Review budget exhausted; request an explicit human decision." : "Missing independent review evidence.");
     } else if (selected.freshness !== "current") {
       review.freshness = "stale";
       review.evidenceId = selected.record.id;
@@ -357,6 +359,9 @@ export async function evaluateTaskCompletionGate(options: {
       }
       if (selected.record.result !== "pass") {
         blockers.push(`Independent review is ${selected.record.result}; pass review evidence is required.`);
+      }
+      if (budgetExhausted && selected.record.result !== "pass") {
+        blockers.push("Review budget exhausted; request an explicit human decision.");
       }
     }
   }

@@ -25,7 +25,7 @@ The target extends current task policy, gate, evidence, review, provenance, stat
 
 Portable resource/profile/budget/override state should extend the existing optional config schema. Deterministic detection is read-only by default; generated calibration remains distinct from user overrides and is applied only after schema validation. Secrets stay outside APK configuration.
 
-Tasks 0083-0084 implement the optional secret-free model/harness/worker registry and deterministic profile/routing foundation. Adaptive assurance, calibration, attention/status, and isolated workspaces remain subsequent tasks. The current `none`/`lightweight`/`independent` task policy and existing completion gate remain authoritative.
+Tasks 0083-0085 implement the optional secret-free model/harness/worker registry, deterministic profile/routing foundation, and adaptive assurance/budget projection. Calibration, attention/status, and isolated workspaces remain subsequent tasks. Legacy `none`/`lightweight`/`independent` policy fields and the existing completion gate remain authoritative compatibility boundaries.
 
 ## Proposed internal layout
 
@@ -93,5 +93,7 @@ Claim baselines use a parallel append-only `.agentic/task-baselines.jsonl` store
 `src/core/resources/index.ts` validates optional model, harness, and executable worker declarations with stable IDs, bounded capabilities, protocol support, capacity, cost, availability, and secret rejection. A worker references one model and harness; it is the routing identity, while model and vendor/harness names remain metadata. `apk resources` is read-only and does not probe or launch anything.
 
 `src/core/execution/index.ts` keeps `executionProfile` independent from project mode and consumes existing task-policy requirements as input. It provides deterministic local/constrained/balanced/abundant routing, cost/capacity/availability filtering, explicit override explanation, and wait/needs-human outcomes. It does not derive assurance, escalation triggers, review budgets, or completion-gate decisions.
+
+Task policy now also emits ordered assurance levels, stable escalation triggers, and bounded review budgets. The single completion gate consumes the same append-only review evidence and refuses a further failing review loop after the declared pass budget is exhausted; no parallel assurance store or gate is introduced.
 
 Terminal worker and review results use one evidence-lock transaction for duplicate detection plus append, so concurrent submissions cannot both commit. Worker review preparation and activation share a per-run lifecycle lock; failed pre-activation issuance removes only the exact worker-origin preparation and preserves standalone, successor, or correctly activated review state.

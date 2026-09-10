@@ -154,6 +154,31 @@ test("execution resolver keeps profiles independent and handles tie, capacity, a
     policy: lightweightReview,
     registry: { ...registry, workers: [worker("frontier-only", "scarce-frontier", "remote")] },
   }).kind, "needs-human");
+  const diverseRegistry = {
+    models: [{ id: "model-a", family: "family-a", roles: ["review"] }, { id: "model-b", family: "family-b", roles: ["review"] }],
+    harnesses: [
+      { id: "harness-a", sessionIsolation: true, tools: [], workspaceModes: [], subagentSupport: false, workerProtocols: ["apk-worker-v1"] },
+      { id: "harness-b", sessionIsolation: true, tools: [], workspaceModes: [], subagentSupport: false, workerProtocols: ["apk-worker-v1"] },
+    ],
+    workers: [
+      { ...worker("review-a", "cheap"), modelId: "model-a", harnessId: "harness-a", capabilities: { roles: ["review"], tools: [], workspaceModes: [], workerProtocols: ["apk-worker-v1"] } },
+      { ...worker("review-b", "cheap"), modelId: "model-b", harnessId: "harness-b", capabilities: { roles: ["review"], tools: [], workspaceModes: [], workerProtocols: ["apk-worker-v1"] } },
+    ],
+  };
+  const diverse = resolveExecutionRoute({
+    profile: "balanced",
+    role: "review",
+    policy: { ...lightweightReview, assurance: "diverse", reviewBudget: { maxReviewPasses: 2, maxFrontierReviewPasses: 1, maxFrontierRuns: 1, paidEscalation: false } },
+    registry: diverseRegistry,
+  });
+  assert.equal(diverse.kind, "worker");
+  assert.deepEqual(diverse.assurance?.resourceIds, ["review-a", "review-b"]);
+  assert.equal(resolveExecutionRoute({
+    profile: "balanced",
+    role: "review",
+    policy: { ...lightweightReview, assurance: "independent", reviewBudget: { maxReviewPasses: 0, maxFrontierReviewPasses: 0, maxFrontierRuns: 0, paidEscalation: false } },
+    registry: diverseRegistry,
+  }).kind, "budget-exhausted");
 });
 
 test("CLI resources renders a stable read-only registry in human and JSON forms", async () => {

@@ -165,7 +165,7 @@ const TASK_CREATE_HELP_TEXT = [
   "  --template <name>       Alias for --type; existing generic templates remain supported.",
   "  --mode <mode>           Task mode: discovery, mvp, product, production, maintenance, audit, adopt.",
   "  --lane <lane>           Work lane (e.g. implementation, planning, adoption).",
-  "  --risk <risk>           Risk level: low, medium, high.",
+  "  --risk <risk>           Risk level: low, medium, high, critical.",
   "  --context <csv>         Comma-separated context file paths.",
   "  --verification <csv>    Comma-separated legacy verification commands; normalized to required local deterministic checks.",
   "  --verification-json <json>  Structured verification check array.",

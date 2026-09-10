@@ -1,4 +1,4 @@
-import type { TaskPolicyRequirements } from "../tasks/policy.js";
+import type { AssuranceLevel, ReviewBudget, TaskPolicyRequirements } from "../tasks/policy.js";
 import {
   RESOURCE_COST_CLASSES,
   RESOURCE_LOCATIONS,
@@ -27,7 +27,7 @@ export type ExecutionRole = (typeof EXECUTION_ROLES)[number];
 export const EXECUTION_COMPLEXITIES = ["simple", "medium", "complex"] as const;
 export type ExecutionComplexity = (typeof EXECUTION_COMPLEXITIES)[number];
 
-export type ExecutionRouteKind = "deterministic" | "worker" | "wait" | "needs-human";
+export type ExecutionRouteKind = "deterministic" | "worker" | "wait" | "needs-human" | "budget-exhausted";
 
 export interface ExecutionOverride {
   resourceId?: string;
@@ -48,6 +48,22 @@ export interface ExecutionRouteRequest {
   override?: ExecutionOverride;
 }
 
+export interface AssurancePlanRequest {
+  policy: TaskPolicyRequirements;
+  profile?: ExecutionProfile;
+  registry: ResourceRegistry;
+  role?: ExecutionRole;
+}
+
+export interface AssurancePlan {
+  required: AssuranceLevel;
+  selected: AssuranceLevel;
+  status: "ready" | "unavailable" | "budget-exhausted";
+  budget: ReviewBudget;
+  resourceIds: string[];
+  reason: string;
+}
+
 export interface ExecutionCandidate {
   resourceId: string;
   eligible: boolean;
@@ -66,6 +82,7 @@ export interface ExecutionRoute {
   };
   explanation: string;
   candidates: ExecutionCandidate[];
+  assurance?: AssurancePlan;
   override?: ExecutionOverride;
 }
 
@@ -97,6 +114,12 @@ const ROLE_ALIASES: Record<ExecutionRole, readonly string[]> = {
 };
 
 const DEFAULT_PROFILE: ExecutionProfile = "constrained";
+const DEFAULT_ASSURANCE_BUDGET: ReviewBudget = {
+  maxReviewPasses: 2,
+  maxFrontierReviewPasses: 1,
+  maxFrontierRuns: 1,
+  paidEscalation: false,
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -149,6 +172,44 @@ export function parseExecutionOverride(value: unknown): ExecutionOverride {
 
 function normalizedProfile(profile: ExecutionProfile | undefined): ExecutionProfile {
   return profile ?? DEFAULT_PROFILE;
+}
+
+function assuranceRank(level: AssuranceLevel): number {
+  return ["none", "self-check", "fresh-context", "independent", "diverse"].indexOf(level);
+}
+
+export function resolveAssurancePlan(request: AssurancePlanRequest): AssurancePlan {
+  const required = request.policy.assurance
+    ?? (request.policy.independentReview ? "independent" : "none");
+  const budget = request.policy.reviewBudget ?? DEFAULT_ASSURANCE_BUDGET;
+  if (budget.maxReviewPasses <= 0 || (assuranceRank(required) >= assuranceRank("fresh-context") && budget.maxFrontierRuns <= 0)) {
+    return { required, selected: required, status: "budget-exhausted", budget, resourceIds: [], reason: "Review budget does not permit the required assurance." };
+  }
+  if (assuranceRank(required) <= assuranceRank("self-check")) {
+    return { required, selected: required, status: "ready", budget, resourceIds: [], reason: `${required} assurance is satisfied by the implementation context and deterministic checks.` };
+  }
+  const reviewWorkers = request.registry.workers.filter((worker) => {
+    if (!supportsRole(worker, "review") || worker.availability !== "available" || worker.occupied >= worker.capacity) return false;
+    const harness = request.registry.harnesses.find((item) => item.id === worker.harnessId);
+    return required === "fresh-context" ? Boolean(harness?.sessionIsolation) : true;
+  });
+  if (required === "diverse") {
+    const families = new Set(reviewWorkers.map((worker) => request.registry.models.find((model) => model.id === worker.modelId)?.family ?? worker.modelId));
+    if (families.size < 2) {
+      return { required, selected: required, status: "unavailable", budget, resourceIds: reviewWorkers.map((worker) => worker.id), reason: "Diverse assurance requires review resources from two distinct model families." };
+    }
+  }
+  if (reviewWorkers.length === 0) {
+    return { required, selected: required, status: "unavailable", budget, resourceIds: [], reason: required === "fresh-context" ? "No available review resource proves an isolated session." : "No available review resource can satisfy the required assurance." };
+  }
+  return {
+    required,
+    selected: required,
+    status: "ready",
+    budget,
+    resourceIds: reviewWorkers.sort((left, right) => left.id.localeCompare(right.id)).map((worker) => worker.id),
+    reason: `${required} assurance is available from validated review resources.`,
+  };
 }
 
 function supportsRole(worker: WorkerResource, role: ExecutionRole): boolean {
@@ -221,6 +282,23 @@ export function resolveExecutionRoute(request: ExecutionRouteRequest): Execution
   const profile = normalizedProfile(request.profile);
   const deterministic = deterministicRoute(request, profile);
   if (deterministic) return deterministic;
+  const assurance = request.role === "review" ? resolveAssurancePlan({
+    policy: request.policy,
+    profile,
+    registry: request.registry,
+    role: request.role,
+  }) : undefined;
+  if (assurance && assurance.status !== "ready") {
+    return {
+      profile, role: request.role, kind: assurance.status === "budget-exhausted" ? "budget-exhausted" : "needs-human",
+      queue: "manual",
+      policy: { independentReview: request.policy.independentReview, reviewLevel: request.policy.reviewLevel },
+      explanation: assurance.reason,
+      candidates: [],
+      assurance,
+      ...(request.override ? { override: request.override } : {}),
+    };
+  }
   const complexity = request.complexity ?? "medium";
   const override = request.override;
   const candidates = request.registry.workers.map((worker) => {
@@ -254,6 +332,7 @@ export function resolveExecutionRoute(request: ExecutionRouteRequest): Execution
         ? `Explicit override selected ${selected.worker.id}; capability, availability, and capacity checks still apply.`
         : `Selected ${selected.worker.id} by deterministic profile ordering${override?.preferLocation || override?.preferCostClass ? " with explicit preferences" : ""}; ties are resolved by stable resource ID.`,
       candidates: renderedCandidates,
+      ...(assurance ? { assurance } : {}),
       ...(override ? { override } : {}),
     };
   }
@@ -268,6 +347,7 @@ export function resolveExecutionRoute(request: ExecutionRouteRequest): Execution
         ? `Matching resources exist but profile, capability, or override constraints reject them.`
         : `No registered resource declares capability for role ${request.role}.`,
     candidates: renderedCandidates,
+    ...(assurance ? { assurance } : {}),
     ...(override ? { override } : {}),
   };
 }

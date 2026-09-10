@@ -182,9 +182,9 @@ The existing independent-review capability, reviewer identity separation, immuta
 | `independent` | A separate worker identity and context review the exact candidate |
 | `diverse` | Independent assurance also uses a genuinely different model/resource family when available and required |
 
-The target risk baseline is low -> `none`, medium -> `self-check`, high -> `fresh-context`, and critical -> `independent` with strongest-available/diverse preference. Classification policy and triggers can raise the required level, including to mandatory `diverse`; they cannot lower it. Task 0085 adds `critical` and compatibility normalization without rewriting historical task contracts or evidence.
+The implemented target risk baseline is low -> `none`, medium -> `self-check`, high -> `fresh-context`, and critical -> `independent` with strongest-available/diverse preference. Classification policy and triggers can raise the required level, including to mandatory `diverse`; they cannot lower it. Legacy `lightweight`/`independent` fields remain readable as compatibility projections. Stable trigger IDs include `security-auth`, `schema-migration`, `concurrency-async`, `public-api`, `critical-release`, and `critical-risk`.
 
-The execution profile chooses the cheapest valid resource/session arrangement for the required level. For example, a constrained medium task may finish after deterministic checks and a bounded self-check, or use a local fresh-context reviewer when triggered. A security classification can require independent frontier assurance even if the task's base risk is medium.
+The execution profile chooses the cheapest valid resource/session arrangement for the required level. For example, a constrained medium task may finish after deterministic checks and a bounded self-check, or use a local fresh-context reviewer when triggered. A security classification can require independent frontier assurance even if the task's base risk is medium. The policy carries bounded review budgets (`maxReviewPasses`, `maxFrontierReviewPasses`, `maxFrontierRuns`, and paid-escalation permission); the constrained default allows one frontier review pass. Exhaustion is surfaced as an actionable budget blocker.
 
 ### Review triggers
 

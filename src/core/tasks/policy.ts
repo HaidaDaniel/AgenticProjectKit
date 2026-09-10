@@ -5,6 +5,21 @@ import type {
 } from "./index.js";
 
 export type TaskPolicyReviewLevel = "none" | "lightweight" | "independent";
+export const ASSURANCE_LEVELS = ["none", "self-check", "fresh-context", "independent", "diverse"] as const;
+export type AssuranceLevel = (typeof ASSURANCE_LEVELS)[number];
+
+export interface AssuranceTrigger {
+  id: string;
+  reason: string;
+  raisesTo: AssuranceLevel;
+}
+
+export interface ReviewBudget {
+  maxReviewPasses: number;
+  maxFrontierReviewPasses: number;
+  maxFrontierRuns: number;
+  paidEscalation: boolean;
+}
 
 export interface TaskPolicyRequirements {
   automatedVerification: boolean;
@@ -13,6 +28,10 @@ export interface TaskPolicyRequirements {
   reviewLevel: TaskPolicyReviewLevel;
   evidenceRequired: boolean;
   evidenceCategories: string[];
+  /** Canonical minimum assurance; legacy review fields remain compatibility projections. */
+  assurance?: AssuranceLevel;
+  assuranceTriggers?: AssuranceTrigger[];
+  reviewBudget?: ReviewBudget;
 }
 
 export interface TaskPolicyTagRule {
@@ -60,6 +79,44 @@ const TASK_TYPE_POLICY_TAGS: Record<string, readonly string[]> = {
   security: ["security"],
   release: ["release"],
 };
+
+const ASSURANCE_RANK: Record<AssuranceLevel, number> = {
+  none: 0,
+  "self-check": 1,
+  "fresh-context": 2,
+  independent: 3,
+  diverse: 4,
+};
+
+const DEFAULT_REVIEW_BUDGET: ReviewBudget = {
+  maxReviewPasses: 2,
+  maxFrontierReviewPasses: 1,
+  maxFrontierRuns: 1,
+  paidEscalation: false,
+};
+
+function maxAssurance(current: AssuranceLevel, next: AssuranceLevel): AssuranceLevel {
+  return ASSURANCE_RANK[next] > ASSURANCE_RANK[current] ? next : current;
+}
+
+function assuranceForRisk(risk: TaskRisk): AssuranceLevel {
+  if (risk === "critical") return "independent";
+  if (risk === "high") return "fresh-context";
+  if (risk === "medium") return "self-check";
+  return "none";
+}
+
+function assuranceTriggers(task: ProjectTask): AssuranceTrigger[] {
+  const tags = new Set(task.tags);
+  const triggers: AssuranceTrigger[] = [];
+  if (tags.has("security") || tags.has("auth")) triggers.push({ id: "security-auth", reason: "Security or authentication changes require independent assurance.", raisesTo: "independent" });
+  if (tags.has("migration")) triggers.push({ id: "schema-migration", reason: "Schema or data migration changes require fresh semantic context.", raisesTo: "fresh-context" });
+  if (tags.has("async") || tags.has("worker")) triggers.push({ id: "concurrency-async", reason: "Concurrency or worker lifecycle changes require fresh semantic context.", raisesTo: "fresh-context" });
+  if (tags.has("api") || tags.has("public-api")) triggers.push({ id: "public-api", reason: "Public API compatibility changes require fresh semantic context.", raisesTo: "fresh-context" });
+  if (tags.has("release") || task.type === "release") triggers.push({ id: "critical-release", reason: "Critical release or integration work requires independent assurance.", raisesTo: "independent" });
+  if (task.risk === "critical") triggers.push({ id: "critical-risk", reason: "Critical risk requires independent assurance with diverse preference.", raisesTo: "independent" });
+  return triggers;
+}
 
 function policyTags(task: ProjectTask): string[] {
   return [...new Set([
@@ -116,6 +173,16 @@ export function resolveTaskPolicy(
     evidenceRequired: task.risk === "high",
     evidenceCategories: [],
   };
+  const triggers = assuranceTriggers(task);
+  let assurance = assuranceForRisk(task.risk);
+  for (const trigger of triggers) assurance = maxAssurance(assurance, trigger.raisesTo);
+  const reviewBudget: ReviewBudget = {
+    ...DEFAULT_REVIEW_BUDGET,
+    ...(task.risk === "critical" ? { maxReviewPasses: 3, maxFrontierReviewPasses: 2, maxFrontierRuns: 2, paidEscalation: true } : {}),
+  };
+  requirements.assurance = assurance;
+  requirements.assuranceTriggers = triggers;
+  requirements.reviewBudget = reviewBudget;
   const reasons = [`risk=${task.risk} defaults applied`];
   const diagnostics: string[] = [];
   const blockers: string[] = [];
@@ -211,6 +278,9 @@ export function renderTaskPolicy(policy: EffectiveTaskPolicy): string {
     `  - independent review: ${policy.requirements.independentReview ? policy.requirements.reviewLevel : "not required"}`,
     `  - evidence: ${policy.requirements.evidenceRequired ? "required" : "not required"}`,
     `  - evidence categories: ${policy.requirements.evidenceCategories.length > 0 ? policy.requirements.evidenceCategories.join(",") : "none"}`,
+    `  - minimum assurance: ${policy.requirements.assurance ?? "legacy-compatible"}`,
+    `  - assurance triggers: ${policy.requirements.assuranceTriggers?.map((trigger) => trigger.id).join(",") || "none"}`,
+    `  - review budget: ${policy.requirements.reviewBudget ? `${policy.requirements.reviewBudget.maxReviewPasses} passes/${policy.requirements.reviewBudget.maxFrontierReviewPasses} frontier` : "legacy-compatible"}`,
     `Declared evidence: ${policy.declaredEvidenceCategories.length > 0 ? policy.declaredEvidenceCategories.join(",") : "none"}`,
   ];
 
