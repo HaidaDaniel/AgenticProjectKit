@@ -767,6 +767,70 @@ test("CLI work coordinates implementation, review, fixer, and gate roles", async
     const canonicalVerification = await runCli(["task", "verify", "0001", "--owner", "codex-owner"], directory);
     assert.equal(canonicalVerification.exitCode, 0);
 
+    const reviewPreparationDirectory = join(directory, ".agentic", "reviews", "0001");
+    await assert.rejects(
+      () => startWork({
+        rootDirectory: directory,
+        taskId: "0001",
+        owner: "codex-reviewer",
+        target: "opencode",
+        level: "auto",
+        role: "review",
+        afterReviewPreparation: async () => {
+          throw new Error("injected failure after review preparation");
+        },
+      }),
+      /injected failure after review preparation/,
+    );
+    assert.deepEqual((await readdir(reviewPreparationDirectory)).filter((entry) => entry.endsWith(".json")), []);
+
+    let standaloneReplacementPath: string | undefined;
+    await assert.rejects(
+      () => startWork({
+        rootDirectory: directory,
+        taskId: "0001",
+        owner: "codex-reviewer",
+        target: "opencode",
+        level: "auto",
+        role: "review",
+        afterReviewPreparation: async (preparation) => {
+          standaloneReplacementPath = join(reviewPreparationDirectory, `${preparation.reviewRunId}.json`);
+          const replacement = JSON.parse(await readFile(standaloneReplacementPath, "utf8")) as Record<string, unknown>;
+          replacement.origin = "standalone";
+          delete replacement.workerRunId;
+          await rm(standaloneReplacementPath);
+          await writeFile(standaloneReplacementPath, `${JSON.stringify(replacement)}\n`, "utf8");
+          throw new Error("injected standalone replacement");
+        },
+      }),
+      /injected standalone replacement/,
+    );
+    assert.ok(standaloneReplacementPath);
+    assert.match(await readFile(standaloneReplacementPath, "utf8"), /"origin":"standalone"/);
+
+    let successorReplacementPath: string | undefined;
+    await assert.rejects(
+      () => startWork({
+        rootDirectory: directory,
+        taskId: "0001",
+        owner: "codex-reviewer",
+        target: "opencode",
+        level: "auto",
+        role: "review",
+        afterReviewPreparation: async (preparation) => {
+          successorReplacementPath = join(reviewPreparationDirectory, `${preparation.reviewRunId}.json`);
+          const replacement = JSON.parse(await readFile(successorReplacementPath, "utf8")) as Record<string, unknown>;
+          replacement.preparedAt = "2099-01-01T00:00:00.000Z";
+          await rm(successorReplacementPath);
+          await writeFile(successorReplacementPath, `${JSON.stringify(replacement)}\n`, "utf8");
+          throw new Error("injected successor replacement");
+        },
+      }),
+      /injected successor replacement/,
+    );
+    assert.ok(successorReplacementPath);
+    assert.match(await readFile(successorReplacementPath, "utf8"), /2099-01-01T00:00:00.000Z/);
+
     await writeFile(join(tasksDir, ".apk.lock"), "stale\n", "utf8");
     await assert.rejects(
       () => startWork({
@@ -795,7 +859,7 @@ test("CLI work coordinates implementation, review, fixer, and gate roles", async
       "--result", "pass",
     ], directory);
     assert.equal(standaloneTransitionResult.exitCode, 1);
-    assert.match(standaloneTransitionResult.stderr + standaloneTransitionResult.stdout, /not activated/);
+    assert.match(standaloneTransitionResult.stderr + standaloneTransitionResult.stdout, /Prepared review run not found/);
     const inactiveProvenance = await runCli(["task", "provenance", "0001", "--json"], directory);
     assert.equal(inactiveProvenance.exitCode, 0);
     const inactiveWorkerRun = (JSON.parse(inactiveProvenance.stdout) as {
@@ -835,8 +899,44 @@ test("CLI work coordinates implementation, review, fixer, and gate roles", async
       "--result", "pass",
     ], directory);
     assert.equal(standaloneRaceResult.exitCode, 1);
-    assert.match(standaloneRaceResult.stderr + standaloneRaceResult.stdout, /not activated/);
+    assert.match(standaloneRaceResult.stderr + standaloneRaceResult.stdout, /Prepared review run not found/);
     assert.equal((await runCli(["task", "verify", "0001", "--owner", "codex-owner"], directory)).exitCode, 0);
+
+    let activatedRaceRunId: string | undefined;
+    await assert.rejects(
+      () => startWork({
+        rootDirectory: directory,
+        taskId: "0001",
+        owner: "codex-reviewer",
+        target: "opencode",
+        level: "auto",
+        role: "review",
+        beforeReviewActivation: async () => {
+          activatedRaceRunId = (await readdir(issuedRunDirectory))
+            .filter((entry) => entry.startsWith("work-"))
+            .sort()
+            .at(-1);
+          assert.ok(activatedRaceRunId);
+          const metadata = JSON.parse(await readFile(
+            join(issuedRunDirectory, activatedRaceRunId, "metadata.json"),
+            "utf8",
+          )) as { packageHash: string };
+          await writeFile(join(issuedRunDirectory, activatedRaceRunId, "activation.json"), `${JSON.stringify({
+            protocol: "apk-worker-v1",
+            taskId: "0001",
+            runId: activatedRaceRunId,
+            packageHash: metadata.packageHash,
+            activatedAt: new Date().toISOString(),
+          })}\n`, "utf8");
+        },
+      }),
+      /already activated/,
+    );
+    assert.ok(activatedRaceRunId);
+    assert.match(
+      await readFile(join(reviewPreparationDirectory, `${activatedRaceRunId}.json`), "utf8"),
+      /"origin":"worker"/,
+    );
 
     const selfReviewWork = await runCli([
       "work", "0001", "--owner", "codex-owner", "--target", "codex",
@@ -901,6 +1001,46 @@ test("CLI work coordinates implementation, review, fixer, and gate roles", async
   });
 });
 
+test("CLI work explains the lifecycle transition for standalone review findings", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    const task = buildTaskMarkdown("0001", "Standalone Findings", "todo")
+      .replace("Risk: low", "Risk: medium");
+    const taskPath = join(directory, ".tasks", "0001-standalone-findings.md");
+    await writeFile(taskPath, task, "utf8");
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    for (const id of ["codex-owner", "codex-reviewer", "codex-fixer"]) {
+      await runCli(["agent", "register", "--id", id, "--platform", "codex", "--model", "gpt-5"], directory);
+    }
+    assert.equal((await runCli(["claim", "0001", "--owner", "codex-owner"], directory)).exitCode, 0);
+    const prompt = await runCli(["review", "0001", "--reviewer", "codex-reviewer", "--prompt"], directory);
+    assert.equal(prompt.exitCode, 0, `${prompt.stdout}${prompt.stderr}`);
+    const reviewRunId = prompt.stdout.match(/Review run: (review-[^\n]+)/)?.[1];
+    assert.ok(reviewRunId);
+    const review = await runCli([
+      "review", "0001", "--reviewer", "codex-reviewer", "--review-run", reviewRunId,
+      "--result", "changes_requested", "--finding", "Fix the boundary.",
+    ], directory);
+    assert.equal(review.exitCode, 1);
+    assert.match(await readFile(taskPath, "utf8"), /State: doing/);
+
+    const work = await runCli(["work", "0001", "--owner", "codex-fixer", "--target", "codex"], directory);
+    assert.equal(work.exitCode, 1);
+    assert.match(
+      work.stderr + work.stdout,
+      /pnpm exec apk review 0001 --owner codex-owner; then retry the fixer worker run/,
+    );
+    assert.match(await readFile(taskPath, "utf8"), /State: doing/);
+  });
+});
+
 test("CLI work rejects issued-run collisions without deleting the original session", async () => {
   await withTempDirectory(async (directory) => {
     const git = async (...args: string[]) => {
@@ -949,6 +1089,41 @@ test("CLI work rejects issued-run collisions without deleting the original sessi
       Date.now = originalNow;
       Math.random = originalRandom;
     }
+  });
+});
+
+test("CLI concurrent worker results append one terminal result", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(join(directory, ".tasks", "0001-concurrent.md"), buildTaskMarkdown("0001", "Concurrent", "todo"), "utf8");
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await runCli(["agent", "register", "--id", "codex-owner", "--platform", "codex", "--model", "gpt-5"], directory);
+
+    const issued = await runCli(["work", "0001", "--owner", "codex-owner", "--target", "codex", "--json"], directory);
+    assert.equal(issued.exitCode, 0, `${issued.stdout}${issued.stderr}`);
+    const runId = (JSON.parse(issued.stdout) as { runId: string }).runId;
+    const results = await Promise.all([
+      runCli([
+        "work", "result", "0001", "--owner", "codex-owner", "--run-id", runId,
+        "--role", "implement", "--status", "completed",
+      ], directory),
+      runCli([
+        "work", "result", "0001", "--owner", "codex-owner", "--run-id", runId,
+        "--role", "implement", "--status", "failed", "--reason", "Concurrent failure.",
+      ], directory),
+    ]);
+
+    assert.equal(results.filter((result) => /already recorded for run/.test(result.stderr + result.stdout)).length, 1);
+    const records = (await readFile(join(directory, ".agentic", "evidence.jsonl"), "utf8"))
+      .trim().split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line) as { runId: string });
+    assert.equal(records.filter((record) => record.runId === runId).length, 1);
   });
 });
 

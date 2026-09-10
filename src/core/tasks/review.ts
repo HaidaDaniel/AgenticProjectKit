@@ -1,5 +1,5 @@
 import { appendRunLog, requireAgent } from "../agents/index.js";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import {
   captureTaskEvidenceSubject,
@@ -18,7 +18,10 @@ import {
   type TaskEvidenceFreshness,
 } from "./evidence.js";
 import { isSafeRunId } from "../work/contract.js";
-import { readActiveWorkerSession } from "../work/session.js";
+import {
+  readActiveWorkerSession,
+  withWorkerReviewLifecycleLock,
+} from "../work/session.js";
 
 export const TASK_REVIEW_OUTCOMES = ["pass", "changes_requested", "fail"] as const;
 export type TaskReviewOutcome = (typeof TASK_REVIEW_OUTCOMES)[number];
@@ -329,17 +332,19 @@ export async function prepareTaskReview(
   if ((origin === "worker" && workerRunId !== preparedRunId) || (origin === "standalone" && workerRunId !== undefined)) {
     throw new Error(`Review run origin binding is malformed: ${preparedRunId}.`);
   }
-  await writePreparedReview(options.rootDirectory, {
-    protocol: "review-v1",
-    reviewRunId: preparedRunId,
-    taskId: task.id,
-    reviewer: reviewer.id,
-    origin,
-    ...(workerRunId ? { workerRunId } : {}),
-    subject,
-    changedFiles,
-    ...(baseline?.headSha ? { baselineHeadSha: baseline.headSha } : {}),
-    preparedAt,
+  await withWorkerReviewLifecycleLock(options.rootDirectory, task.id, preparedRunId, async () => {
+    await writePreparedReview(options.rootDirectory, {
+      protocol: "review-v1",
+      reviewRunId: preparedRunId,
+      taskId: task.id,
+      reviewer: reviewer.id,
+      origin,
+      ...(workerRunId ? { workerRunId } : {}),
+      subject,
+      changedFiles,
+      ...(baseline?.headSha ? { baselineHeadSha: baseline.headSha } : {}),
+      preparedAt,
+    });
   });
   return {
     reviewRunId: preparedRunId,
@@ -464,9 +469,6 @@ export async function recordTaskReview(options: TaskReviewOptions): Promise<Task
     throw new Error(`Review run ${prepared.reviewRunId} changed files do not match the issued worker review package.`);
   }
   const runId = prepared.reviewRunId;
-  if ((await readTaskEvidence(options.rootDirectory, prepared.task.id)).some((record) => record.type === "review" && record.runId === runId)) {
-    throw new Error(`Review run already has a result: ${runId}.`);
-  }
   const findings = normalizedFindings(options.findings);
   const evidence = await appendTaskEvidence(options.rootDirectory, {
     taskId: prepared.task.id,
@@ -483,6 +485,9 @@ export async function recordTaskReview(options: TaskReviewOptions): Promise<Task
     workerStatus: options.workerStatus,
     findings,
     summary: options.outcome === "pass" ? "Independent review passed." : findings.join("; ") || `Independent review ${options.outcome}.`,
+  }, {
+    conflictsWith: (record) => record.type === "review" && record.runId === runId,
+    conflictMessage: `Review run already has a result: ${runId}.`,
   });
   const reviewRecord = asTaskReviewRecord(evidence);
   if (!reviewRecord) {
@@ -516,6 +521,53 @@ export async function recordTaskReview(options: TaskReviewOptions): Promise<Task
       reviewRunId: runId,
     }),
   };
+}
+
+export async function cleanupPreparedWorkerReview(options: {
+  rootDirectory: string;
+  preparation: TaskReviewPreparation;
+}): Promise<"removed" | "absent" | "preserved"> {
+  const expected = options.preparation;
+  return withWorkerReviewLifecycleLock(options.rootDirectory, expected.task.id, expected.reviewRunId, async () => {
+    try {
+      const active = await readActiveWorkerSession(options.rootDirectory, expected.task.id, expected.reviewRunId);
+      if (
+        active.role === "review"
+        && active.owner === expected.reviewer
+        && active.workerPackage.review?.reviewRunId === expected.reviewRunId
+        && active.workerPackage.review.taskId === expected.task.id
+        && active.workerPackage.review.reviewer === expected.reviewer
+      ) {
+        return "preserved";
+      }
+    } catch {
+      // Missing, incomplete, or malformed worker state cannot protect a prepared review orphan.
+    }
+
+    let stored: StoredTaskReviewPreparation;
+    try {
+      stored = await readPreparedReview(options.rootDirectory, expected.task.id, expected.reviewRunId);
+    } catch (error: unknown) {
+      if (error instanceof Error && error.message.startsWith("Prepared review run not found:")) {
+        return "absent";
+      }
+      return "preserved";
+    }
+
+    const exactWorkerPreparation = stored.origin === "worker"
+      && stored.workerRunId === expected.reviewRunId
+      && stored.taskId === expected.task.id
+      && stored.reviewer === expected.reviewer
+      && stored.preparedAt === expected.preparedAt
+      && sameReviewSubject(stored.subject, expected.subject)
+      && JSON.stringify([...stored.changedFiles].sort()) === JSON.stringify([...expected.changedFiles].sort());
+    if (!exactWorkerPreparation) {
+      return "preserved";
+    }
+
+    await rm(reviewSessionPath(options.rootDirectory, expected.task.id, expected.reviewRunId));
+    return "removed";
+  });
 }
 
 export async function listTaskReviews(

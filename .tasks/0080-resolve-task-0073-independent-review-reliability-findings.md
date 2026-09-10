@@ -1,7 +1,7 @@
 # Task 0080 - Resolve Task 0073 independent-review reliability findings
 
-State: todo
-Owner: none
+State: done
+Owner: codex-quality-plan
 Mode: product
 Lane: task-system
 Scope: workflow,review,evidence,concurrency,cli,tests,docs
@@ -52,6 +52,7 @@ Three P2 findings retained by Task 0073 independent review are fixed with atomic
 - docs/cli-commands.md
 - docs/progress.md
 - docs/decisions.md
+- SPEC.md
 - .tasks/0080-resolve-task-0073-independent-review-reliability-findings.md
 
 ## Files forbidden to edit

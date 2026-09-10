@@ -129,6 +129,11 @@ export interface AddTaskEvidenceInput {
   metrics?: TaskEvidenceMetrics;
 }
 
+export interface TaskEvidenceUniqueness {
+  conflictsWith: (record: TaskEvidenceRecord) => boolean;
+  conflictMessage: string;
+}
+
 export type TaskEvidenceFreshness = "current" | "stale" | "unknown";
 
 export interface TaskEvidenceFreshnessResult {
@@ -430,6 +435,7 @@ async function withEvidenceAppendLock<T>(
 export async function appendTaskEvidence(
   rootDirectory: string,
   input: AddTaskEvidenceInput,
+  uniqueness?: TaskEvidenceUniqueness,
 ): Promise<TaskEvidenceRecord> {
   const time = input.time ?? new Date().toISOString();
   const record = normalizeEvidenceRecord({
@@ -444,6 +450,12 @@ export async function appendTaskEvidence(
   const path = join(rootDirectory, TASK_EVIDENCE_PATH);
 
   await withEvidenceAppendLock(rootDirectory, async () => {
+    if (uniqueness) {
+      const existing = await readTaskEvidence(rootDirectory, input.taskId);
+      if (existing.some(uniqueness.conflictsWith)) {
+        throw new Error(uniqueness.conflictMessage);
+      }
+    }
     await mkdir(dirname(path), { recursive: true });
     await appendFile(path, `${JSON.stringify(record)}\n`, "utf8");
   });

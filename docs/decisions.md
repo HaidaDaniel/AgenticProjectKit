@@ -482,3 +482,15 @@ When task policy requires review, the primary agent may launch a separate read-o
 Boundary:
 
 APK prepares and validates review packages/evidence but does not own model runtime. Automatic delegation is an agent-orchestrator behavior and does not permit self-certification under another label.
+
+## ADR-0033 - Worker review completion is one serialized lifecycle
+
+Status: accepted
+
+Decision:
+
+Decide duplicate terminal worker/review results under the evidence append lock and append at most one result per run. Serialize worker review preparation cleanup and activation with a per-run lifecycle lock. Pre-activation failure removes only the exact worker-origin preparation; mismatched standalone/successor state and matching activated review sessions are preserved. Standalone findings do not mutate task state implicitly and instead emit the exact owner transition required before fixer work.
+
+Reason:
+
+Check-then-append admitted conflicting concurrent outcomes, while independently published review preparation could outlive failed issuance or be deleted after replacement. One append transaction plus identity-bound cleanup keeps evidence order, prepared subjects, activation and visible task history consistent.

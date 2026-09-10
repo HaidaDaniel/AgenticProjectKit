@@ -1047,6 +1047,57 @@ test("prepared review rejects a mixed revision and keeps the reviewed subject im
   });
 });
 
+test("concurrent prepared review results append exactly one terminal outcome", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeTaskFile(join(directory, ".tasks", "0007-reviewable-task.md"), {
+      ...TASK,
+      state: "todo",
+      owner: "none",
+      dependsOn: [],
+      allowedFiles: ["src/**"],
+      forbiddenFiles: [],
+    });
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await registerAgent(directory, { id: "codex-owner", developer: "alice", platform: "codex", model: "gpt-5" });
+    await registerAgent(directory, { id: "codex-reviewer", developer: "bob", platform: "codex", model: "gpt-5" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-owner" });
+
+    const prepared = await prepareTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+    });
+    const common = {
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      reviewRunId: prepared.reviewRunId,
+    } as const;
+    const outcomes = await Promise.allSettled([
+      recordTaskReview({ ...common, outcome: "pass" }),
+      recordTaskReview({ ...common, outcome: "changes_requested", findings: ["Concurrent finding."] }),
+    ]);
+
+    assert.equal(outcomes.filter((result) => result.status === "fulfilled").length, 1);
+    const rejected = outcomes.find((result): result is PromiseRejectedResult => result.status === "rejected");
+    assert.ok(rejected);
+    assert.match(String(rejected.reason), /Review run already has a result/);
+    assert.equal((await readTaskEvidence(directory, "0007")).filter((record) => (
+      record.type === "review" && record.runId === prepared.reviewRunId
+    )).length, 1);
+  });
+});
+
 test("review history preserves changes_requested then pass across prepared candidates", async () => {
   await withTempDirectory(async (directory) => {
     const git = async (...args: string[]) => {

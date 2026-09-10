@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+
+import { withLocalMutationLock } from "../tasks/lock.js";
 
 import {
   parseWorkerPackage,
@@ -37,6 +39,25 @@ function hashText(value: string): string {
 
 function sessionDirectory(rootDirectory: string, taskId: string, runId: string): string {
   return join(rootDirectory, WORK_SESSION_DIRECTORY, taskId, runId);
+}
+
+export async function withWorkerReviewLifecycleLock<T>(
+  rootDirectory: string,
+  taskId: string,
+  runId: string,
+  run: () => Promise<T>,
+): Promise<T> {
+  validateWorkerRunId(runId);
+  const lockDirectory = join(rootDirectory, WORK_SESSION_DIRECTORY, ".review-locks");
+  await mkdir(lockDirectory, { recursive: true });
+  const lockName = `${hashText(`${taskId}\0${runId}`)}.lock`;
+  return withLocalMutationLock({
+    path: join(lockDirectory, lockName),
+    kind: "worker-review-lifecycle",
+    command: "worker review lifecycle",
+    taskId,
+    timeoutMs: 10_000,
+  }, run);
 }
 
 export async function readActiveWorkerSession(

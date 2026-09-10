@@ -9,7 +9,13 @@ import type { ContextLevel } from "../docs/context.js";
 import { appendTaskEvidence, readTaskEvidence, type TaskEvidenceRecord } from "../tasks/evidence.js";
 import { captureTaskCompletionCandidate, evaluateTaskCompletionGate } from "../tasks/gate.js";
 import { resolveTaskPolicy } from "../tasks/policy.js";
-import { prepareTaskReview, recordTaskReview, type TaskReviewOutcome } from "../tasks/review.js";
+import {
+  cleanupPreparedWorkerReview,
+  prepareTaskReview,
+  recordTaskReview,
+  type TaskReviewOutcome,
+  type TaskReviewPreparation,
+} from "../tasks/review.js";
 import { claimTask, reviewTask } from "../tasks/workflow.js";
 import { findTaskFile, loadTaskFile, type ProjectTask } from "../tasks/index.js";
 import type { TaskEvidenceCandidateSubject } from "../tasks/evidence.js";
@@ -28,7 +34,7 @@ import {
   type WorkerHandoff,
   type WorkerReviewBinding,
 } from "./contract.js";
-import { readActiveWorkerSession } from "./session.js";
+import { readActiveWorkerSession, withWorkerReviewLifecycleLock } from "./session.js";
 
 export * from "./contract.js";
 
@@ -42,6 +48,8 @@ export interface WorkOptions {
   level: WorkLevel;
   role?: WorkerRole;
   writeSession?: boolean;
+  /** Test-only seam for failure after review preparation but before worker-session publication. */
+  afterReviewPreparation?: (preparation: TaskReviewPreparation) => Promise<void>;
   /** Test-only seam for exercising the review issuance transaction boundary. */
   beforeReviewActivation?: () => Promise<void>;
 }
@@ -486,7 +494,9 @@ function requireWorkRole(task: ProjectTask, owner: string, target: string, role:
     return;
   }
   if (role === "fix" && task.state !== "review") {
-    throw new Error(`Task ${task.id} must be in review before a fixer worker run.`);
+    throw new Error(
+      `Task ${task.id} has review findings but is still doing. Run: pnpm exec apk review ${task.id} --owner ${task.owner}; then retry the fixer worker run.`,
+    );
   }
   if (role !== "fix" && task.owner !== owner) {
     throw new Error(`Task ${task.id} is owned by ${task.owner}, not ${owner}.`);
@@ -646,8 +656,10 @@ export async function startWork(options: WorkOptions): Promise<WorkResult> {
       throw new Error(`Canonical verification is not current for task ${task.id}; run pnpm exec apk task verify ${task.id} --owner ${task.owner} before issuing a review worker package.`);
     }
   }
-  const reviewPreparation = role === "review"
-    ? await prepareTaskReview({
+  let reviewPreparation: TaskReviewPreparation | undefined;
+  try {
+    reviewPreparation = role === "review"
+      ? await prepareTaskReview({
       rootDirectory: options.rootDirectory,
       taskDirectory: config.taskDirectory,
       taskId: task.id,
@@ -655,8 +667,11 @@ export async function startWork(options: WorkOptions): Promise<WorkResult> {
       reviewRunId: runId,
       origin: "worker",
       workerRunId: runId,
-    })
-    : undefined;
+      })
+      : undefined;
+    if (reviewPreparation && options.afterReviewPreparation) {
+      await options.afterReviewPreparation(reviewPreparation);
+    }
   const prompt = reviewPreparation?.prompt ?? renderTaskPrompt(promptInput);
   const subject = reviewPreparation?.subject ?? candidate.subject;
   const workerPackage = createWorkerPackage(task, promptInput.context, {
@@ -741,12 +756,15 @@ export async function startWork(options: WorkOptions): Promise<WorkResult> {
       status: "completed",
     });
   const next = workNextCommands(task, options.target, options.owner, runId, role);
-  const activationPath = await activateIssuedWorkerRun({
+  const activate = () => activateIssuedWorkerRun({
     rootDirectory: options.rootDirectory,
     taskId: task.id,
     runId,
     workerPackage,
   });
+  const activationPath = role === "review"
+    ? await withWorkerReviewLifecycleLock(options.rootDirectory, task.id, runId, activate)
+    : await activate();
 
   return {
     task,
@@ -762,6 +780,19 @@ export async function startWork(options: WorkOptions): Promise<WorkResult> {
     next,
     warnings,
   };
+  } catch (error: unknown) {
+    if (reviewPreparation) {
+      try {
+        await cleanupPreparedWorkerReview({
+          rootDirectory: options.rootDirectory,
+          preparation: reviewPreparation,
+        });
+      } catch {
+        // Preserve the original issuance failure; cleanup remains fail-closed.
+      }
+    }
+    throw error;
+  }
 }
 
 export async function recordWorkerResult(options: {
@@ -790,13 +821,6 @@ export async function recordWorkerResult(options: {
   if (issued.workerPackage.role !== result.role || issued.metadata.role !== result.role) {
     throw new Error(`Worker result role ${result.role} does not match issued role ${issued.workerPackage.role}.`);
   }
-  const existing = await readTaskEvidence(options.rootDirectory, task.id);
-  if (existing.some((record) => record.runId === result.runId && (
-    record.workerProtocol === WORKER_PROTOCOL || record.type === "review"
-  ))) {
-    throw new Error(`Worker result already recorded for run ${result.runId}.`);
-  }
-
   const findings = workerFindings(result);
   const resultCandidate = result.role === "review"
     ? undefined
@@ -877,6 +901,11 @@ export async function recordWorkerResult(options: {
       workerRole: result.role,
       workerStatus: result.status,
       summary: result.reason ?? `Worker ${result.role} ${result.status}.`,
+    }, {
+      conflictsWith: (record) => record.runId === result.runId && (
+        record.workerProtocol === WORKER_PROTOCOL || record.type === "review"
+      ),
+      conflictMessage: `Worker result already recorded for run ${result.runId}.`,
     });
     await appendRunLog(options.rootDirectory, {
       event: "work",

@@ -65,6 +65,8 @@ When effective task policy requires review, a primary agent may automatically la
 
 The primary loop is `implement -> verify -> review`. A PASS continues through `gate -> done`; `changes_requested` continues through `fix -> verify -> fresh review`. Every result remains bound to the exact candidate. APK prepares and validates packages/evidence but does not launch or own model runtime, so the primary orchestrator must have an available delegation mechanism.
 
+Terminal review/worker result uniqueness is decided inside the evidence append lock: one run can append at most one terminal result, and concurrent losers receive an already-recorded diagnostic. Failed worker-review issuance cleans only its exact unactivated worker preparation; standalone replacements, changed successor preparations, and matching activated review sessions are preserved. If standalone review records findings while the task remains `doing`, worker auto-role output names the explicit `apk review <task-id> --owner <implementation-owner>` transition before a fixer can start; APK does not rewrite lifecycle state implicitly.
+
 ## Agent registry
 
 Agents register before task work:

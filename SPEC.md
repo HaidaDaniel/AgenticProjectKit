@@ -48,7 +48,7 @@ T2|x|build 0076 stale lock recovery|V2,V3,I.task,I.evidence
 T3|.|build 0077 vendor-neutral quality capability contracts|V4,V5,V6,I.quality
 T4|.|build 0078 APK-local quality guardrails|V6,V7,V8,I.scripts
 T5|.|build 0079 minimal clean-checkout CI|V6,V8,V9,I.ci
-T6|.|build 0080 retained 0073 P2 fixes|V2,V3,V10,I.task,I.evidence
+T6|x|build 0080 retained 0073 P2 fixes|V2,V3,V10,I.task,I.evidence
 T7|.|run 0075 frozen release validation|V1,V2,V4,V6,V7,V8,V9,V10,V11,I.task,I.quality,I.scripts,I.ci,I.evidence
 T8|x|build 0081 automatic independent-review orchestration instruction|V2,V12,I.task
 
