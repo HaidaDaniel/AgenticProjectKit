@@ -1,7 +1,7 @@
 # Task 0084 - Execution Profiles and Resource-Aware Routing
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-resource-aware
 Mode: product
 Lane: policy
 Scope: execution,policy,routing,resources,cli,tests,docs
@@ -67,7 +67,6 @@ Add executionProfile and deterministic role routing across local constrained bal
 3. Route planning, implementation, review, documentation, triage, and mechanical verification to the cheapest eligible worker/resource or deterministic lane with stable reasons.
 4. Expose deterministic explain output and add profile/override/capacity/fallback regressions, with the constrained profile as the most detailed reference.
 
-
 ## Acceptance criteria
 
 - `defaultMode`/task `Mode` retain their current meanings. `executionProfile` is a separate optional axis and supports exactly `local`, `constrained`, `balanced`, and `abundant` as built-in profiles.
@@ -80,7 +79,6 @@ Add executionProfile and deterministic role routing across local constrained bal
 - Busy or unavailable scarce resources produce deterministic wait/queue/escalation/needs-human output instead of oversubscription or silent downgrade.
 - Legacy config without `executionProfile` remains readable with a documented compatible default. Human/JSON explain output is stable and tests cover every profile, override precedence, tie-breaking, unavailable resources, and mode/profile independence.
 
-
 ## Verification
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm lint"}`
@@ -90,7 +88,6 @@ Add executionProfile and deterministic role routing across local constrained bal
 ## Documentation updates
 
 - Update execution-profile, modes, architecture, task-system, CLI, README, decisions, and progress docs for implemented routing and explain behavior.
-
 
 ## Notes
 

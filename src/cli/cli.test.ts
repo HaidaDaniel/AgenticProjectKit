@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { startWork } from "../core/work/index.js";
+import { resolveExecutionRoute } from "../core/execution/index.js";
 
 const execFileAsync = promisify(execFile);
 const CLI_PATH = join(process.cwd(), "src/cli/index.ts");
@@ -76,8 +77,76 @@ test("CLI help lists implemented commands", async () => {
   assert.match(result.stdout, /apk suggest-context/);
   assert.match(result.stdout, /apk work <task-id>/);
   assert.match(result.stdout, /apk resources \[--json\]/);
+  assert.match(result.stdout, /apk execution explain <task-id>/);
   assert.match(result.stdout, /apk task deps <task-id>/);
   assert.match(result.stdout, /apk tasks \[--all\] \[--state <state>\] \[--owner <agent-id>\]/);
+});
+
+test("CLI execution explains stable profile routing and explicit override", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(join(directory, ".agentic/config.json"), JSON.stringify({
+      executionProfile: "constrained",
+      resources: {
+        models: [{ id: "model-a", contextLimit: 32000, roles: ["implementation"] }],
+        harnesses: [{ id: "harness-a", workerProtocols: ["apk-worker-v1"] }],
+        workers: [
+          {
+            id: "local-a", modelId: "model-a", harnessId: "harness-a", location: "local",
+            billingMode: "free", costClass: "local-free", availability: "available", capacity: 1,
+            capabilities: { roles: ["implementation"], contextLimit: 16000, workerProtocols: ["apk-worker-v1"] },
+          },
+          {
+            id: "frontier-a", modelId: "model-a", harnessId: "harness-a", location: "remote",
+            billingMode: "subscription", costClass: "scarce-frontier", availability: "available", capacity: 1,
+            capabilities: { roles: ["implementation"], contextLimit: 32000, workerProtocols: ["apk-worker-v1"] },
+          },
+        ],
+      },
+    }), "utf8");
+    await writeFile(join(directory, ".tasks/0001-task.md"), buildTaskMarkdown("0001", "Task", "todo").replace("Risk: low", "Risk: medium"), "utf8");
+
+    const local = await runCli(["execution", "explain", "0001", "--role", "implementation", "--complexity", "simple", "--json"], directory);
+    assert.equal(local.exitCode, 0, `${local.stdout}${local.stderr}`);
+    assert.equal(JSON.parse(local.stdout).resourceId, "local-a");
+
+    const override = await runCli(["execution", "explain", "0001", "--role", "implementation", "--resource", "frontier-a", "--json"], directory);
+    assert.equal(override.exitCode, 0, `${override.stdout}${override.stderr}`);
+    const payload = JSON.parse(override.stdout) as { resourceId?: string; override?: { resourceId?: string } };
+    assert.equal(payload.resourceId, "frontier-a");
+    assert.equal(payload.override?.resourceId, "frontier-a");
+  });
+});
+
+test("execution resolver keeps profiles independent and handles tie, capacity, and deterministic lanes", () => {
+  const worker = (id: string, costClass: "local-free" | "cheap" | "scarce-frontier", location: "local" | "remote" = "local", occupied = 0) => ({
+    id,
+    modelId: `${id}-model`,
+    harnessId: `${id}-harness`,
+    location,
+    billingMode: costClass === "local-free" ? "free" as const : "metered" as const,
+    costClass,
+    availability: "available" as const,
+    capacity: 1,
+    occupied,
+    capabilities: { roles: ["implementation"], tools: [], workspaceModes: [], workerProtocols: ["apk-worker-v1"] },
+  });
+  const registry = {
+    models: [],
+    harnesses: [],
+    workers: [worker("local-a", "local-free"), worker("cheap-b", "cheap"), worker("cheap-a", "cheap"), worker("frontier-a", "scarce-frontier", "remote")],
+  };
+  const policy = { automatedVerification: true, scope: false, independentReview: false, reviewLevel: "none" as const, evidenceRequired: false, evidenceCategories: [] };
+
+  for (const profile of ["local", "constrained", "balanced", "abundant"] as const) {
+    assert.equal(resolveExecutionRoute({ profile, role: "implementation", policy, registry }).resourceId, "local-a");
+  }
+  assert.equal(resolveExecutionRoute({ profile: "balanced", role: "implementation", policy, registry, override: { preferCostClass: "cheap" } }).resourceId, "cheap-a");
+  assert.equal(resolveExecutionRoute({ profile: "local", role: "implementation", policy, registry: { ...registry, workers: [worker("frontier-a", "scarce-frontier", "remote")] } }).kind, "needs-human");
+  assert.equal(resolveExecutionRoute({ profile: "balanced", role: "implementation", policy, registry: { ...registry, workers: [worker("local-a", "local-free", "local", 1)] } }).kind, "wait");
+  assert.equal(resolveExecutionRoute({ profile: "balanced", role: "verification", policy, registry }).kind, "deterministic");
+  assert.equal(resolveExecutionRoute({ profile: "balanced", role: "review", policy, registry }).kind, "deterministic");
 });
 
 test("CLI resources renders a stable read-only registry in human and JSON forms", async () => {

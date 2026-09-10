@@ -101,6 +101,26 @@ test("config schema markers distinguish legacy and gated formats without rewriti
   );
 });
 
+test("parseAgenticConfig keeps execution profile separate from project mode", () => {
+  const config = parseAgenticConfig({
+    defaultMode: "production",
+    executionProfile: "balanced",
+    executionOverrides: {
+      resourceId: "frontier-a",
+      preferCostClass: "scarce-frontier",
+      allowProfileBypass: true,
+    },
+  });
+
+  assert.equal(config.defaultMode, "production");
+  assert.equal(config.executionProfile, "balanced");
+  assert.deepEqual(config.executionOverrides, {
+    resourceId: "frontier-a",
+    preferCostClass: "scarce-frontier",
+    allowProfileBypass: true,
+  });
+});
+
 test("parseAgenticConfig normalizes an optional vendor-neutral resource registry", () => {
   const config = parseAgenticConfig({
     schemaVersion: 2,

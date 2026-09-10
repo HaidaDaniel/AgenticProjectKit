@@ -19,6 +19,7 @@ When Agentic Project Kit is installed as a repository dev dependency, run comman
 - `apk analytics summary [--month YYYY-MM] [--write]` - summarize team agent analytics.
 - `apk mode <mode>` - set or inspect the current operating mode.
 - `apk resources [--json]` - render the optional secret-free model, harness, and executable worker registry without probing providers.
+- `apk execution explain <task-id> --role <planning|implementation|review|fix|documentation|triage|verification> [--profile <local|constrained|balanced|abundant>] [--resource <worker-id>] [--json]` - explain a deterministic resource route without starting a worker.
 - `apk next-task` - choose the next task to work on.
 - `apk tasks` - list active tasks (todo, doing, review, blocked).
 - `apk tasks --all` - list all tasks including done, canceled, and archived.

@@ -1,6 +1,7 @@
 import { DEFAULT_CONFIG } from "./defaults.js";
 import { ConfigValidationError } from "./errors.js";
 import { parseResourceRegistry, ResourceRegistryValidationError } from "../resources/index.js";
+import { parseExecutionOverride, parseExecutionProfile, ExecutionValidationError } from "../execution/index.js";
 import {
   AGENT_STYLES,
   DOCUMENTATION_PROFILES,
@@ -162,6 +163,26 @@ export function parseAgenticConfig(raw: unknown): AgenticConfig {
     }
   }
 
+  let executionProfile: AgenticConfig["executionProfile"];
+  if (raw.executionProfile !== undefined) {
+    try {
+      executionProfile = parseExecutionProfile(raw.executionProfile);
+    } catch (error: unknown) {
+      if (error instanceof ExecutionValidationError) issues.push(...error.issues);
+      else issues.push(`executionProfile is invalid: ${error instanceof Error ? error.message : String(error)}.`);
+    }
+  }
+
+  let executionOverrides: AgenticConfig["executionOverrides"];
+  if (raw.executionOverrides !== undefined) {
+    try {
+      executionOverrides = parseExecutionOverride(raw.executionOverrides);
+    } catch (error: unknown) {
+      if (error instanceof ExecutionValidationError) issues.push(...error.issues);
+      else issues.push(`executionOverrides is invalid: ${error instanceof Error ? error.message : String(error)}.`);
+    }
+  }
+
   if (issues.length > 0) {
     throw new ConfigValidationError(issues);
   }
@@ -175,6 +196,8 @@ export function parseAgenticConfig(raw: unknown): AgenticConfig {
     taskDirectory,
     docsDirectory,
     ...(resources === undefined ? {} : { resources }),
+    ...(executionProfile === undefined ? {} : { executionProfile }),
+    ...(executionOverrides === undefined ? {} : { executionOverrides }),
   };
 }
 

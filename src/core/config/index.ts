@@ -57,3 +57,23 @@ export {
   type ResourceWorkspaceMode,
   type WorkerResource,
 } from "../resources/index.js";
+export {
+  DEFAULT_EXECUTION_PROFILE,
+  EXECUTION_COMPLEXITIES,
+  EXECUTION_COST_RANK,
+  EXECUTION_PROFILES,
+  EXECUTION_ROLES,
+  parseExecutionOverride,
+  parseExecutionProfile,
+  renderExecutionRoute,
+  resolveExecutionRoute,
+  ExecutionValidationError,
+  type ExecutionCandidate,
+  type ExecutionComplexity,
+  type ExecutionOverride,
+  type ExecutionProfile,
+  type ExecutionRole,
+  type ExecutionRoute,
+  type ExecutionRouteKind,
+  type ExecutionRouteRequest,
+} from "../execution/index.js";

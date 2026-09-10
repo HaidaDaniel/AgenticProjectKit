@@ -2,7 +2,7 @@
 
 ## Current status
 
-Phase 1 documentation is in place, Tasks 0001 through 0074, 0076, 0080, 0081, the Resource-Aware Execution planning Task 0082, and follow-up Tasks 0089-0090 are complete. Task 0083 now provides the first implemented Resource-Aware Execution registry slice.
+Phase 1 documentation is in place, Tasks 0001 through 0074, 0076, 0080, 0081, the Resource-Aware Execution planning Task 0082, and follow-up Tasks 0089-0090 are complete. Tasks 0083-0084 now provide the registry and deterministic routing foundation for Resource-Aware Execution.
 
 The repository now has:
 
@@ -126,7 +126,8 @@ After the gated-workflow release foundation, Resource-Aware Execution proceeds t
 - Task 0075: final frozen-candidate release validation after 0074, 0076 and 0077-0080.
 - Task 0082: Resource-Aware Execution architecture/backlog documentation complete.
 - Task 0083: done; optional secret-free model/harness/worker registry, deterministic `apk resources` introspection, and validated worker-session resource provenance.
-- Tasks 0084-0085: P0 execution profiles/routing -> adaptive assurance/review budgets.
+- Task 0084: doing; independent execution profiles, policy-aware routing, stable explain output, overrides, and wait/needs-human outcomes.
+- Task 0085: P0 adaptive assurance/review budgets after routing.
 - Task 0086: high-priority deterministic resource detection and validated worker-contract calibration after 0085; also reuses 0077 quality-capability output.
 - Tasks 0087-0088: later worker attention/status after 0085, then optional safe isolated Git workspaces; 0087 remains independent of 0086.
 - Contracts extend existing task verify, templates, graph validation, context, sync and work loop.

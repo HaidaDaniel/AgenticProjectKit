@@ -1,4 +1,5 @@
 import type { ResourceRegistry } from "../resources/index.js";
+import type { ExecutionOverride, ExecutionProfile } from "../execution/index.js";
 
 export const OPERATING_MODES = [
   "discovery",
@@ -34,4 +35,6 @@ export interface AgenticConfig {
   taskDirectory: string;
   docsDirectory: string;
   resources?: ResourceRegistry;
+  executionProfile?: ExecutionProfile;
+  executionOverrides?: ExecutionOverride;
 }

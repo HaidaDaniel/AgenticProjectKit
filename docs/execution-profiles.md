@@ -95,6 +95,10 @@ Profiles define resource-spending strategy. They do not redefine task risk, proj
 
 `abundant` does not define the architecture of the other profiles. `local` and `constrained` are complete operating modes, not degraded error states.
 
+Task 0084 implements these four profile values as a deterministic routing layer. A legacy config with no `executionProfile` uses the compatible `constrained` default in route resolution; the project `defaultMode` is not changed. `apk execution explain <task-id> --role <role> [--profile <profile>] [--json]` resolves the current task policy, evaluates the configured registry, and prints selected/rejected candidates without launching a worker. `--resource <worker-id>` is an explicit override; it still requires declared role capability, availability, capacity, protocol, context, and workspace compatibility.
+
+The resolver uses `local-free`, `cheap`, `standard`, then `scarce-frontier` cost ordering with stable resource-ID tie-breaking. `verification` stays on the deterministic lane, and a review role is not created when upstream task policy does not require semantic review. Busy or unavailable matching resources produce `wait`; no capability or profile-compatible route produces `needs-human`. Explicit preferences and profile bypass are retained separately in the explain output and cannot override capacity or upstream policy requirements.
+
 ## Constrained reference design
 
 The primary reference system has:
@@ -138,11 +142,11 @@ Mandatory frontier independent review is not the medium-risk default.
 
 The deterministic router follows one shared sequence:
 
-1. Resolve task policy, minimum assurance, and any escalation triggers.
+1. Consume task policy, minimum assurance, and any escalation triggers from upstream policy layers.
 2. Identify whether the role is deterministic or requires a semantic worker.
 3. Filter registry resources by role capability, protocol, context, workspace, availability, capacity, and policy constraints.
 4. Select the lowest-cost eligible resource using stable tie-breaking and profile preferences.
-5. Apply explicit user overrides last, while retaining safety-floor and capacity validation.
+5. Apply explicit user overrides last, while retaining upstream policy and capacity validation.
 6. Emit selected and rejected resource reasons, budget effects, and the next action.
 
 Mechanical verification has no worker route. Planning, implementation, review, fix, documentation, and triage can use different resources for the same task while retaining task/run/candidate provenance.

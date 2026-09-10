@@ -8,7 +8,7 @@ Prompt generation includes concise guidance from the task mode. Context renderin
 
 The planned `executionProfile` is an independent resource-spending policy (`local`, `constrained`, `balanced`, or `abundant`). Task risk is a third independent axis that determines the minimum correctness assurance. APK composes project mode, task risk/change characteristics, and execution profile into an effective plan without changing the meaning of any mode below.
 
-See [Resource-Aware Execution](execution-profiles.md) for the accepted architecture and implementation backlog.
+See [Resource-Aware Execution](execution-profiles.md) for the accepted architecture. The four profile values and deterministic explain/routing foundation are implemented by Task 0084; assurance, calibration, attention, and workspace behavior remain separate tasks.
 
 ## discovery
 

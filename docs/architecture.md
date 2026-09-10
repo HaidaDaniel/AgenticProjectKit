@@ -25,7 +25,7 @@ The target extends current task policy, gate, evidence, review, provenance, stat
 
 Portable resource/profile/budget/override state should extend the existing optional config schema. Deterministic detection is read-only by default; generated calibration remains distinct from user overrides and is applied only after schema validation. Secrets stay outside APK configuration.
 
-Task 0083 implements the optional secret-free model/harness/worker registry and binds validated worker IDs into existing worker-session provenance. Routing and profile selection, adaptive assurance, calibration, attention/status, and isolated workspaces remain subsequent tasks. The current `none`/`lightweight`/`independent` task policy and existing completion gate remain authoritative.
+Tasks 0083-0084 implement the optional secret-free model/harness/worker registry and deterministic profile/routing foundation. Adaptive assurance, calibration, attention/status, and isolated workspaces remain subsequent tasks. The current `none`/`lightweight`/`independent` task policy and existing completion gate remain authoritative.
 
 ## Proposed internal layout
 
@@ -91,5 +91,7 @@ Claim baselines use a parallel append-only `.agentic/task-baselines.jsonl` store
 `src/core/work/index.ts` creates each package in a temporary session directory and atomically publishes it, transitions `doing` to `review` only after successful independent-review issuance, resolves roles from the canonical gate projection, and records implement/fix output candidates separately from issued inputs. This keeps the task contract and provenance in the core workflow while allowing one harness to implement a task and another to review or fix it.
 
 `src/core/resources/index.ts` validates optional model, harness, and executable worker declarations with stable IDs, bounded capabilities, protocol support, capacity, cost, availability, and secret rejection. A worker references one model and harness; it is the routing identity, while model and vendor/harness names remain metadata. `apk resources` is read-only and does not probe or launch anything.
+
+`src/core/execution/index.ts` keeps `executionProfile` independent from project mode and consumes existing task-policy requirements as input. It provides deterministic local/constrained/balanced/abundant routing, cost/capacity/availability filtering, explicit override explanation, and wait/needs-human outcomes. It does not derive assurance, escalation triggers, review budgets, or completion-gate decisions.
 
 Terminal worker and review results use one evidence-lock transaction for duplicate detection plus append, so concurrent submissions cannot both commit. Worker review preparation and activation share a per-run lifecycle lock; failed pre-activation issuance removes only the exact worker-origin preparation and preserves standalone, successor, or correctly activated review state.

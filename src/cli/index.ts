@@ -6,6 +6,7 @@ import { runAnalyticsCommand } from "./commands/analytics.js";
 import { runAuditCommand } from "./commands/audit.js";
 import { runContextCommand } from "./commands/context.js";
 import { runDoctorCommand } from "./commands/doctor.js";
+import { runExecutionCommand } from "./commands/execution.js";
 import { runExportCommand } from "./commands/export.js";
 import { runInitCommand } from "./commands/init.js";
 import { runLintCommand } from "./commands/lint.js";
@@ -37,6 +38,7 @@ const HELP_TEXT = [
   "  apk claim <task-id> --owner <agent-id>",
   "  apk done <task-id> --owner <agent-id>",
   "  apk doctor",
+  "  apk execution explain <task-id> --role <role> [--profile <profile>] [--json]",
   "  apk init [directory]",
   "  apk lint [--json]",
   "  apk context <task-id> [--level 1|2|3] [--budget <units>]",
@@ -57,7 +59,7 @@ const HELP_TEXT = [
   "  apk task gate <task-id>",
   "  apk task create --title <title> --mode <mode> --lane <lane> --scope <csv> --risk <risk> --context <csv> --allowed <csv> --verification <csv>|--verification-json <json>",
   "  apk tasks [--all] [--state <state>] [--owner <agent-id>]",
-  "  apk work <task-id> --owner <agent-id> --target <agent> [--level 1|2|3|auto] [--write-session]",
+  "  apk work <task-id> --owner <agent-id> --target <agent> [--resource <worker-id>] [--level 1|2|3|auto] [--write-session]",
   "",
   "Commands:",
   "  agent  Register and list task agents.",
@@ -70,6 +72,7 @@ const HELP_TEXT = [
   "  context  Print task context files.",
   "  done  Mark a task done.",
   "  doctor  Run local workflow health checks.",
+  "  execution  Explain deterministic resource-aware execution routing.",
   "  export  Write generated agent instruction files.",
   "  init  Create starter kit files in a repository.",
   "  lint  Validate task and generated-file contracts without writing.",
@@ -135,6 +138,10 @@ async function main(): Promise<number> {
 
   if (command === "doctor") {
     return runDoctorCommand(commandArgs);
+  }
+
+  if (command === "execution") {
+    return runExecutionCommand(commandArgs);
   }
 
   if (command === "export") {
