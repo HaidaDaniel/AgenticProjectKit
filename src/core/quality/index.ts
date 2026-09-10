@@ -168,6 +168,15 @@ async function readJson(path: string): Promise<{ value?: PackageJson; invalid: b
   }
 }
 
+async function readText(path: string): Promise<string | undefined> {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error: unknown) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
 async function hasDirectoryEntries(path: string): Promise<boolean> {
   try {
     return (await readdir(path)).length > 0;
@@ -269,6 +278,19 @@ async function detectMarkers(rootDirectory: string, states: Map<QualityCapabilit
   ]);
   if (buildMarker) addMarkerEvidence(states, "build", buildMarker, "build or package configuration detected");
 
+  const pyproject = await readText(join(rootDirectory, "pyproject.toml"));
+  if (pyproject !== undefined) {
+    const markerRules: Array<[QualityCapabilityId, RegExp, string]> = [
+      ["typecheck", /\[tool\.(?:mypy|pyright)\]/i, "Python typecheck configuration detected"],
+      ["lint", /\[tool\.(?:ruff|pylint)\]/i, "Python lint configuration detected"],
+      ["tests", /\[tool\.(?:pytest|tox)\]/i, "Python test configuration detected"],
+      ["coverage", /\[tool\.(?:coverage|pytest-cov)(?:\.[^\]]+)?\]/i, "Python coverage configuration detected"],
+    ];
+    for (const [id, pattern, detail] of markerRules) {
+      if (pattern.test(pyproject)) addMarkerEvidence(states, id, "pyproject.toml", detail, "high");
+    }
+  }
+
   const coverageMarker = await hasAny(rootDirectory, [
     ".nycrc",
     ".nycrc.json",
@@ -307,7 +329,10 @@ async function detectMarkers(rootDirectory: string, states: Map<QualityCapabilit
     ".drone.yml",
     "Jenkinsfile",
   ]);
-  if (ciMarker) addMarkerEvidence(states, "ci", ciMarker, "platform-neutral CI configuration detected");
+  const ciDirectoryMarker = ciMarker === ".github/workflows" || ciMarker === ".buildkite";
+  if (ciMarker && (!ciDirectoryMarker || await hasDirectoryEntries(join(rootDirectory, ciMarker)))) {
+    addMarkerEvidence(states, "ci", ciMarker, "platform-neutral CI configuration detected");
+  }
 }
 
 function resolvePolicy(policy: QualityPolicy | undefined): QualityPolicyResult {
@@ -345,7 +370,7 @@ export function renderQualityDetection(result: QualityDetectionResult, json = fa
   for (const capability of result.capabilities) {
     lines.push(`- ${capability.id}: ${capability.status} (${capability.disposition})`);
     for (const evidence of capability.evidence) {
-      lines.push(`  evidence: ${evidence.source} - ${evidence.detail}`);
+      lines.push(`  evidence: ${evidence.source} - ${evidence.detail} [${evidence.confidence}]`);
     }
     if (capability.recommendation) lines.push(`  recommendation: ${capability.recommendation}`);
   }

@@ -66,6 +66,30 @@ test("quality detection recognizes alternative commands and platform-neutral mar
   });
 });
 
+test("quality detection reads bounded non-Node configuration markers", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeFile(join(directory, "pyproject.toml"), [
+      "[tool.ruff]",
+      "line-length = 100",
+      "[tool.pytest]",
+      "testpaths = ['tests']",
+      "[tool.coverage.run]",
+      "branch = true",
+      "[tool.mypy]",
+      "files = ['src']",
+      "",
+    ].join("\n"), "utf8");
+
+    const result = await detectQualityCapabilities(directory);
+
+    assert.equal(result.supported, true);
+    assert.equal(statusOf(result, "typecheck")?.status, "detected");
+    assert.equal(statusOf(result, "lint")?.status, "detected");
+    assert.equal(statusOf(result, "tests")?.status, "detected");
+    assert.equal(statusOf(result, "coverage")?.status, "detected");
+  });
+});
+
 test("quality policy fails only when explicit required evidence is missing or unknown", async () => {
   await withTempDirectory(async (directory) => {
     await writeFile(join(directory, "package.json"), JSON.stringify({ scripts: { test: "node --test" } }), "utf8");
