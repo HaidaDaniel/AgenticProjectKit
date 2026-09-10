@@ -1,4 +1,4 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
 import { CONFIG_PATH } from "../config/index.js";
@@ -59,10 +59,21 @@ const REQUIRED_KIT_DOCS = [
   "docs/progress.md",
 ] as const;
 
+const CI_DIRECTORY_MARKERS = [".github/workflows", ".buildkite"] as const;
+const CI_FILE_MARKERS = [
+  ".gitlab-ci.yml",
+  ".gitlab-ci.yaml",
+  ".circleci/config.yml",
+  "azure-pipelines.yml",
+  "bitbucket-pipelines.yml",
+  "buildkite.yml",
+  ".drone.yml",
+  "Jenkinsfile",
+] as const;
+
 async function fileExists(path: string): Promise<boolean> {
   try {
-    await readFile(path);
-    return true;
+    return (await stat(path)).isFile();
   } catch (error: unknown) {
     if (
       error &&
@@ -75,6 +86,34 @@ async function fileExists(path: string): Promise<boolean> {
 
     throw error;
   }
+}
+
+async function directoryHasEntries(path: string): Promise<boolean> {
+  try {
+    if (!(await stat(path)).isDirectory()) return false;
+    return (await readdir(path)).length > 0;
+  } catch (error: unknown) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
+async function hasCiConfiguration(rootDirectory: string): Promise<boolean> {
+  for (const marker of CI_FILE_MARKERS) {
+    if (await fileExists(join(rootDirectory, marker))) return true;
+  }
+  for (const marker of CI_DIRECTORY_MARKERS) {
+    if (await directoryHasEntries(join(rootDirectory, marker))) return true;
+  }
+  return false;
 }
 
 async function listMarkdownFiles(rootDirectory: string, directory: string): Promise<string[]> {
@@ -192,7 +231,7 @@ async function scanReadiness(
     packageManager,
     packageScripts: scripts,
     lockfiles,
-    hasCi: await fileExists(join(rootDirectory, ".github", "workflows")),
+    hasCi: await hasCiConfiguration(rootDirectory),
     hasEnvExample: topLevelFiles.includes(".env.example"),
     hasDockerfile: topLevelFiles.includes("Dockerfile"),
     hasDockerCompose: topLevelFiles.includes("docker-compose.yml") || topLevelFiles.includes("docker-compose.yaml"),

@@ -7,6 +7,8 @@ import test from "node:test";
 import "./lint.test.js";
 import "../quality/quality.test.js";
 import { initProject } from "../init/index.js";
+import { runDoctor } from "../doctor/index.js";
+import { scanRepository } from "../scanners/index.js";
 import { auditRepository } from "./index.js";
 
 async function withTempDirectory(
@@ -90,6 +92,59 @@ test("auditRepository reports lightweight repo readiness findings", async () => 
     assert.match(report, /Package manager: pnpm/);
     assert.match(map, /## Repository Readiness/);
     assert.match(map, /TypeScript strict: no/);
+  });
+});
+
+test("quality CI detection is directory-safe and shared across scanner, audit, and doctor", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".github", "workflows"), { recursive: true });
+    await writeFile(join(directory, ".github", "workflows", "quality.yml"), "name: quality\n", "utf8");
+
+    const scan = await scanRepository(directory);
+    const audit = await auditRepository(directory);
+    const doctor = await runDoctor(directory);
+
+    assert.equal(scan.readiness.hasCi, true);
+    assert.equal(audit.quality.capabilities.find((capability) => capability.id === "ci")?.status, "detected");
+    assert.ok(!audit.findings.some((finding) => finding.message.includes("GitHub Actions workflow not detected")));
+    assert.ok(!doctor.checks.some((check) => /GitHub Actions|CI missing/i.test(check.message)));
+  });
+});
+
+test("old directory read reproducer is isolated while scanner, audit, and doctor stay safe", async () => {
+  await withTempDirectory(async (directory) => {
+    const workflowsDirectory = join(directory, ".github", "workflows");
+    await mkdir(workflowsDirectory, { recursive: true });
+    await writeFile(join(workflowsDirectory, "quality.yml"), "name: quality\n", "utf8");
+
+    await assert.rejects(
+      () => readFile(workflowsDirectory),
+      (error: unknown) => Boolean(error && typeof error === "object" && "code" in error && error.code === "EISDIR"),
+    );
+    await assert.doesNotReject(async () => {
+      await scanRepository(directory);
+      await auditRepository(directory);
+      await runDoctor(directory);
+    });
+  });
+});
+
+test("GitLab-only CI is projected as the shared quality capability", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".github", "workflows"), { recursive: true });
+    await writeFile(join(directory, ".gitlab-ci.yml"), "test: {}\n", "utf8");
+
+    const audit = await auditRepository(directory);
+    const doctor = await runDoctor(directory);
+    const report = await readFile(join(directory, "docs/audit-report.md"), "utf8");
+    const map = await readFile(join(directory, "docs/project-map.md"), "utf8");
+
+    assert.equal(audit.quality.capabilities.find((capability) => capability.id === "ci")?.status, "detected");
+    assert.equal(audit.scan.readiness.hasCi, true);
+    assert.ok(!audit.findings.some((finding) => finding.message.includes("GitHub Actions workflow not detected")));
+    assert.ok(!doctor.checks.some((check) => /CI missing|GitHub Actions/i.test(check.message)));
+    assert.match(report, /- CI present: yes/);
+    assert.match(map, /- CI: yes/);
   });
 });
 

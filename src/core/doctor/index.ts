@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
@@ -96,18 +96,6 @@ async function packageChecks(rootDirectory: string): Promise<DoctorCheck[]> {
   return checks;
 }
 
-async function directoryHasFiles(path: string, suffix?: string): Promise<boolean> {
-  try {
-    const entries = await readdir(path);
-    return suffix ? entries.some((entry) => entry.endsWith(suffix)) : entries.length > 0;
-  } catch (error: unknown) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-      return false;
-    }
-    throw error;
-  }
-}
-
 export async function runDoctor(rootDirectory: string): Promise<DoctorResult> {
   const checks: DoctorCheck[] = [];
   let qualityPolicy;
@@ -175,10 +163,6 @@ export async function runDoctor(rootDirectory: string): Promise<DoctorResult> {
   checks.push(await exists(join(rootDirectory, ".env.example"))
     ? { level: "pass", label: "env", message: ".env.example present" }
     : { level: "warn", label: "env", message: ".env.example missing" });
-  checks.push(await directoryHasFiles(join(rootDirectory, ".github", "workflows"), ".yml")
-    ? { level: "pass", label: "ci", message: "GitHub Actions present" }
-    : { level: "warn", label: "ci", message: "GitHub Actions missing" });
-
   return {
     checks,
     ok: !checks.some((check) => check.level === "fail"),

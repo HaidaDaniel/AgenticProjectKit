@@ -123,6 +123,7 @@ After the gated-workflow release foundation, Resource-Aware Execution proceeds t
 - Tasks 0067-0071: Efficient Agent Workflow (0067-0071 complete).
 - Task 0073: Harness Interoperability complete.
 - Task 0077: done; vendor-neutral capability detection and explicit repository quality policy contracts.
+- Task 0091: done; corrective pass for the three bounded Task 0077 quality detector review findings, linked to completed 0077 and preceding 0078.
 - Tasks 0078-0079: APK-local tooling -> clean-checkout CI.
 - Task 0075: final frozen-candidate release validation after 0074, 0076 and 0077-0080.
 - Task 0082: Resource-Aware Execution architecture/backlog documentation complete.

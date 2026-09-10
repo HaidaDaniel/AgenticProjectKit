@@ -90,6 +90,45 @@ test("quality detection reads bounded non-Node configuration markers", async () 
   });
 });
 
+test("quality detection recognizes pytest.ini_options as a test capability", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeFile(join(directory, "pyproject.toml"), [
+      "[tool.pytest.ini_options]",
+      "testpaths = [\"tests\"]",
+      "",
+    ].join("\n"), "utf8");
+
+    const result = await detectQualityCapabilities(directory);
+
+    assert.equal(statusOf(result, "tests")?.status, "detected");
+    assert.equal(statusOf(result, "tests")?.evidence[0]?.source, "pyproject.toml");
+  });
+});
+
+test("quality CI detection ignores wrong-type markers and scans past empty directories", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".github", "workflows"), { recursive: true });
+    await mkdir(join(directory, ".gitlab-ci.yml"), { recursive: true });
+    await writeFile(join(directory, ".gitlab-ci.yaml"), "test: {}\n", "utf8");
+
+    const result = await detectQualityCapabilities(directory);
+    const ci = statusOf(result, "ci");
+
+    assert.equal(ci?.status, "detected");
+    assert.deepEqual(ci?.evidence.map((evidence) => evidence.source), [".gitlab-ci.yaml"]);
+  });
+});
+
+test("quality detection ignores non-canonical pytest table suffixes", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeFile(join(directory, "pyproject.toml"), "[tool.pytest.ini_options_extra]\ntestpaths = [\"tests\"]\n", "utf8");
+
+    const result = await detectQualityCapabilities(directory);
+
+    assert.equal(statusOf(result, "tests")?.status, "missing");
+  });
+});
+
 test("quality policy fails only when explicit required evidence is missing or unknown", async () => {
   await withTempDirectory(async (directory) => {
     await writeFile(join(directory, "package.json"), JSON.stringify({ scripts: { test: "node --test" } }), "utf8");

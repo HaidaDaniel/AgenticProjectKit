@@ -39,6 +39,7 @@ V9: CI success -> clean-checkout exact-SHA proof only; never replaces APK verify
 V10: review run -> at most one terminal result; failed preparation leaves no worker orphan; invalid fixer state yields exact next action.
 V11: release PASS -> frozen candidate + current verification/review/live/report evidence; candidate mutation invalidates proof.
 V12: required review -> primary may auto-launch separate read-only reviewer; reviewer != implementation owner; findings loop through fix -> verify -> review without routine user confirmation.
+V13: CI marker type/emptiness never masks valid markers; audit/doctor CI projection == shared `quality.ci` result.
 
 ## §T
 
@@ -55,3 +56,4 @@ T8|x|build 0081 automatic independent-review orchestration instruction|V2,V12,I.
 ## §B
 
 id|date|cause|fix
+B1|2026-09-10|CI scan accepted wrong path types/first marker masked later valid marker; audit rendered separate CI state|V13

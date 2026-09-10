@@ -179,6 +179,7 @@ async function readText(path: string): Promise<string | undefined> {
 
 async function hasDirectoryEntries(path: string): Promise<boolean> {
   try {
+    if (!(await stat(path)).isDirectory()) return false;
     return (await readdir(path)).length > 0;
   } catch (error: unknown) {
     if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return false;
@@ -191,6 +192,27 @@ async function hasAny(rootDirectory: string, paths: readonly string[]): Promise<
     if (await exists(join(rootDirectory, path))) return path;
   }
   return undefined;
+}
+
+async function matchingFiles(rootDirectory: string, paths: readonly string[]): Promise<string[]> {
+  const matches: string[] = [];
+  for (const path of paths) {
+    try {
+      if ((await stat(join(rootDirectory, path))).isFile()) matches.push(path);
+    } catch (error: unknown) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") continue;
+      throw error;
+    }
+  }
+  return matches;
+}
+
+async function matchingNonEmptyDirectories(rootDirectory: string, paths: readonly string[]): Promise<string[]> {
+  const matches: string[] = [];
+  for (const path of paths) {
+    if (await hasDirectoryEntries(join(rootDirectory, path))) matches.push(path);
+  }
+  return matches;
 }
 
 function createStates(supported: boolean): Map<QualityCapabilityId, EvidenceState> {
@@ -283,7 +305,7 @@ async function detectMarkers(rootDirectory: string, states: Map<QualityCapabilit
     const markerRules: Array<[QualityCapabilityId, RegExp, string]> = [
       ["typecheck", /\[tool\.(?:mypy|pyright)\]/i, "Python typecheck configuration detected"],
       ["lint", /\[tool\.(?:ruff|pylint)\]/i, "Python lint configuration detected"],
-      ["tests", /\[tool\.(?:pytest|tox)\]/i, "Python test configuration detected"],
+      ["tests", /\[tool\.(?:pytest(?:\.ini_options)?|tox)\]/i, "Python test configuration detected"],
       ["coverage", /\[tool\.(?:coverage|pytest-cov)(?:\.[^\]]+)?\]/i, "Python coverage configuration detected"],
     ];
     for (const [id, pattern, detail] of markerRules) {
@@ -317,21 +339,19 @@ async function detectMarkers(rootDirectory: string, states: Map<QualityCapabilit
     addMarkerEvidence(states, "hooks", hookMarker, "local-hook configuration detected");
   }
 
-  const ciMarker = await hasAny(rootDirectory, [
-    ".github/workflows",
+  const ciFileMarkers = await matchingFiles(rootDirectory, [
     ".gitlab-ci.yml",
     ".gitlab-ci.yaml",
     ".circleci/config.yml",
     "azure-pipelines.yml",
     "bitbucket-pipelines.yml",
     "buildkite.yml",
-    ".buildkite",
     ".drone.yml",
     "Jenkinsfile",
   ]);
-  const ciDirectoryMarker = ciMarker === ".github/workflows" || ciMarker === ".buildkite";
-  if (ciMarker && (!ciDirectoryMarker || await hasDirectoryEntries(join(rootDirectory, ciMarker)))) {
-    addMarkerEvidence(states, "ci", ciMarker, "platform-neutral CI configuration detected");
+  const ciDirectoryMarkers = await matchingNonEmptyDirectories(rootDirectory, [".github/workflows", ".buildkite"]);
+  for (const marker of [...ciDirectoryMarkers, ...ciFileMarkers]) {
+    addMarkerEvidence(states, "ci", marker, "platform-neutral CI configuration detected");
   }
 }
 

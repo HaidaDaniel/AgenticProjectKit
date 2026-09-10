@@ -51,7 +51,8 @@ function renderBulletList(items: readonly string[]): string[] {
   return items.length > 0 ? items.map((item) => `- ${item}`) : ["- none"];
 }
 
-function renderProjectMap(scan: RepositoryScan): string {
+function renderProjectMap(scan: RepositoryScan, quality: QualityDetectionResult): string {
+  const ciDetected = quality.capabilities.find((capability) => capability.id === "ci")?.status === "detected";
   return [
     "# Project Map",
     "",
@@ -94,7 +95,7 @@ function renderProjectMap(scan: RepositoryScan): string {
     `- Package manager: ${scan.readiness.packageManager ?? "unknown"}`,
     `- Package scripts: ${scan.readiness.packageScripts.length === 0 ? "none" : scan.readiness.packageScripts.join(",")}`,
     `- Lockfiles: ${scan.readiness.lockfiles.length === 0 ? "none" : scan.readiness.lockfiles.join(",")}`,
-    `- CI: ${scan.readiness.hasCi ? "yes" : "no"}`,
+    `- CI: ${ciDetected ? "yes" : "no"}`,
     `- Env example: ${scan.readiness.hasEnvExample ? "yes" : "no"}`,
     `- Dockerfile: ${scan.readiness.hasDockerfile ? "yes" : "no"}`,
     `- Docker compose: ${scan.readiness.hasDockerCompose ? "yes" : "no"}`,
@@ -130,7 +131,7 @@ function renderAuditReport(result: Omit<AuditResult, "reportPath" | "projectMapP
     `- Missing agent exports: ${result.scan.agentExports.missing.length}`,
     `- Agentic config present: ${result.scan.hasAgenticConfig ? "yes" : "no"}`,
     `- Package manager: ${result.scan.readiness.packageManager ?? "unknown"}`,
-    `- CI present: ${result.scan.readiness.hasCi ? "yes" : "no"}`,
+    `- CI present: ${result.quality.capabilities.find((capability) => capability.id === "ci")?.status === "detected" ? "yes" : "no"}`,
     "",
     "## Quality Capabilities",
     "",
@@ -247,14 +248,6 @@ function auditRepoReadiness(scan: RepositoryScan, findings: AuditFinding[]): voi
     });
   }
 
-  if (!scan.readiness.hasCi) {
-    findings.push({
-      level: "info",
-      area: "repo-readiness",
-      message: "GitHub Actions workflow not detected.",
-    });
-  }
-
   if (!scan.readiness.hasEnvExample) {
     findings.push({
       level: "info",
@@ -332,7 +325,7 @@ export async function auditRepository(rootDirectory: string): Promise<AuditResul
 
   await mkdir(dirname(reportPath), { recursive: true });
   await writeFile(reportPath, renderAuditReport(result), "utf8");
-  await writeFile(projectMapPath, renderProjectMap(scan), "utf8");
+  await writeFile(projectMapPath, renderProjectMap(scan, quality), "utf8");
 
   return {
     ...result,
