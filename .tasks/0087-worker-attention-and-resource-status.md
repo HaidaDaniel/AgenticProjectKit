@@ -95,6 +95,6 @@ Extend the CLI control plane with bounded worker occupancy and human attention s
 
 ## Notes
 
-- Priority: later than registry/routing/assurance/calibration. This is the CLI control-plane foundation for Herdr/DHH-like operation, not a GUI or SaaS dashboard.
+- Priority: later than registry, routing, and adaptive assurance. After 0085, this task can proceed in parallel with calibration. This is the CLI control-plane foundation for Herdr/DHH-like operation, not a GUI or SaaS dashboard.
 - Dependency on 0085 is required so attention projects canonical assurance, escalation, and budget states. It intentionally does not depend on 0086; calibration and attention can proceed in parallel after 0085.
 - Reuse 0070 provenance and 0071 status/gate projection. Do not infer provider billing, poll vendor APIs, launch workers, or implement scheduling.

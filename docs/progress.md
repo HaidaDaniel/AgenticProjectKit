@@ -2,7 +2,7 @@
 
 ## Current status
 
-Phase 1 documentation is in place, Tasks 0001 through 0073, 0076, 0080, 0081, the Resource-Aware Execution planning Task 0082, and dependency-correction Task 0089 are complete, while Task 0074 remains `doing`.
+Phase 1 documentation is in place, Tasks 0001 through 0073, 0076, 0080, 0081, the Resource-Aware Execution planning Task 0082, and follow-up Tasks 0089-0090 are complete, while Task 0074 remains `doing`.
 
 The repository now has:
 
@@ -133,7 +133,8 @@ After the gated-workflow release foundation, Resource-Aware Execution proceeds t
 
 ## Notes
 
-- Resource-aware planning validation: all 89 task contracts parse; 0083-0088 are `todo`/unowned with no missing dependencies or cycles. Task 0089 corrected the graph so 0086 and 0087 consume canonical assurance from 0085 while remaining independent of each other, and made the 0084/0085 ownership boundary explicit. Repository contract lint exits successfully with 17 pre-existing legacy evidence-policy warnings; local links and `git diff --check` pass. No runtime/CLI feature, completed Task 0082 history, 0074 lifecycle, or 0075/0077-0079 dependency was changed.
+- Task 0090 removed the remaining 0087 wording ambiguity: attention/status can proceed in parallel with calibration after both branches receive canonical assurance state from 0085; no dependency or runtime behavior changed.
+- Resource-aware planning validation: all 90 task contracts parse; 0083-0088 are `todo`/unowned with no missing dependencies or cycles. Task 0089 corrected the graph so 0086 and 0087 consume canonical assurance from 0085 while remaining independent of each other, and made the 0084/0085 ownership boundary explicit. Repository contract lint exits successfully with 17 pre-existing legacy evidence-policy warnings; local links and `git diff --check` pass. No runtime/CLI feature, completed Task 0082 history, 0074 lifecycle, or 0075/0077-0079 dependency was changed.
 - Quality-guardrail planning pass: 80 active tasks parse and round-trip; no duplicate IDs, missing dependencies or cycles. Context validation resolves 972 existing paths, 4 explicit prerequisite outputs and 3 valid glob references; all 24 milestone links resolve. `apk lint --json`, `apk tasks`, `apk status`, `apk task deps 0075` and `git diff --check` pass; lint retains only pre-existing legacy policy warnings. Tasks 0077-0080 remain `todo`/unowned; no feature implementation or task claim performed.
 - 0074 lifecycle warning: recorded baseline predates 0073 terminal task-file commit and this planning pass. Current read-only status reports 8 out-of-scope paths: `.tasks/0073-*`, `.tasks/0075-*`, `.tasks/0077-*` through `.tasks/0080-*`, `docs/delivery/milestones.md`, and `docs/roadmap.md`. 0074 allowed scope, state, owner and baseline were not expanded/reset; owner must resolve attribution without treating retroactive dependency or planning commit as historical gate proof.
 - Worker-contract verification passed with bounded role/result round trips, immutable issued package/metadata persistence, exact role/owner/run binding, canonical review-worker freshness checks, non-gating lifecycle records, Codex/OpenCode guidance, `pnpm lint`, focused worker/status regressions, and the full suite after final validation.
