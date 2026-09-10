@@ -1,6 +1,6 @@
 # Task 0077 - Add repository quality capability detection and policy contracts
 
-State: done
+State: doing
 Owner: codex-resource-aware
 Mode: product
 Lane: quality
