@@ -2,6 +2,7 @@ import { DEFAULT_CONFIG } from "./defaults.js";
 import { ConfigValidationError } from "./errors.js";
 import { parseResourceRegistry, ResourceRegistryValidationError } from "../resources/index.js";
 import { parseExecutionOverride, parseExecutionProfile, ExecutionValidationError } from "../execution/index.js";
+import { QUALITY_CAPABILITY_IDS, type QualityCapabilityId, type QualityPolicy } from "../quality/index.js";
 import {
   AGENT_STYLES,
   DOCUMENTATION_PROFILES,
@@ -93,6 +94,39 @@ function readSchemaVersion(value: unknown, issues: string[]): number | undefined
   return value;
 }
 
+function readQualityPolicy(value: unknown, issues: string[]): QualityPolicy | undefined {
+  if (value === undefined) return undefined;
+  if (!isPlainRecord(value)) {
+    issues.push("quality must be an object.");
+    return undefined;
+  }
+
+  const readIds = (field: "required" | "recommended"): QualityCapabilityId[] => {
+    const raw = value[field];
+    if (raw === undefined) return [];
+    if (!Array.isArray(raw)) {
+      issues.push(`quality.${field} must be an array of capability IDs.`);
+      return [];
+    }
+    const result: QualityCapabilityId[] = [];
+    for (const item of raw) {
+      if (typeof item !== "string" || !(QUALITY_CAPABILITY_IDS as readonly string[]).includes(item)) {
+        issues.push(`quality.${field} contains an unknown capability ID: ${String(item)}.`);
+        continue;
+      }
+      if (!result.includes(item as QualityCapabilityId)) result.push(item as QualityCapabilityId);
+    }
+    return result.sort();
+  };
+
+  const required = readIds("required");
+  const requiredSet = new Set(required);
+  return {
+    required,
+    recommended: readIds("recommended").filter((id) => !requiredSet.has(id)),
+  };
+}
+
 export function parseAgenticConfig(raw: unknown): AgenticConfig {
   if (raw === undefined || raw === null) {
     return { ...DEFAULT_CONFIG };
@@ -150,6 +184,8 @@ export function parseAgenticConfig(raw: unknown): AgenticConfig {
     "docsDirectory must be a non-empty string.",
   );
 
+  const quality = readQualityPolicy(raw.quality, issues);
+
   let resources: AgenticConfig["resources"];
   if (raw.resources !== undefined) {
     try {
@@ -198,6 +234,7 @@ export function parseAgenticConfig(raw: unknown): AgenticConfig {
     ...(resources === undefined ? {} : { resources }),
     ...(executionProfile === undefined ? {} : { executionProfile }),
     ...(executionOverrides === undefined ? {} : { executionOverrides }),
+    ...(quality === undefined ? {} : { quality }),
   };
 }
 

@@ -12,6 +12,7 @@ When Agentic Project Kit is installed as a repository dev dependency, run comman
 - `apk lint [--json]` - read-only validation of task graph, paths, policy, ownership, and generated instruction drift.
 - `apk context <task-id> [--level 1|2|3] [--budget <units>]` - print legacy or budgeted task context.
 - `apk doctor` - run read-only local workflow health checks.
+- `apk quality detect [directory] [--json]` - detect repository quality capabilities and evaluate explicit policy without executing or mutating repository tooling.
 - `apk agent register --id <id> --platform <platform> --model <model> [--developer <id>]` - register an agent.
 - `apk agent list` - list registered agents.
 - `apk agent migrate-logs [--remove-legacy]` - convert legacy analytics logs to sharded files.
@@ -70,6 +71,7 @@ pnpm exec apk audit
 pnpm exec apk lint --json
 pnpm exec apk context 0067 --budget 12000
 pnpm exec apk doctor
+pnpm exec apk quality detect --json
 pnpm exec apk sync cursor
 pnpm exec apk status
 pnpm exec apk suggest-context "Add auth middleware"
@@ -112,6 +114,7 @@ After `apk claim`, verification compares changed paths with the claim baseline i
 
 Task policy output explains canonical assurance (`none`, `self-check`, `fresh-context`, `independent`, `diverse`), stable escalation triggers, and bounded review budgets. Budget exhaustion is a visible gate/status blocker; it never silently downgrades assurance.
 `apk audit` uses static inspection only. It reports lightweight readiness facts such as package scripts, lockfiles, CI presence, env examples, tests, license, README, Docker files, monorepo indicators, and TypeScript strict mode.
+`apk quality detect` reports stable capability IDs (`typecheck`, `lint`, `tests`, `build`, `coverage`, `hooks`, `ci`) with sorted evidence and policy disposition. Configure only explicit `quality.required` or `quality.recommended` IDs in `.agentic/config.json`; defaults require nothing. Missing optional capabilities produce recommendations and a successful diagnostic, while missing or unknown required capabilities fail. The detector never executes package scripts, installs dependencies, or writes repository files.
 `apk suggest-context` is heuristic and local. It scans bounded project paths and suggests candidates; it does not guarantee deep code understanding.
 It also reads local Git changes and simple relative JavaScript/TypeScript imports when available, then ranks affected modules and related tests ahead of unrelated lexical matches. Unsupported project shapes use deterministic path/keyword fallback. Output separates context suggestions from edit targets and never emits task-forbidden files as edit targets.
 

@@ -5,6 +5,7 @@ import {
   CONFIG_PATH,
   parseAgenticConfigJson,
 } from "../config/index.js";
+import { detectQualityCapabilities, type QualityDetectionResult, type QualityPolicy } from "../quality/index.js";
 import { scanRepository, type RepositoryScan } from "../scanners/index.js";
 import { loadTaskFile, listArchivedTaskFiles, parseTaskMarkdown, TaskFormatError, validateTaskDependencies, type ProjectTaskFile } from "../tasks/index.js";
 
@@ -18,6 +19,7 @@ export interface AuditFinding {
 
 export interface AuditResult {
   scan: RepositoryScan;
+  quality: QualityDetectionResult;
   findings: AuditFinding[];
   taskCount: number;
   reportPath: string;
@@ -130,6 +132,11 @@ function renderAuditReport(result: Omit<AuditResult, "reportPath" | "projectMapP
     `- Package manager: ${result.scan.readiness.packageManager ?? "unknown"}`,
     `- CI present: ${result.scan.readiness.hasCi ? "yes" : "no"}`,
     "",
+    "## Quality Capabilities",
+    "",
+    `- Policy: ${result.quality.policy.status}`,
+    ...result.quality.capabilities.map((capability) => `- ${capability.id}: ${capability.status} (${capability.disposition})`),
+    "",
   ].join("\n");
 }
 
@@ -147,7 +154,7 @@ function addMissingFindings(
   }
 }
 
-async function auditConfig(rootDirectory: string, findings: AuditFinding[]): Promise<void> {
+async function auditConfig(rootDirectory: string, findings: AuditFinding[]): Promise<QualityPolicy | undefined> {
   const configText = await readOptionalFile(join(rootDirectory, CONFIG_PATH));
 
   if (configText === undefined) {
@@ -156,17 +163,18 @@ async function auditConfig(rootDirectory: string, findings: AuditFinding[]): Pro
       area: "config",
       message: `Missing ${CONFIG_PATH}.`,
     });
-    return;
+    return undefined;
   }
 
   try {
-    parseAgenticConfigJson(configText);
+    return parseAgenticConfigJson(configText).quality;
   } catch (error: unknown) {
     findings.push({
       level: "error",
       area: "config",
       message: error instanceof Error ? error.message : String(error),
     });
+    return undefined;
   }
 }
 
@@ -295,11 +303,26 @@ export async function auditRepository(rootDirectory: string): Promise<AuditResul
   addMissingFindings(findings, "docs", scan.kitDocs.missing);
   addMissingFindings(findings, "exports", scan.agentExports.missing);
   auditRepoReadiness(scan, findings);
-  await auditConfig(rootDirectory, findings);
+  const qualityPolicy = await auditConfig(rootDirectory, findings);
+  const quality = await detectQualityCapabilities(rootDirectory, qualityPolicy);
+  if (quality.policy.status === "fail") {
+    findings.push({
+      level: "error",
+      area: "quality-policy",
+      message: quality.diagnostics.filter((diagnostic) => diagnostic.startsWith("Required capabilities")).join(" "),
+    });
+  } else if (quality.capabilities.some((capability) => capability.status !== "detected")) {
+    findings.push({
+      level: "info",
+      area: "quality",
+      message: "Optional quality capabilities are missing or unknown; detection is non-mutating and no toolchain setup was applied.",
+    });
+  }
   const taskCount = await auditTasks(rootDirectory, scan, findings);
   const hasErrors = findings.some((finding) => finding.level === "error");
   const result = {
     scan,
+    quality,
     findings,
     taskCount,
     hasErrors,
@@ -324,6 +347,7 @@ export function renderAuditSummary(result: AuditResult): string {
     `Report: ${result.reportPath}`,
     `Project map: ${result.projectMapPath}`,
     `Findings: ${result.findings.length}`,
+    `Quality policy: ${result.quality.policy.status}`,
     "",
   ].join("\n");
 }

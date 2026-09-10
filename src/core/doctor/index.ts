@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 
 import { CONFIG_PATH, readAgenticConfigFile } from "../config/index.js";
+import { detectQualityCapabilities } from "../quality/index.js";
 import { listAgents } from "../agents/index.js";
 import { syncAgentExports } from "../sync/index.js";
 import { listTaskFiles } from "../tasks/index.js";
@@ -109,6 +110,7 @@ async function directoryHasFiles(path: string, suffix?: string): Promise<boolean
 
 export async function runDoctor(rootDirectory: string): Promise<DoctorResult> {
   const checks: DoctorCheck[] = [];
+  let qualityPolicy;
   checks.push(...await gitCheck(rootDirectory));
 
   let taskDirectory = ".tasks";
@@ -116,6 +118,7 @@ export async function runDoctor(rootDirectory: string): Promise<DoctorResult> {
     const configExists = await exists(join(rootDirectory, CONFIG_PATH));
     const config = await readAgenticConfigFile(rootDirectory);
     taskDirectory = config.taskDirectory;
+    qualityPolicy = config.quality;
     checks.push(configExists
       ? { level: "pass", label: "config", message: "ok" }
       : { level: "warn", label: "config", message: "missing; using defaults" });
@@ -150,6 +153,19 @@ export async function runDoctor(rootDirectory: string): Promise<DoctorResult> {
   }
 
   checks.push(...await packageChecks(rootDirectory));
+  try {
+    const quality = await detectQualityCapabilities(rootDirectory, qualityPolicy);
+    const nonDetected = quality.capabilities.filter((capability) => capability.status !== "detected").length;
+    checks.push({
+      level: quality.policy.status === "fail" ? "fail" : nonDetected > 0 ? "warn" : "pass",
+      label: "quality",
+      message: quality.policy.status === "fail"
+        ? `policy failed; missing:${quality.policy.missingRequired.length} unknown:${quality.policy.unknownRequired.length}`
+        : `${quality.capabilities.length - nonDetected}/${quality.capabilities.length} capabilities detected`,
+    });
+  } catch (error: unknown) {
+    checks.push({ level: "fail", label: "quality", message: error instanceof Error ? error.message : String(error) });
+  }
   checks.push(await exists(join(rootDirectory, "README.md"))
     ? { level: "pass", label: "readme", message: "present" }
     : { level: "warn", label: "readme", message: "missing" });

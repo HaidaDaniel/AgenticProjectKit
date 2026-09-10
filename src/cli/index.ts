@@ -13,6 +13,7 @@ import { runLintCommand } from "./commands/lint.js";
 import { runModeCommand } from "./commands/mode.js";
 import { runNextTaskCommand } from "./commands/next-task.js";
 import { runPromptCommand } from "./commands/prompt.js";
+import { runQualityCommand } from "./commands/quality.js";
 import { runResourcesCommand } from "./commands/resources.js";
 import { runSuggestContextCommand } from "./commands/suggest-context.js";
 import { runSyncCommand } from "./commands/sync.js";
@@ -46,6 +47,7 @@ const HELP_TEXT = [
   "  apk mode [mode]",
   "  apk next-task",
   "  apk prompt <agent> --task <task-id> [--level 1|2|3] [--budget <units>]",
+  "  apk quality detect [directory] [--json]",
   "  apk resources [--json]",
   "  apk release <task-id> --owner <agent-id>",
   "  apk review <task-id> --owner <agent-id>",
@@ -79,6 +81,7 @@ const HELP_TEXT = [
   "  mode  Print or update the active operating mode.",
   "  next-task  Print the next actionable task.",
   "  prompt  Generate an agent-specific task prompt.",
+  "  quality  Detect repository quality capabilities without mutation.",
   "  resources  Inspect the configured vendor-neutral worker/resource registry.",
   "  release  Release a task back to todo.",
   "  review  Move a task to review.",
@@ -158,6 +161,10 @@ async function main(): Promise<number> {
 
   if (command === "prompt") {
     return runPromptCommand(commandArgs);
+  }
+
+  if (command === "quality") {
+    return runQualityCommand(commandArgs);
   }
 
   if (command === "resources") {

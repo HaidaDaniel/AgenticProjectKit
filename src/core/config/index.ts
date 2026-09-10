@@ -36,6 +36,20 @@ export {
   type OperatingMode,
 } from "./types.js";
 export {
+  QUALITY_CAPABILITY_IDS,
+  detectQualityCapabilities,
+  renderQualityDetection,
+  type QualityCapabilityId,
+  type QualityCapabilityResult,
+  type QualityCapabilityStatus,
+  type QualityConfidence,
+  type QualityDetectionResult,
+  type QualityEvidence,
+  type QualityPolicy,
+  type QualityPolicyDisposition,
+  type QualityPolicyResult,
+} from "../quality/index.js";
+export {
   emptyResourceRegistry,
   parseResourceRegistry,
   renderResourceRegistry,

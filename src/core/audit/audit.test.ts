@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import "./lint.test.js";
+import "../quality/quality.test.js";
 import { initProject } from "../init/index.js";
 import { auditRepository } from "./index.js";
 

@@ -641,6 +641,7 @@ pnpm exec apk sync codex --write
 
 `audit` writes `docs/audit-report.md` and `docs/project-map.md` from lightweight repository and kit checks. It reports static readiness facts such as package scripts, lockfiles, CI presence, env examples, tests, license, README, Docker files, monorepo indicators, and TypeScript strict mode. It does not perform deep application architecture, security, coverage, or production-readiness analysis. `sync` is check-only unless `--write` is present.
 `lint` is a read-only contract check for task graph, metadata, paths, policy, ownership, and generated-instruction drift. It never writes audit reports or generated files; `--json` is suitable for CI and structural/sync failures return exit code 1.
+`quality detect` is the read-only repository quality inventory. It reports stable `typecheck`, `lint`, `tests`, `build`, `coverage`, `hooks`, and `ci` capabilities with script/config evidence, recommendations, and optional explicit policy evaluation. It does not execute scripts, install packages, or create hooks/workflows. A typecheck-only `tsc --noEmit` lint script counts as typecheck, not lint; CI detection is platform-neutral.
 
 ### Scenario 6: Move from MVP to product work
 

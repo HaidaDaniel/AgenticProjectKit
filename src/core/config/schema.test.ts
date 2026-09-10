@@ -171,3 +171,24 @@ test("resource registry rejects duplicates, dangling references, invalid capacit
     /duplicate id|missing model|capacity|apiKey/,
   );
 });
+
+test("parseAgenticConfig accepts an explicit vendor-neutral quality policy", () => {
+  const config = parseAgenticConfig({
+    quality: {
+      required: ["tests", "typecheck"],
+      recommended: ["ci", "tests", "coverage"],
+    },
+  });
+
+  assert.deepEqual(config.quality, {
+    required: ["tests", "typecheck"],
+    recommended: ["ci", "coverage"],
+  });
+});
+
+test("parseAgenticConfig rejects unknown quality capability IDs", () => {
+  assert.throws(
+    () => parseAgenticConfig({ quality: { required: ["eslint"] } }),
+    /unknown capability ID: eslint/,
+  );
+});

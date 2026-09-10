@@ -71,6 +71,7 @@ test("CLI help lists implemented commands", async () => {
   assert.match(result.stdout, /apk sync \[agent\] \[--write\]/);
   assert.match(result.stdout, /apk status/);
   assert.match(result.stdout, /apk doctor/);
+  assert.match(result.stdout, /apk quality detect \[directory\] \[--json\]/);
   assert.match(result.stdout, /apk lint \[--json\]/);
   assert.match(result.stdout, /apk context <task-id> \[--level 1\|2\|3\] \[--budget <units>\]/);
   assert.match(result.stdout, /apk prompt <agent> --task <task-id> \[--level 1\|2\|3\] \[--budget <units>\]/);
@@ -542,6 +543,29 @@ test("CLI doctor reports warnings without failing", async () => {
     assert.match(result.stdout, /Doctor:/);
     assert.match(result.stdout, /warn:/);
     assert.match(result.stdout, /Result: pass/);
+  });
+});
+
+test("CLI quality detect exposes the shared capability result in JSON", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      scripts: { test: "node --test", lint: "eslint ." },
+    }), "utf8");
+    await writeFile(join(directory, ".gitlab-ci.yml"), "test: {}\n", "utf8");
+
+    const result = await runCli(["quality", "detect", "--json"], directory);
+
+    assert.equal(result.exitCode, 0, `${result.stdout}${result.stderr}`);
+    const payload = JSON.parse(result.stdout) as {
+      capabilities: Array<{ id: string; status: string; evidence: Array<{ source: string }> }>;
+      policy: { status: string };
+    };
+    assert.equal(payload.policy.status, "pass");
+    assert.deepEqual(payload.capabilities.map((capability) => capability.id), [
+      "typecheck", "lint", "tests", "build", "coverage", "hooks", "ci",
+    ]);
+    assert.equal(payload.capabilities.find((capability) => capability.id === "lint")?.status, "detected");
+    assert.equal(payload.capabilities.find((capability) => capability.id === "ci")?.status, "detected");
   });
 });
 

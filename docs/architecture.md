@@ -64,7 +64,14 @@ docs/**
 - `prompt` generates a tool-specific prompt from the neutral rules.
 - `export` writes agent-specific instruction files.
 - `audit` reads the repository and writes lightweight kit/workflow and export gap reports.
+- `quality detect` reads bounded manifests/configuration and evaluates explicit quality policy without running commands or mutating the repository.
 - `sync` checks or updates generated files from internal policy.
+
+## Repository quality capabilities
+
+`src/core/quality/index.ts` exposes the stable vendor-neutral capabilities `typecheck`, `lint`, `tests`, `build`, `coverage`, `hooks`, and `ci`. Evidence retains the discovered file/script and confidence; vendor names are evidence metadata, not policy identity. A lint script containing only `tsc --noEmit` is classified as typecheck/static analysis and is not counted as source lint.
+
+`apk quality detect [directory] [--json]` is read-only and deterministic. It reports the same sorted capability records, evidence, policy disposition, recommendations, and diagnostics in human and JSON output. Optional `.agentic/config.json` quality policy can list explicit `required` and `recommended` capability IDs. Missing recommendations do not fail diagnostics; missing or unknown required capabilities do. Doctor and audit project the shared result rather than repeating tool-specific inference.
 
 ## Evidence storage
 

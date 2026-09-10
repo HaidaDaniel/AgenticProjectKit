@@ -42,6 +42,27 @@ The apply path preserves recognized and unknown config keys, never overwrites ex
 
 The generated `docs/adoption-report.md` records detected compatibility, task-contract counts, and pre-adoption gaps. `doctor`, `lint`, read-only `audit`, and `status` remain usable on legacy repositories before migration; mandatory gates may still report missing current evidence until the repository opts into them.
 
+## Quality capability detection
+
+Run the non-mutating quality inventory before choosing repository tooling:
+
+```bash
+pnpm exec apk quality detect --json
+```
+
+The detector reports stable capability IDs (`typecheck`, `lint`, `tests`, `build`, `coverage`, `hooks`, and `ci`) with bounded script/config evidence. It recognizes common Node and non-Node markers, but does not execute commands, install packages, create hooks/workflows, or rewrite scripts. Add an explicit `.agentic/config.json` policy only when a capability is required or recommended for this repository:
+
+```json
+{
+  "quality": {
+    "required": ["tests", "typecheck"],
+    "recommended": ["ci", "coverage"]
+  }
+}
+```
+
+The flow is detect -> report -> recommend -> explicit opt-in setup. A missing optional capability is diagnostic only; a missing or unknown required capability fails the quality policy with an explicit reason.
+
 ## Guardrails
 
 - Do not rewrite existing application code.

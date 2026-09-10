@@ -1,5 +1,6 @@
 import type { ResourceRegistry } from "../resources/index.js";
 import type { ExecutionOverride, ExecutionProfile } from "../execution/index.js";
+import type { QualityPolicy } from "../quality/index.js";
 
 export const OPERATING_MODES = [
   "discovery",
@@ -37,4 +38,5 @@ export interface AgenticConfig {
   resources?: ResourceRegistry;
   executionProfile?: ExecutionProfile;
   executionOverrides?: ExecutionOverride;
+  quality?: QualityPolicy;
 }
