@@ -1,6 +1,6 @@
 # Task 0084 - Execution Profiles and Resource-Aware Routing
 
-State: doing
+State: done
 Owner: codex-resource-aware
 Mode: product
 Lane: policy
