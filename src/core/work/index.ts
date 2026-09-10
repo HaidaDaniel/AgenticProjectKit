@@ -849,6 +849,7 @@ export async function recordWorkerResult(options: {
       throw new Error(`Issued review run ${result.runId} has a mismatched canonical review binding.`);
     }
     if (!suppliedProvenanceMatches(result.provenance, {
+      ...(issued.workerPackage.provenance.resourceId ? { resourceId: issued.workerPackage.provenance.resourceId } : {}),
       repository: binding.repository,
       ...(binding.headSha ? { headSha: binding.headSha } : {}),
       baselineId: binding.baselineId,
@@ -883,7 +884,7 @@ export async function recordWorkerResult(options: {
     if (!resultCandidate) {
       throw new Error(`Worker result ${result.runId} has no captured output candidate.`);
     }
-    const outputProvenance = provenanceForSubject(resultCandidate.subject);
+    const outputProvenance = provenanceForSubject(resultCandidate.subject, issued.workerPackage.provenance.resourceId);
     if (!suppliedProvenanceMatches(result.provenance, outputProvenance)) {
       throw new Error(`Worker result provenance does not match the captured output candidate.`);
     }
