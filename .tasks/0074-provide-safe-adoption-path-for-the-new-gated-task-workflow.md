@@ -1,7 +1,7 @@
 # Task 0074 - Provide safe adoption path for the new gated task workflow
 
-State: doing
-Owner: codex-20260909
+State: done
+Owner: codex-resource-aware
 Mode: production
 Lane: release
 Scope: release,cli,tests,docs
@@ -40,6 +40,7 @@ Existing v0.3.1-style projects can adopt gated workflow safely, with readable le
 - src/core/status/index.ts
 - src/core/sync/index.ts
 - src/core/sync/sync.test.ts
+- src/core/templates/renderer.test.ts
 - src/cli/commands/task.ts
 - scripts/clean-dist.mjs
 - scripts/copy-template-assets.mjs
@@ -67,6 +68,7 @@ Existing v0.3.1-style projects can adopt gated workflow safely, with readable le
 - src/core/status/index.ts
 - src/core/sync/index.ts
 - src/core/sync/sync.test.ts
+- src/core/templates/renderer.test.ts
 - src/cli/commands/task.ts
 - src/cli/commands/adopt.ts
 - src/cli/commands/init.ts
@@ -109,10 +111,10 @@ Existing v0.3.1-style projects can adopt gated workflow safely, with readable le
 - `{"id":"lint","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm lint"}`
 - `{"id":"tests","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test"}`
 - `{"id":"build","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}`
-- `{"id":"task-create-help","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk task create --help"}`
-- `{"id":"doctor","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk doctor"}`
-- `{"id":"adoption-report","type":"automated","required":false,"environment":"local","profile":"report","command":"pnpm exec apk adopt --preview"}`
-- `{"id":"adoption-live","type":"automated","required":false,"environment":"live","profile":"trusted","command":"pnpm exec apk adopt --preview"}`
+- `{"id":"task-create-help","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx src/cli/index.ts task create --help"}`
+- `{"id":"doctor","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx src/cli/index.ts doctor"}`
+- `{"id":"adoption-report","type":"automated","required":false,"environment":"local","profile":"report","command":"pnpm exec tsx src/cli/index.ts adopt --preview"}`
+- `{"id":"adoption-live","type":"automated","required":false,"environment":"live","profile":"trusted","command":"pnpm exec tsx src/cli/index.ts adopt --preview"}`
 
 ## Documentation updates
 
@@ -133,3 +135,5 @@ Existing v0.3.1-style projects can adopt gated workflow safely, with readable le
 - Context lists current files and prerequisite task contracts. Before implementation, read prerequisite changes and amend this task with their actual module paths if needed; do not invent missing Context files.
 - Allowed new helper modules stay inside listed module patterns. Other task files and unrelated modules remain outside scope. If scope must expand, amend task before editing.
 - Use existing test files included in pnpm test; no dependency or package-script change planned. Update docs/decisions.md for chosen architecture.
+- block: Canonical gate blocked in this Windows checkout: pnpm test fails three pre-existing template renderer assertions because core.autocrlf=true materializes CRLF while tests require LF; repo-local `apk` is unavailable.
+- Unblock pass: verification uses the repository's direct dev CLI entrypoint because this checkout does not expose the package's own `apk` bin through `pnpm exec`; template renderer assertions normalize CRLF/LF at the test boundary.

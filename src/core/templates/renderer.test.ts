@@ -19,6 +19,10 @@ import {
 } from "../docs/minimal.js";
 import { renderTemplate, renderTemplateFile } from "./index.js";
 
+function normalizeLineEndings(value: string): string {
+  return value.replace(/\r\n?/g, "\n");
+}
+
 test("renderTemplate renders text from input data", () => {
   const output = renderTemplate("Hello {{name}}", {
     data: {
@@ -59,7 +63,7 @@ test("renderTemplateFile loads and renders a template fixture", async () => {
   );
 
   assert.equal(
-    output,
+    normalizeLineEndings(output),
     [
       "# Docs First",
       "",
@@ -88,7 +92,7 @@ test("renderMinimalDoc renders a project doc from template data", async () => {
 
   assert.equal(doc.outputPath, "docs/project.md");
   assert.equal(
-    doc.content,
+    normalizeLineEndings(doc.content),
     [
       "# Agentic Project Kit",
       "",
@@ -130,8 +134,8 @@ test("renderMinimalDocs renders the minimal documentation set", async () => {
     docs.map((doc) => doc.id),
     ["project", "scope", "architecture"],
   );
-  assert.match(docs[1].content, /Included:\n\n- CLI\n- docs/);
-  assert.match(docs[2].content, /## Rules\n\n- keep commands thin/);
+  assert.match(normalizeLineEndings(docs[1].content), /Included:\n\n- CLI\n- docs/);
+  assert.match(normalizeLineEndings(docs[2].content), /## Rules\n\n- keep commands thin/);
 });
 
 test("agent exporters expose expected output files", () => {
@@ -156,7 +160,7 @@ test("default agent exports match generated instruction files", async () => {
 
   for (const file of exports) {
     const actual = await readFile(join(process.cwd(), file.outputPath), "utf8");
-    assert.equal(actual, file.content);
+    assert.equal(normalizeLineEndings(actual), normalizeLineEndings(file.content));
   }
 });
 

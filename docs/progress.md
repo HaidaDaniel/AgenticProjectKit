@@ -2,7 +2,7 @@
 
 ## Current status
 
-Phase 1 documentation is in place, Tasks 0001 through 0073, 0076, 0080, 0081, the Resource-Aware Execution planning Task 0082, and follow-up Tasks 0089-0090 are complete, while Task 0074 remains `doing`.
+Phase 1 documentation is in place, Tasks 0001 through 0074, 0076, 0080, 0081, the Resource-Aware Execution planning Task 0082, and follow-up Tasks 0089-0090 are complete.
 
 The repository now has:
 
@@ -100,11 +100,11 @@ The repository now has:
 - immutable issued worker sessions under `.agentic/sessions/work/`, JSON package exposure, exact owner/task/run/role binding, canonical prepared review-worker integration, non-gating orchestration records, and canonical verification-before-review progression.
 - fail-closed worker/gate trust, explicit non-Git candidate semantics, evidence-lock bookkeeping exclusions, stale/unknown status projections, and same-worktree diagnostics.
 - Task 0073 corrective regressions cover canonical current-state role resolution, post-publication review activation confirmation, worker-vs-standalone review origin binding, worker-origin `changes_requested -> fix`, issued/input versus output candidate provenance, activation-aware `apk task provenance`, safe run IDs, collision-safe atomic session publication, inactive-session warning suppression, incomplete-session rejection, review pending-result rendering, and status `run fixer` projection. Three retained P2 gaps are contracted in 0080.
-- Task 0074 currently contains explicit legacy/gated compatibility detection, read-only adoption preview, idempotent `--apply` migration, preserved custom config/instructions/tasks, and v0.3.1 fixture regressions; lifecycle remains `doing` pending its canonical close.
+- Task 0074 contains explicit legacy/gated compatibility detection, read-only adoption preview, idempotent `--apply` migration, preserved custom config/instructions/tasks, v0.3.1 fixture regressions, and cross-platform line-ending-safe renderer assertions; lifecycle is `done`.
 
 ## Next step
 
-Current task: 0074 - Provide safe adoption path for the new gated task workflow.
+Current task: 0074 - Provide safe adoption path for the new gated task workflow (`done`).
 
 Planned pre-release chain: 0074 -> 0077 capability contract -> 0078 APK-local quality guardrails -> 0079 clean-checkout CI -> 0075 frozen release validation. Tasks 0076 lock recovery and 0080 Task 0073 P2 fixes must also finish before 0075. New tasks stay `todo` with `Owner: none`.
 
@@ -116,7 +116,7 @@ After the gated-workflow release foundation, Resource-Aware Execution proceeds t
 
 - Tasks 0001 through 0073 are complete.
 - Task 0062: Meaningful Done; review capability now precedes completion enforcement.
-- Task 0074: doing; safe gated-workflow adoption, now explicitly dependent on 0073.
+- Task 0074: done; safe gated-workflow adoption, now explicitly dependent on 0073. The unblock pass made renderer assertions line-ending independent and uses the direct repository CLI entrypoint for self-repository verification. Resource-aware implementation tasks remain unstarted.
 - Task 0076: lock recovery; no dependencies, required by final release 0075.
 - Task 0080: bounded 0073 review-finding fixes; depends on 0073 and must serialize with 0076 where files overlap.
 - Tasks 0064-0066: Independent Correctness (complete; 0066 provides a no-write graph/path/policy/export consistency gate).
