@@ -23,6 +23,8 @@ Repository docs and task files are the source of truth.
 - Do not touch forbidden files.
 - Run verification commands before marking work done.
 - Update the task if scope must expand.
+- When policy requires review, the primary agent may automatically launch a separate read-only reviewer with a different registered identity and isolated context; do not pause for routine user confirmation.
+- The implementation owner cannot certify its own candidate. On changes_requested, continue fix -> verify -> fresh review; on pass, continue gate -> done.
 
 ## Default Style
 

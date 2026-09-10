@@ -1,7 +1,7 @@
 # Task 0081 - Allow automatic independent review orchestration
 
-State: todo
-Owner: none
+State: done
+Owner: codex-quality-plan
 Mode: product
 Lane: agent-policy
 Scope: agent-instructions,review,workflow,docs

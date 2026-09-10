@@ -59,6 +59,12 @@ Tags: mvp,api
 - Foreign hosts, PID reuse/identity mismatch, unavailable liveness, and malformed metadata fail closed. Inspect with `apk task lock status`; after independently verifying no owner runs, use `apk task lock recover --kind <task|evidence> --force`.
 - Cleanup and recovery share a serialized recovery guard and recheck the caller's owner id before removal, so an old owner or competing recoverer cannot remove a successor lock. A responding local PID is `live` only when its observed process-start identity also matches.
 
+## Automatic review orchestration
+
+When effective task policy requires review, a primary agent may automatically launch a separate read-only reviewer and continue without routine user confirmation. The reviewer uses a different registered agent identity and isolated review context; changing only the label on the implementation process is not independent review.
+
+The primary loop is `implement -> verify -> review`. A PASS continues through `gate -> done`; `changes_requested` continues through `fix -> verify -> fresh review`. Every result remains bound to the exact candidate. APK prepares and validates packages/evidence but does not launch or own model runtime, so the primary orchestrator must have an available delegation mechanism.
+
 ## Agent registry
 
 Agents register before task work:

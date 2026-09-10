@@ -2,7 +2,7 @@
 
 ## Current status
 
-Phase 1 documentation is in place, Tasks 0001 through 0073 and Task 0076 are complete, while Task 0074 remains `doing`.
+Phase 1 documentation is in place, Tasks 0001 through 0073, 0076, and 0081 are complete, while Task 0074 remains `doing`.
 
 The repository now has:
 
@@ -27,6 +27,7 @@ The repository now has:
 - generated agent instruction files covered by drift tests.
 - task file parsing and generation helpers.
 - identity-bound local task/evidence locks with dead-owner recovery, fail-closed diagnostics, and explicit operator recovery.
+- automatic primary-agent orchestration of separate revision-bound reviewers without routine user confirmation.
 - task format validation tests wired into `pnpm test`.
 - an `apk context` command with deterministic Level 1, Level 2, and Level 3 file selection.
 - context selection tests wired into `pnpm test`.

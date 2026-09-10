@@ -29,6 +29,9 @@ test("syncAgentExports passes when generated files are current", async () => {
     assert.equal(result.checked.length, 9);
     assert.deepEqual(result.missing, []);
     assert.deepEqual(result.stale, []);
+    const agents = await readFile(join(directory, "AGENTS.md"), "utf8");
+    assert.match(agents, /automatically launch a separate read-only reviewer/);
+    assert.match(agents, /implementation owner cannot certify its own candidate/);
   });
 });
 
