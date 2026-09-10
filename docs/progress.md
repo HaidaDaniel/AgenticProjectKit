@@ -2,7 +2,7 @@
 
 ## Current status
 
-Phase 1 documentation is in place, Tasks 0001 through 0073 are complete, and Task 0074 is `doing`.
+Phase 1 documentation is in place, Tasks 0001 through 0073 and Task 0076 are complete, while Task 0074 remains `doing`.
 
 The repository now has:
 
@@ -26,6 +26,7 @@ The repository now has:
 - neutral agent exporter templates for AGENTS, Codex, OpenCode, and Cursor.
 - generated agent instruction files covered by drift tests.
 - task file parsing and generation helpers.
+- identity-bound local task/evidence locks with dead-owner recovery, fail-closed diagnostics, and explicit operator recovery.
 - task format validation tests wired into `pnpm test`.
 - an `apk context` command with deterministic Level 1, Level 2, and Level 3 file selection.
 - context selection tests wired into `pnpm test`.

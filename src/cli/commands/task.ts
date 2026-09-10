@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { relative, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 
 import { readAgenticConfigFile } from "../../core/config/index.js";
 import {
@@ -41,6 +41,12 @@ import {
   verifyTask,
   type TaskCreateInput,
 } from "../../core/tasks/index.js";
+import { TASK_EVIDENCE_LOCK_PATH } from "../../core/tasks/evidence.js";
+import {
+  inspectLocalMutationLock,
+  recoverLocalLock,
+  renderLocalLockInspection,
+} from "../../core/tasks/lock.js";
 
 const TASK_HELP_TEXT = [
   "Agentic Project Kit",
@@ -49,6 +55,8 @@ const TASK_HELP_TEXT = [
   "  apk task archive [<task-id>] [--all]",
   "  apk task deps <task-id>",
   "  apk task evidence <task-id>",
+  "  apk task lock status [--kind <task|evidence>] [--json]",
+  "  apk task lock recover --kind <task|evidence> [--force]",
   "  apk task policy <task-id>",
   "  apk task gate <task-id>",
   "  apk task provenance <task-id> [--json]",
@@ -61,12 +69,25 @@ const TASK_HELP_TEXT = [
   "  archive Archive a done task or all done tasks.",
   "  deps    Inspect task prerequisites, dependents, and graph problems.",
   "  evidence List append-only evidence records for a task.",
+  "  lock    Inspect or explicitly recover local mutation locks.",
   "  policy  Resolve deterministic risk and tag requirements.",
   "  gate    Preview completion blockers for the current candidate.",
   "  provenance Show bounded task/run/evidence provenance.",
   "  dogfood Start a bounded agent usability session or record its result.",
   "  verify  Check files, resolve profiles, and record per-check evidence.",
   "  create  Generate a new task file with validated metadata.",
+].join("\n");
+
+const TASK_LOCK_HELP_TEXT = [
+  "Agentic Project Kit",
+  "",
+  "Usage:",
+  "  apk task lock status [--kind <task|evidence>] [--json]",
+  "  apk task lock recover --kind <task|evidence> [--force]",
+  "",
+  "Dead local owners recover automatically on the next mutation.",
+  "Use --force for malformed or uncertain ownership only after verifying no owner is running.",
+  "A live local owner is never recovered, even with --force.",
 ].join("\n");
 
 const TASK_DEPS_HELP_TEXT = [
@@ -495,6 +516,75 @@ async function runEvidenceSubcommand(argv: string[]): Promise<number> {
   return 0;
 }
 
+type LockKind = "task" | "evidence";
+
+function parseLockKind(argv: string[]): LockKind | undefined {
+  const value = parseFlag(argv, "--kind");
+  if (value !== undefined && value !== "task" && value !== "evidence") {
+    throw new Error("--kind must be task or evidence.");
+  }
+  return value;
+}
+
+async function runLockSubcommand(argv: string[]): Promise<number> {
+  if (hasHelpFlag(argv)) {
+    console.log(TASK_LOCK_HELP_TEXT);
+    return 0;
+  }
+  const [action, ...args] = argv;
+  if (action !== "status" && action !== "recover") {
+    throw new Error(TASK_LOCK_HELP_TEXT);
+  }
+  const knownFlags = new Set(["--kind", "--json", "--force"]);
+  for (const arg of args) {
+    if (arg.startsWith("-") && !knownFlags.has(arg)) {
+      throw new Error(`Unknown option: ${arg}`);
+    }
+  }
+  const positional = args.filter((arg, index) => !arg.startsWith("-") && args[index - 1] !== "--kind");
+  if (positional.length > 0) throw new Error(TASK_LOCK_HELP_TEXT);
+  if (action === "recover" && args.includes("--json")) throw new Error("--json is only valid with lock status.");
+  if (action === "status" && args.includes("--force")) throw new Error("--force is only valid with lock recover.");
+
+  const rootDirectory = resolve(process.cwd());
+  const config = await readAgenticConfigFile(rootDirectory);
+  const selectedKind = parseLockKind(args);
+  const kinds: LockKind[] = selectedKind ? [selectedKind] : ["task", "evidence"];
+  if (action === "recover" && !selectedKind) {
+    throw new Error("--kind is required for lock recover.");
+  }
+  const pathFor = (kind: LockKind): string => kind === "task"
+    ? join(rootDirectory, config.taskDirectory, ".apk.lock")
+    : join(rootDirectory, TASK_EVIDENCE_LOCK_PATH);
+
+  if (action === "status") {
+    const results = await Promise.all(kinds.map(async (kind) => ({
+      kind,
+      inspection: await inspectLocalMutationLock(pathFor(kind)),
+    })));
+    if (args.includes("--json")) {
+      console.log(JSON.stringify(results, null, 2));
+    } else {
+      for (const result of results) {
+        console.log(`${result.kind}: ${renderLocalLockInspection(result.inspection)}`);
+      }
+    }
+    return results.some((result) => ["dead", "malformed", "uncertain"].includes(result.inspection.state)) ? 1 : 0;
+  }
+
+  const kind = selectedKind!;
+  const result = await recoverLocalLock({
+    path: pathFor(kind),
+    kind: kind === "task" ? "task-mutation" : "evidence-append",
+    command: `task lock recover --kind ${kind}`,
+    force: args.includes("--force"),
+  });
+  console.log(result.recovered
+    ? `${kind}: recovered; ${renderLocalLockInspection(result.inspection)}`
+    : `${kind}: unchanged; ${renderLocalLockInspection(result.inspection)}`);
+  return 0;
+}
+
 async function runProvenanceSubcommand(argv: string[]): Promise<number> {
   if (hasHelpFlag(argv)) {
     console.log(TASK_PROVENANCE_HELP_TEXT);
@@ -733,7 +823,7 @@ async function runVerifySubcommand(argv: string[]): Promise<number> {
 export async function runTaskCommand(argv: string[]): Promise<number> {
   try {
     if (argv.length === 0) {
-      console.error("Error: Usage: apk task <archive|deps|evidence|policy|gate|dogfood|verify|create>");
+      console.error("Error: Usage: apk task <archive|deps|evidence|lock|policy|gate|dogfood|verify|create>");
       return 1;
     }
 
@@ -758,6 +848,10 @@ export async function runTaskCommand(argv: string[]): Promise<number> {
 
     if (subcommand === "evidence") {
       return await runEvidenceSubcommand(subArgs);
+    }
+
+    if (subcommand === "lock") {
+      return await runLockSubcommand(subArgs);
     }
 
     if (subcommand === "dogfood") {

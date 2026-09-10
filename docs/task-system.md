@@ -53,7 +53,11 @@ Tags: mvp,api
 - `Owner: none` is allowed for `todo`, `blocked`, and `canceled`.
 - `doing` and `review` require a registered owner.
 - `claim`, `release`, `block`, `review`, `done`, and `cancel` require `--owner`.
-- Task state changes are protected by transient `.tasks/.apk.lock`.
+- Task lifecycle, create, and archive mutations share transient `.tasks/.apk.lock`; evidence appends use the same primitive at `.agentic/evidence.append.lock`.
+- Lock schema v1 records a random owner id, PID, hostname, process-start identity, creation time, command, and optional task id. Fully formed metadata is staged and linked into place atomically; readers never accept an initializing/partial owner file.
+- A local PID confirmed absent is recovered automatically on mutation retry. Age over five minutes is diagnostic only and never authorizes stealing a live lock.
+- Foreign hosts, PID reuse/identity mismatch, unavailable liveness, and malformed metadata fail closed. Inspect with `apk task lock status`; after independently verifying no owner runs, use `apk task lock recover --kind <task|evidence> --force`.
+- Cleanup and recovery share a serialized recovery guard and recheck the caller's owner id before removal, so an old owner or competing recoverer cannot remove a successor lock. A responding local PID is `live` only when its observed process-start identity also matches.
 
 ## Agent registry
 

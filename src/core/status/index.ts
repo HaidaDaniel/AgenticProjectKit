@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { CONFIG_PATH, readAgenticConfigFile } from "../config/index.js";
@@ -17,6 +17,8 @@ import {
   TASK_STATES,
   type TaskState,
 } from "../tasks/index.js";
+import { TASK_EVIDENCE_LOCK_PATH } from "../tasks/evidence.js";
+import { inspectLocalMutationLock, renderLocalLockInspection } from "../tasks/lock.js";
 
 const MAX_ACTIVE_TASKS = 32;
 const MAX_STATUS_BLOCKERS = 8;
@@ -131,16 +133,15 @@ function duplicateTaskIds(ids: readonly string[]): string[] {
   return [...duplicates].sort();
 }
 
-async function hasStaleLock(rootDirectory: string, taskDirectory: string): Promise<boolean> {
-  try {
-    const lock = await stat(join(rootDirectory, taskDirectory, ".apk.lock"));
-    return Date.now() - lock.mtimeMs > 5 * 60 * 1000;
-  } catch (error: unknown) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-      return false;
-    }
-    throw error;
-  }
+async function localLockWarnings(rootDirectory: string, taskDirectory: string): Promise<string[]> {
+  const [taskLock, evidenceLock] = await Promise.all([
+    inspectLocalMutationLock(join(rootDirectory, taskDirectory, ".apk.lock")),
+    inspectLocalMutationLock(join(rootDirectory, TASK_EVIDENCE_LOCK_PATH)),
+  ]);
+  const locks = [["task", taskLock], ["evidence", evidenceLock]] as const;
+  return locks
+    .filter(([, inspection]) => inspection.state !== "absent")
+    .map(([label, inspection]) => `${label} lock: ${renderLocalLockInspection(inspection)}`);
 }
 
 function capStatusText(value: string, maxLength = 180): string {
@@ -394,9 +395,7 @@ export async function summarizeStatus(rootDirectory: string): Promise<StatusSumm
     warnings.push(`task parse warning: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
   }
 
-  if (await hasStaleLock(rootDirectory, config.taskDirectory)) {
-    warnings.push("stale task lock detected");
-  }
+  warnings.push(...await localLockWarnings(rootDirectory, config.taskDirectory));
 
   const sync = await syncAgentExports(rootDirectory);
   if (sync.hasDrift) {

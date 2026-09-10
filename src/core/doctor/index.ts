@@ -7,6 +7,8 @@ import { CONFIG_PATH, readAgenticConfigFile } from "../config/index.js";
 import { listAgents } from "../agents/index.js";
 import { syncAgentExports } from "../sync/index.js";
 import { listTaskFiles } from "../tasks/index.js";
+import { TASK_EVIDENCE_LOCK_PATH } from "../tasks/evidence.js";
+import { inspectLocalMutationLock, renderLocalLockInspection } from "../tasks/lock.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -61,20 +63,16 @@ async function gitCheck(rootDirectory: string): Promise<DoctorCheck[]> {
   }
 }
 
-async function lockCheck(rootDirectory: string, taskDirectory: string): Promise<DoctorCheck> {
-  const lockPath = join(rootDirectory, taskDirectory, ".apk.lock");
-  try {
-    const lock = await stat(lockPath);
-    const stale = Date.now() - lock.mtimeMs > 5 * 60 * 1000;
-    return stale
-      ? { level: "fail", label: "task lock", message: "stale .apk.lock detected" }
-      : { level: "warn", label: "task lock", message: ".apk.lock exists and may be active" };
-  } catch (error: unknown) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-      return { level: "pass", label: "task lock", message: "none" };
-    }
-    throw error;
+async function lockCheck(label: string, lockPath: string): Promise<DoctorCheck> {
+  const inspection = await inspectLocalMutationLock(lockPath);
+  if (inspection.state === "absent") {
+    return { level: "pass", label, message: "none" };
   }
+  return {
+    level: inspection.state === "live" ? "warn" : "fail",
+    label,
+    message: renderLocalLockInspection(inspection),
+  };
 }
 
 async function packageChecks(rootDirectory: string): Promise<DoctorCheck[]> {
@@ -139,7 +137,8 @@ export async function runDoctor(rootDirectory: string): Promise<DoctorResult> {
     ? { level: "pass", label: "agents", message: `${agents.length} registered agent(s)` }
     : { level: "warn", label: "agents", message: "none registered" });
 
-  checks.push(await lockCheck(rootDirectory, taskDirectory));
+  checks.push(await lockCheck("task lock", join(rootDirectory, taskDirectory, ".apk.lock")));
+  checks.push(await lockCheck("evidence lock", join(rootDirectory, TASK_EVIDENCE_LOCK_PATH)));
 
   try {
     const sync = await syncAgentExports(rootDirectory);

@@ -1,5 +1,7 @@
-import { appendFile, mkdir, open, readFile, rm } from "node:fs/promises";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+
+import { withLocalMutationLock } from "./lock.js";
 
 export const TASK_EVIDENCE_PATH = ".agentic/evidence.jsonl";
 export const TASK_EVIDENCE_LOCK_PATH = ".agentic/evidence.append.lock";
@@ -417,31 +419,12 @@ async function withEvidenceAppendLock<T>(
   run: () => Promise<T>,
 ): Promise<T> {
   const lockPath = join(rootDirectory, TASK_EVIDENCE_LOCK_PATH);
-  await mkdir(dirname(lockPath), { recursive: true });
-  let handle: Awaited<ReturnType<typeof open>> | undefined;
-  const deadline = Date.now() + 10_000;
-  while (!handle) {
-    try {
-      handle = await open(lockPath, "wx");
-      await handle.writeFile(`${process.pid}\n`);
-    } catch (error: unknown) {
-      const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
-      if (code !== "EEXIST" && code !== "EPERM") {
-        throw error;
-      }
-      if (Date.now() >= deadline) {
-        throw new Error(`Evidence append lock timed out: ${lockPath}.`);
-      }
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
-  }
-
-  try {
-    return await run();
-  } finally {
-    await handle.close();
-    await rm(lockPath, { force: true });
-  }
+  return withLocalMutationLock({
+    path: lockPath,
+    kind: "evidence-append",
+    command: "task evidence append",
+    timeoutMs: 10_000,
+  }, run);
 }
 
 export async function appendTaskEvidence(

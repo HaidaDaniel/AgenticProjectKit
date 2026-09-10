@@ -1,4 +1,4 @@
-import { mkdir, open, rm, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 
 import {
@@ -22,6 +22,7 @@ import {
   type ProjectTask,
   type TaskState,
 } from "./index.js";
+import { withLocalMutationLock } from "./lock.js";
 
 export interface TaskTransitionOptions {
   rootDirectory: string;
@@ -34,38 +35,17 @@ export interface TaskTransitionOptions {
 async function withTaskLock<T>(
   rootDirectory: string,
   taskDirectory: string,
+  command: string,
+  taskId: string,
   run: () => Promise<T>,
 ): Promise<T> {
   const lockPath = join(rootDirectory, taskDirectory, ".apk.lock");
-  await mkdir(dirname(lockPath), { recursive: true });
-
-  let handle: Awaited<ReturnType<typeof open>> | undefined;
-
-  try {
-    handle = await open(lockPath, "wx");
-    await handle.writeFile(JSON.stringify({
-      pid: process.pid,
-      created: new Date().toISOString(),
-    }));
-  } catch (error: unknown) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      error.code === "EEXIST"
-    ) {
-      throw new Error(`Task lock exists: ${lockPath}. If no task command is running, remove it manually.`);
-    }
-
-    throw error;
-  }
-
-  try {
-    return await run();
-  } finally {
-    await handle?.close();
-    await rm(lockPath, { force: true });
-  }
+  return withLocalMutationLock({
+    path: lockPath,
+    kind: "task-mutation",
+    command,
+    taskId,
+  }, run);
 }
 
 function requireOwner(task: ProjectTask, owner: string): void {
@@ -96,7 +76,7 @@ async function transition(
   event: RunEventType,
   update: (task: ProjectTask, agent: RegisteredAgent) => Promise<ProjectTask> | ProjectTask,
 ): Promise<ProjectTask> {
-  return withTaskLock(options.rootDirectory, options.taskDirectory, async () => {
+  return withTaskLock(options.rootDirectory, options.taskDirectory, event, options.taskId, async () => {
     const agent = await requireAgent(options.rootDirectory, options.owner);
     const taskPath = await findTaskFile(
       options.rootDirectory,
@@ -185,7 +165,7 @@ export async function reviewTask(options: TaskTransitionOptions): Promise<Projec
 }
 
 export async function doneTask(options: TaskTransitionOptions): Promise<ProjectTask> {
-  return withTaskLock(options.rootDirectory, options.taskDirectory, async () => {
+  return withTaskLock(options.rootDirectory, options.taskDirectory, "done", options.taskId, async () => {
     const agent = await requireAgent(options.rootDirectory, options.owner);
     const taskPath = await findTaskFile(
       options.rootDirectory,

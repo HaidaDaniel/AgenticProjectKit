@@ -1,6 +1,6 @@
 import { exec, execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFile, mkdir, open, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { promisify } from "node:util";
 
@@ -11,6 +11,7 @@ import {
   type TaskEvidenceResult,
   type TaskEvidenceType,
 } from "./evidence.js";
+import { withLocalMutationLock } from "./lock.js";
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -771,34 +772,36 @@ export async function archiveTask(
   taskDirectory: string,
   taskId: string,
 ): Promise<TaskArchiveResult> {
-  const activeFiles = await listTaskFiles(rootDirectory, taskDirectory);
-  const file = activeFiles.find((f) => f.task.id === taskId);
+  return withTaskMutationLock(rootDirectory, taskDirectory, `task archive ${taskId}`, taskId, async () => {
+    const activeFiles = await listTaskFiles(rootDirectory, taskDirectory);
+    const file = activeFiles.find((f) => f.task.id === taskId);
 
-  if (!file) {
-    throw new Error(`Task file not found for id: ${taskId}`);
-  }
+    if (!file) {
+      throw new Error(`Task file not found for id: ${taskId}`);
+    }
 
-  if (file.task.state !== "done") {
-    throw new Error(`Task ${taskId} is ${file.task.state}; only done tasks can be archived.`);
-  }
+    if (file.task.state !== "done") {
+      throw new Error(`Task ${taskId} is ${file.task.state}; only done tasks can be archived.`);
+    }
 
-  const sourcePath = file.path;
-  const archiveDirectory = join(rootDirectory, taskDirectory, "archive");
-  const fileName = sourcePath.split(/[\\/]/).pop()!;
-  const archivePath = join(archiveDirectory, fileName);
+    const sourcePath = file.path;
+    const archiveDirectory = join(rootDirectory, taskDirectory, "archive");
+    const fileName = sourcePath.split(/[\\/]/).pop()!;
+    const archivePath = join(archiveDirectory, fileName);
 
-  if (await fileExists(archivePath)) {
-    throw new Error(`Archived task already exists: ${archivePath}`);
-  }
+    if (await fileExists(archivePath)) {
+      throw new Error(`Archived task already exists: ${archivePath}`);
+    }
 
-  await mkdir(archiveDirectory, { recursive: true });
-  await rename(sourcePath, archivePath);
+    await mkdir(archiveDirectory, { recursive: true });
+    await rename(sourcePath, archivePath);
 
-  return {
-    taskId,
-    sourcePath: relative(rootDirectory, sourcePath).replace(/\\/g, "/"),
-    archivePath: relative(rootDirectory, archivePath).replace(/\\/g, "/"),
-  };
+    return {
+      taskId,
+      sourcePath: relative(rootDirectory, sourcePath).replace(/\\/g, "/"),
+      archivePath: relative(rootDirectory, archivePath).replace(/\\/g, "/"),
+    };
+  });
 }
 
 export interface TaskArchiveAllResult {
@@ -809,31 +812,33 @@ export async function archiveAllTasks(
   rootDirectory: string,
   taskDirectory: string,
 ): Promise<TaskArchiveAllResult> {
-  const activeFiles = await listTaskFiles(rootDirectory, taskDirectory);
-  const doneFiles = activeFiles.filter((f) => f.task.state === "done");
-  const archived: TaskArchiveResult[] = [];
+  return withTaskMutationLock(rootDirectory, taskDirectory, "task archive --all", undefined, async () => {
+    const activeFiles = await listTaskFiles(rootDirectory, taskDirectory);
+    const doneFiles = activeFiles.filter((f) => f.task.state === "done");
+    const archived: TaskArchiveResult[] = [];
 
-  for (const file of doneFiles) {
-    const sourcePath = file.path;
-    const archiveDirectory = join(rootDirectory, taskDirectory, "archive");
-    const fileName = sourcePath.split(/[\\/]/).pop()!;
-    const archivePath = join(archiveDirectory, fileName);
+    for (const file of doneFiles) {
+      const sourcePath = file.path;
+      const archiveDirectory = join(rootDirectory, taskDirectory, "archive");
+      const fileName = sourcePath.split(/[\\/]/).pop()!;
+      const archivePath = join(archiveDirectory, fileName);
 
-    if (await fileExists(archivePath)) {
-      throw new Error(`Archive path already exists: ${relative(rootDirectory, archivePath).replace(/\\/g, "/")}`);
+      if (await fileExists(archivePath)) {
+        throw new Error(`Archive path already exists: ${relative(rootDirectory, archivePath).replace(/\\/g, "/")}`);
+      }
+
+      await mkdir(archiveDirectory, { recursive: true });
+      await rename(sourcePath, archivePath);
+
+      archived.push({
+        taskId: file.task.id,
+        sourcePath: relative(rootDirectory, sourcePath).replace(/\\/g, "/"),
+        archivePath: relative(rootDirectory, archivePath).replace(/\\/g, "/"),
+      });
     }
 
-    await mkdir(archiveDirectory, { recursive: true });
-    await rename(sourcePath, archivePath);
-
-    archived.push({
-      taskId: file.task.id,
-      sourcePath: relative(rootDirectory, sourcePath).replace(/\\/g, "/"),
-      archivePath: relative(rootDirectory, archivePath).replace(/\\/g, "/"),
-    });
-  }
-
-  return { archived };
+    return { archived };
+  });
 }
 
 export async function findTaskFile(
@@ -1254,38 +1259,17 @@ export function buildTaskFileName(id: string, title: string): string {
 async function withTaskMutationLock<T>(
   rootDirectory: string,
   taskDirectory: string,
+  command: string,
+  taskId: string | undefined,
   run: () => Promise<T>,
 ): Promise<T> {
   const lockPath = join(rootDirectory, taskDirectory, ".apk.lock");
-  await mkdir(dirname(lockPath), { recursive: true });
-
-  let handle: Awaited<ReturnType<typeof open>> | undefined;
-
-  try {
-    handle = await open(lockPath, "wx");
-    await handle.writeFile(JSON.stringify({
-      pid: process.pid,
-      created: new Date().toISOString(),
-    }));
-  } catch (error: unknown) {
-    if (
-      error &&
-      typeof error === "object" &&
-      "code" in error &&
-      error.code === "EEXIST"
-    ) {
-      throw new Error(`Task lock exists: ${lockPath}. If no task command is running, remove it manually.`);
-    }
-
-    throw error;
-  }
-
-  try {
-    return await run();
-  } finally {
-    await handle?.close();
-    await rm(lockPath, { force: true });
-  }
+  return withLocalMutationLock({
+    path: lockPath,
+    kind: "task-mutation",
+    command,
+    taskId,
+  }, run);
 }
 
 export async function createTask(
@@ -1293,7 +1277,7 @@ export async function createTask(
   taskDirectory: string,
   input: TaskCreateInput,
 ): Promise<TaskCreateResult> {
-  return withTaskMutationLock(rootDirectory, taskDirectory, async () => {
+  return withTaskMutationLock(rootDirectory, taskDirectory, "task create", undefined, async () => {
     const files = await listTaskFiles(rootDirectory, taskDirectory);
     const archived = await listArchivedTaskFiles(rootDirectory, taskDirectory);
     const id = nextTaskId(files, archived);
@@ -2255,6 +2239,7 @@ export function renderTaskDeps(result: TaskDepsResult): string {
 }
 
 export * from "./evidence.js";
+export * from "./lock.js";
 export * from "./policy.js";
 export * from "./review.js";
 export * from "./gate.js";

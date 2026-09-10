@@ -1,7 +1,7 @@
 # Task 0076 - Recover stale task mutation locks safely
 
-State: todo
-Owner: none
+State: done
+Owner: codex-quality-plan
 Mode: product
 Lane: task-system
 Scope: task-system,locking,cli,tests,docs

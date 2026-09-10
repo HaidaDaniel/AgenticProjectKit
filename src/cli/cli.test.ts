@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
@@ -405,6 +405,45 @@ test("CLI doctor reports warnings without failing", async () => {
     assert.match(result.stdout, /Doctor:/);
     assert.match(result.stdout, /warn:/);
     assert.match(result.stdout, /Result: pass/);
+  });
+});
+
+test("CLI lock diagnostics preserve live owners and explicitly recover malformed locks", async () => {
+  await withTempDirectory(async (directory) => {
+    const tasksDir = join(directory, ".tasks");
+    const lockPath = join(tasksDir, ".apk.lock");
+    await mkdir(tasksDir, { recursive: true });
+    await writeFile(lockPath, JSON.stringify({
+      schema: 1,
+      ownerId: "parent-process",
+      kind: "task-mutation",
+      pid: process.pid,
+      hostname: hostname(),
+      processStart: new Date(Date.now() - process.uptime() * 1000).toISOString(),
+      created: "2026-01-01T00:00:01.000Z",
+      command: "test holder",
+      taskId: "0001",
+    }), "utf8");
+
+    const live = await runCli(["task", "lock", "status", "--kind", "task"], directory);
+    assert.equal(live.exitCode, 0);
+    assert.match(live.stdout, /task: live:.*pid=.*lock is old but cannot be stolen/);
+    const refused = await runCli(["task", "lock", "recover", "--kind", "task", "--force"], directory);
+    assert.equal(refused.exitCode, 1);
+    assert.match(refused.stderr, /Refusing to recover a live lock/);
+    assert.match((await runCli(["status"], directory)).stdout, /task lock: live:/);
+    assert.match((await runCli(["doctor"], directory)).stdout, /task lock: live:/);
+
+    await writeFile(lockPath, "broken", "utf8");
+    const malformed = await runCli(["task", "lock", "status", "--kind", "task"], directory);
+    assert.equal(malformed.exitCode, 1);
+    assert.match(malformed.stdout, /malformed:.*lock recover.*--force/);
+    const doctor = await runCli(["doctor"], directory);
+    assert.equal(doctor.exitCode, 1);
+    assert.match(doctor.stdout, /task lock: malformed:/);
+    const recovered = await runCli(["task", "lock", "recover", "--kind", "task", "--force"], directory);
+    assert.equal(recovered.exitCode, 0);
+    assert.match(recovered.stdout, /recovered; absent:/);
   });
 });
 
@@ -1297,7 +1336,9 @@ test("CLI task create --help shows usage", async () => {
 
   assert.equal(result.exitCode, 0);
   assert.equal(taskHelp.exitCode, 0);
-  assert.match(taskHelp.stdout, /apk task evidence <task-id>/);
+    assert.match(taskHelp.stdout, /apk task evidence <task-id>/);
+    assert.match(taskHelp.stdout, /apk task lock status/);
+    assert.match(taskHelp.stdout, /apk task lock recover/);
   assert.match(taskHelp.stdout, /apk task policy <task-id>/);
   assert.match(taskHelp.stdout, /apk task gate <task-id>/);
   assert.match(taskHelp.stdout, /apk task provenance <task-id>/);

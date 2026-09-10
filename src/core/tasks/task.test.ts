@@ -59,9 +59,12 @@ import {
   TaskEvidenceFormatError,
   TASK_EVIDENCE_PATH,
   TASK_EVIDENCE_LOCK_PATH,
+  inspectLocalLock,
+  recoverLocalLock,
   validateTaskDependencies,
   verifyTask,
   verifyTaskFileScope,
+  withLocalMutationLock,
   renderTaskVerifyResult,
   recordDogfoodResult,
   renderDogfoodPrompt,
@@ -70,6 +73,7 @@ import {
   writeTaskFile,
   type ProjectTaskFile,
   type ProjectTask,
+  type LocalLockMetadata,
 } from "./index.js";
 import {
   claimTask,
@@ -121,6 +125,19 @@ async function withTempDirectory(
   } finally {
     await rm(directory, { force: true, recursive: true });
   }
+}
+
+function testLockMetadata(overrides: Partial<LocalLockMetadata> = {}): LocalLockMetadata {
+  return {
+    schema: 1,
+    ownerId: "owner-a",
+    kind: "task-mutation",
+    pid: 100,
+    hostname: "test-host",
+    processStart: "2026-01-01T00:00:00.000Z",
+    created: "2026-01-01T00:00:01.000Z",
+    ...overrides,
+  };
 }
 
 test("renderTaskMarkdown emits the compact task shape", () => {
@@ -455,6 +472,230 @@ test("task evidence serializes concurrent appenders without corrupting JSONL", a
     const records = await readTaskEvidence(directory, "0007");
     assert.equal(records.length, 64);
     assert.equal(new Set(records.map((record) => record.id)).size, 64);
+  });
+});
+
+test("local lock inspection keeps live, reused-PID, foreign-host, and malformed owners fail-closed", async () => {
+  await withTempDirectory(async (directory) => {
+    const lockPath = join(directory, ".tasks", ".apk.lock");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    const runtime = {
+      hostname: "test-host",
+      pid: 100,
+      processStart: "2026-01-01T00:00:00.000Z",
+      now: () => Date.parse("2026-01-01T01:00:00.000Z"),
+      processLiveness: () => "alive" as const,
+    };
+
+    await writeFile(lockPath, JSON.stringify(testLockMetadata()), "utf8");
+    const live = await inspectLocalLock(lockPath, runtime);
+    assert.equal(live.state, "live");
+    assert.equal(live.old, true);
+    await assert.rejects(
+      () => withLocalMutationLock({ path: lockPath, kind: "task-mutation", runtime }, async () => undefined),
+      /live.*old but cannot be stolen/,
+    );
+
+    await writeFile(lockPath, JSON.stringify(testLockMetadata({ processStart: "2025-12-31T23:59:00.000Z" })), "utf8");
+    assert.equal((await inspectLocalLock(lockPath, runtime)).state, "uncertain");
+    await writeFile(lockPath, JSON.stringify(testLockMetadata({ hostname: "other-host" })), "utf8");
+    assert.equal((await inspectLocalLock(lockPath, runtime)).state, "uncertain");
+    await writeFile(lockPath, "broken", "utf8");
+    assert.equal((await inspectLocalLock(lockPath, runtime)).state, "malformed");
+  });
+});
+
+test("local lock compares process-start identity for another live PID", async () => {
+  await withTempDirectory(async (directory) => {
+    const lockPath = join(directory, ".tasks", ".apk.lock");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(lockPath, JSON.stringify(testLockMetadata({ pid: 200 })), "utf8");
+    const reusedPidRuntime = {
+      hostname: "test-host",
+      pid: 100,
+      processStart: "2026-01-01T00:00:00.000Z",
+      processLiveness: () => "alive" as const,
+      processStartIdentity: () => "2026-01-01T00:10:00.000Z",
+    };
+
+    const inspection = await inspectLocalLock(lockPath, reusedPidRuntime);
+    assert.equal(inspection.state, "uncertain");
+    assert.match(inspection.reason, /process-start identity differs/);
+    assert.equal((await recoverLocalLock({
+      path: lockPath,
+      kind: "task-mutation",
+      runtime: reusedPidRuntime,
+      force: true,
+    })).recovered, true);
+  });
+});
+
+test("local lock recovers dead owners once and serializes competing contenders", async () => {
+  await withTempDirectory(async (directory) => {
+    const lockPath = join(directory, ".tasks", ".apk.lock");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(lockPath, JSON.stringify(testLockMetadata({ pid: 200 })), "utf8");
+    const runtime = {
+      hostname: "test-host",
+      pid: 100,
+      processStart: "2026-01-01T00:00:00.000Z",
+      processLiveness: (pid: number) => pid === 200 ? "dead" as const : "alive" as const,
+    };
+    let active = 0;
+    let maxActive = 0;
+    const contender = () => withLocalMutationLock({
+      path: lockPath,
+      kind: "task-mutation",
+      timeoutMs: 1_000,
+      runtime,
+    }, async () => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      active -= 1;
+    });
+
+    await Promise.all([contender(), contender()]);
+    assert.equal(maxActive, 1);
+    assert.equal((await inspectLocalLock(lockPath, runtime)).state, "absent");
+  });
+});
+
+test("local lock also recovers a recovery owner that crashed", async () => {
+  await withTempDirectory(async (directory) => {
+    const lockPath = join(directory, ".tasks", ".apk.lock");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(`${lockPath}.recovery`, JSON.stringify(testLockMetadata({
+      ownerId: "dead-recoverer",
+      kind: "task-mutation-recovery",
+      pid: 200,
+    })), "utf8");
+    const runtime = {
+      hostname: "test-host",
+      pid: 100,
+      processStart: "2026-01-01T00:00:00.000Z",
+      processLiveness: (pid: number) => pid === 200 ? "dead" as const : "alive" as const,
+    };
+
+    await withLocalMutationLock({ path: lockPath, kind: "task-mutation", runtime }, async () => undefined);
+    assert.equal((await inspectLocalLock(lockPath, runtime)).state, "absent");
+    assert.equal((await inspectLocalLock(`${lockPath}.recovery`, runtime)).state, "absent");
+  });
+});
+
+test("local lock cleanup cannot delete a replacement owner", async () => {
+  await withTempDirectory(async (directory) => {
+    const lockPath = join(directory, ".agentic", "evidence.append.lock");
+    const successor = testLockMetadata({ ownerId: "successor", kind: "evidence-append" });
+    let replaceDuringCleanup = true;
+    const runtime = {
+      hostname: "test-host",
+      pid: 100,
+      processStart: "2026-01-01T00:00:00.000Z",
+      beforeOwnedRemoval: async (path: string) => {
+        if (path !== lockPath || !replaceDuringCleanup) return;
+        replaceDuringCleanup = false;
+        await rm(lockPath, { force: true });
+        await writeFile(lockPath, JSON.stringify(successor), "utf8");
+      },
+    };
+    await withLocalMutationLock({ path: lockPath, kind: "evidence-append", runtime }, async () => undefined);
+
+    assert.equal(JSON.parse(await readFile(lockPath, "utf8")).ownerId, "successor");
+  });
+});
+
+test("local lock publication never exposes partial metadata to competing contenders", async () => {
+  await withTempDirectory(async (directory) => {
+    const lockPath = join(directory, ".tasks", ".apk.lock");
+    let waitingPublishers = 0;
+    let releasePublishers!: () => void;
+    let reportReady!: () => void;
+    const ready = new Promise<void>((resolve) => { reportReady = resolve; });
+    const release = new Promise<void>((resolve) => { releasePublishers = resolve; });
+    const runtime = {
+      hostname: "test-host",
+      pid: 100,
+      processStart: "2026-01-01T00:00:00.000Z",
+      processLiveness: () => "alive" as const,
+      beforePublish: async (path: string) => {
+        if (path !== lockPath || waitingPublishers >= 2) return;
+        waitingPublishers += 1;
+        if (waitingPublishers === 2) reportReady();
+        await release;
+      },
+    };
+    let active = 0;
+    let maxActive = 0;
+    const contender = () => withLocalMutationLock({
+      path: lockPath,
+      kind: "task-mutation",
+      timeoutMs: 1_000,
+      runtime,
+    }, async () => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      active -= 1;
+    });
+    const contenders = [contender(), contender()];
+
+    await ready;
+    assert.equal((await inspectLocalLock(lockPath, runtime)).state, "absent");
+    releasePublishers();
+    await Promise.all(contenders);
+    assert.equal(maxActive, 1);
+  });
+});
+
+test("explicit lock recovery requires force for malformed ownership and still refuses live owners", async () => {
+  await withTempDirectory(async (directory) => {
+    const lockPath = join(directory, ".tasks", ".apk.lock");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    const runtime = {
+      hostname: "test-host",
+      pid: 100,
+      processStart: "2026-01-01T00:00:00.000Z",
+      processLiveness: () => "alive" as const,
+    };
+    await writeFile(lockPath, "broken", "utf8");
+    await assert.rejects(
+      () => recoverLocalLock({ path: lockPath, kind: "task-mutation", runtime }),
+      /rerun with --force/,
+    );
+    assert.equal((await recoverLocalLock({ path: lockPath, kind: "task-mutation", runtime, force: true })).recovered, true);
+    await writeFile(lockPath, JSON.stringify(testLockMetadata()), "utf8");
+    await assert.rejects(
+      () => recoverLocalLock({ path: lockPath, kind: "task-mutation", runtime, force: true }),
+      /Refusing to recover a live lock/,
+    );
+  });
+});
+
+test("evidence append rejects malformed lock metadata without deleting it", async () => {
+  await withTempDirectory(async (directory) => {
+    const lockPath = join(directory, TASK_EVIDENCE_LOCK_PATH);
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(lockPath, "broken", "utf8");
+    await assert.rejects(
+      () => appendTaskEvidence(directory, {
+        taskId: "0007",
+        runId: "run-malformed-lock",
+        agent: "agent-a",
+        type: "automated-test",
+        result: "pass",
+        subject: {
+          taskId: "0007",
+          repository: "none",
+          baselineId: "base-none",
+          candidateId: "candidate-none",
+          worktreeId: "worktree-none",
+        },
+        gateEligible: false,
+      }),
+      /malformed.*lock recover.*--force/,
+    );
+    assert.equal(await readFile(lockPath, "utf8"), "broken");
   });
 });
 
@@ -2704,6 +2945,26 @@ test("archiveTask moves a done task to archive directory", async () => {
     assert.doesNotReject(
       () => readFile(join(directory, ".tasks", "archive", "0001-done-task.md")),
     );
+  });
+});
+
+test("archiveTask uses the shared task mutation lock", async () => {
+  await withTempDirectory(async (directory) => {
+    const taskPath = join(directory, ".tasks", "0001-done-task.md");
+    await writeTaskFile(taskPath, {
+      ...TASK,
+      id: "0001",
+      title: "Done Task",
+      state: "done",
+      owner: "archive",
+    });
+    await createStaleTaskLock(directory, ".tasks");
+
+    await assert.rejects(
+      () => archiveTask(directory, ".tasks", "0001"),
+      /Task lock exists:.*malformed/,
+    );
+    assert.doesNotReject(() => readFile(taskPath));
   });
 });
 
