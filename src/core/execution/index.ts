@@ -156,11 +156,17 @@ function supportsRole(worker: WorkerResource, role: ExecutionRole): boolean {
   return worker.capabilities.roles.some((candidate) => aliases.includes(candidate));
 }
 
-function profileAllows(profile: ExecutionProfile, worker: WorkerResource, role: ExecutionRole, complexity: ExecutionComplexity): boolean {
+function profileAllows(
+  profile: ExecutionProfile,
+  worker: WorkerResource,
+  request: ExecutionRouteRequest,
+  complexity: ExecutionComplexity,
+): boolean {
+  const { role } = request;
   if (profile === "local") return worker.location === "local";
   if (profile === "constrained" && worker.costClass === "scarce-frontier") {
     return (role === "planning" || role === "implementation" || role === "fix" || role === "review")
-      && (complexity === "complex" || (role === "review"));
+      && (complexity === "complex" || (role === "review" && request.policy.independentReview && request.policy.reviewLevel === "independent"));
   }
   return true;
 }
@@ -175,7 +181,7 @@ function candidateReasons(
   if (!supportsRole(worker, request.role)) reasons.push(`role ${request.role} is not declared`);
   if (worker.availability !== "available") reasons.push(`availability=${worker.availability}`);
   if (worker.occupied >= worker.capacity) reasons.push(`capacity busy ${worker.occupied}/${worker.capacity}`);
-  if (!profileAllows(profile, worker, request.role, complexity)) reasons.push(`${profile} profile excludes this resource for ${complexity} ${request.role}`);
+  if (!profileAllows(profile, worker, request, complexity)) reasons.push(`${profile} profile excludes this resource for ${complexity} ${request.role}`);
   if (request.contextLimit !== undefined) {
     const limit = worker.capabilities.contextLimit ?? request.registry.models.find((model) => model.id === worker.modelId)?.contextLimit;
     if (limit !== undefined && limit < request.contextLimit) reasons.push(`context limit ${limit} is below ${request.contextLimit}`);

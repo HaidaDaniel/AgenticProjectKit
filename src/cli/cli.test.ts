@@ -147,6 +147,13 @@ test("execution resolver keeps profiles independent and handles tie, capacity, a
   assert.equal(resolveExecutionRoute({ profile: "balanced", role: "implementation", policy, registry: { ...registry, workers: [worker("local-a", "local-free", "local", 1)] } }).kind, "wait");
   assert.equal(resolveExecutionRoute({ profile: "balanced", role: "verification", policy, registry }).kind, "deterministic");
   assert.equal(resolveExecutionRoute({ profile: "balanced", role: "review", policy, registry }).kind, "deterministic");
+  const lightweightReview = { ...policy, independentReview: true, reviewLevel: "lightweight" as const };
+  assert.equal(resolveExecutionRoute({
+    profile: "constrained",
+    role: "review",
+    policy: lightweightReview,
+    registry: { ...registry, workers: [worker("frontier-only", "scarce-frontier", "remote")] },
+  }).kind, "needs-human");
 });
 
 test("CLI resources renders a stable read-only registry in human and JSON forms", async () => {
