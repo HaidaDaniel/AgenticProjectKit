@@ -7,7 +7,7 @@ Lane: developer-experience
 Scope: workers,status,attention,resources,provenance,cli,tests,docs
 Risk: medium
 Parallel: false
-Depends on: 0070,0071,0084
+Depends on: 0070,0071,0085
 Tags: workers,status,attention,resources,cli
 
 ## Goal
@@ -27,6 +27,7 @@ Extend the CLI control plane with bounded worker occupancy and human attention s
 - .tasks/0070-add-end-to-end-task-execution-provenance.md
 - .tasks/0071-expose-concise-workflow-gate-and-evidence-status.md
 - .tasks/0084-execution-profiles-and-resource-aware-routing.md
+- .tasks/0085-adaptive-assurance-and-review-budget.md
 
 ## Files allowed to edit
 
@@ -70,6 +71,7 @@ Extend the CLI control plane with bounded worker occupancy and human attention s
 ## Acceptance criteria
 
 - Output shows registered workers/resources, capability/cost class, declared parallel capacity, free/busy/unknown slots, scarce-lane occupancy, and current task/run where known.
+- Attention/status exposes canonical 0085 states including assurance unavailable, frontier budget exhausted, review escalation required, and needs-human because the required assurance cannot be met.
 - Worker/run state distinguishes ready, busy, blocked, needs-human, completed, failed, and stale/unknown observations without claiming live process knowledge that APK cannot prove.
 - Attention items are decision-ready and bounded: task/run, reason, relevant blocker or review finding summary, resource impact, and exact next action. Ordering is deterministic and explained.
 - Existing task status, gate blockers, review findings, run sessions, and provenance are the source of truth. The feature adds a projection and no second task state, policy engine, evidence store, or raw-session log.
@@ -94,4 +96,5 @@ Extend the CLI control plane with bounded worker occupancy and human attention s
 ## Notes
 
 - Priority: later than registry/routing/assurance/calibration. This is the CLI control-plane foundation for Herdr/DHH-like operation, not a GUI or SaaS dashboard.
+- Dependency on 0085 is required so attention projects canonical assurance, escalation, and budget states. It intentionally does not depend on 0086; calibration and attention can proceed in parallel after 0085.
 - Reuse 0070 provenance and 0071 status/gate projection. Do not infer provider billing, poll vendor APIs, launch workers, or implement scheduling.

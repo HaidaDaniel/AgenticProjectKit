@@ -81,12 +81,12 @@ Direct implementation graph:
 
 ```text
 0072 + 0074 + 0082 -> 0083 -> 0084 -> 0085
-                                  |----> 0086 (+ 0077)
-                                  |----> 0087 (+ 0070, 0071) -> 0088
-                                  `----------------------------^ (+ 0070, 0073)
+                                          |----> 0086 (+ 0077)
+                                          `----> 0087 (+ 0070, 0071) -> 0088
+                                                                           (+ 0070, 0073, 0084)
 ```
 
-Tasks 0077-0079 remain an independent quality/release chain and do not wait for resource-aware execution. Task 0086 waits for 0077 only to reuse its deterministic repository quality-capability inventory. Task 0075 is not retroactively made dependent on this later milestone.
+Tasks 0077-0079 remain an independent quality/release chain and do not wait for resource-aware execution. After 0085, Tasks 0086 and 0087 can proceed independently: 0086 also waits for 0077 to reuse its deterministic repository quality-capability inventory, while 0087 does not wait for calibration. Task 0075 is not retroactively made dependent on this later milestone.
 
 The milestone retains the existing independent-review capability while making its use risk-, trigger-, resource-, and budget-aware. In particular, a constrained medium-risk task does not automatically require a second frontier run. Deterministic checks run before semantic review, and required but unavailable assurance remains an explicit gate/attention state.
 

@@ -133,15 +133,15 @@ Each row lists direct prerequisites; all IDs numeric. Release validation include
 | 0083 | Resource and Worker Registry | P0 | 0072, 0074, 0082 |
 | 0084 | Execution Profiles and Resource-Aware Routing | P0 | 0061, 0073, 0083 |
 | 0085 | Adaptive Assurance and Review Budget | P0 | 0062, 0063, 0080, 0081, 0084 |
-| 0086 | Resource Detection and Workflow Calibration | high | 0077, 0084 |
-| 0087 | Worker Attention and Resource Status | later | 0070, 0071, 0084 |
+| 0086 | Resource Detection and Workflow Calibration | high | 0077, 0085 |
+| 0087 | Worker Attention and Resource Status | later | 0070, 0071, 0085 |
 | 0088 | Optional Isolated Parallel Workspaces | later | 0070, 0073, 0084, 0087 |
 
 ```text
 0082 -> 0083 -> 0084 -> 0085
-                  |----> 0086 (+ 0077)
-                  |----> 0087 -> 0088
-                  `-------------> 0088
+                          |----> 0086 (+ 0077)
+                          `----> 0087 (+ 0070, 0071) -> 0088
+                                                           (+ 0070, 0073, 0084)
 ```
 
-The ordering is A -> B -> adaptive assurance, then calibration/status/workspaces as dependencies permit. `constrained` is the reference profile. Deterministic checks precede optional semantic review, frontier review loops are bounded, and an unmet mandatory assurance level remains a visible blocker.
+The ordering is A -> B -> adaptive assurance, after which calibration and attention can proceed independently; workspaces remain downstream of attention. `constrained` is the reference profile. Deterministic checks precede optional semantic review, frontier review loops are bounded, and an unmet mandatory assurance level remains a visible blocker.

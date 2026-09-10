@@ -7,7 +7,7 @@ Lane: execution
 Scope: resources,detection,calibration,planning,config,cli,tests,docs
 Risk: medium
 Parallel: false
-Depends on: 0077,0084
+Depends on: 0077,0085
 Tags: resources,detection,calibration,planning,explain
 
 ## Goal
@@ -28,6 +28,7 @@ Add deterministic resource inventory and vendor-neutral planner calibration with
 - .tasks/0077-add-repository-quality-capability-detection-and-policy-contracts.md
 - .tasks/0083-resource-and-worker-registry.md
 - .tasks/0084-execution-profiles-and-resource-aware-routing.md
+- .tasks/0085-adaptive-assurance-and-review-budget.md
 
 ## Files allowed to edit
 
@@ -95,6 +96,6 @@ Add deterministic resource inventory and vendor-neutral planner calibration with
 
 ## Notes
 
-- Priority: high. Dependency on 0077 is intentional reuse of the existing quality-capability detector; resource-aware work does not block 0077-0079.
+- Priority: high. Dependency on 0085 ensures calibration validates canonical assurance levels, safety minima, escalation state, and review budgets rather than temporary compatibility logic. Dependency on 0077 intentionally reuses the existing quality-capability detector; resource-aware work does not block 0077-0079.
 - Prefer extending optional sections of `.agentic/config.json` for portable authored/applied state. Generated machine observations may use existing ignored session/runtime storage, but must not become a second authoritative config or overwrite user policy.
 - No proprietary provider integration, model runtime, secret manager, remote executor, generic plugin layer, or always-on master LLM.

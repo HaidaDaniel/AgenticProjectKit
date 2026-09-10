@@ -2,7 +2,7 @@
 
 ## Current status
 
-Phase 1 documentation is in place, Tasks 0001 through 0073, 0076, 0080, 0081, and the Resource-Aware Execution planning Task 0082 are complete, while Task 0074 remains `doing`.
+Phase 1 documentation is in place, Tasks 0001 through 0073, 0076, 0080, 0081, the Resource-Aware Execution planning Task 0082, and dependency-correction Task 0089 are complete, while Task 0074 remains `doing`.
 
 The repository now has:
 
@@ -108,7 +108,7 @@ Current task: 0074 - Provide safe adoption path for the new gated task workflow.
 
 Planned pre-release chain: 0074 -> 0077 capability contract -> 0078 APK-local quality guardrails -> 0079 clean-checkout CI -> 0075 frozen release validation. Tasks 0076 lock recovery and 0080 Task 0073 P2 fixes must also finish before 0075. New tasks stay `todo` with `Owner: none`.
 
-After the gated-workflow release foundation, Resource-Aware Execution proceeds through 0083 -> 0084 -> 0085, with 0086 calibration (also consuming 0077), 0087 attention/status, and 0088 optional isolated workspaces. This later milestone does not add dependencies to 0075 or the independent 0077-0079 quality chain.
+After the gated-workflow release foundation, Resource-Aware Execution proceeds through 0083 -> 0084 -> 0085. Then 0086 calibration (also consuming 0077) and 0087 attention/status proceed independently; 0088 optional isolated workspaces follows 0087. This later milestone does not add dependencies to 0075 or the independent 0077-0079 quality chain.
 
 0074 dependency on completed 0073 was added after 0074 entered `doing`. Recorded owner/state/baseline were not reset. Historical start before 0073 terminal transition remains visible; final release validation must assess integrated candidate rather than treat retroactive edge as historical gate proof.
 
@@ -126,14 +126,14 @@ After the gated-workflow release foundation, Resource-Aware Execution proceeds t
 - Task 0075: final frozen-candidate release validation after 0074, 0076 and 0077-0080.
 - Task 0082: Resource-Aware Execution architecture/backlog documentation complete; no runtime capabilities implemented.
 - Tasks 0083-0085: P0 resource registry -> execution profiles/routing -> adaptive assurance/review budgets.
-- Task 0086: high-priority deterministic resource detection and validated worker-contract calibration; reuses 0077 quality-capability output.
-- Tasks 0087-0088: later worker attention/status and optional safe isolated Git workspaces.
+- Task 0086: high-priority deterministic resource detection and validated worker-contract calibration after 0085; also reuses 0077 quality-capability output.
+- Tasks 0087-0088: later worker attention/status after 0085, then optional safe isolated Git workspaces; 0087 remains independent of 0086.
 - Contracts extend existing task verify, templates, graph validation, context, sync and work loop.
 - Task links and dependency graph: [delivery milestones](delivery/milestones.md#next-gated-workflow-release-planned).
 
 ## Notes
 
-- Resource-aware planning validation: all 88 task contracts parse; 0083-0088 are `todo`/unowned with no missing dependencies or cycles; repository contract lint exits successfully with 17 pre-existing legacy evidence-policy warnings; local links in the changed architecture/roadmap/milestone docs resolve; `git diff --check` passes. No runtime/CLI feature, completed task contract, 0074 lifecycle, or 0075/0077-0079 dependency was changed.
+- Resource-aware planning validation: all 89 task contracts parse; 0083-0088 are `todo`/unowned with no missing dependencies or cycles. Task 0089 corrected the graph so 0086 and 0087 consume canonical assurance from 0085 while remaining independent of each other, and made the 0084/0085 ownership boundary explicit. Repository contract lint exits successfully with 17 pre-existing legacy evidence-policy warnings; local links and `git diff --check` pass. No runtime/CLI feature, completed Task 0082 history, 0074 lifecycle, or 0075/0077-0079 dependency was changed.
 - Quality-guardrail planning pass: 80 active tasks parse and round-trip; no duplicate IDs, missing dependencies or cycles. Context validation resolves 972 existing paths, 4 explicit prerequisite outputs and 3 valid glob references; all 24 milestone links resolve. `apk lint --json`, `apk tasks`, `apk status`, `apk task deps 0075` and `git diff --check` pass; lint retains only pre-existing legacy policy warnings. Tasks 0077-0080 remain `todo`/unowned; no feature implementation or task claim performed.
 - 0074 lifecycle warning: recorded baseline predates 0073 terminal task-file commit and this planning pass. Current read-only status reports 8 out-of-scope paths: `.tasks/0073-*`, `.tasks/0075-*`, `.tasks/0077-*` through `.tasks/0080-*`, `docs/delivery/milestones.md`, and `docs/roadmap.md`. 0074 allowed scope, state, owner and baseline were not expanded/reset; owner must resolve attribution without treating retroactive dependency or planning commit as historical gate proof.
 - Worker-contract verification passed with bounded role/result round trips, immutable issued package/metadata persistence, exact role/owner/run binding, canonical review-worker freshness checks, non-gating lifecycle records, Codex/OpenCode guidance, `pnpm lint`, focused worker/status regressions, and the full suite after final validation.
