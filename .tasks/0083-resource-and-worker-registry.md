@@ -1,6 +1,6 @@
 # Task 0083 - Resource and Worker Registry
 
-State: doing
+State: done
 Owner: codex-resource-aware
 Mode: product
 Lane: integration
