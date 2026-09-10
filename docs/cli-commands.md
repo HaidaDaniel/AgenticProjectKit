@@ -18,12 +18,13 @@ When Agentic Project Kit is installed as a repository dev dependency, run comman
 - `apk agent prompt --platform <platform>` - print compact agent setup instructions.
 - `apk analytics summary [--month YYYY-MM] [--write]` - summarize team agent analytics.
 - `apk mode <mode>` - set or inspect the current operating mode.
+- `apk resources [--json]` - render the optional secret-free model, harness, and executable worker registry without probing providers.
 - `apk next-task` - choose the next task to work on.
 - `apk tasks` - list active tasks (todo, doing, review, blocked).
 - `apk tasks --all` - list all tasks including done, canceled, and archived.
 - `apk tasks --state <state>` - filter tasks by exact state.
 - `apk tasks --owner <agent-id>` - filter tasks by owner.
-- `apk work <task-id> --owner <agent-id> --target <agent> [--role implement|review|fix|verify] [--level 1|2|3|auto] [--write-session] [--json]` - issue and persist a vendor-neutral worker package; omitted role is resolved from canonical workflow state.
+- `apk work <task-id> --owner <agent-id> --target <agent> [--resource <worker-id>] [--role implement|review|fix|verify] [--level 1|2|3|auto] [--write-session] [--json]` - issue and persist a vendor-neutral worker package; an optional resource ID must reference the validated registry; omitted role is resolved from canonical workflow state.
 - `apk claim <task-id> --owner <agent-id>` - claim a todo task.
 - `apk release <task-id> --owner <agent-id>` - release a task back to todo.
 - `apk block <task-id> --owner <agent-id> --reason <text>` - block a task.

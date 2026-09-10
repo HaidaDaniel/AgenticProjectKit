@@ -75,8 +75,44 @@ test("CLI help lists implemented commands", async () => {
   assert.match(result.stdout, /apk prompt <agent> --task <task-id> \[--level 1\|2\|3\] \[--budget <units>\]/);
   assert.match(result.stdout, /apk suggest-context/);
   assert.match(result.stdout, /apk work <task-id>/);
+  assert.match(result.stdout, /apk resources \[--json\]/);
   assert.match(result.stdout, /apk task deps <task-id>/);
   assert.match(result.stdout, /apk tasks \[--all\] \[--state <state>\] \[--owner <agent-id>\]/);
+});
+
+test("CLI resources renders a stable read-only registry in human and JSON forms", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic/config.json"), JSON.stringify({
+      schemaVersion: 2,
+      resources: {
+        models: [{ id: "model-a", roles: ["implement"] }],
+        harnesses: [{ id: "harness-a", workerProtocols: ["apk-worker-v1"] }],
+        workers: [{
+          id: "worker-a",
+          modelId: "model-a",
+          harnessId: "harness-a",
+          location: "local",
+          billingMode: "free",
+          costClass: "local-free",
+          availability: "available",
+          capacity: 1,
+          capabilities: { roles: ["implement"] },
+        }],
+      },
+    }), "utf8");
+
+    const human = await runCli(["resources"], directory);
+    assert.equal(human.exitCode, 0, `${human.stdout}${human.stderr}`);
+    assert.match(human.stdout, /Resource registry \(read-only\)/);
+    assert.match(human.stdout, /worker worker-a model=model-a harness=harness-a/);
+
+    const machine = await runCli(["resources", "--json"], directory);
+    assert.equal(machine.exitCode, 0, `${machine.stdout}${machine.stderr}`);
+    const payload = JSON.parse(machine.stdout) as { workers: Array<{ id: string; occupied: number }> };
+    assert.deepEqual(payload.workers.map((worker) => worker.id), ["worker-a"]);
+    assert.equal(payload.workers[0]?.occupied, 0);
+  });
 });
 
 test("CLI adopt previews legacy migration without writes and applies it idempotently", async () => {
@@ -575,18 +611,57 @@ test("CLI work persists the exact issued worker package and metadata", async () 
     await git("config", "user.email", "codex@example.test");
     await git("config", "user.name", "Codex");
     await mkdir(join(directory, ".tasks"), { recursive: true });
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({
+      schemaVersion: 2,
+      projectName: "resource-test",
+      defaultMode: "product",
+      documentationProfile: "standard",
+      agentStyle: "caveman",
+      taskDirectory: ".tasks",
+      docsDirectory: "docs",
+      resources: {
+        models: [{ id: "model-a", roles: ["implement"] }],
+        harnesses: [{
+          id: "harness-a",
+          tools: ["git"],
+          workspaceModes: ["single-worktree"],
+          sessionIsolation: false,
+          subagentSupport: false,
+          workerProtocols: ["apk-worker-v1"],
+        }],
+        workers: [{
+          id: "worker-a",
+          modelId: "model-a",
+          harnessId: "harness-a",
+          location: "local",
+          billingMode: "free",
+          costClass: "local-free",
+          availability: "available",
+          capacity: 1,
+          occupied: 0,
+          capabilities: {
+            roles: ["implement"],
+            tools: ["git"],
+            workspaceModes: ["single-worktree"],
+            workerProtocols: ["apk-worker-v1"],
+          },
+        }],
+      },
+    }, null, 2), "utf8");
     await writeFile(join(directory, ".tasks", "0001-todo-task.md"), buildTaskMarkdown("0001", "Todo Task", "todo"), "utf8");
     await git("add", ".");
     await git("commit", "--quiet", "-m", "initial");
     await runCli(["agent", "register", "--id", "codex-a", "--platform", "codex", "--model", "gpt"], directory);
 
     const issued = await runCli([
-      "work", "0001", "--owner", "codex-a", "--target", "codex", "--json",
+      "work", "0001", "--owner", "codex-a", "--target", "codex", "--resource", "worker-a", "--json",
     ], directory);
     assert.equal(issued.exitCode, 0, `${issued.stdout}${issued.stderr}`);
     const payload = JSON.parse(issued.stdout);
     assert.equal(payload.workerPackage.protocol, "apk-worker-v1");
     assert.equal(payload.workerPackage.role, "implement");
+    assert.equal(payload.workerPackage.provenance.resourceId, "worker-a");
     const serializedPackage = JSON.parse(await readFile(join(directory, payload.session.package), "utf8"));
     const metadata = JSON.parse(await readFile(join(directory, payload.session.metadata), "utf8"));
     assert.deepEqual(serializedPackage, payload.workerPackage);
@@ -594,6 +669,7 @@ test("CLI work persists the exact issued worker package and metadata", async () 
     assert.equal(metadata.runId, payload.runId);
     assert.equal(metadata.owner, "codex-a");
     assert.equal(metadata.target, "codex");
+    assert.equal(metadata.resourceId, "worker-a");
     assert.equal(metadata.role, "implement");
     assert.equal(typeof metadata.packageHash, "string");
   });

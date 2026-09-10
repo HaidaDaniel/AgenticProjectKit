@@ -100,3 +100,54 @@ test("config schema markers distinguish legacy and gated formats without rewriti
     /schemaVersion must be one of: 1, 2/,
   );
 });
+
+test("parseAgenticConfig normalizes an optional vendor-neutral resource registry", () => {
+  const config = parseAgenticConfig({
+    schemaVersion: 2,
+    resources: {
+      models: [
+        { id: "local-model", family: "27b-q4", roles: ["implement"], contextLimit: 32768 },
+      ],
+      harnesses: [
+        { id: "opencode", workerProtocols: ["apk-worker-v1"], workspaceModes: ["single-worktree"] },
+      ],
+      workers: [
+        {
+          id: "local-worker",
+          modelId: "local-model",
+          harnessId: "opencode",
+          location: "local",
+          billingMode: "free",
+          costClass: "local-free",
+          availability: "available",
+          capacity: 1,
+          capabilities: { roles: ["implement"], workerProtocols: ["apk-worker-v1"] },
+        },
+      ],
+    },
+  });
+
+  assert.equal(config.schemaVersion, 2);
+  assert.equal(config.resources?.workers[0]?.id, "local-worker");
+  assert.equal(config.resources?.workers[0]?.occupied, 0);
+  assert.equal(parseAgenticConfig({}).resources, undefined);
+});
+
+test("resource registry rejects duplicates, dangling references, invalid capacity, and secrets", () => {
+  assert.throws(
+    () => parseAgenticConfig({
+      resources: {
+        models: [{ id: "same", roles: [] }, { id: "same", roles: [] }],
+        harnesses: [{ id: "harness", workerProtocols: ["apk-worker-v1"] }],
+        workers: [{
+          id: "worker",
+          modelId: "missing",
+          harnessId: "harness",
+          capacity: 0,
+          apiKey: "never-store-me",
+        }],
+      },
+    }),
+    /duplicate id|missing model|capacity|apiKey/,
+  );
+});

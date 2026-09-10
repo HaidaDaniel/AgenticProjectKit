@@ -138,6 +138,7 @@ test("worker package and result round trips preserve role and provenance without
   const workerPackage = createWorkerPackage(TASK, buildTaskPromptInput("codex", TASK, 2).context, {
     role: "review",
     runId: "work-review-1",
+    resourceId: "codex-frontier-main",
     baselineId: "baseline-1",
     candidateId: "candidate-1",
     worktreeId: "worktree-1",
@@ -146,6 +147,7 @@ test("worker package and result round trips preserve role and provenance without
 
   assert.deepEqual(parsedPackage, workerPackage);
   assert.equal(parsedPackage.role, "review");
+  assert.equal(parsedPackage.provenance.resourceId, "codex-frontier-main");
   assert.equal("vendor" in parsedPackage, false);
   const workerResult = {
     protocol: "apk-worker-v1" as const,
@@ -158,7 +160,7 @@ test("worker package and result round trips preserve role and provenance without
     evidence: [{ id: "evidence-1", type: "review", result: "changes_requested", reference: "review record" }],
     reviewFindings: ["Inspect the rollback path."],
     reason: "Fixes are required before completion.",
-    provenance: { baselineId: "baseline-1", candidateId: "candidate-1", worktreeId: "worktree-1" },
+    provenance: { resourceId: "codex-frontier-main", baselineId: "baseline-1", candidateId: "candidate-1", worktreeId: "worktree-1" },
   };
 
   assert.deepEqual(parseWorkerResult(serializeWorkerResult(workerResult)), workerResult);

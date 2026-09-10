@@ -25,7 +25,7 @@ The target extends current task policy, gate, evidence, review, provenance, stat
 
 Portable resource/profile/budget/override state should extend the existing optional config schema. Deterministic detection is read-only by default; generated calibration remains distinct from user overrides and is applied only after schema validation. Secrets stay outside APK configuration.
 
-Tasks 0083-0088 implement the target. Until those tasks complete, the current `none`/`lightweight`/`independent` task policy and existing worker orchestration remain the implemented behavior.
+Task 0083 implements the optional secret-free model/harness/worker registry and binds validated worker IDs into existing worker-session provenance. Routing and profile selection, adaptive assurance, calibration, attention/status, and isolated workspaces remain subsequent tasks. The current `none`/`lightweight`/`independent` task policy and existing completion gate remain authoritative.
 
 ## Proposed internal layout
 
@@ -89,5 +89,7 @@ Claim baselines use a parallel append-only `.agentic/task-baselines.jsonl` store
 `src/core/work/contract.ts` is the vendor-neutral boundary between APK task orchestration and a coding harness. `apk-worker-v1` packages task/context/constraints/output expectations with one of four roles: `implement`, `review`, `fix`, or `verify`. A package provenance is the issued/input candidate; mutable worker results recapture an output candidate, while review results remain bound to the prepared/current subject. Parsing and serialization are bounded and SDK-free; exporter templates only adapt the common guidance to each tool.
 
 `src/core/work/index.ts` creates each package in a temporary session directory and atomically publishes it, transitions `doing` to `review` only after successful independent-review issuance, resolves roles from the canonical gate projection, and records implement/fix output candidates separately from issued inputs. This keeps the task contract and provenance in the core workflow while allowing one harness to implement a task and another to review or fix it.
+
+`src/core/resources/index.ts` validates optional model, harness, and executable worker declarations with stable IDs, bounded capabilities, protocol support, capacity, cost, availability, and secret rejection. A worker references one model and harness; it is the routing identity, while model and vendor/harness names remain metadata. `apk resources` is read-only and does not probe or launch anything.
 
 Terminal worker and review results use one evidence-lock transaction for duplicate detection plus append, so concurrent submissions cannot both commit. Worker review preparation and activation share a per-run lifecycle lock; failed pre-activation issuance removes only the exact worker-origin preparation and preserves standalone, successor, or correctly activated review state.

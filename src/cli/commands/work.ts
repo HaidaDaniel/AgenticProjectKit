@@ -18,14 +18,14 @@ const WORK_HELP_TEXT = [
   "Agentic Project Kit",
   "",
   "Usage:",
-  `  apk work <task-id> --owner <agent-id> --target <agent> [--role ${WORKER_ROLES.join("|")}] [--level 1|2|3|auto] [--write-session] [--json]`,
+  `  apk work <task-id> --owner <agent-id> --target <agent> [--resource <worker-id>] [--role ${WORKER_ROLES.join("|")}] [--level 1|2|3|auto] [--write-session] [--json]`,
   "  apk work result <task-id> --owner <agent-id> --run-id <run-id> --role <role> --status <status> [--result-json <json>] [--json]",
   "",
   "Claim or continue a task, render its prompt, or record a result from an external worker.",
   "Does not launch external AI agents.",
 ].join("\n");
 
-const WORK_VALUE_FLAGS = new Set(["--owner", "--target", "--role", "--level"]);
+const WORK_VALUE_FLAGS = new Set(["--owner", "--target", "--resource", "--role", "--level"]);
 const RESULT_VALUE_FLAGS = new Set([
   "--owner", "--run-id", "--role", "--status", "--result-json", "--diff-id", "--evidence-json",
   "--commit-id", "--finding", "--reason",
@@ -96,7 +96,7 @@ export async function runWorkCommand(argv: string[]): Promise<number> {
     if (argv[0] === "result") {
       return runWorkResultCommand(argv.slice(1));
     }
-    const knownFlags = new Set(["--owner", "--target", "--role", "--level", "--write-session", "--json"]);
+    const knownFlags = new Set(["--owner", "--target", "--resource", "--role", "--level", "--write-session", "--json"]);
     for (const arg of argv) {
       if (arg.startsWith("-") && !knownFlags.has(arg)) {
         throw new Error(`Unknown option: ${arg}`);
@@ -110,6 +110,7 @@ export async function runWorkCommand(argv: string[]): Promise<number> {
 
     const owner = readFlagValue(argv, "--owner");
     const target = readFlagValue(argv, "--target");
+    const resourceId = readFlagValue(argv, "--resource");
     if (!owner) {
       throw new Error("--owner is required.");
     }
@@ -123,6 +124,7 @@ export async function runWorkCommand(argv: string[]): Promise<number> {
       taskId: positional[0],
       owner,
       target,
+      ...(resourceId === undefined ? {} : { resourceId }),
       ...(roleValue === undefined ? {} : { role: parseWorkerRole(roleValue) }),
       level: parseLevel(readFlagValue(argv, "--level")),
       writeSession: argv.includes("--write-session"),

@@ -497,7 +497,7 @@ Check-then-append admitted conflicting concurrent outcomes, while independently 
 
 ## ADR-0034 - Execution profile is independent and assurance is resource-aware
 
-Status: accepted; implementation planned in Tasks 0083-0088
+Status: accepted; registry foundation implemented in Task 0083, remaining execution behavior planned in Tasks 0084-0088
 
 Decision:
 
@@ -516,3 +516,5 @@ A universal implement -> frontier review -> fix -> frontier review loop wastes s
 Boundaries:
 
 APK does not own model runtime, provider SDKs, credentials, remote execution, billing, a cloud control plane, an always-on master LLM, or an autonomous/generic scheduler. Future attention and optional Git-worktree support are bounded projections/lifecycle helpers over the current task, run, worker, evidence, and provenance contracts.
+
+Task 0083 implements the first bounded slice: optional `resources` config with distinct model, harness, and worker records; deterministic validation and introspection; secret-shaped field rejection; and optional `resourceId` binding in `apk-worker-v1` package/session provenance. It does not probe providers, persist credentials, select a route, or launch a runtime.

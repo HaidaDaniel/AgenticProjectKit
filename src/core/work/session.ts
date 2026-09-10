@@ -115,6 +115,7 @@ export async function readActiveWorkerSession(
     || metadata.taskId !== taskId
     || metadata.runId !== runId
     || typeof metadata.owner !== "string"
+    || metadata.resourceId !== workerPackage.provenance.resourceId
     || workerPackage.task.id !== taskId
     || metadata.role !== workerPackage.role
     || typeof metadata.packageHash !== "string"

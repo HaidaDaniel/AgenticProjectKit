@@ -1,5 +1,6 @@
 import { DEFAULT_CONFIG } from "./defaults.js";
 import { ConfigValidationError } from "./errors.js";
+import { parseResourceRegistry, ResourceRegistryValidationError } from "../resources/index.js";
 import {
   AGENT_STYLES,
   DOCUMENTATION_PROFILES,
@@ -148,6 +149,19 @@ export function parseAgenticConfig(raw: unknown): AgenticConfig {
     "docsDirectory must be a non-empty string.",
   );
 
+  let resources: AgenticConfig["resources"];
+  if (raw.resources !== undefined) {
+    try {
+      resources = parseResourceRegistry(raw.resources);
+    } catch (error: unknown) {
+      if (error instanceof ResourceRegistryValidationError) {
+        issues.push(...error.issues);
+      } else {
+        issues.push(`resources is invalid: ${error instanceof Error ? error.message : String(error)}.`);
+      }
+    }
+  }
+
   if (issues.length > 0) {
     throw new ConfigValidationError(issues);
   }
@@ -160,6 +174,7 @@ export function parseAgenticConfig(raw: unknown): AgenticConfig {
     agentStyle,
     taskDirectory,
     docsDirectory,
+    ...(resources === undefined ? {} : { resources }),
   };
 }
 

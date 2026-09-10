@@ -57,7 +57,8 @@ Implemented commands:
 - `apk audit`
 - `apk lint [--json]`
 - `apk tasks`
-- `apk work <task-id> --owner <agent-id> --target <agent> [--role implement|review|fix|verify] [--json]`
+- `apk resources [--json]`
+- `apk work <task-id> --owner <agent-id> --target <agent> [--resource <worker-id>] [--role implement|review|fix|verify] [--json]`
 - `apk claim`
 - `apk release`
 - `apk block`

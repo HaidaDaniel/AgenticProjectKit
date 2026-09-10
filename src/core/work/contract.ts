@@ -20,6 +20,8 @@ export function isSafeRunId(value: string): boolean {
  * Worker result provenance identifies the candidate produced by that run.
  */
 export interface WorkerProvenance {
+  /** Optional validated executable resource identity; never a model/vendor routing key. */
+  resourceId?: string;
   repository?: "git" | "none";
   headSha?: string;
   baselineId?: string;
@@ -224,6 +226,7 @@ function parsePackage(value: unknown): WorkerPackage {
     ...(raw.handoff === undefined ? {} : { handoff: parseHandoff(raw.handoff) }),
     provenance: {
       runId: validateWorkerRunId(text(provenance.runId, "worker package.provenance.runId", 120)),
+      ...(optionalText(provenance.resourceId, "worker package.provenance.resourceId", 160) ? { resourceId: provenance.resourceId as string } : {}),
       ...(provenance.repository === "git" || provenance.repository === "none" ? { repository: provenance.repository } : {}),
       ...(optionalText(provenance.headSha, "worker package.provenance.headSha", 160) ? { headSha: provenance.headSha as string } : {}),
       ...(optionalText(provenance.baselineId, "worker package.provenance.baselineId", 240) ? { baselineId: provenance.baselineId as string } : {}),
@@ -306,6 +309,7 @@ function parseResult(value: unknown): WorkerResult {
   if (raw.provenance !== undefined) {
     const provenance = objectValue(raw.provenance, "worker result.provenance");
     result.provenance = {
+      ...(optionalText(provenance.resourceId, "worker result.provenance.resourceId", 160) ? { resourceId: provenance.resourceId as string } : {}),
       ...(provenance.repository === "git" || provenance.repository === "none" ? { repository: provenance.repository } : {}),
       ...(optionalText(provenance.headSha, "worker result.provenance.headSha", 160) ? { headSha: provenance.headSha as string } : {}),
       ...(optionalText(provenance.baselineId, "worker result.provenance.baselineId", 240) ? { baselineId: provenance.baselineId as string } : {}),
@@ -330,6 +334,7 @@ export function createWorkerPackage(
   options: {
     role: WorkerRole;
     runId: string;
+    resourceId?: string;
     repository?: "git" | "none";
     headSha?: string;
     baselineId?: string;
@@ -375,6 +380,7 @@ export function createWorkerPackage(
     ...(options.handoff === undefined ? {} : { handoff: options.handoff }),
     provenance: {
       runId: options.runId,
+      ...(options.resourceId ? { resourceId: options.resourceId } : {}),
       ...(options.repository ? { repository: options.repository } : {}),
       ...(options.headSha ? { headSha: options.headSha } : {}),
       ...(options.baselineId ? { baselineId: options.baselineId } : {}),

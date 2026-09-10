@@ -45,6 +45,7 @@ export interface WorkOptions {
   taskId: string;
   owner: string;
   target: string;
+  resourceId?: string;
   level: WorkLevel;
   role?: WorkerRole;
   writeSession?: boolean;
@@ -83,6 +84,7 @@ export interface IssuedWorkerRunMetadata {
   runId: string;
   owner: string;
   target: string;
+  resourceId?: string;
   role: WorkerRole;
   issuedAt: string;
   baselineId?: string;
@@ -137,8 +139,9 @@ function packageHash(workerPackage: WorkerPackage): string {
   return hashText(serializeWorkerPackage(workerPackage));
 }
 
-function provenanceForSubject(subject: TaskEvidenceCandidateSubject): WorkerProvenance {
+function provenanceForSubject(subject: TaskEvidenceCandidateSubject, resourceId?: string): WorkerProvenance {
   return {
+    ...(resourceId ? { resourceId } : {}),
     repository: subject.repository,
     ...(subject.headSha ? { headSha: subject.headSha } : {}),
     baselineId: subject.baselineId,
@@ -164,7 +167,7 @@ function suppliedProvenanceMatches(
   expected: WorkerProvenance,
 ): boolean {
   if (!supplied) return true;
-  return (["repository", "headSha", "baselineId", "candidateId", "worktreeId"] as const)
+  return (["resourceId", "repository", "headSha", "baselineId", "candidateId", "worktreeId"] as const)
     .every((field) => supplied[field] === undefined || supplied[field] === expected[field]);
 }
 
@@ -210,6 +213,7 @@ async function persistIssuedWorkerRun(options: {
       runId: options.runId,
       owner: options.owner,
       target: options.target,
+      ...(options.workerPackage.provenance.resourceId ? { resourceId: options.workerPackage.provenance.resourceId } : {}),
       role: options.workerPackage.role,
       issuedAt: options.issuedAt,
       ...(options.workerPackage.provenance.baselineId ? { baselineId: options.workerPackage.provenance.baselineId } : {}),
@@ -225,7 +229,7 @@ async function persistIssuedWorkerRun(options: {
         baselineId: options.workerPackage.provenance.baselineId ?? "unknown",
         candidateId: options.workerPackage.provenance.candidateId ?? "unknown",
         worktreeId: options.workerPackage.provenance.worktreeId ?? "unknown",
-      }),
+      }, options.workerPackage.provenance.resourceId),
     };
     await writeFile(packagePath, packageContent, { encoding: "utf8", flag: "wx" });
     await writeFile(metadataPath, `${JSON.stringify(metadata)}\n`, { encoding: "utf8", flag: "wx" });
@@ -329,6 +333,7 @@ async function readIssuedWorkerRun(
     raw.runId !== runId ||
     typeof raw.owner !== "string" ||
     typeof raw.target !== "string" ||
+    (raw.resourceId !== undefined && typeof raw.resourceId !== "string") ||
     raw.role !== workerPackage.role ||
     typeof raw.issuedAt !== "string" ||
     typeof raw.packageHash !== "string" ||
@@ -345,6 +350,7 @@ async function readIssuedWorkerRun(
   }
   if (
     issuedSubject.repository !== (workerPackage.provenance.repository ?? "none") ||
+    issuedSubject.resourceId !== workerPackage.provenance.resourceId ||
     issuedSubject.headSha !== workerPackage.provenance.headSha ||
     issuedSubject.baselineId !== (workerPackage.provenance.baselineId ?? "unknown") ||
     issuedSubject.candidateId !== (workerPackage.provenance.candidateId ?? "unknown") ||
@@ -606,6 +612,9 @@ async function sameWorktreeWarnings(
 
 export async function startWork(options: WorkOptions): Promise<WorkResult> {
   const config = await readAgenticConfigFile(options.rootDirectory);
+  if (options.resourceId && !config.resources?.workers.some((worker) => worker.id === options.resourceId)) {
+    throw new Error(`Unknown worker resource: ${options.resourceId}. Configure a validated resource before issuing work.`);
+  }
   const agent = await requireAgent(options.rootDirectory, options.owner);
   let taskFile = await findTaskFile(options.rootDirectory, options.taskId, config.taskDirectory);
   let { task } = await loadTaskFile(taskFile);
@@ -677,6 +686,7 @@ export async function startWork(options: WorkOptions): Promise<WorkResult> {
   const workerPackage = createWorkerPackage(task, promptInput.context, {
     role,
     runId,
+    ...(options.resourceId ? { resourceId: options.resourceId } : {}),
     repository: subject.repository,
     ...(subject.headSha ? { headSha: subject.headSha } : {}),
     baselineId: subject.baselineId,

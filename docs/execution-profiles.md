@@ -2,7 +2,7 @@
 
 ## Status and intent
 
-This document is the accepted architecture for the Resource-Aware Execution milestone. Tasks 0083-0088 implement it on top of the existing task policy, completion gate, evidence, provenance, worker-package, and orchestration contracts. The runtime and CLI behavior described here is not implemented by Task 0082.
+This document is the accepted architecture for the Resource-Aware Execution milestone. Tasks 0083-0088 implement it on top of the existing task policy, completion gate, evidence, provenance, worker-package, and orchestration contracts. Task 0083 implements the secret-free model, harness, and executable worker registry; routing, assurance, calibration, attention, and isolated-workspace behavior remain subsequent tasks.
 
 Agentic Project Kit remains a repository-first deterministic control plane. External harnesses execute models and tools. APK describes resources, resolves policy, issues bounded work packages, validates results, and presents human decisions; it does not become a model runtime.
 
@@ -66,6 +66,8 @@ A worker/resource is an executable resource selected by routing. It binds:
 Examples are `qwen-local-opencode` and `codex-frontier-main`. Routes target these resource IDs, not a model family name such as "Qwen".
 
 Resource manifests never contain API secrets. Credentials remain owned by the harness/runtime or an external secret facility. APK accepts only non-secret locators or opaque references and rejects secret-shaped fields.
+
+Task 0083 stores the optional registry under `resources` in `.agentic/config.json`. `apk resources` renders a deterministic read-only human view and `apk resources --json` emits the normalized registry. The command performs no provider probing or runtime startup. `apk work ... --resource <worker-id>` may bind an issued `apk-worker-v1` session to a validated worker ID; omitting the option preserves legacy behavior.
 
 ### Cost/resource classes
 

@@ -1,3 +1,5 @@
+import type { ResourceRegistry } from "../resources/index.js";
+
 export const OPERATING_MODES = [
   "discovery",
   "mvp",
@@ -31,4 +33,5 @@ export interface AgenticConfig {
   agentStyle: AgentStyle;
   taskDirectory: string;
   docsDirectory: string;
+  resources?: ResourceRegistry;
 }

@@ -1,7 +1,7 @@
 # Task 0083 - Resource and Worker Registry
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-resource-aware
 Mode: product
 Lane: integration
 Scope: resources,workers,harness,config,cli,tests,docs
@@ -33,6 +33,8 @@ Add a first-class vendor-neutral model harness and executable worker resource re
 - src/core/resources/*.ts
 - src/core/config/*.ts
 - src/core/work/*.ts
+- src/core/docs/prompt.test.ts
+- src/cli/commands/work.ts
 - src/cli/index.ts
 - src/cli/commands/resources.ts
 - src/cli/cli.test.ts
@@ -62,7 +64,6 @@ Add a first-class vendor-neutral model harness and executable worker resource re
 3. Connect resource identity to the existing `apk-worker-v1` package/session provenance without coupling worker role to vendor or model.
 4. Add fixture and CLI regressions for valid references, duplicate IDs, invalid capacity/cost/capability data, secret-shaped fields, and legacy config.
 
-
 ## Acceptance criteria
 
 - Model, harness, and worker/resource are distinct first-class types. A worker references one model and one harness and describes endpoint/runtime reference, location, billing mode, cost class, availability, parallel capacity, and capabilities.
@@ -74,7 +75,6 @@ Add a first-class vendor-neutral model harness and executable worker resource re
 - Existing `apk-worker-v1` role/result semantics remain intact. Issued sessions may reference a validated worker/resource ID while preserving current candidate, owner, run, and review provenance.
 - Tests cover registry round trips, model/harness/worker separation, invalid references, secret rejection, capacity/cost normalization, missing registry defaults, and worker-package resource provenance.
 
-
 ## Verification
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm lint"}`
@@ -84,7 +84,6 @@ Add a first-class vendor-neutral model harness and executable worker resource re
 ## Documentation updates
 
 - Update execution-profile, architecture, task-system, CLI, README, decisions, and progress docs for the implemented registry and compatibility boundary.
-
 
 ## Notes
 

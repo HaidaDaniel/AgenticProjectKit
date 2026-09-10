@@ -12,6 +12,7 @@ import { runLintCommand } from "./commands/lint.js";
 import { runModeCommand } from "./commands/mode.js";
 import { runNextTaskCommand } from "./commands/next-task.js";
 import { runPromptCommand } from "./commands/prompt.js";
+import { runResourcesCommand } from "./commands/resources.js";
 import { runSuggestContextCommand } from "./commands/suggest-context.js";
 import { runSyncCommand } from "./commands/sync.js";
 import { runStatusCommand } from "./commands/status.js";
@@ -43,6 +44,7 @@ const HELP_TEXT = [
   "  apk mode [mode]",
   "  apk next-task",
   "  apk prompt <agent> --task <task-id> [--level 1|2|3] [--budget <units>]",
+  "  apk resources [--json]",
   "  apk release <task-id> --owner <agent-id>",
   "  apk review <task-id> --owner <agent-id>",
   "  apk sync [agent] [--write]",
@@ -74,6 +76,7 @@ const HELP_TEXT = [
   "  mode  Print or update the active operating mode.",
   "  next-task  Print the next actionable task.",
   "  prompt  Generate an agent-specific task prompt.",
+  "  resources  Inspect the configured vendor-neutral worker/resource registry.",
   "  release  Release a task back to todo.",
   "  review  Move a task to review.",
   "  sync  Check or update generated agent instruction files.",
@@ -148,6 +151,10 @@ async function main(): Promise<number> {
 
   if (command === "prompt") {
     return runPromptCommand(commandArgs);
+  }
+
+  if (command === "resources") {
+    return runResourcesCommand(commandArgs);
   }
 
   if (command === "sync") {
