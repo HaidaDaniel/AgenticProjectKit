@@ -17,6 +17,16 @@ Agentic Project Kit is intended to use a layered architecture:
 - Select context explicitly rather than loading the whole repository.
 - Keep commands thin and predictable.
 
+## Resource-aware execution target
+
+[Resource-Aware Execution](execution-profiles.md) defines the accepted post-gated-workflow architecture. It separates project mode, task risk/assurance, and execution profile; models model, harness, and executable worker/resource independently; and routes roles through the existing vendor-neutral worker contract.
+
+The target extends current task policy, gate, evidence, review, provenance, status, and `apk-worker-v1` modules. It does not add a parallel completion gate, evidence store, task classifier, or model runtime. Deterministic verification remains the first line of checking, and unavailable mandatory assurance fails visibly rather than being silently downgraded.
+
+Portable resource/profile/budget/override state should extend the existing optional config schema. Deterministic detection is read-only by default; generated calibration remains distinct from user overrides and is applied only after schema validation. Secrets stay outside APK configuration.
+
+Tasks 0083-0088 implement the target. Until those tasks complete, the current `none`/`lightweight`/`independent` task policy and existing worker orchestration remain the implemented behavior.
+
 ## Proposed internal layout
 
 ```txt

@@ -44,7 +44,7 @@
 
 ## Next gated-workflow release (planned)
 
-Tasks 0057-0080 preserve repository-first, model-agnostic control-plane direction. `done` becomes evidence-backed completion; external coding harnesses remain workers. Tasks 0057-0073 are complete, 0074 is doing and 0075-0080 are planned.
+Tasks 0057-0081 preserve repository-first, model-agnostic control-plane direction. `done` becomes evidence-backed completion; external coding harnesses remain workers. Tasks 0057-0073, 0076, 0080, and 0081 are complete; 0074 is doing; 0075 and 0077-0079 remain planned.
 
 | Milestone | Tasks | Capability |
 | --- | --- | --- |
@@ -62,3 +62,32 @@ Bootstrap: 0063 depends on 0058,0061; 0062 depends on 0059,0060,0061,0063. Pre-r
 Quality boundary: APK detects stable capability IDs, evaluates explicit repository policy and recommends missing optional capability. APK-local ESLint/hooks/coverage/GitHub tooling never becomes an automatic adopted-repository dependency. Hooks = feedback, APK verify/gate = task proof, CI = clean-checkout proof, 0075 = frozen-candidate proof.
 
 This backlog excludes model runtime ownership, RAG/vector storage, cloud/UI/SaaS work, autonomous swarms and remote execution. Earlier future ideas remain separate.
+
+## Resource-Aware Execution (next coherent milestone)
+
+Resource-Aware Execution follows the gated-workflow foundation and precedes any further expansion of automatic multi-agent orchestration. The accepted architecture is documented in [execution profiles](execution-profiles.md); Task 0082 records the documentation/backlog pass, and Tasks 0083-0088 implement it.
+
+| Order | Task | Priority | Capability |
+| --- | --- | --- | --- |
+| Plan | 0082 | complete before implementation | Architecture and implementation-ready contracts |
+| A | 0083 | P0 | Vendor-neutral model, harness, and executable worker/resource registry |
+| B | 0084 | P0 | `executionProfile` and deterministic resource-aware role routing |
+| C | 0085 | P0 | Adaptive assurance levels, trigger escalation, deterministic-first review, and budgets |
+| D | 0086 | high | Deterministic detection plus validated vendor-neutral workflow calibration/explain |
+| E | 0087 | later | Worker/resource occupancy and bounded human attention status |
+| F | 0088 | later | Optional safe isolated Git workspaces for parallel top-level workers |
+
+Direct implementation graph:
+
+```text
+0072 + 0074 + 0082 -> 0083 -> 0084 -> 0085
+                                  |----> 0086 (+ 0077)
+                                  |----> 0087 (+ 0070, 0071) -> 0088
+                                  `----------------------------^ (+ 0070, 0073)
+```
+
+Tasks 0077-0079 remain an independent quality/release chain and do not wait for resource-aware execution. Task 0086 waits for 0077 only to reuse its deterministic repository quality-capability inventory. Task 0075 is not retroactively made dependent on this later milestone.
+
+The milestone retains the existing independent-review capability while making its use risk-, trigger-, resource-, and budget-aware. In particular, a constrained medium-risk task does not automatically require a second frontier run. Deterministic checks run before semantic review, and required but unavailable assurance remains an explicit gate/attention state.
+
+This milestone does not implement an LLM runtime, provider SDK layer, secret manager, autonomous swarm, always-on master LLM, cloud control plane, dashboard/SaaS, remote execution platform, billing system, or generic scheduler.

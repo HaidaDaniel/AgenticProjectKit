@@ -61,3 +61,13 @@ Ordered by priority:
 4. **`next-task` with lane/priority awareness** — current selection is ID-only; better to select by lane + priority + dependency resolution
 5. **Cross-repo collaboration** — shared tasks, subrepo orchestration
 6. **Web dashboard** — only after CLI becomes unwieldy with 100+ tasks
+
+---
+
+## 2026-09 planning update: Resource-Aware Execution
+
+The proposals above are historical and remain unchanged. A later architecture decision adds Resource-Aware Execution as the next milestone after the gated-workflow foundation and before broader multi-agent orchestration.
+
+The accepted design is maintained in [execution-profiles.md](execution-profiles.md). It separates project mode, task risk/assurance, and execution profile; extends the current worker/policy/gate/provenance contracts; treats local workers as a first-class low-cost tier; and keeps deterministic verification ahead of semantic review.
+
+Implementation is planned in Tasks 0083-0088: resource registry, execution profiles/routing, adaptive assurance/review budgets, detection/calibration, attention/status, and optional isolated workspaces. The update does not revise completed task history or authorize runtime implementation in the documentation task.

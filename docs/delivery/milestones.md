@@ -30,7 +30,7 @@
 
 ## Next gated-workflow release (planned)
 
-Tasks 0057-0073: done. Task 0074: doing. Tasks 0075-0080: planned `todo`, unowned. Milestone numbering below belongs to this release; earlier milestones remain historical.
+Tasks 0057-0073, 0076, 0080, and 0081: done. Task 0074: doing. Tasks 0075 and 0077-0079: planned `todo`, unowned. Milestone numbering below belongs to this release; earlier milestones remain historical.
 
 APK remains model-agnostic repository-first control plane. External harnesses own model execution; APK owns task contracts, verification, scope, evidence, review and completion.
 
@@ -69,6 +69,7 @@ Policy resolution in 0061 and review capability in 0063 precede final done enfor
 
 - [0072 - Define model-agnostic worker and harness integration contract](../../.tasks/0072-define-model-agnostic-worker-and-harness-integration-contract.md)
 - [0073 - Compose implementation, review and fixer runs without owning the model runtime](../../.tasks/0073-compose-implementation-review-and-fixer-runs-without-owning-the-model-runtime.md)
+- [0081 - Allow automatic independent review orchestration](../../.tasks/0081-allow-automatic-independent-review-orchestration.md)
 
 ### Milestone 5 - Upgrade, Quality and Release
 
@@ -108,6 +109,7 @@ Each row lists direct prerequisites; all IDs numeric. Release validation include
 | 0078 | 0077 |
 | 0079 | 0078 |
 | 0080 | 0073 |
+| 0081 | 0076 |
 
 - 0069 includes 0064, preserving requested review-contract -> dogfood phase edge.
 - 0074 includes 0072 and 0073 because adoption covers complete worker/harness workflow. 0073 edge was added after 0074 entered `doing`; historical claim/baseline remain unchanged.
@@ -120,3 +122,26 @@ Each row lists direct prerequisites; all IDs numeric. Release validation include
 - Hooks provide local feedback; APK verify/gate provides task proof; CI proves clean checkout; 0075 proves frozen release candidate. No layer substitutes for missing evidence from another.
 - Evidence binds evaluated HEAD/baseline/worktree identity; stale/superseded records stay visible but cannot satisfy gate. 0070 reports history; 0062 owns enforcement.
 - 0075 lifecycle: mutating preparation -> exact candidate freeze -> non-mutating validation using 0066 read-only lint/audit -> evidence. Candidate-input mutation invalidates evidence and requires new freeze/revalidation.
+
+## Resource-Aware Execution (planned after gated workflow)
+
+[Architecture](../execution-profiles.md) is fixed by Task 0082. Tasks 0083-0088 implement the milestone without rewriting completed contracts or blocking the existing 0077 -> 0078 -> 0079 quality chain.
+
+| Task | Title | Priority | Direct dependencies |
+| --- | --- | --- | --- |
+| 0082 | Document resource-aware execution architecture and backlog | planning | none |
+| 0083 | Resource and Worker Registry | P0 | 0072, 0074, 0082 |
+| 0084 | Execution Profiles and Resource-Aware Routing | P0 | 0061, 0073, 0083 |
+| 0085 | Adaptive Assurance and Review Budget | P0 | 0062, 0063, 0080, 0081, 0084 |
+| 0086 | Resource Detection and Workflow Calibration | high | 0077, 0084 |
+| 0087 | Worker Attention and Resource Status | later | 0070, 0071, 0084 |
+| 0088 | Optional Isolated Parallel Workspaces | later | 0070, 0073, 0084, 0087 |
+
+```text
+0082 -> 0083 -> 0084 -> 0085
+                  |----> 0086 (+ 0077)
+                  |----> 0087 -> 0088
+                  `-------------> 0088
+```
+
+The ordering is A -> B -> adaptive assurance, then calibration/status/workspaces as dependencies permit. `constrained` is the reference profile. Deterministic checks precede optional semantic review, frontier review loops are bounded, and an unmet mandatory assurance level remains a visible blocker.

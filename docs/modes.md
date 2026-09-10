@@ -2,6 +2,14 @@
 
 Prompt generation includes concise guidance from the task mode. Context rendering can include the same guidance when mode guidance is requested by the caller.
 
+## Mode is not an execution profile
+
+`mode` describes the project's work phase and required engineering rigor. It does not describe available models, subscriptions, harnesses, cost, or compute capacity.
+
+The planned `executionProfile` is an independent resource-spending policy (`local`, `constrained`, `balanced`, or `abundant`). Task risk is a third independent axis that determines the minimum correctness assurance. APK composes project mode, task risk/change characteristics, and execution profile into an effective plan without changing the meaning of any mode below.
+
+See [Resource-Aware Execution](execution-profiles.md) for the accepted architecture and implementation backlog.
+
 ## discovery
 
 Used when the user has a rough idea and needs to turn it into requirements.

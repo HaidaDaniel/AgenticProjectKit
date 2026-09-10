@@ -494,3 +494,25 @@ Decide duplicate terminal worker/review results under the evidence append lock a
 Reason:
 
 Check-then-append admitted conflicting concurrent outcomes, while independently published review preparation could outlive failed issuance or be deleted after replacement. One append transaction plus identity-bound cleanup keeps evidence order, prepared subjects, activation and visible task history consistent.
+
+## ADR-0034 - Execution profile is independent and assurance is resource-aware
+
+Status: accepted; implementation planned in Tasks 0083-0088
+
+Decision:
+
+Keep project mode, task risk/assurance, and execution/resource profile as independent axes. Add vendor-neutral model, harness, and executable worker/resource definitions with capability, cost class, availability, and parallel capacity. Route each role to the lowest-cost eligible resource while preserving the minimum assurance required by risk, classification, change triggers, and the single completion gate.
+
+Provide built-in `local`, `constrained`, `balanced`, and `abundant` profiles. Treat `constrained` as the primary reference: deterministic-first checks, local-first semantic work, trigger-based frontier escalation, and a baseline maximum of one frontier review pass. Normalize assurance as `none`, `self-check`, `fresh-context`, `independent`, and `diverse`; inability to satisfy a mandatory level is explicit and cannot silently become completion.
+
+Configuration and lifecycle:
+
+Extend the existing optional config schema for portable profile, secret-free declarations, budgets, calibrated recommendation, and separately preserved user overrides. Detection is deterministic and read-only by default. Semantic calibration is a bounded package through the existing worker/harness contract, executed externally, then deterministically validated before explicit apply. Existing evidence, review freshness, reviewer separation, task provenance, status, and gate records remain authoritative.
+
+Reason:
+
+A universal implement -> frontier review -> fix -> frontier review loop wastes scarce inference and makes one-subscription-plus-local-model deployments impractical. Capability must remain available without becoming mandatory execution. Resource-aware routing lets APK use local and deterministic lanes productively while reserving frontier quality for roles where it changes outcomes.
+
+Boundaries:
+
+APK does not own model runtime, provider SDKs, credentials, remote execution, billing, a cloud control plane, an always-on master LLM, or an autonomous/generic scheduler. Future attention and optional Git-worktree support are bounded projections/lifecycle helpers over the current task, run, worker, evidence, and provenance contracts.
