@@ -18,6 +18,7 @@ import {
   type TaskEvidenceFreshness,
 } from "./evidence.js";
 import { isSafeRunId } from "../work/contract.js";
+import { resolveTaskPolicy, type AssuranceLevel } from "./policy.js";
 import {
   readActiveWorkerSession,
   withWorkerReviewLifecycleLock,
@@ -60,6 +61,9 @@ export interface TaskReviewOptions {
   workerProtocol?: string;
   workerRole?: string;
   workerStatus?: string;
+  assuranceLevel?: AssuranceLevel;
+  resourceId?: string;
+  resourceFamily?: string;
   expectedSubject?: TaskEvidenceCandidateSubject;
   expectedChangedFiles?: readonly string[];
 }
@@ -483,6 +487,9 @@ export async function recordTaskReview(options: TaskReviewOptions): Promise<Task
     workerProtocol: options.workerProtocol,
     workerRole: options.workerRole,
     workerStatus: options.workerStatus,
+    assuranceLevel: options.assuranceLevel ?? resolveTaskPolicy(prepared.task).requirements.assurance,
+    resourceId: options.resourceId,
+    resourceFamily: options.resourceFamily,
     findings,
     summary: options.outcome === "pass" ? "Independent review passed." : findings.join("; ") || `Independent review ${options.outcome}.`,
   }, {

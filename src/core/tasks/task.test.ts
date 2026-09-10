@@ -343,13 +343,19 @@ test("task policy raises assurance for critical and stable escalation triggers",
   const critical = resolveTaskPolicy({
     ...TASK,
     risk: "critical",
-    tags: ["security", "migration"],
+    tags: ["security", "migration", "broad-scope", "weak-tests", "invariant", "uncertain", "scope-expansion", "deterministic-failure"],
   });
 
   assert.equal(critical.requirements.assurance, "independent");
   assert.deepEqual(critical.requirements.assuranceTriggers?.map((trigger) => trigger.id), [
     "security-auth",
     "schema-migration",
+    "large-semantic-diff",
+    "weak-tests",
+    "invariant-change",
+    "worker-reviewer-uncertainty",
+    "unexpected-scope",
+    "repeated-deterministic-failures",
     "critical-risk",
   ]);
   assert.deepEqual(critical.requirements.reviewBudget, {

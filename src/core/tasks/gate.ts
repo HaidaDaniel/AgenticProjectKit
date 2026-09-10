@@ -360,6 +360,12 @@ export async function evaluateTaskCompletionGate(options: {
       if (selected.record.result !== "pass") {
         blockers.push(`Independent review is ${selected.record.result}; pass review evidence is required.`);
       }
+      if (selected.record.result === "pass" && policy.requirements.assurance === "diverse") {
+        const families = new Set(reviewRecords
+          .filter((record) => record.result === "pass" && record.resourceFamily && compareTaskEvidenceFreshness(record, subject).freshness === "current")
+          .map((record) => record.resourceFamily));
+        if (families.size < 2) blockers.push("Diverse assurance requires current passing review evidence from two model/resource families.");
+      }
       if (budgetExhausted && selected.record.result !== "pass") {
         blockers.push("Review budget exhausted; request an explicit human decision.");
       }

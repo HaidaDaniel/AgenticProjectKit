@@ -858,6 +858,12 @@ export async function recordWorkerResult(options: {
     })) {
       throw new Error(`Worker review result provenance does not match the issued review subject.`);
     }
+    const resourceId = issued.workerPackage.provenance.resourceId;
+    const resourceConfig = resourceId ? await readAgenticConfigFile(options.rootDirectory) : undefined;
+    const resource = resourceId ? resourceConfig?.resources?.workers.find((worker) => worker.id === resourceId) : undefined;
+    const resourceFamily = resource
+      ? resourceConfig?.resources?.models.find((model) => model.id === resource.modelId)?.family
+      : undefined;
     const review = await recordTaskReview({
       rootDirectory: options.rootDirectory,
       taskDirectory: options.taskDirectory,
@@ -878,6 +884,8 @@ export async function recordWorkerResult(options: {
       workerProtocol: result.protocol,
       workerRole: result.role,
       workerStatus: result.status,
+      resourceId,
+      resourceFamily,
     });
     evidence = review.evidence;
   } else {

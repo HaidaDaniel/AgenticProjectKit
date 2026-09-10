@@ -74,6 +74,9 @@ export interface TaskEvidenceRecord {
   workerProtocol?: string;
   workerRole?: string;
   workerStatus?: string;
+  assuranceLevel?: string;
+  resourceId?: string;
+  resourceFamily?: string;
   workerCommitIds?: string[];
   workerDiffId?: string;
   workerEvidence?: string[];
@@ -112,6 +115,9 @@ export interface AddTaskEvidenceInput {
   workerProtocol?: string;
   workerRole?: string;
   workerStatus?: string;
+  assuranceLevel?: string;
+  resourceId?: string;
+  resourceFamily?: string;
   workerCommitIds?: string[];
   workerDiffId?: string;
   workerEvidence?: string[];
@@ -365,6 +371,9 @@ function normalizeEvidenceRecord(
     workerProtocol: optionalText(value.workerProtocol, `${prefix}.workerProtocol`, issues, 80),
     workerRole: optionalText(value.workerRole, `${prefix}.workerRole`, issues, 40),
     workerStatus: optionalText(value.workerStatus, `${prefix}.workerStatus`, issues, 40),
+    assuranceLevel: optionalText(value.assuranceLevel, `${prefix}.assuranceLevel`, issues, 40),
+    resourceId: optionalText(value.resourceId, `${prefix}.resourceId`, issues, 160),
+    resourceFamily: optionalText(value.resourceFamily, `${prefix}.resourceFamily`, issues, 160),
     workerCommitIds: optionalTextList(value.workerCommitIds, `${prefix}.workerCommitIds`, issues, 64, 160),
     workerDiffId: optionalText(value.workerDiffId, `${prefix}.workerDiffId`, issues, 160),
     workerEvidence: optionalTextList(value.workerEvidence, `${prefix}.workerEvidence`, issues, 64, 160),

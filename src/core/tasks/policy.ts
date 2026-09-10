@@ -113,7 +113,13 @@ function assuranceTriggers(task: ProjectTask): AssuranceTrigger[] {
   if (tags.has("migration")) triggers.push({ id: "schema-migration", reason: "Schema or data migration changes require fresh semantic context.", raisesTo: "fresh-context" });
   if (tags.has("async") || tags.has("worker")) triggers.push({ id: "concurrency-async", reason: "Concurrency or worker lifecycle changes require fresh semantic context.", raisesTo: "fresh-context" });
   if (tags.has("api") || tags.has("public-api")) triggers.push({ id: "public-api", reason: "Public API compatibility changes require fresh semantic context.", raisesTo: "fresh-context" });
-  if (tags.has("release") || task.type === "release") triggers.push({ id: "critical-release", reason: "Critical release or integration work requires independent assurance.", raisesTo: "independent" });
+  if (tags.has("large") || tags.has("large-diff") || tags.has("semantic-diff") || tags.has("broad-scope") || task.scope.length >= 8) triggers.push({ id: "large-semantic-diff", reason: "Large semantic or broad-scope changes require fresh semantic context.", raisesTo: "fresh-context" });
+  if (tags.has("weak-tests") || tags.has("missing-tests")) triggers.push({ id: "weak-tests", reason: "Weak or unexpectedly missing tests require fresh semantic context.", raisesTo: "fresh-context" });
+  if (tags.has("invariant") || tags.has("invariants")) triggers.push({ id: "invariant-change", reason: "Important invariant changes require fresh semantic context.", raisesTo: "fresh-context" });
+  if (tags.has("uncertain") || tags.has("review-uncertain") || tags.has("worker-uncertain")) triggers.push({ id: "worker-reviewer-uncertainty", reason: "Worker or reviewer uncertainty requires fresh semantic context.", raisesTo: "fresh-context" });
+  if (tags.has("scope-expansion")) triggers.push({ id: "unexpected-scope", reason: "Unexpected scope expansion requires fresh semantic context.", raisesTo: "fresh-context" });
+  if (tags.has("deterministic-failure") || tags.has("repeated-failure")) triggers.push({ id: "repeated-deterministic-failures", reason: "Repeated deterministic verification failures require fresh semantic context.", raisesTo: "fresh-context" });
+  if (tags.has("release") || tags.has("integration") || task.type === "release") triggers.push({ id: "critical-release", reason: "Critical release or integration work requires independent assurance.", raisesTo: "independent" });
   if (task.risk === "critical") triggers.push({ id: "critical-risk", reason: "Critical risk requires independent assurance with diverse preference.", raisesTo: "independent" });
   return triggers;
 }
