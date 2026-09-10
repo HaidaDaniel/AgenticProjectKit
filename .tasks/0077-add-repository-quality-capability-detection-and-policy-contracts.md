@@ -120,9 +120,9 @@ APK detects and evaluates repository quality capabilities through vendor-neutral
 - `{"id":"typecheck","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm lint"}`
 - `{"id":"tests","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test"}`
 - `{"id":"build","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}`
-- `{"id":"quality-help","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk quality --help"}`
-- `{"id":"quality-json","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk quality detect --json"}`
-- `{"id":"doctor","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk doctor"}`
+- `{"id":"quality-help","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx src/cli/index.ts quality --help"}`
+- `{"id":"quality-json","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx src/cli/index.ts quality detect --json"}`
+- `{"id":"doctor","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx src/cli/index.ts doctor"}`
 
 ## Documentation updates
 

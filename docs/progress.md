@@ -116,7 +116,7 @@ After the gated-workflow release foundation, Resource-Aware Execution proceeds t
 
 - Tasks 0001 through 0073 are complete.
 - Task 0062: Meaningful Done; review capability now precedes completion enforcement.
-- Task 0074: done; safe gated-workflow adoption, now explicitly dependent on 0073. The unblock pass made renderer assertions line-ending independent and uses the direct repository CLI entrypoint for self-repository verification. Resource-aware implementation tasks remain unstarted.
+- Task 0074: done; safe gated-workflow adoption, now explicitly dependent on 0073. The unblock pass made renderer assertions line-ending independent and uses the direct repository CLI entrypoint for self-repository verification.
 - Task 0076: lock recovery; no dependencies, required by final release 0075.
 - Task 0080: bounded 0073 review-finding fixes; depends on 0073 and must serialize with 0076 where files overlap.
 - Tasks 0064-0066: Independent Correctness (complete; 0066 provides a no-write graph/path/policy/export consistency gate).
@@ -126,7 +126,7 @@ After the gated-workflow release foundation, Resource-Aware Execution proceeds t
 - Task 0075: final frozen-candidate release validation after 0074, 0076 and 0077-0080.
 - Task 0082: Resource-Aware Execution architecture/backlog documentation complete.
 - Task 0083: done; optional secret-free model/harness/worker registry, deterministic `apk resources` introspection, and validated worker-session resource provenance.
-- Task 0084: doing; independent execution profiles, policy-aware routing, stable explain output, overrides, and wait/needs-human outcomes.
+- Task 0084: done; independent execution profiles, policy-aware routing, stable explain output, overrides, and wait/needs-human outcomes.
 - Task 0085: done; canonical assurance levels, escalation triggers, critical risk, and bounded review budget projection.
 - Task 0086: high-priority deterministic resource detection and validated worker-contract calibration after 0085; also reuses 0077 quality-capability output.
 - Tasks 0087-0088: later worker attention/status after 0085, then optional safe isolated Git workspaces; 0087 remains independent of 0086.
