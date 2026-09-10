@@ -470,3 +470,15 @@ Age-only stale detection can steal a live long-running command, while unconditio
 Non-goal:
 
 This is a single-host filesystem contract, not distributed consensus or a network lock service.
+
+## ADR-0032 - Primary agents may orchestrate required independent review
+
+Status: accepted
+
+Decision:
+
+When task policy requires review, the primary agent may launch a separate read-only reviewer automatically, consume its revision-bound result, and continue `fix -> verify -> review -> done` without routine user confirmation. The reviewer must use a different registered agent identity and isolated review context from the implementation owner. Task 0081 depends on completed lock reliability work in 0076 because orchestration and review evidence share the local mutation/evidence paths.
+
+Boundary:
+
+APK prepares and validates review packages/evidence but does not own model runtime. Automatic delegation is an agent-orchestrator behavior and does not permit self-certification under another label.
