@@ -1,6 +1,6 @@
 # Task 0085 - Adaptive Assurance and Review Budget
 
-State: done
+State: doing
 Owner: codex-resource-aware
 Mode: product
 Lane: review
