@@ -38,6 +38,8 @@ Tags: mvp,api
 ## Notes
 ```
 
+List sections (`Context files`, `Files allowed to edit`, `Files forbidden to edit`, `Acceptance criteria`, `Documentation updates`, `Notes`, and the correctness fields) accept both `- ` bullet items and `1. ` numbered items. Parsing normalizes either marker to a plain item; rendering emits bullet items, so numbering is not retained but item text is never dropped. The `Steps` section is the exception and preserves ordered step semantics.
+
 ## States
 
 - `todo` - ready to claim.

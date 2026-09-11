@@ -213,6 +213,22 @@ test("parseTaskMarkdown reads rendered compact task files", () => {
   assert.deepEqual(getTaskVerification(TASK), normalizeVerificationCommands(["pnpm test"]));
 });
 
+test("numbered list sections survive parse and render round trip", () => {
+  const rendered = renderTaskMarkdown({
+    ...TASK,
+    acceptanceCriteria: ["First criterion.", "Second criterion."],
+  });
+  const numbered = rendered
+    .replace("- First criterion.\n", "1. First criterion.\n")
+    .replace("- Second criterion.\n", "2. Second criterion.\n");
+
+  const parsed = parseTaskMarkdown(numbered);
+  assert.deepEqual(parsed.acceptanceCriteria, ["First criterion.", "Second criterion."]);
+
+  const reparsed = parseTaskMarkdown(renderTaskMarkdown(parsed));
+  assert.deepEqual(reparsed.acceptanceCriteria, ["First criterion.", "Second criterion."]);
+});
+
 test("structured verification survives canonical task round trip", () => {
   const task: ProjectTask = {
     ...TASK,

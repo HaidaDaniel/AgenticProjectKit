@@ -654,3 +654,19 @@ Generating a full second copy of common policy per harness multiplied drift and 
 Implementation and invariant:
 
 `src/core/exporters/index.ts` holds the reduced registry, thin-adapter targets, compatibility aliases, and legacy classification/cleanup. `src/core/templates/exporters/agents.md.hbs` carries the full policy (including the worker contract); `claude.md.hbs` and `gemini.md.hbs` are thin imports. Init/adopt/export/sync/scanner/audit/lint derive from the same registry, so the canonical set cannot drift between surfaces.
+
+## ADR-0041 - Task list sections accept bullet and numbered items
+
+Status: accepted
+
+Decision:
+
+The shared task list parser accepts both `- ` bullet items and `N. ` numbered items for the same sections. Parsing normalizes either marker to a plain item; rendering emits bullet items. Only the `Steps` section keeps ordered-step semantics.
+
+Reason:
+
+Task contracts are authored in Markdown and sometimes use numbered acceptance criteria. The parser previously recognized only bullet markers, so numbered items were silently dropped when a claimed task was re-rendered, corrupting the execution contract.
+
+Implementation and invariant:
+
+`parseList` in `src/core/tasks/index.ts` filters and strips both markers. A round-trip regression parses numbered acceptance criteria, re-renders, and re-parses without losing item text. Steps remain parsed by the separate ordered parser.

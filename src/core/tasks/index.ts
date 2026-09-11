@@ -204,8 +204,8 @@ function parseList(text: string): string[] {
   return text
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line.startsWith("- "))
-    .map((line) => line.slice(2).trim())
+    .filter((line) => /^-\s+/.test(line) || /^\d+\.\s+/.test(line))
+    .map((line) => line.replace(/^-\s+/, "").replace(/^\d+\.\s+/, "").trim())
     .map((line) => line.replace(/^`(.+)`$/, "$1"))
     .filter((line) => line.length > 0);
 }
