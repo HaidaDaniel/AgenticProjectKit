@@ -17,7 +17,9 @@ export interface DetectedResource {
   capabilities: string[];
   costClass?: string;
   capacity?: number;
+  occupied?: number;
   location?: string;
+  endpoint?: string;
   /** Worker declared availability; undefined for non-worker entries. */
   available?: boolean;
   source: string;
@@ -97,7 +99,9 @@ function declaredResources(registry: ResourceRegistry): DetectedResource[] {
       capabilities: [...worker.capabilities.roles].sort(),
       costClass: worker.costClass,
       capacity: worker.capacity,
+      occupied: worker.occupied,
       location: worker.location,
+      ...(worker.endpoint ? { endpoint: worker.endpoint } : {}),
       available: worker.availability === "available",
       source: "config.resources.workers",
     });

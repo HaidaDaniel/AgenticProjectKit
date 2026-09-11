@@ -310,7 +310,7 @@ test("CLI execution calibrate validates and applies a recommendation", async () 
       }),
     ], directory);
     assert.equal(rejected.exitCode, 1);
-    assert.match(rejected.stdout, /unknown resource/);
+    assert.match(rejected.stdout, /unknown worker/);
   });
 });
 

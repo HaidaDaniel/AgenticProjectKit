@@ -261,14 +261,14 @@ Resource detection and semantic calibration are separate operations.
 
 ### Semantic calibration
 
-`apk execution calibrate [--json]` emits a bounded vendor-neutral `apk-calibration-v1` planner package carrying the inventory fingerprint, allowed profiles/roles/assurance levels, eligible resources, and constraints. `apk execution calibrate --recommendation <json> [--apply]` then:
+`apk execution calibrate [--json]` emits a bounded vendor-neutral `apk-calibration-v1` planner package carrying the inventory fingerprint, the `apk-worker-v1` boundary it extends, allowed profiles/roles/assurance levels, eligible resources (with capability/cost/capacity/occupancy/location/endpoint), a deterministically selected strongest eligible planning worker, and constraints. `apk execution calibrate --recommendation <json> [--apply]` then:
 
 1. Collects the deterministic inventory and project config.
 2. Accepts a planner recommendation from any external harness (Codex, OpenCode, Claude Code, Pi, or a local endpoint).
-3. Deterministically validates protocol, profile, role IDs, resource IDs, worker availability/capacity, assurance level, and rejects secret-shaped values.
-4. Applies only on explicit `--apply`, writing just the generated `executionCalibration` field while preserving resources, profile, overrides, and quality policy. Re-applying an identical recommendation and inventory fingerprint is idempotent.
+3. Deterministically validates protocol, profile, role IDs, worker IDs, free capacity (`capacity - occupied >= 1`), declared role capability, local-profile/remote-worker conflicts, assurance floor (a floor below `fresh-context` is an unsafe downgrade), budgets (`maxReviewPasses >= 1`, non-negative integers), and rejects secret-shaped values.
+4. Applies only on explicit `--apply`, writing just the generated `executionCalibration` key into the raw config so unknown user keys, `resources`, `executionProfile`, `executionOverrides`, and `quality` are never rewritten or dropped. Re-applying an identical recommendation and inventory fingerprint is idempotent.
 
-An `apk execution explain` view reports the effective profile, route, assurance target, budgets, overrides, and reasons. Saved calibration is advisory and becomes stale when its inventory fingerprint changes.
+An `apk execution explain` view reports the effective profile, route, assurance target, budgets, overrides, and reasons, plus the stored calibration provenance and whether it is `current` or `stale` against the current inventory fingerprint. Saved calibration is advisory; the per-task completion gate remains authoritative.
 
 APK does not directly become an OpenAI, Anthropic, Grok, or local-runtime SDK router. The external harness executes the planner.
 

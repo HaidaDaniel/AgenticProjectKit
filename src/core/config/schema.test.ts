@@ -288,10 +288,41 @@ test("detectResourceInventory is deterministic, marker-aware, and secret-free", 
 
 test("validateCalibrationRecommendation rejects unknown, secret-shaped, and malformed input", async () => {
   await withTempDirectory(async (directory) => {
-    await writeCalibrationRepo(directory);
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    const worker = (id: string, overrides: Record<string, unknown> = {}) => ({
+      id,
+      modelId: "local-model",
+      harnessId: "opencode",
+      location: "local",
+      billingMode: "free",
+      costClass: "local-free",
+      availability: "available",
+      capacity: 1,
+      occupied: 0,
+      capabilities: { roles: ["implementation"], workerProtocols: ["apk-worker-v1"] },
+      ...overrides,
+    });
+    await writeFile(join(directory, ".agentic/config.json"), JSON.stringify({
+      schemaVersion: 2,
+      resources: {
+        models: [{ id: "local-model", roles: ["implementation"] }],
+        harnesses: [{ id: "opencode", workerProtocols: ["apk-worker-v1"] }],
+        workers: [
+          worker("local-worker"),
+          worker("busy-worker", { occupied: 1 }),
+          worker("remote-worker", { location: "remote" }),
+          worker("planner-worker", {
+            costClass: "scarce-frontier",
+            capabilities: { roles: ["planning"], workerProtocols: ["apk-worker-v1"] },
+          }),
+        ],
+      },
+    }), "utf8");
     const inventory = await detectResourceInventory(directory);
     const pkg = buildCalibrationPackage(inventory);
     assert.equal(pkg.protocol, "apk-calibration-v1");
+    assert.equal(pkg.workerProtocol, "apk-worker-v1");
+    assert.equal(pkg.recommendedPlanningWorker, "planner-worker");
     assert.ok(pkg.resources.some((resource) => resource.id === "local-worker"));
 
     const good = validateCalibrationRecommendation({
@@ -310,7 +341,7 @@ test("validateCalibrationRecommendation rejects unknown, secret-shaped, and malf
       planner: "codex",
     }, inventory);
     assert.equal(unknown.ok, false);
-    assert.ok(unknown.issues.some((issue) => /unknown resource/.test(issue)));
+    assert.ok(unknown.issues.some((issue) => /unknown worker/.test(issue)));
 
     const secret = validateCalibrationRecommendation({
       protocol: "apk-calibration-v1-result",
@@ -335,6 +366,63 @@ test("validateCalibrationRecommendation rejects unknown, secret-shaped, and malf
       planner: "codex",
     }, inventory);
     assert.equal(badProtocol.ok, false);
+
+    const busy = validateCalibrationRecommendation({
+      protocol: "apk-calibration-v1-result",
+      profile: "constrained",
+      routes: { implementation: "busy-worker" },
+      planner: "codex",
+    }, inventory);
+    assert.equal(busy.ok, false);
+    assert.ok(busy.issues.some((issue) => /capacity\/availability/.test(issue)));
+
+    const wrongCapability = validateCalibrationRecommendation({
+      protocol: "apk-calibration-v1-result",
+      profile: "constrained",
+      routes: { review: "local-worker" },
+      planner: "codex",
+    }, inventory);
+    assert.equal(wrongCapability.ok, false);
+    assert.ok(wrongCapability.issues.some((issue) => /role capability/.test(issue)));
+
+    const localToRemote = validateCalibrationRecommendation({
+      protocol: "apk-calibration-v1-result",
+      profile: "local",
+      routes: { implementation: "remote-worker" },
+      planner: "codex",
+    }, inventory);
+    assert.equal(localToRemote.ok, false);
+    assert.ok(localToRemote.issues.some((issue) => /local profile to a remote worker/.test(issue)));
+
+    const unsafeDowngrade = validateCalibrationRecommendation({
+      protocol: "apk-calibration-v1-result",
+      profile: "constrained",
+      routes: {},
+      assuranceMinimum: "none",
+      planner: "codex",
+    }, inventory);
+    assert.equal(unsafeDowngrade.ok, false);
+    assert.ok(unsafeDowngrade.issues.some((issue) => /unsafe downgrade/.test(issue)));
+
+    const invalidBudget = validateCalibrationRecommendation({
+      protocol: "apk-calibration-v1-result",
+      profile: "constrained",
+      routes: {},
+      budget: { maxReviewPasses: 0 },
+      planner: "codex",
+    }, inventory);
+    assert.equal(invalidBudget.ok, false);
+    assert.ok(invalidBudget.issues.some((issue) => /at least 1/.test(issue)));
+
+    const withBudgetAndFloor = validateCalibrationRecommendation({
+      protocol: "apk-calibration-v1-result",
+      profile: "constrained",
+      routes: { implementation: "local-worker" },
+      assuranceMinimum: "fresh-context",
+      budget: { maxReviewPasses: 2, maxFrontierRuns: 1 },
+      planner: "codex",
+    }, inventory);
+    assert.equal(withBudgetAndFloor.ok, true, withBudgetAndFloor.issues.join("; "));
   });
 });
 

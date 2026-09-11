@@ -164,10 +164,44 @@ function readExecutionCalibration(
     }
   }
 
+  let assuranceMinimum: string | undefined;
+  if (value.assuranceMinimum !== undefined) {
+    const level = asString(value.assuranceMinimum);
+    if (!level) issues.push("executionCalibration.assuranceMinimum must be a non-empty string.");
+    else assuranceMinimum = level;
+  }
+
+  let budget: ExecutionCalibration["budget"];
+  if (value.budget !== undefined) {
+    if (!isPlainRecord(value.budget)) {
+      issues.push("executionCalibration.budget must be an object.");
+    } else {
+      const parsed: NonNullable<ExecutionCalibration["budget"]> = {};
+      for (const field of ["maxReviewPasses", "maxFrontierRuns"] as const) {
+        const raw = value.budget[field];
+        if (raw === undefined) continue;
+        if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0) {
+          issues.push(`executionCalibration.budget.${field} must be a non-negative integer.`);
+        } else {
+          parsed[field] = raw;
+        }
+      }
+      budget = parsed;
+    }
+  }
+
   if (!profile || !inventoryFingerprint || !generatedAt || !planner) {
     return undefined;
   }
-  return { profile, inventoryFingerprint, generatedAt, planner, routes };
+  return {
+    profile,
+    inventoryFingerprint,
+    generatedAt,
+    planner,
+    routes,
+    ...(assuranceMinimum ? { assuranceMinimum } : {}),
+    ...(budget ? { budget } : {}),
+  };
 }
 
 export function parseAgenticConfig(raw: unknown): AgenticConfig {

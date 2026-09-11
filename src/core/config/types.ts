@@ -26,6 +26,11 @@ export const AGENT_STYLES = ["caveman", "normal"] as const;
 
 export type AgentStyle = (typeof AGENT_STYLES)[number];
 
+export interface ExecutionCalibrationBudget {
+  maxReviewPasses?: number;
+  maxFrontierRuns?: number;
+}
+
 export interface ExecutionCalibration {
   /** Generated recommendation written by explicit calibration apply. */
   profile: ExecutionProfile;
@@ -33,6 +38,8 @@ export interface ExecutionCalibration {
   generatedAt: string;
   planner: string;
   routes: Record<string, string>;
+  assuranceMinimum?: string;
+  budget?: ExecutionCalibrationBudget;
 }
 
 export interface AgenticConfig {

@@ -119,6 +119,14 @@ export async function runExecutionCommand(argv: string[]): Promise<number> {
       ...(override === undefined ? {} : { override }),
     });
     console.log(renderExecutionRoute(route, argv.includes("--json")));
+    if (config.executionCalibration) {
+      const inventory = await detectResourceInventory(rootDirectory);
+      const stale = config.executionCalibration.inventoryFingerprint !== inventory.fingerprint;
+      console.log(
+        `Calibration: profile=${config.executionCalibration.profile} planner=${config.executionCalibration.planner}`
+        + ` fingerprint=${config.executionCalibration.inventoryFingerprint}${stale ? " (stale: inventory changed)" : " (current)"}`,
+      );
+    }
     return 0;
   } catch (error: unknown) {
     console.error(error instanceof Error ? error.message : String(error));
