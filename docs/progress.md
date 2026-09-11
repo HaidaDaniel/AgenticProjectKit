@@ -107,6 +107,7 @@ The repository now has:
 - Corrective Task 0098 fixes a task round-trip defect found during 0092: task list sections now accept both bullet and numbered items, so numbered acceptance criteria are no longer dropped when a claimed task is re-rendered.
 - Task 0086 adds `apk resources detect` (deterministic, read-only, secret-free inventory with a stable fingerprint) and `apk execution calibrate` (bounded `apk-calibration-v1` planner package, deterministic validation, explicit idempotent apply that preserves user overrides and records inventory provenance).
 - Task 0087 adds `apk attention` and `apk workers`: a bounded, deterministic, priority-ordered semantic attention queue and declared worker capacity view derived from existing status/gate/review/policy/resource state, with no daemon, polling, or live-process claims.
+- Corrective Task 0099 restores the 13 Task 0092 acceptance criteria that the pre-0098 parser dropped during the 0092 `done` round-trip, using the exact original wording from revision f82ac50, and revalidates the 0092 implementation against the restored contract.
 
 ## Next step
 
