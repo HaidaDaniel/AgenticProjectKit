@@ -1,6 +1,6 @@
 # Task 0097 - Align APK with external agent runtimes and persistent dev hosts
 
-State: doing
+State: done
 Owner: local-agent-0097
 Mode: production
 Lane: planning
