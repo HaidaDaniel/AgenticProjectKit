@@ -25,7 +25,7 @@ The target extends current task policy, gate, evidence, review, provenance, stat
 
 Portable resource/profile/budget/override state should extend the existing optional config schema. Deterministic detection is read-only by default; generated calibration remains distinct from user overrides and is applied only after schema validation. Secrets stay outside APK configuration.
 
-Tasks 0083-0085 implement the optional secret-free model/harness/worker registry, deterministic profile/routing foundation, and adaptive assurance/budget projection. Task 0086 adds read-only resource detection and validated calibration; Task 0087 adds the semantic `apk attention`/`apk workers` projection. Optional isolated workspaces (Task 0088) remain subsequent. Legacy `none`/`lightweight`/`independent` policy fields and the existing completion gate remain authoritative compatibility boundaries.
+Tasks 0083-0085 implement the optional secret-free model/harness/worker registry, deterministic profile/routing foundation, and adaptive assurance/budget projection. Task 0086 adds read-only resource detection and validated calibration; Task 0087 adds the semantic `apk attention`/`apk workers` projection, which binds workers to canonical issued work sessions and fails closed on stale/orphaned runs without claiming live process state. Optional isolated workspaces (Task 0088) remain subsequent. Legacy `none`/`lightweight`/`independent` policy fields and the existing completion gate remain authoritative compatibility boundaries.
 
 ## External runtime boundary
 

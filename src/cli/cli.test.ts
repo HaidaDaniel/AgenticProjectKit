@@ -431,6 +431,138 @@ test("CLI attention and workers project semantic state without live process clai
   });
 });
 
+interface SessionFixtureOptions {
+  resourceId: string;
+  role?: string;
+  activated?: boolean;
+  protocol?: string;
+}
+
+async function writeWorkerSession(
+  directory: string,
+  taskId: string,
+  runId: string,
+  options: SessionFixtureOptions,
+): Promise<void> {
+  const sessionDir = join(directory, ".agentic", "sessions", "work", taskId, runId);
+  await mkdir(sessionDir, { recursive: true });
+  await writeFile(join(sessionDir, "metadata.json"), `${JSON.stringify({
+    protocol: options.protocol ?? "apk-worker-v1",
+    taskId,
+    runId,
+    owner: "local-agent-0100",
+    resourceId: options.resourceId,
+    role: options.role ?? "implement",
+    packageHash: "fixture",
+  })}\n`, "utf8");
+  if (options.activated !== false) {
+    await writeFile(join(sessionDir, "activation.json"), `${JSON.stringify({
+      protocol: "apk-worker-v1",
+      taskId,
+      runId,
+      packageHash: "fixture",
+      activatedAt: "2026-09-11T00:00:00.000Z",
+    })}\n`, "utf8");
+  }
+}
+
+test("CLI workers binds canonical sessions and fails closed on stale or orphaned runs", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    const workers = [
+      { id: "worker-a", costClass: "local-free", location: "local", availability: "available", capacity: 1, occupied: 0 },
+      { id: "worker-b", costClass: "local-free", location: "local", availability: "available", capacity: 2, occupied: 0 },
+      { id: "frontier", costClass: "scarce-frontier", location: "remote", availability: "available", capacity: 1, occupied: 1 },
+      { id: "worker-d", costClass: "local-free", location: "local", availability: "available", capacity: 1, occupied: 0 },
+      { id: "worker-e", costClass: "local-free", location: "local", availability: "available", capacity: 1, occupied: 0 },
+      { id: "worker-f", costClass: "local-free", location: "local", availability: "available", capacity: 1, occupied: 0 },
+      { id: "worker-g", costClass: "local-free", location: "local", availability: "available", capacity: 3, occupied: 0 },
+      { id: "worker-u", costClass: "standard", location: "remote", availability: "unavailable", capacity: 1, occupied: 0 },
+    ].map((worker) => ({
+      ...worker,
+      modelId: "model-a",
+      harnessId: "harness-a",
+      billingMode: "free",
+      capabilities: { roles: ["implementation", "review"] },
+    }));
+    await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({
+      schemaVersion: 2,
+      resources: {
+        models: [{ id: "model-a", roles: ["implementation", "review"] }],
+        harnesses: [{ id: "harness-a", workerProtocols: ["apk-worker-v1"] }],
+        workers,
+      },
+    }), "utf8");
+
+    for (const [id, state, owner] of [
+      ["0001", "doing", "codex-a"],
+      ["0002", "done", "archive"],
+      ["0003", "doing", "codex-a"],
+      ["0004", "doing", "codex-a"],
+      ["0005", "doing", "codex-a"],
+    ] as const) {
+      await writeFile(join(directory, ".tasks", `${id}-task.md`), buildTaskMarkdown(id, "Task", state, owner), "utf8");
+    }
+
+    await writeWorkerSession(directory, "0001", "run-a1", { resourceId: "worker-a" });
+    await writeWorkerSession(directory, "0002", "run-b1", { resourceId: "worker-b" });
+    await writeWorkerSession(directory, "0003", "run-d1", { resourceId: "worker-d", activated: false });
+    await writeWorkerSession(directory, "9999", "run-e1", { resourceId: "worker-e" });
+    await writeWorkerSession(directory, "0005", "run-f1", { resourceId: "worker-f", protocol: "not-apk-worker-v1" });
+    await writeWorkerSession(directory, "0004", "run-g1", { resourceId: "worker-g" });
+    await writeWorkerSession(directory, "0004", "run-ghost", { resourceId: "ghost" });
+
+    const result = await runCli(["workers", "--json"], directory);
+    assert.equal(result.exitCode, 0, `${result.stdout}${result.stderr}`);
+    const payload = JSON.parse(result.stdout) as {
+      workers: Array<{
+        id: string;
+        state: string;
+        capacity: number;
+        occupied: number;
+        declaredOccupied: number;
+        remainingSlots: number;
+        capabilities: string[];
+        currentTaskId?: string;
+        currentRunId?: string;
+        stateReason: string;
+      }>;
+      diagnostics: string[];
+    };
+    const byId = Object.fromEntries(payload.workers.map((worker) => [worker.id, worker]));
+
+    assert.equal(byId["worker-a"]?.state, "busy");
+    assert.equal(byId["worker-a"]?.currentTaskId, "0001");
+    assert.equal(byId["worker-a"]?.currentRunId, "run-a1");
+    assert.equal(byId["worker-a"]?.remainingSlots, 0);
+    assert.deepEqual(byId["worker-a"]?.capabilities, ["implementation", "review"]);
+
+    assert.equal(byId["worker-b"]?.state, "ready", "a completed run must not permanently occupy a worker");
+    assert.equal(byId["worker-b"]?.remainingSlots, 2);
+
+    assert.equal(byId["frontier"]?.state, "busy");
+    assert.equal(byId["worker-b"]?.state, "ready", "a local worker stays usable while a scarce frontier worker is occupied");
+
+    assert.equal(byId["worker-d"]?.state, "unknown", "an unactivated session must not report ready");
+    assert.equal(byId["worker-e"]?.state, "unknown", "an orphaned session must not report ready");
+    assert.equal(byId["worker-f"]?.state, "unknown", "a malformed session identity must not report ready");
+    assert.equal(byId["worker-g"]?.state, "busy");
+    assert.equal(byId["worker-g"]?.remainingSlots, 2);
+    assert.equal(byId["worker-u"]?.state, "unavailable");
+
+    assert.ok(payload.diagnostics.some((diagnostic) => /stale\/orphaned/.test(diagnostic)));
+    assert.ok(payload.diagnostics.some((diagnostic) => /unconfigured resource ghost/.test(diagnostic)));
+    assert.doesNotMatch(result.stdout, /pid|process|terminal|ssh/i);
+
+    const human = await runCli(["workers"], directory);
+    assert.equal(human.exitCode, 0, `${human.stdout}${human.stderr}`);
+    assert.match(human.stdout, /capabilities=implementation,review/);
+    assert.match(human.stdout, /remaining=2/);
+    assert.doesNotMatch(human.stdout, /pid|process|terminal|ssh/i);
+  });
+});
+
 test("CLI attention fails conservatively without a resource registry", async () => {
   await withTempDirectory(async (directory) => {
     await mkdir(join(directory, ".agentic"), { recursive: true });

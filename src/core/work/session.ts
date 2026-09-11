@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { withLocalMutationLock } from "../tasks/lock.js";
@@ -31,6 +31,155 @@ export interface ActiveWorkerSession {
   packageHash: string;
   workerPackage: WorkerPackage;
   activation: WorkerRunActivation;
+}
+
+export const DISCOVERED_SESSION_STATES = ["active", "unactivated", "malformed"] as const;
+export type DiscoveredSessionState = (typeof DISCOVERED_SESSION_STATES)[number];
+
+/**
+ * Bounded read of one issued worker-session directory. It uses the same
+ * metadata/activation files as `readActiveWorkerSession` but does not require a
+ * full package round-trip, so a malformed or incomplete session is reported
+ * instead of thrown. It never returns live process state.
+ */
+export interface DiscoveredWorkerSession {
+  taskId: string;
+  runId: string;
+  owner?: string;
+  role?: string;
+  resourceId?: string;
+  activated: boolean;
+  state: DiscoveredSessionState;
+  reason: string;
+}
+
+async function readOptionalText(path: string): Promise<string | undefined> {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error: unknown) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+function safeDirectoryNames(entries: readonly { name: string; isDirectory: () => boolean }[]): string[] {
+  return entries
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+    .map((entry) => entry.name)
+    .sort();
+}
+
+/**
+ * Enumerate issued worker sessions across every task. Directories are bounded
+ * and sorted; malformed or incomplete sessions are surfaced as diagnostics
+ * inputs rather than silently treated as free capacity.
+ */
+export async function listWorkerSessions(rootDirectory: string): Promise<DiscoveredWorkerSession[]> {
+  const base = join(rootDirectory, WORK_SESSION_DIRECTORY);
+  let taskEntries;
+  try {
+    taskEntries = await readdir(base, { withFileTypes: true });
+  } catch (error: unknown) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+
+  const sessions: DiscoveredWorkerSession[] = [];
+  for (const taskId of safeDirectoryNames(taskEntries)) {
+    let runEntries;
+    try {
+      runEntries = await readdir(join(base, taskId), { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const runId of safeDirectoryNames(runEntries)) {
+      try {
+        validateWorkerRunId(runId);
+      } catch {
+        sessions.push({
+          taskId,
+          runId,
+          activated: false,
+          state: "malformed",
+          reason: "run id is not a safe compact identifier",
+        });
+        continue;
+      }
+      const directory = sessionDirectory(rootDirectory, taskId, runId);
+      const metadataValue = await readOptionalText(join(directory, "metadata.json"));
+      const activationValue = await readOptionalText(join(directory, "activation.json"));
+      const activated = activationValue !== undefined;
+
+      if (metadataValue === undefined) {
+        sessions.push({
+          taskId,
+          runId,
+          activated,
+          state: "malformed",
+          reason: "session metadata is missing",
+        });
+        continue;
+      }
+
+      let raw: Record<string, unknown>;
+      try {
+        const parsed: unknown = JSON.parse(metadataValue);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("metadata is not an object");
+        raw = parsed as Record<string, unknown>;
+      } catch (error: unknown) {
+        sessions.push({
+          taskId,
+          runId,
+          activated,
+          state: "malformed",
+          reason: `session metadata is malformed: ${error instanceof Error ? error.message : String(error)}`,
+        });
+        continue;
+      }
+
+      const owner = typeof raw.owner === "string" ? raw.owner : undefined;
+      const role = typeof raw.role === "string" ? raw.role : undefined;
+      const resourceId = raw.resourceId === undefined
+        ? undefined
+        : typeof raw.resourceId === "string" ? raw.resourceId : undefined;
+      if (
+        raw.protocol !== WORKER_PROTOCOL
+        || raw.taskId !== taskId
+        || raw.runId !== runId
+        || owner === undefined
+        || role === undefined
+        || (raw.resourceId !== undefined && typeof raw.resourceId !== "string")
+      ) {
+        sessions.push({
+          taskId,
+          runId,
+          ...(owner ? { owner } : {}),
+          ...(role ? { role } : {}),
+          ...(resourceId ? { resourceId } : {}),
+          activated,
+          state: "malformed",
+          reason: "session metadata identity is malformed",
+        });
+        continue;
+      }
+
+      sessions.push({
+        taskId,
+        runId,
+        owner,
+        role,
+        ...(resourceId ? { resourceId } : {}),
+        activated,
+        state: activated ? "active" : "unactivated",
+        reason: activated ? "activated APK-recorded session" : "issued session has no activation marker",
+      });
+    }
+  }
+  return sessions;
 }
 
 function hashText(value: string): string {

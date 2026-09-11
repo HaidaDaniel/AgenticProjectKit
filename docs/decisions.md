@@ -693,7 +693,7 @@ Status: accepted
 
 Decision:
 
-`apk attention` and `apk workers` are bounded projections over existing task, gate, review, policy, provenance, and resource records. `apk workers` derives `ready`/`busy`/`unknown` from declared availability, capacity, and occupancy; `apk attention` emits a deterministic priority-ordered queue with task, state, owner, reason, blockers, assurance, review budget, and next action. Neither polls processes nor claims live PID/token/terminal/SSH state; machine-readable output stays runtime-neutral.
+`apk attention` and `apk workers` are bounded projections over existing task, gate, review, policy, provenance, resource, and issued work-session records. `apk workers` resolves `ready`/`busy`/`unknown`/`unavailable` from declared availability/capacity/occupancy together with canonical `apk-worker-v1` sessions: an activated run for an open task is `busy` and binds the proven `taskId`/`runId`, an unactivated or orphaned run is `unknown` plus a bounded diagnostic, a malformed session identity is `unknown`, a completed/canceled task does not hold a slot, and a resource with no conflicting canonical run is `ready`. `apk attention` emits a deterministic priority-ordered queue with task, state, owner, reason, blockers, assurance, review budget, and next action. Neither polls processes nor claims live PID/token/terminal/SSH state; machine-readable output stays runtime-neutral.
 
 Reason:
 
@@ -701,4 +701,4 @@ Attention must remain meaningful without an external runtime and must not fabric
 
 Implementation and invariant:
 
-`src/core/status/attention.ts` builds both views from `summarizeStatus` and `resolveTaskPolicy`; `src/cli/commands/attention.ts` and `workers.ts` expose human/JSON output. An external runtime owns PTY, persistent shells, detach/reattach, process lifetime, remote connectivity, and operator navigation (ADR-0039).
+`src/core/status/attention.ts` builds both views from `summarizeStatus`, `resolveTaskPolicy`, and `listWorkerSessions`; `src/core/work/session.ts` enumerates issued sessions without requiring a full package round-trip so malformed/incomplete sessions become diagnostics rather than free capacity. `src/cli/commands/attention.ts` and `workers.ts` expose human/JSON output with bounded `capabilities`, effective/declared occupancy, `remainingSlots`, and a proven current task/run only when exactly one active session exists. An external runtime owns PTY, persistent shells, detach/reattach, process lifetime, remote connectivity, and operator navigation (ADR-0039).
