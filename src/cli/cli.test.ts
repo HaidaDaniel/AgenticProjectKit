@@ -383,6 +383,18 @@ test("CLI attention and workers project semantic state without live process clai
             occupied: 0,
             capabilities: { roles: ["review"] },
           },
+          {
+            id: "worker-d",
+            modelId: "model-a",
+            harnessId: "harness-a",
+            location: "local",
+            billingMode: "free",
+            costClass: "local-free",
+            availability: "available",
+            capacity: 1,
+            occupied: 1,
+            capabilities: { roles: ["implementation"] },
+          },
         ],
       },
     }), "utf8");
@@ -401,6 +413,7 @@ test("CLI attention and workers project semantic state without live process clai
     assert.equal(stateById["worker-a"], "ready");
     assert.equal(stateById["worker-b"], "ready");
     assert.equal(stateById["worker-c"], "unavailable");
+    assert.equal(stateById["worker-d"], "busy");
     assert.doesNotMatch(workers.stdout, /pid|process|terminal|ssh/i);
 
     const attention = await runCli(["attention", "--json"], directory);
@@ -434,6 +447,36 @@ test("CLI attention fails conservatively without a resource registry", async () 
     const payload = JSON.parse(attention.stdout) as { diagnostics: string[]; workers: unknown[] };
     assert.equal(payload.workers.length, 0);
     assert.ok(payload.diagnostics.some((diagnostic) => /No declared resource registry/.test(diagnostic)));
+  });
+});
+
+test("CLI attention sanitizes lock liveness diagnostics", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(join(directory, ".agentic/config.json"), JSON.stringify({ schemaVersion: 2 }), "utf8");
+    await writeFile(
+      join(directory, ".tasks", "0001-task.md"),
+      buildTaskMarkdown("0001", "Task", "doing", "codex-a"),
+      "utf8",
+    );
+    await writeFile(join(directory, ".tasks", ".apk.lock"), JSON.stringify({
+      schema: 1,
+      ownerId: "remote-owner",
+      kind: "task-mutation",
+      pid: 424242,
+      hostname: "some-other-host",
+      processStart: "2026-09-11T00:00:00.000Z",
+      created: "2026-09-11T00:00:00.000Z",
+      command: "apk claim",
+      taskId: "0001",
+    }), "utf8");
+
+    const attention = await runCli(["attention", "--json"], directory);
+    assert.equal(attention.exitCode, 0, `${attention.stdout}${attention.stderr}`);
+    assert.doesNotMatch(attention.stdout, /424242|some-other-host|pid/i);
+    const payload = JSON.parse(attention.stdout) as { diagnostics: string[] };
+    assert.ok(payload.diagnostics.some((diagnostic) => /lock is present/.test(diagnostic)));
   });
 });
 

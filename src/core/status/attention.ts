@@ -112,6 +112,22 @@ function taskById(tasks: readonly ProjectTask[], id: string): ProjectTask | unde
   return tasks.find((task) => task.id === id);
 }
 
+/**
+ * Attention never surfaces OS liveness facts. Lock warnings carry PID/host
+ * details, so they are reduced to a neutral state pointer; any other warning
+ * that mentions process liveness is dropped.
+ */
+function sanitizeDiagnostic(warning: string): string | undefined {
+  const lockMatch = /^(task|evidence) lock:/.exec(warning);
+  if (lockMatch) {
+    return `${lockMatch[1]} lock is present; inspect with apk task lock status.`;
+  }
+  if (/\bpid\b|process-start|liveness|hostname=|is running|cannot prove death/i.test(warning)) {
+    return undefined;
+  }
+  return warning;
+}
+
 function assuranceStatus(
   independentReview: boolean,
   review: ActiveTaskStatus["review"],
@@ -176,7 +192,7 @@ export async function buildAttentionView(
     ));
 
   const diagnostics = [
-    ...summary.warnings,
+    ...summary.warnings.map(sanitizeDiagnostic).filter((warning): warning is string => warning !== undefined),
     ...(workers.length === 0 ? ["No declared resource registry; worker occupancy is unavailable."] : []),
   ];
 
@@ -192,7 +208,7 @@ export function renderAttentionView(view: AttentionView, json = false): string {
   ];
   for (const item of view.items) {
     lines.push(`- [${item.priority}] ${item.taskId} "${item.title}" (${item.state}/${item.owner}) ${item.reason}`);
-    lines.push(`    next=${item.nextAction} assurance=${item.assurance} (${item.assuranceStatus}) review=${item.review.status} budget=${item.reviewBudget} runs=${item.runs}`);
+    lines.push(`    next=${item.nextAction} assurance=${item.assurance} (${item.assuranceStatus}) review=${item.review.status}${item.review.outcome ? `/${item.review.outcome}` : ""}${item.review.reviewer ? ` by ${item.review.reviewer}` : ""} escalation=${item.reviewEscalation} needs-human=${item.needsHuman} budget=${item.reviewBudget} runs=${item.runs}`);
     lines.push(`    blockers=${item.blockers.length > 0 ? item.blockers.join(" | ") : "none"}`);
   }
   for (const worker of view.workers) {
