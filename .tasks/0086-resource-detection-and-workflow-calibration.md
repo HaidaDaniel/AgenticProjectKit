@@ -1,6 +1,6 @@
 # Task 0086 - Resource Detection and Workflow Calibration
 
-State: doing
+State: done
 Owner: local-agent-0086
 Mode: product
 Lane: execution
