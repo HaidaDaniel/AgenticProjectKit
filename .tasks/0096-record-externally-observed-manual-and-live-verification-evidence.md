@@ -23,6 +23,7 @@ A registered operator can explicitly record an externally-observed manual or liv
 - src/core/tasks/index.ts
 - src/core/tasks/evidence.ts
 - src/core/tasks/gate.ts
+- src/core/tasks/policy.ts
 - src/cli/commands/task.ts
 - src/cli/index.ts
 - src/core/tasks/task.test.ts
@@ -33,6 +34,7 @@ A registered operator can explicitly record an externally-observed manual or liv
 
 - src/core/tasks/index.ts
 - src/core/tasks/evidence.ts
+- src/core/tasks/policy.ts
 - src/core/tasks/task.test.ts
 - src/cli/commands/task.ts
 - src/cli/index.ts
@@ -89,3 +91,6 @@ A registered operator can explicitly record an externally-observed manual or liv
 - Corrective task: required manual/live checks are currently unsatisfiable because verify marks them unavailable and no supported surface records externally-observed results, blocking Task 0075.
 - Keep the surface minimal and fail-closed: no automated-check recording, no implicit pass, explicit evidence reference required.
 - This task itself must remain gateable with automated-only required checks.
+- Independent review found that a `type: manual, environment: live` check declared both the `live` and `manual` evidence categories while its single record can only carry one type, making the `manual` category unsatisfiable. Scope was minimally expanded to `src/core/tasks/policy.ts` so a check declares exactly the category its verifier emits (report > live > manual); `live` remains required and the required per-check pass is unchanged.
+- Only the task owner may record manual/live evidence; a registered non-owner and an unregistered agent both fail closed. The advertised evidence-reference bound matches the store's 240-character limit, and record-only flags are rejected unless `--record` is present.
+- Known limitation: re-running `apk task verify` after recording appends a fresh `unavailable` record that shadows the recorded pass; record after the final verification run for the candidate.

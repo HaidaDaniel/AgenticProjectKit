@@ -2069,6 +2069,22 @@ test("CLI task verify --record stores operator manual evidence and unblocks the 
   });
 });
 
+test("CLI task verify rejects record-only flags without --record", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(
+      join(directory, ".tasks", "0001-task.md"),
+      buildTaskMarkdown("0001", "Task", "todo"),
+      "utf8",
+    );
+    const result = await runCli([
+      "task", "verify", "0001", "--check", "unit", "--result", "pass",
+    ], directory);
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stderr, /Unknown option: --check/);
+  });
+});
+
 test("CLI task create reports malformed structured verification", async () => {
   await withTempDirectory(async (directory) => {
     await mkdir(join(directory, ".agentic"), { recursive: true });

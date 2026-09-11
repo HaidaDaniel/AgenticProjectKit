@@ -146,9 +146,12 @@ function declaredEvidenceCategories(task: ProjectTask, requiredOnly = false): st
   const categories = new Set<string>();
   for (const check of verificationChecks(task)) {
     if (requiredOnly && !check.required) continue;
+    // A single check appends exactly one typed record. Declare the same
+    // category the verifier would emit (report > live > manual) so a
+    // required check cannot declare an unsatisfiable extra category.
     if (check.profile === "report") categories.add("report");
-    if (check.environment === "live") categories.add("live");
-    if (check.type === "manual") categories.add("manual");
+    else if (check.environment === "live") categories.add("live");
+    else if (check.type === "manual") categories.add("manual");
     if (check.artifact) categories.add("artifact");
     if (check.evidence) categories.add("evidence");
   }

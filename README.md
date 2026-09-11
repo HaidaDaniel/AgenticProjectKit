@@ -398,7 +398,7 @@ pnpm exec apk task verify 0001 --record --owner codex-a \
   --check clean-checkout-ci --result pass --evidence "https://ci.example/runs/42 status=success sha=abc123"
 ```
 
-Recording requires a registered owner, a declared manual or `live` check, and a bounded evidence reference. It binds the current candidate, rejects automated checks, and flows through the same freshness and gate path, so required live observations can be satisfied without weakening automated verification.
+Recording requires the registered task owner, a declared manual or `live` check, and a bounded evidence reference. It binds the current candidate, rejects automated checks, and flows through the same freshness and gate path, so required live observations can be satisfied without weakening automated verification. Record after the final verification run: a later `apk task verify` appends a fresh `unavailable` record for the manual check.
 
 ## Example workflow
 

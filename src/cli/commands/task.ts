@@ -783,10 +783,10 @@ async function runVerifySubcommand(argv: string[]): Promise<number> {
     return 0;
   }
 
+  const recording = hasFlag(argv, "--record");
   const knownVerifyFlags = new Set([
-    "--check-files-only", "--profile", "--owner",
-    "--record", "--check", "--result", "--evidence", "--summary",
-    "--help", "-h",
+    "--check-files-only", "--profile", "--owner", "--help", "-h",
+    ...(recording ? ["--record", "--check", "--result", "--evidence", "--summary"] : []),
   ]);
   for (const arg of argv) {
     if (arg.startsWith("-") && !knownVerifyFlags.has(arg)) {
@@ -794,9 +794,11 @@ async function runVerifySubcommand(argv: string[]): Promise<number> {
     }
   }
 
-  const valueFlags = new Set([
-    "--owner", "--profile", "--check", "--result", "--evidence", "--summary",
-  ]);
+  const valueFlags = new Set(
+    recording
+      ? ["--owner", "--profile", "--check", "--result", "--evidence", "--summary"]
+      : ["--owner", "--profile"],
+  );
   const positional = argv.filter((arg, index) => (
     !arg.startsWith("-") && !valueFlags.has(argv[index - 1] ?? "")
   ));
@@ -808,7 +810,7 @@ async function runVerifySubcommand(argv: string[]): Promise<number> {
   const rootDirectory = resolve(process.cwd());
   const config = await readAgenticConfigFile(rootDirectory);
 
-  if (hasFlag(argv, "--record")) {
+  if (recording) {
     const owner = parseFlag(argv, "--owner");
     if (!owner) {
       throw new Error("--owner is required for --record.");

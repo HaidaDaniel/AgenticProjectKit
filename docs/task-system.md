@@ -243,15 +243,15 @@ Claiming a task records a baseline in `.agentic/task-baselines.jsonl`: HEAD when
 
 ### Externally-observed manual and live evidence
 
-`apk task verify` never infers a pass for a manual or `live` check; those remain `unavailable`. When such a required check can only be observed outside APK, a registered operator records the observed outcome explicitly:
+`apk task verify` never infers a pass for a manual or `live` check; those remain `unavailable`. When such a required check can only be observed outside APK, the task owner records the observed outcome explicitly:
 
 ```bash
-pnpm exec apk task verify 0075 --record --owner reviewer-a \
+pnpm exec apk task verify 0075 --record --owner <task-owner> \
   --check clean-checkout-ci --result pass \
   --evidence "https://ci.example/runs/42 status=success sha=abc123"
 ```
 
-Recording validates a registered owner, an existing check declared `manual` or with `environment: live`, an explicit bounded evidence reference, and `--result pass|fail`. It captures the current baseline/candidate subject and appends a typed, candidate-bound, gate-eligible evidence record through the same append lock, freshness, and completion-gate path as executed checks. Automated checks are rejected and must be run with `apk task verify`. An unregistered owner, a missing reference, or an unknown/automated check fails closed. This keeps manual/live requirements explicit rather than implicit, so a declared requirement can be satisfied truthfully without weakening automated verification.
+Recording validates a registered owner that matches the current task owner while the task is `doing` or `review`, an existing check declared `manual` or with `environment: live`, an explicit bounded (240-character) evidence reference, and `--result pass|fail`. It captures the current baseline/candidate subject and appends a typed, candidate-bound, gate-eligible evidence record through the same append lock, freshness, and completion-gate path as executed checks. A check declares exactly the evidence category its verifier emits (`report` > `live` > `manual`), so a required `manual`+`live` check declares `live` and its recorded result satisfies both the required per-check pass and the `live` category. Automated checks are rejected and must be run with `apk task verify`. An unregistered or non-owner agent, a missing reference, or an unknown/automated check fails closed. Record after the final verification run: a later `apk task verify` appends a fresh `unavailable` record that shadows the recorded observation until it is recorded again.
 
 ## Effective task policy
 

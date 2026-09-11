@@ -2210,7 +2210,7 @@ export interface RecordManualVerificationResult {
   record: TaskEvidenceRecord;
 }
 
-const MANUAL_EVIDENCE_REFERENCE_MAX_LENGTH = 500;
+const MANUAL_EVIDENCE_REFERENCE_MAX_LENGTH = 240;
 
 export async function recordManualVerification(
   options: RecordManualVerificationOptions,
@@ -2222,6 +2222,14 @@ export async function recordManualVerification(
   );
   const { task } = await loadTaskFile(taskPath);
   const ownerAgent = await requireAgent(options.rootDirectory, options.owner);
+  if (task.state !== "doing" && task.state !== "review") {
+    throw new Error(`Task ${task.id} is ${task.state}; manual evidence can only be recorded while doing or review.`);
+  }
+  if (task.owner !== ownerAgent.id) {
+    throw new Error(
+      `Task ${task.id} is owned by ${task.owner}, not ${ownerAgent.id}; only the task owner can record manual evidence.`,
+    );
+  }
 
   const checkId = options.checkId.trim();
   if (checkId.length === 0) {

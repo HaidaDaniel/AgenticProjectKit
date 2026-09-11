@@ -593,4 +593,4 @@ Required manual/live checks could not be satisfied by any supported surface whil
 
 Implementation and invariant:
 
-`recordManualVerification` validates owner registration, the declared check, manual-or-live eligibility, a non-empty bounded reference, and pass/fail, then appends through the evidence append lock with the captured candidate subject. Automated checks, unregistered owners, and missing references fail closed; the record flows through unchanged provenance and gate evaluation.
+`recordManualVerification` validates owner registration and task-owner match, `doing`/`review` state, the declared check, manual-or-live eligibility, a non-empty bounded reference, and pass/fail, then appends through the evidence append lock with the captured candidate subject. A check declares exactly the evidence category its verifier emits (`report` > `live` > `manual`), so a required `manual`+`live` check declares `live` and a single recorded observation satisfies both the required per-check pass and the `live` category. Automated checks, unregistered or non-owner agents, and missing references fail closed; the record flows through unchanged provenance and gate evaluation.

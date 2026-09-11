@@ -341,7 +341,7 @@ test("task policy requires declared high-risk evidence and explains tags", () =>
     ],
   });
   assert.deepEqual(release.requirements.evidenceCategories, ["live", "report"]);
-  assert.deepEqual(release.declaredEvidenceCategories, ["artifact", "evidence", "live", "manual", "report"]);
+  assert.deepEqual(release.declaredEvidenceCategories, ["artifact", "evidence", "live", "report"]);
   assert.deepEqual(release.blockers, []);
   assert.match(renderTaskPolicy(release), /independent review: not required/);
 });
@@ -1843,7 +1843,81 @@ test("recordManualVerification records a candidate-bound manual pass the gate ac
   });
 });
 
-test("recordManualVerification rejects automated checks, missing evidence, and unregistered owners", async () => {
+test("recorded live evidence satisfies a required manual/live check and its live category", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeTaskFile(join(directory, ".tasks", "0007-gated-task.md"), {
+      ...TASK,
+      state: "todo",
+      owner: "none",
+      risk: "low",
+      tags: ["release"],
+      dependsOn: [],
+      verification: [
+        {
+          id: "release-report",
+          type: "automated",
+          required: true,
+          environment: "ci",
+          profile: "report",
+          command: "pass",
+          artifact: "reports/release.json",
+          evidence: "release report",
+        },
+        {
+          id: "clean-checkout-ci",
+          type: "manual",
+          required: true,
+          environment: "live",
+          profile: "trusted",
+          instruction: "Record the hosted run.",
+          evidence: "CI run URL/status/SHA",
+        },
+      ],
+      verificationCommands: [],
+    });
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await registerAgent(directory, { id: "codex-a", developer: "alice", platform: "codex", model: "gpt-5" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a" });
+
+    await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      runCommand: async () => 0,
+    });
+    const before = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(before.passed, false);
+    assert.ok(before.blockers.some((blocker) => blocker.includes("clean-checkout-ci")));
+    assert.ok(before.blockers.some((blocker) => blocker.includes("live evidence")));
+    assert.equal(before.blockers.some((blocker) => blocker.includes("manual evidence")), false);
+
+    const recorded = await recordManualVerification({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      checkId: "clean-checkout-ci",
+      result: "pass",
+      evidence: "https://ci.example.test/runs/9 status=success sha=def",
+    });
+    assert.equal(recorded.type, "live");
+    assert.equal(recorded.gateEligible, true);
+
+    const after = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(after.passed, true, after.blockers.join("; "));
+  });
+});
+
+test("recordManualVerification rejects automated checks, missing evidence, foreign owners, and unregistered owners", async () => {
   await withTempDirectory(async (directory) => {
     const git = async (...args: string[]) => {
       await execFileAsync("git", args, { cwd: directory });
@@ -1918,6 +1992,19 @@ test("recordManualVerification rejects automated checks, missing evidence, and u
         evidence: "reference",
       }),
       /Agent is not registered/,
+    );
+    await registerAgent(directory, { id: "codex-b", developer: "bob", platform: "codex", model: "gpt-5" });
+    await assert.rejects(
+      recordManualVerification({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        owner: "codex-b",
+        checkId: "live-smoke",
+        result: "pass",
+        evidence: "reference",
+      }),
+      /only the task owner/,
     );
   });
 });
