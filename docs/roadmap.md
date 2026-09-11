@@ -44,7 +44,7 @@
 
 ## Next gated-workflow release (planned)
 
-Tasks 0057-0081 preserve repository-first, model-agnostic control-plane direction. `done` becomes evidence-backed completion; external coding harnesses remain workers. Tasks 0057-0074, 0076-0078, 0080, and 0081 are complete; 0079 is review; 0075 remains planned.
+Tasks 0057-0081 preserve repository-first, model-agnostic control-plane direction. `done` becomes evidence-backed completion; external coding harnesses remain workers. All implementation prerequisites are complete; 0075 is the active frozen-release validation.
 
 | Milestone | Tasks | Capability |
 | --- | --- | --- |

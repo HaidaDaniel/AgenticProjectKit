@@ -168,6 +168,7 @@ Frozen release candidate has reproducible, revision-current end-to-end gated-wor
 - Hooks and CI remain non-authoritative for task-level proof. Neither may launder stale/missing APK evidence or bypass independent review/gate requirements.
 - APK-owned ESLint/hooks/coverage/GitHub tooling stays repository-local; no downstream repository mutation or mandatory tooling adoption.
 - Evidence report paths are planned new outputs; declare their treatment before freeze. Report-writing audit outputs are neither automatically permitted candidate mutations nor release proof. Refresh candidate-controlled docs during preparation; later edits require revalidation.
+- Freeze boundary: all tracked files at frozen HEAD are candidate inputs. Ignored `dist/**`, `coverage/**`, `.agentic/**` runtime records, and the final result blocks appended to the two declared report paths after gate/done are non-candidate evidence outputs. The evidence-only/lifecycle commit is not the validated release candidate and must identify the earlier exact SHA/tree/candidate IDs.
 - No downstream repository re-audit; use APK and controlled fixture/adopted example.
 - Context lists current files and prerequisite task contracts. Before implementation, read prerequisite changes and amend this task with their actual module paths if needed; do not invent missing Context files.
 - Allowed new helper modules stay inside listed module patterns. Other task files and unrelated modules remain outside scope. If scope must expand, amend task before editing.

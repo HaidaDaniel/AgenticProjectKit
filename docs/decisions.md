@@ -566,3 +566,15 @@ Task 0083 implements the first bounded slice: optional `resources` config with d
 Task 0084 adds the deterministic routing slice without changing those boundaries. `executionProfile` is optional and independent from `defaultMode`; absent values resolve compatibly to `constrained`. Routing consumes existing task-policy requirements, filters validated resources by role/capability/availability/capacity, orders eligible candidates by profile and stable cost/ID rules, and reports deterministic `wait` or `needs-human` outcomes. Overrides are explicit explainable inputs and cannot bypass capacity or upstream policy.
 
 Task 0085 adds ordered assurance levels and stable trigger IDs to the existing policy projection, including explicit `critical` risk and bounded review budgets. Medium remains compatible with the existing lightweight review field while its canonical minimum is `self-check`; high is `fresh-context`; critical is `independent` with diverse preference. The completion gate remains the only gate and reports exhausted loops instead of retrying indefinitely.
+
+## ADR-0037 - Release reports are post-gate evidence artifacts
+
+Status: accepted
+
+Decision:
+
+Freeze Task 0075 on a clean tracked HEAD. Treat ignored build/coverage/runtime records as non-candidate outputs. Append exact results to the two declared report files only after current verification, review, gate, and completion have selected the frozen subject. The following evidence-only commit is not the validated release candidate and must name the earlier SHA/tree/candidate IDs.
+
+Reason:
+
+A tracked report cannot contain its own commit SHA. Separating the validated candidate from its later evidence report avoids a self-referential commit and preserves honest freshness: any tracked mutation before gate still invalidates proof.

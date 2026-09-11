@@ -668,6 +668,8 @@ Pre-commit runs lint-staged source lint. Pre-push runs fast quality, coverage, a
 
 Hosted CI proves clean-checkout reproducibility for its exact SHA. It does not create APK task evidence, replace `apk task verify`/review/gate, or prove the frozen release candidate; Task 0075 records any exact-SHA CI URL/status separately without GitHub API coupling. Adopted repositories receive no workflow from APK.
 
+The frozen release protocol and its final bounded evidence are recorded in [gated-workflow release evidence](docs/delivery/gated-workflow-release-evidence.md). Result reporting is an evidence-only post-gate artifact; it identifies the validated earlier SHA and never silently turns its own documentation commit into a release candidate.
+
 ### Scenario 6: Move from MVP to product work
 
 Use this after the first v0.1 scope is ready and the next work should focus on improving the product rather than proving the basic shape.
@@ -722,4 +724,4 @@ The repository now has a minimal TypeScript CLI scaffold, config schema, `init`,
 
 Default agent style for this repository: `caveman` when the active tool supports it.
 
-Tasks 0072 and 0073 provide the model-agnostic worker boundary and corrective lifecycle safeguards. Task 0074 adds the explicit compatibility preview/apply path for adopting the gated workflow; release validation remains planned in 0075.
+Tasks 0072 and 0073 provide the model-agnostic worker boundary and corrective lifecycle safeguards. Task 0074 adds the explicit compatibility preview/apply path for adopting the gated workflow; Task 0075 performs the final frozen-candidate validation.

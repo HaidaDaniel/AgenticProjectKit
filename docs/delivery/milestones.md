@@ -30,7 +30,7 @@
 
 ## Next gated-workflow release (planned)
 
-Tasks 0057-0074, 0076, 0077, 0078, 0080, and 0081: done. Task 0079: review. Task 0075 remains planned `todo`, unowned. Milestone numbering below belongs to this release; earlier milestones remain historical.
+Tasks 0057-0074 and 0076-0081: done. Task 0075 is in frozen-release preparation. Milestone numbering below belongs to this release; earlier milestones remain historical.
 
 APK remains model-agnostic repository-first control plane. External harnesses own model execution; APK owns task contracts, verification, scope, evidence, review and completion.
 

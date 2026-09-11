@@ -104,7 +104,7 @@ The repository now has:
 
 ## Next step
 
-Tasks 0093-0095 and 0079 are done. Task 0079 passed fresh canonical verification, independent review, gate, and exact-SHA hosted run `34611729423` at `2b73a6794a877c79de979c15bece974be1772534`; clean-checkout contract checks invoke the built CLI directly. Next: Task 0075 frozen release validation.
+Tasks 0093-0095 and 0079 are done. Task 0075 mutating preparation is complete with all dependencies done; candidate/output boundary and report protocols are declared, and the task is released for a fresh clean-HEAD freeze.
 
 Planned pre-release chain: 0074 -> 0077 capability contract -> 0078 APK-local quality guardrails -> 0079 clean-checkout CI -> 0075 frozen release validation. Tasks 0076 lock recovery and 0080 Task 0073 P2 fixes must also finish before 0075. New tasks stay `todo` with `Owner: none`.
 

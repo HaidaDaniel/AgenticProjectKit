@@ -57,3 +57,7 @@ git diff --check && reject tracked/unexpected untracked drift
 ```
 
 The runner is disposable, so report-writing audit output cannot affect a developer checkout. Tracked drift still fails visibly. Hosted CI status and URL, together with exact SHA, may be recorded by Task 0075 as separate release evidence; CI does not satisfy APK verification/review/gate or frozen-candidate proof. No retry, matrix, credentials, publish, deployment, or adopted-repository workflow generation belongs in this check.
+
+## Frozen release validation
+
+Task 0075 uses `prepare -> clean HEAD freeze -> non-mutating validation -> exact evidence -> independent review/gate`. Tracked inputs are frozen at HEAD; ignored build, coverage, and `.agentic` runtime records are non-candidate outputs. Final human-readable result blocks are appended after `done` and explicitly refer to the validated earlier SHA; their evidence-only commit is not a new release candidate. Any earlier tracked mutation forces a new freeze and rerun.
