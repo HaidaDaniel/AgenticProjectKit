@@ -227,6 +227,15 @@ test("numbered list sections survive parse and render round trip", () => {
 
   const reparsed = parseTaskMarkdown(renderTaskMarkdown(parsed));
   assert.deepEqual(reparsed.acceptanceCriteria, ["First criterion.", "Second criterion."]);
+
+  const bulletWithNumberedText = renderTaskMarkdown({
+    ...TASK,
+    acceptanceCriteria: ["1. literal text", "10. answer"],
+  });
+  assert.deepEqual(
+    parseTaskMarkdown(bulletWithNumberedText).acceptanceCriteria,
+    ["1. literal text", "10. answer"],
+  );
 });
 
 test("structured verification survives canonical task round trip", () => {

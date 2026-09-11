@@ -205,7 +205,11 @@ function parseList(text: string): string[] {
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => /^-\s+/.test(line) || /^\d+\.\s+/.test(line))
-    .map((line) => line.replace(/^-\s+/, "").replace(/^\d+\.\s+/, "").trim())
+    .map((line) => (
+      /^\d+\.\s+/.test(line)
+        ? line.replace(/^\d+\.\s+/, "")
+        : line.replace(/^-\s+/, "")
+    ).trim())
     .map((line) => line.replace(/^`(.+)`$/, "$1"))
     .filter((line) => line.length > 0);
 }
