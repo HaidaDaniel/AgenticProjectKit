@@ -115,6 +115,7 @@ function buildWorkers(
   sessions: readonly DiscoveredWorkerSession[],
   taskStates: ReadonlyMap<string, TaskState>,
   diagnostics: string[],
+  sessionsUnavailable = false,
 ): WorkerAttentionEntry[] {
   if (!registry || registry.workers.length === 0) {
     return [];
@@ -141,12 +142,16 @@ function buildWorkers(
       const remainingSlots = Math.max(0, worker.capacity - effectiveOccupied);
       let state: WorkerSemanticState;
       let stateReason: string;
-      if (worker.availability === "unknown") {
-        state = "unknown";
-        stateReason = "declared availability is unknown";
-      } else if (worker.availability === "unavailable") {
+      if (worker.availability === "unavailable") {
         state = "unavailable";
         stateReason = "declared unavailable";
+      } else if (sessionsUnavailable) {
+        // Canonical session state could not be read: readiness cannot be proven.
+        state = "unknown";
+        stateReason = "canonical worker-session state unavailable";
+      } else if (worker.availability === "unknown") {
+        state = "unknown";
+        stateReason = "declared availability is unknown";
       } else if (ambiguous.length > 0) {
         state = "unknown";
         stateReason = `${ambiguous.length} malformed session(s) prevent confident readiness`;
@@ -264,14 +269,18 @@ export async function buildAttentionView(
 
   const workerDiagnostics: string[] = [];
   let sessions: DiscoveredWorkerSession[] = [];
+  let sessionsUnavailable = false;
   if (config.resources && config.resources.workers.length > 0) {
     try {
       sessions = await listWorkerSessions(rootDirectory);
     } catch (error: unknown) {
-      workerDiagnostics.push(`Worker session scan failed: ${error instanceof Error ? error.message : String(error)}`);
+      // Fail closed: without canonical session state no worker may be reported
+      // confidently ready. Declared availability/capacity facts are preserved.
+      sessionsUnavailable = true;
+      workerDiagnostics.push(`Canonical worker-session state unavailable (${error instanceof Error ? error.message : String(error)}); worker readiness is unknown.`);
     }
   }
-  const workers = buildWorkers(config.resources, sessions, taskStates, workerDiagnostics);
+  const workers = buildWorkers(config.resources, sessions, taskStates, workerDiagnostics, sessionsUnavailable);
 
   const items: AttentionItem[] = summary.activeTasks
     .filter((status) => ["doing", "review", "blocked"].includes(status.state))

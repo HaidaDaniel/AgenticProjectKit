@@ -5,9 +5,10 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
 
 import { readAgenticConfigFile } from "../config/index.js";
-import { findTaskFile, loadTaskFile } from "../tasks/index.js";
+import { findTaskFile, loadTaskFile, type TaskState } from "../tasks/index.js";
 import { withLocalMutationLock } from "../tasks/lock.js";
 import { isSafeRunId } from "../work/contract.js";
+import { listWorkerSessions } from "../work/session.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -23,6 +24,7 @@ export const WORKSPACE_STATES = [
   "unregistered",
   "foreign",
   "unsafe",
+  "unknown",
   "ambiguous",
 ] as const;
 export type WorkspaceState = (typeof WORKSPACE_STATES)[number];
@@ -516,6 +518,11 @@ export async function assessWorkspaceSafety(
   options: { repoRoot?: string; gitWorktrees?: readonly GitWorktreeEntry[]; baseDirectory?: string } = {},
 ): Promise<SafetyAssessment> {
   const repoRoot = options.repoRoot ?? await resolveRepositoryRoot(rootDirectory);
+  const expectedRepositoryId = `repository:${hashText(normalizePathCase(repoRoot))}`;
+  if (record.repositoryId !== expectedRepositoryId) {
+    return { state: "foreign", safeToCleanup: false, reason: "Workspace record belongs to a different repository identity.", nextAction: "do not delete; inspect the record manually" };
+  }
+
   const base = workspaceBaseDirectory(repoRoot, options.baseDirectory);
   const baseReal = await realpathAllowMissing(base);
 
@@ -543,6 +550,13 @@ export async function assessWorkspaceSafety(
   if (!registration) {
     return { state: "foreign", safeToCleanup: false, reason: "Path exists but is not a registered Git worktree of this repository.", nextAction: "do not delete; inspect the path manually" };
   }
+  if (registration.detached) {
+    return { state: "ambiguous", safeToCleanup: false, reason: "Registered worktree is detached; branch ownership cannot be proven.", nextAction: "do not delete; inspect the worktree manually" };
+  }
+  const registeredBranch = registration.branch?.replace(/^refs\/heads\//, "");
+  if (!registeredBranch || registeredBranch !== record.branch) {
+    return { state: "foreign", safeToCleanup: false, reason: "Git worktree branch does not match the APK record.", nextAction: "do not delete; inspect the worktree manually" };
+  }
 
   const gitDir = await worktreeGitDirectory(record.worktreePath);
   if (!gitDir) {
@@ -552,11 +566,18 @@ export async function assessWorkspaceSafety(
   if (
     !marker
     || marker.id !== record.id
+    || marker.taskId !== record.taskId
     || marker.marker !== record.marker
     || marker.worktreeId !== record.worktreeId
-    || marker.taskId !== record.taskId
+    || marker.runId !== record.runId
+    || marker.resourceId !== record.resourceId
   ) {
     return { state: "foreign", safeToCleanup: false, reason: "Ownership marker is missing or does not match the APK record.", nextAction: "do not delete; inspect the path manually" };
+  }
+
+  const currentWorktreeId = `worktree:${hashText(normalizePathCase(worktreeReal))}`;
+  if (currentWorktreeId !== record.worktreeId) {
+    return { state: "foreign", safeToCleanup: false, reason: "Worktree path no longer matches the recorded worktree identity.", nextAction: "do not delete; inspect the path manually" };
   }
 
   let dirty = "";
@@ -570,33 +591,67 @@ export async function assessWorkspaceSafety(
   }
 
   if (record.runId) {
-    const sessionActive = await hasActiveRunSession(rootDirectory, record.taskId, record.runId);
-    if (sessionActive) {
-      return { state: "active", safeToCleanup: false, reason: "Workspace is bound to an activated worker run.", nextAction: `finish or release run ${record.runId} before cleanup` };
+    const runState = await assessWorkspaceRun(rootDirectory, record.taskId, record.runId);
+    if (runState.state === "active") {
+      return { state: "active", safeToCleanup: false, reason: `Workspace is bound to an open activated run: ${runState.reason}`, nextAction: `finish or release run ${record.runId} before cleanup` };
+    }
+    if (runState.state === "unknown") {
+      return { state: "unknown", safeToCleanup: false, reason: `Cannot prove the bound run is inactive: ${runState.reason}`, nextAction: `inspect run ${record.runId} session state manually; automatic cleanup is refused` };
     }
   }
 
   return { state: "active", safeToCleanup: true, reason: "Exact APK-owned worktree with a clean, registered Git state.", nextAction: `apk workspaces cleanup ${record.id} --apply` };
 }
 
-async function hasActiveRunSession(rootDirectory: string, taskId: string, runId: string): Promise<boolean> {
-  const directory = join(rootDirectory, ".agentic", "sessions", "work", taskId, runId);
+export const WORKSPACE_RUN_STATES = ["active", "terminal", "unknown"] as const;
+export type WorkspaceRunState = (typeof WORKSPACE_RUN_STATES)[number];
+
+export interface WorkspaceRunAssessment {
+  state: WorkspaceRunState;
+  reason: string;
+}
+
+/**
+ * Resolve a bound worker run's lifecycle without ever treating an unreadable or
+ * malformed record as inactive. An activated session is active only while its
+ * task is still open; a done/canceled task makes the activation historical. Any
+ * uncertainty fails closed to `unknown`.
+ */
+export async function assessWorkspaceRun(
+  rootDirectory: string,
+  taskId: string,
+  runId: string,
+): Promise<WorkspaceRunAssessment> {
+  let sessions;
   try {
-    const metadata: unknown = JSON.parse(await readFile(join(directory, "metadata.json"), "utf8"));
-    const activation: unknown = JSON.parse(await readFile(join(directory, "activation.json"), "utf8"));
-    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return false;
-    if (!activation || typeof activation !== "object" || Array.isArray(activation)) return false;
-    const meta = metadata as Record<string, unknown>;
-    const act = activation as Record<string, unknown>;
-    return meta.protocol === "apk-worker-v1"
-      && meta.taskId === taskId
-      && meta.runId === runId
-      && act.protocol === "apk-worker-v1"
-      && act.taskId === taskId
-      && act.runId === runId;
-  } catch {
-    return false;
+    sessions = await listWorkerSessions(rootDirectory);
+  } catch (error: unknown) {
+    return { state: "unknown", reason: `canonical worker-session scan failed: ${error instanceof Error ? error.message : String(error)}` };
   }
+  const session = sessions.find((entry) => entry.taskId === taskId && entry.runId === runId);
+  if (!session) {
+    return { state: "unknown", reason: "no canonical worker-session record for the bound run" };
+  }
+  if (session.state === "malformed") {
+    return { state: "unknown", reason: "bound worker-session metadata is malformed" };
+  }
+  if (session.state === "unactivated") {
+    return { state: "unknown", reason: "bound worker session has no activation marker" };
+  }
+
+  let taskState: TaskState;
+  try {
+    const config = await readAgenticConfigFile(rootDirectory);
+    const taskPath = await findTaskFile(rootDirectory, taskId, config.taskDirectory);
+    const { task } = await loadTaskFile(taskPath);
+    taskState = task.state;
+  } catch (error: unknown) {
+    return { state: "unknown", reason: `cannot resolve the bound task state: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  if (taskState === "done" || taskState === "canceled") {
+    return { state: "terminal", reason: `bound task is ${taskState}; activation is historical` };
+  }
+  return { state: "active", reason: `bound task is ${taskState}` };
 }
 
 export async function listWorkspaceStatuses(

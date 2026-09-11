@@ -9,8 +9,9 @@ import test from "node:test";
 import ts from "typescript";
 
 import { startWork } from "../core/work/index.js";
-import { resolveExecutionRoute } from "../core/execution/index.js";
+import { resolveExecutionRoute, resolveAssurancePlan } from "../core/execution/index.js";
 import {
+  assessWorkspaceRun,
   assessWorkspaceSafety,
   createWorkspace,
   listWorkspaceStatuses,
@@ -400,6 +401,227 @@ test("CLI execution explain keeps --json valid with saved calibration", async ()
   });
 });
 
+function executionWorker(
+  id: string,
+  roles: string[],
+  overrides: { occupied?: number; availability?: "available" | "unavailable" | "unknown" } = {},
+) {
+  return {
+    id,
+    modelId: "model-a",
+    harnessId: "harness-a",
+    location: "local" as const,
+    billingMode: "free" as const,
+    costClass: "local-free" as const,
+    availability: overrides.availability ?? ("available" as const),
+    capacity: 1,
+    occupied: overrides.occupied ?? 0,
+    capabilities: { roles, tools: [], workspaceModes: [], workerProtocols: ["apk-worker-v1"] },
+  };
+}
+
+const BASE_EXECUTION_POLICY = {
+  automatedVerification: true,
+  scope: false,
+  independentReview: false,
+  reviewLevel: "none" as const,
+  evidenceRequired: false,
+  evidenceCategories: [] as string[],
+  assurance: "none" as const,
+};
+
+async function writeExecutionRepo(directory: string, extra: Record<string, unknown> = {}): Promise<void> {
+  await mkdir(join(directory, ".agentic"), { recursive: true });
+  await mkdir(join(directory, ".tasks"), { recursive: true });
+  await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({
+    schemaVersion: 2,
+    executionProfile: "constrained",
+    resources: {
+      models: [{ id: "model-a", roles: ["implementation", "review"] }],
+      harnesses: [{ id: "harness-a", workerProtocols: ["apk-worker-v1"], sessionIsolation: true }],
+      workers: [
+        executionWorker("local-a", ["implementation", "review"]),
+        executionWorker("local-b", ["implementation", "review"]),
+      ],
+    },
+    ...extra,
+  }), "utf8");
+}
+
+test("CLI execution explain uses a current calibration route with provenance", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeExecutionRepo(directory);
+    await writeFile(join(directory, ".tasks/0001-task.md"), buildTaskMarkdown("0001", "Task", "todo"), "utf8");
+
+    const applied = await runCli(["execution", "calibrate", "--recommendation", JSON.stringify({
+      protocol: "apk-calibration-v1-result",
+      profile: "constrained",
+      routes: { implementation: "local-b" },
+      planner: "codex",
+    }), "--apply"], directory);
+    assert.equal(applied.exitCode, 0, `${applied.stdout}${applied.stderr}`);
+
+    const result = await runCli(["execution", "explain", "0001", "--role", "implementation", "--json"], directory);
+    assert.equal(result.exitCode, 0, `${result.stdout}${result.stderr}`);
+    const payload = JSON.parse(result.stdout) as {
+      resourceId?: string;
+      routeSource?: string;
+      profileSource?: string;
+      calibration?: { status?: string; routeApplied?: boolean };
+    };
+    assert.equal(payload.resourceId, "local-b");
+    assert.equal(payload.routeSource, "calibration");
+    assert.equal(payload.profileSource, "calibration");
+    assert.equal(payload.calibration?.status, "current");
+    assert.equal(payload.calibration?.routeApplied, true);
+  });
+});
+
+test("CLI execution explain ignores stale calibration and falls back to the resolver", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeExecutionRepo(directory);
+    await writeFile(join(directory, ".tasks/0001-task.md"), buildTaskMarkdown("0001", "Task", "todo"), "utf8");
+    const applied = await runCli(["execution", "calibrate", "--recommendation", JSON.stringify({
+      protocol: "apk-calibration-v1-result",
+      profile: "constrained",
+      routes: { implementation: "local-b" },
+      planner: "codex",
+    }), "--apply"], directory);
+    assert.equal(applied.exitCode, 0, `${applied.stdout}${applied.stderr}`);
+
+    const configPath = join(directory, ".agentic", "config.json");
+    const config = JSON.parse(await readFile(configPath, "utf8")) as { resources: { workers: unknown[] } };
+    config.resources.workers.push(executionWorker("local-c", ["implementation"]));
+    await writeFile(configPath, JSON.stringify(config), "utf8");
+
+    const result = await runCli(["execution", "explain", "0001", "--role", "implementation", "--json"], directory);
+    assert.equal(result.exitCode, 0, `${result.stdout}${result.stderr}`);
+    const payload = JSON.parse(result.stdout) as {
+      resourceId?: string;
+      routeSource?: string;
+      calibration?: { status?: string; routeApplied?: boolean };
+    };
+    assert.equal(payload.resourceId, "local-a");
+    assert.equal(payload.routeSource, "resolver");
+    assert.equal(payload.calibration?.status, "stale");
+    assert.equal(payload.calibration?.routeApplied, false);
+  });
+});
+
+test("CLI execution explain lets a user override outrank current calibration", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeExecutionRepo(directory, { executionOverrides: { resourceId: "local-a" } });
+    await writeFile(join(directory, ".tasks/0001-task.md"), buildTaskMarkdown("0001", "Task", "todo"), "utf8");
+    const applied = await runCli(["execution", "calibrate", "--recommendation", JSON.stringify({
+      protocol: "apk-calibration-v1-result",
+      profile: "constrained",
+      routes: { implementation: "local-b" },
+      planner: "codex",
+    }), "--apply"], directory);
+    assert.equal(applied.exitCode, 0, `${applied.stdout}${applied.stderr}`);
+
+    const result = await runCli(["execution", "explain", "0001", "--role", "implementation", "--json"], directory);
+    assert.equal(result.exitCode, 0, `${result.stdout}${result.stderr}`);
+    const payload = JSON.parse(result.stdout) as { resourceId?: string; routeSource?: string; calibration?: { status?: string } };
+    assert.equal(payload.resourceId, "local-a");
+    assert.equal(payload.routeSource, "override");
+    assert.equal(payload.calibration?.status, "current");
+  });
+});
+
+test("CLI execution explain clamps calibration assurance to canonical policy", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeExecutionRepo(directory);
+    const taskPath = join(directory, ".tasks/0001-task.md");
+
+    await writeFile(taskPath, buildTaskMarkdown("0001", "Task", "todo").replace("Risk: low", "Risk: medium"), "utf8");
+    await runCli(["execution", "calibrate", "--recommendation", JSON.stringify({
+      protocol: "apk-calibration-v1-result",
+      profile: "constrained",
+      routes: { review: "local-a" },
+      assuranceMinimum: "fresh-context",
+      planner: "codex",
+    }), "--apply"], directory);
+    const medium = JSON.parse((await runCli(["execution", "explain", "0001", "--role", "review", "--json"], directory)).stdout) as {
+      assurance?: { required?: string; canonicalRequired?: string; calibrationPreference?: string };
+    };
+    assert.equal(medium.assurance?.canonicalRequired, "self-check");
+    assert.equal(medium.assurance?.required, "fresh-context");
+    assert.equal(medium.assurance?.calibrationPreference, "fresh-context");
+
+    await writeFile(taskPath, buildTaskMarkdown("0001", "Task", "todo").replace("Risk: low", "Risk: high"), "utf8");
+    await runCli(["execution", "calibrate", "--recommendation", JSON.stringify({
+      protocol: "apk-calibration-v1-result",
+      profile: "constrained",
+      routes: { review: "local-a" },
+      assuranceMinimum: "none",
+      planner: "codex",
+    }), "--apply"], directory);
+    const high = JSON.parse((await runCli(["execution", "explain", "0001", "--role", "review", "--json"], directory)).stdout) as {
+      assurance?: { required?: string; canonicalRequired?: string; calibrationPreference?: string };
+    };
+    assert.equal(high.assurance?.canonicalRequired, "fresh-context");
+    assert.equal(high.assurance?.required, "fresh-context");
+    assert.equal(high.assurance?.calibrationPreference, undefined);
+
+    await writeFile(taskPath, buildTaskMarkdown("0001", "Task", "todo").replace("Risk: low", "Risk: critical"), "utf8");
+    await runCli(["execution", "calibrate", "--recommendation", JSON.stringify({
+      protocol: "apk-calibration-v1-result",
+      profile: "constrained",
+      routes: { review: "local-a" },
+      assuranceMinimum: "self-check",
+      planner: "codex",
+    }), "--apply"], directory);
+    const critical = JSON.parse((await runCli(["execution", "explain", "0001", "--role", "review", "--json"], directory)).stdout) as {
+      assurance?: { required?: string; canonicalRequired?: string };
+    };
+    assert.equal(critical.assurance?.canonicalRequired, "independent");
+    assert.equal(critical.assurance?.required, "independent");
+  });
+});
+
+test("execution resolver rejects an ineligible calibrated worker and clamps assurance", () => {
+  const registry = {
+    models: [],
+    harnesses: [],
+    workers: [
+      executionWorker("local-a", ["implementation"]),
+      executionWorker("local-b", ["implementation"], { occupied: 1 }),
+    ],
+  };
+  const route = resolveExecutionRoute({
+    profile: "constrained",
+    profileSource: "calibration",
+    role: "implementation",
+    policy: BASE_EXECUTION_POLICY,
+    registry,
+    calibrationRoute: "local-b",
+    calibration: {
+      status: "current",
+      planner: "codex",
+      inventoryFingerprint: "fp",
+      routeRecommendation: "local-b",
+      routeApplied: false,
+      reason: "seed",
+    },
+  });
+  assert.equal(route.resourceId, "local-a");
+  assert.equal(route.routeSource, "resolver");
+  assert.equal(route.calibration?.routeApplied, false);
+
+  assert.equal(resolveAssurancePlan({ policy: BASE_EXECUTION_POLICY, registry }).canonicalRequired, "none");
+  const raised = resolveAssurancePlan({ policy: BASE_EXECUTION_POLICY, registry, assuranceFloor: "fresh-context" });
+  assert.equal(raised.canonicalRequired, "none");
+  assert.equal(raised.required, "fresh-context");
+  const highPolicy = { ...BASE_EXECUTION_POLICY, assurance: "fresh-context" as const, independentReview: true };
+  const notLowered = resolveAssurancePlan({ policy: highPolicy, registry, assuranceFloor: "none" });
+  assert.equal(notLowered.required, "fresh-context");
+  assert.equal(notLowered.calibrationPreference, undefined);
+  const criticalPolicy = { ...BASE_EXECUTION_POLICY, assurance: "independent" as const, independentReview: true };
+  const critical = resolveAssurancePlan({ policy: criticalPolicy, registry, assuranceFloor: "self-check" });
+  assert.equal(critical.required, "independent");
+});
+
 test("CLI attention and workers project semantic state without live process claims", async () => {
   await withTempDirectory(async (directory) => {
     await mkdir(join(directory, ".agentic"), { recursive: true });
@@ -745,15 +967,25 @@ test("workspace safety refuses root, path escape, foreign, dirty, unmerged, and 
     );
     assert.ok(await pathExistsForTest(userWorktree), "foreign/user worktree must be preserved");
 
-    // Active run binding blocks cleanup.
-    const runDir = join(directory, ".agentic", "sessions", "work", "0001", "run-x");
-    await mkdir(runDir, { recursive: true });
-    await writeFile(join(runDir, "metadata.json"), JSON.stringify({ protocol: "apk-worker-v1", taskId: "0001", runId: "run-x", owner: "owner", role: "implement" }), "utf8");
-    await writeFile(join(runDir, "activation.json"), JSON.stringify({ protocol: "apk-worker-v1", taskId: "0001", runId: "run-x", packageHash: "x", activatedAt: "2026-01-01T00:00:00.000Z" }), "utf8");
-    const activeRecord: WorkspaceRecord = { ...record, runId: "run-x" };
-    const assessed = await assessWorkspaceSafety(directory, activeRecord);
-    assert.equal(assessed.safeToCleanup, false);
-    assert.match(assessed.reason, /activated worker run/);
+    // Marker run/resource mismatch is refused (marker carries the binding).
+    const runMismatch: WorkspaceRecord = { ...record, runId: "run-other" };
+    const runMismatchAssessment = await assessWorkspaceSafety(directory, runMismatch);
+    assert.equal(runMismatchAssessment.safeToCleanup, false);
+    assert.match(runMismatchAssessment.reason, /marker|Ownership/i);
+    const resourceMismatch: WorkspaceRecord = { ...record, resourceId: "worker-other" };
+    assert.equal((await assessWorkspaceSafety(directory, resourceMismatch)).safeToCleanup, false);
+
+    // Repository identity mismatch is refused.
+    const repoMismatch: WorkspaceRecord = { ...record, repositoryId: "repository:deadbeef" };
+    const repoMismatchAssessment = await assessWorkspaceSafety(directory, repoMismatch);
+    assert.equal(repoMismatchAssessment.safeToCleanup, false);
+    assert.match(repoMismatchAssessment.reason, /different repository identity/);
+
+    // Branch mismatch is refused.
+    const branchMismatch: WorkspaceRecord = { ...record, branch: "apk/workspace/other" };
+    const branchMismatchAssessment = await assessWorkspaceSafety(directory, branchMismatch);
+    assert.equal(branchMismatchAssessment.safeToCleanup, false);
+    assert.match(branchMismatchAssessment.reason, /branch does not match/);
 
     // Dirty state blocks cleanup.
     await writeFile(join(record.worktreePath, "README.md"), "dirty\n", "utf8");
@@ -837,6 +1069,70 @@ test("workspace stale metadata reports recovery guidance and is removable only w
   });
 });
 
+async function writeRunSession(directory: string, taskId: string, runId: string, activation: string): Promise<void> {
+  const runDir = join(directory, ".agentic", "sessions", "work", taskId, runId);
+  await mkdir(runDir, { recursive: true });
+  await writeFile(join(runDir, "metadata.json"), JSON.stringify({ protocol: "apk-worker-v1", taskId, runId, owner: "owner", role: "implement", resourceId: "worker-a" }), "utf8");
+  await writeFile(join(runDir, "activation.json"), activation, "utf8");
+}
+
+test("workspace run lifecycle treats terminal runs as historical and open runs as active", async () => {
+  await withTempDirectory(async (directory) => {
+    await initGitRepo(directory);
+    await writeTaskFile(directory, "0001", "doing", "owner");
+    await writeRunSession(directory, "0001", "run-x", JSON.stringify({
+      protocol: "apk-worker-v1", taskId: "0001", runId: "run-x", packageHash: "x", activatedAt: "2026-01-01T00:00:00.000Z",
+    }));
+    const created = await createWorkspace({ rootDirectory: directory, taskId: "0001", owner: "owner", runId: "run-x" });
+
+    // Open task + activated session -> active, cleanup refused.
+    assert.equal((await assessWorkspaceRun(directory, "0001", "run-x")).state, "active");
+    const open = await assessWorkspaceSafety(directory, created.record);
+    assert.equal(open.safeToCleanup, false);
+    assert.match(open.reason, /open activated run/);
+    await assert.rejects(
+      () => removeWorkspace({ rootDirectory: directory, id: created.record.id, apply: true }),
+      /Refusing to remove/,
+    );
+    assert.ok(await pathExistsForTest(created.record.worktreePath));
+
+    // Done task + same activation -> terminal, cleanup allowed.
+    await writeTaskFile(directory, "0001", "done", "owner");
+    assert.equal((await assessWorkspaceRun(directory, "0001", "run-x")).state, "terminal");
+    const terminal = await assessWorkspaceSafety(directory, created.record);
+    assert.equal(terminal.safeToCleanup, true);
+    const removed = await removeWorkspace({ rootDirectory: directory, id: created.record.id, apply: true });
+    assert.equal(removed.removed, true);
+    assert.equal(await pathExistsForTest(created.record.worktreePath), false);
+  });
+});
+
+test("workspace run lifecycle fails closed on malformed or unreadable session state", async () => {
+  await withTempDirectory(async (directory) => {
+    await initGitRepo(directory);
+    await writeTaskFile(directory, "0001", "doing", "owner");
+    await writeRunSession(directory, "0001", "run-x", "{ not json");
+    const created = await createWorkspace({ rootDirectory: directory, taskId: "0001", owner: "owner", runId: "run-x" });
+
+    const malformed = await assessWorkspaceRun(directory, "0001", "run-x");
+    assert.equal(malformed.state, "unknown");
+    const safety = await assessWorkspaceSafety(directory, created.record);
+    assert.equal(safety.safeToCleanup, false);
+    assert.match(safety.reason, /Cannot prove the bound run is inactive/);
+    await assert.rejects(
+      () => removeWorkspace({ rootDirectory: directory, id: created.record.id, apply: true }),
+      /Refusing to remove/,
+    );
+
+    // A globally unreadable session directory must also fail closed.
+    await rm(join(directory, ".agentic", "sessions", "work"), { recursive: true, force: true });
+    await writeFile(join(directory, ".agentic", "sessions", "work"), "not a directory", "utf8");
+    const unreadable = await assessWorkspaceRun(directory, "0001", "run-x");
+    assert.equal(unreadable.state, "unknown");
+    assert.match(unreadable.reason, /scan failed/i);
+  });
+});
+
 test("workspace records bind distinct candidates across revisions", async () => {
   await withTempDirectory(async (directory) => {
     await initGitRepo(directory);
@@ -856,6 +1152,43 @@ test("workspace records bind distinct candidates across revisions", async () => 
     assert.notEqual(subjectA.candidateId, subjectB.candidateId);
     assert.notEqual(first.record.worktreeId, second.record.worktreeId);
     assert.notEqual(first.record.candidateRevision, second.record.candidateRevision);
+  });
+});
+
+test("CLI workers fails closed when canonical session state is unreadable", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({
+      schemaVersion: 2,
+      resources: {
+        models: [{ id: "model-a", roles: ["implementation"] }],
+        harnesses: [{ id: "harness-a", workerProtocols: ["apk-worker-v1"] }],
+        workers: [{
+          id: "worker-a", modelId: "model-a", harnessId: "harness-a", location: "local",
+          billingMode: "free", costClass: "local-free", availability: "available", capacity: 1, occupied: 0,
+          capabilities: { roles: ["implementation"] },
+        }],
+      },
+    }), "utf8");
+    await mkdir(join(directory, ".agentic", "sessions"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "sessions", "work"), "not a directory", "utf8");
+
+    const result = await runCli(["workers", "--json"], directory);
+    assert.equal(result.exitCode, 0, `${result.stdout}${result.stderr}`);
+    const payload = JSON.parse(result.stdout) as {
+      workers: Array<{ id: string; state: string; capacity: number }>;
+      diagnostics: string[];
+    };
+    const worker = payload.workers.find((entry) => entry.id === "worker-a");
+    assert.equal(worker?.state, "unknown");
+    assert.equal(worker?.capacity, 1);
+    assert.ok(payload.diagnostics.some((diagnostic) => /session state unavailable/i.test(diagnostic)));
+    assert.doesNotMatch(result.stdout, /"state": "ready"/);
+
+    const human = await runCli(["workers"], directory);
+    assert.equal(human.exitCode, 0, `${human.stdout}${human.stderr}`);
+    assert.match(human.stdout, /worker-a unknown/);
   });
 });
 

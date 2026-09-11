@@ -20,7 +20,14 @@ import {
   renderCalibrationPackage,
   renderCalibrationValidation,
   validateCalibrationRecommendation,
+  ASSURANCE_LEVELS,
+  type CalibrationAssuranceLevel,
 } from "../../core/execution/calibrate.js";
+import type {
+  ExecutionCalibrationInfluence,
+  ExecutionProfileSource,
+} from "../../core/execution/index.js";
+import type { AssuranceLevel } from "../../core/tasks/policy.js";
 import { detectResourceInventory } from "../../core/resources/detect.js";
 import { findTaskFile, loadTaskFile } from "../../core/tasks/index.js";
 import { resolveTaskPolicy } from "../../core/tasks/policy.js";
@@ -99,9 +106,31 @@ export async function runExecutionCommand(argv: string[]): Promise<number> {
     const config = await readAgenticConfigFile(rootDirectory);
     const taskFile = await findTaskFile(rootDirectory, positional[0], config.taskDirectory);
     const { task } = await loadTaskFile(taskFile);
-    const profile = profileValue === undefined
-      ? config.executionProfile
-      : parseExecutionProfile(profileValue);
+    const policy = resolveTaskPolicy(task).requirements;
+
+    // Resolve calibration status first: only a current (fingerprint-matching)
+    // calibration may influence the effective plan. Stale calibration is
+    // reported and ignored.
+    const calibration = config.executionCalibration;
+    let calibrationStatus: "current" | "stale" | undefined;
+    if (calibration) {
+      const inventory = await detectResourceInventory(rootDirectory);
+      calibrationStatus = calibration.inventoryFingerprint === inventory.fingerprint ? "current" : "stale";
+    }
+    const currentCalibration = calibrationStatus === "current" ? calibration : undefined;
+
+    const cliProfile = profileValue === undefined ? undefined : parseExecutionProfile(profileValue);
+    const calibrationProfile = currentCalibration?.profile;
+    const authoredProfile = config.executionProfile;
+    const effectiveProfile = cliProfile ?? calibrationProfile ?? authoredProfile;
+    const profileSource: ExecutionProfileSource = cliProfile
+      ? "cli"
+      : calibrationProfile
+        ? "calibration"
+        : authoredProfile
+          ? "config"
+          : "default";
+
     const cliResource = readFlagValue(argv, "--resource");
     const override: ExecutionOverride | undefined = cliResource === undefined
       ? config.executionOverrides
@@ -110,37 +139,54 @@ export async function runExecutionCommand(argv: string[]): Promise<number> {
         resourceId: cliResource,
         allowProfileBypass: true,
       });
+
+    const calibrationRoute = currentCalibration?.routes[roleValue];
+    const assuranceFloor: AssuranceLevel | undefined = currentCalibration?.assuranceMinimum
+      && (ASSURANCE_LEVELS as readonly string[]).includes(currentCalibration.assuranceMinimum)
+      ? currentCalibration.assuranceMinimum as CalibrationAssuranceLevel
+      : undefined;
+    const calibrationInfluence: ExecutionCalibrationInfluence | undefined = calibration
+      ? {
+        status: calibrationStatus ?? "stale",
+        planner: calibration.planner,
+        inventoryFingerprint: calibration.inventoryFingerprint,
+        ...(calibration.profile ? { profile: calibration.profile } : {}),
+        ...(calibrationRoute ? { routeRecommendation: calibrationRoute } : {}),
+        routeApplied: false,
+        ...(assuranceFloor ? { assuranceMinimum: assuranceFloor } : {}),
+        reason: calibrationStatus === "current"
+          ? "current calibration evaluated"
+          : "stale inventory fingerprint; calibration ignored for effective routing",
+      }
+      : undefined;
+
     const route = resolveExecutionRoute({
-      profile,
+      profile: effectiveProfile,
+      profileSource,
       role: roleValue as ExecutionRole,
-      policy: resolveTaskPolicy(task).requirements,
+      policy,
       registry: config.resources ?? emptyResourceRegistry(),
       ...(complexityValue === undefined ? {} : { complexity: complexityValue as ExecutionComplexity }),
       ...(override === undefined ? {} : { override }),
+      ...(currentCalibration && calibrationRoute ? { calibrationRoute } : {}),
+      ...(currentCalibration && assuranceFloor ? { assuranceFloor } : {}),
+      ...(calibrationInfluence ? { calibration: calibrationInfluence } : {}),
     });
     const json = argv.includes("--json");
-    let calibrationStatus: string | undefined;
-    if (config.executionCalibration) {
-      const inventory = await detectResourceInventory(rootDirectory);
-      calibrationStatus = config.executionCalibration.inventoryFingerprint === inventory.fingerprint ? "current" : "stale";
-    }
 
     if (json) {
       const payload = JSON.parse(renderExecutionRoute(route, true)) as Record<string, unknown>;
-      if (config.executionCalibration) {
-        payload.calibration = { ...config.executionCalibration, status: calibrationStatus };
+      if (calibration) {
+        // `payload.calibration` is the bounded route influence (status, planner,
+        // fingerprint, routeApplied, reason). `savedCalibration` preserves the
+        // exact stored recommendation for transparency.
+        payload.savedCalibration = { ...calibration, status: calibrationStatus };
       }
       console.log(JSON.stringify(payload, null, 2));
       return 0;
     }
 
     console.log(renderExecutionRoute(route, false));
-    if (config.executionCalibration) {
-      console.log(
-        `Calibration: profile=${config.executionCalibration.profile} planner=${config.executionCalibration.planner}`
-        + ` fingerprint=${config.executionCalibration.inventoryFingerprint} (${calibrationStatus})`,
-      );
-    }
     return 0;
   } catch (error: unknown) {
     console.error(error instanceof Error ? error.message : String(error));

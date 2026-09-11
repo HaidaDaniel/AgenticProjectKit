@@ -26,6 +26,26 @@ export type ExecutionRole = (typeof EXECUTION_ROLES)[number];
 export const EXECUTION_COMPLEXITIES = ["simple", "medium", "complex"] as const;
 export type ExecutionComplexity = (typeof EXECUTION_COMPLEXITIES)[number];
 
+export const EXECUTION_PROFILE_SOURCES = ["default", "config", "calibration", "cli"] as const;
+export type ExecutionProfileSource = (typeof EXECUTION_PROFILE_SOURCES)[number];
+
+export const EXECUTION_ROUTE_SOURCES = ["deterministic", "calibration", "override", "resolver"] as const;
+export type ExecutionRouteSource = (typeof EXECUTION_ROUTE_SOURCES)[number];
+
+export const CALIBRATION_ROUTE_SENTINELS = ["deterministic", "wait", "needs-human"] as const;
+
+export interface ExecutionCalibrationInfluence {
+  status: "current" | "stale";
+  planner: string;
+  inventoryFingerprint: string;
+  profile?: ExecutionProfile;
+  /** Calibration route recommendation for this role, if any. */
+  routeRecommendation?: string;
+  routeApplied: boolean;
+  assuranceMinimum?: AssuranceLevel;
+  reason: string;
+}
+
 export type ExecutionRouteKind = "deterministic" | "worker" | "wait" | "needs-human" | "budget-exhausted";
 
 export interface ExecutionOverride {
@@ -37,6 +57,7 @@ export interface ExecutionOverride {
 
 export interface ExecutionRouteRequest {
   profile?: ExecutionProfile;
+  profileSource?: ExecutionProfileSource;
   role: ExecutionRole;
   policy: TaskPolicyRequirements;
   registry: ResourceRegistry;
@@ -45,6 +66,11 @@ export interface ExecutionRouteRequest {
   requiredTools?: readonly string[];
   workspaceMode?: ResourceWorkspaceMode;
   override?: ExecutionOverride;
+  /** Current calibration route recommendation for this role (worker id or sentinel). */
+  calibrationRoute?: string;
+  /** Raise-only calibration assurance preference. */
+  assuranceFloor?: AssuranceLevel;
+  calibration?: ExecutionCalibrationInfluence;
 }
 
 export interface AssurancePlanRequest {
@@ -52,10 +78,16 @@ export interface AssurancePlanRequest {
   profile?: ExecutionProfile;
   registry: ResourceRegistry;
   role?: ExecutionRole;
+  /** Raise-only calibration assurance preference; canonical policy is never lowered. */
+  assuranceFloor?: AssuranceLevel;
 }
 
 export interface AssurancePlan {
+  /** Effective requirement after clamping the calibration preference upward. */
   required: AssuranceLevel;
+  /** Canonical task-policy requirement before any calibration preference. */
+  canonicalRequired: AssuranceLevel;
+  calibrationPreference?: AssuranceLevel;
   selected: AssuranceLevel;
   status: "ready" | "unavailable" | "budget-exhausted";
   budget: ReviewBudget;
@@ -71,8 +103,10 @@ export interface ExecutionCandidate {
 
 export interface ExecutionRoute {
   profile: ExecutionProfile;
+  profileSource: ExecutionProfileSource;
   role: ExecutionRole;
   kind: ExecutionRouteKind;
+  routeSource: ExecutionRouteSource;
   resourceId?: string;
   queue: "none" | "wait" | "manual";
   policy: {
@@ -83,6 +117,7 @@ export interface ExecutionRoute {
   candidates: ExecutionCandidate[];
   assurance?: AssurancePlan;
   override?: ExecutionOverride;
+  calibration?: ExecutionCalibrationInfluence;
 }
 
 export class ExecutionValidationError extends Error {
@@ -178,14 +213,22 @@ function assuranceRank(level: AssuranceLevel): number {
 }
 
 export function resolveAssurancePlan(request: AssurancePlanRequest): AssurancePlan {
-  const required = request.policy.assurance
+  const canonicalRequired = request.policy.assurance
     ?? (request.policy.independentReview ? "independent" : "none");
+  // Calibration assurance is a raise-only preference; the canonical task policy
+  // is never lowered and remains authoritative.
+  const required = request.assuranceFloor && assuranceRank(request.assuranceFloor) > assuranceRank(canonicalRequired)
+    ? request.assuranceFloor
+    : canonicalRequired;
+  const calibration = request.assuranceFloor && assuranceRank(request.assuranceFloor) > assuranceRank(canonicalRequired)
+    ? { calibrationPreference: request.assuranceFloor }
+    : {};
   const budget = request.policy.reviewBudget ?? DEFAULT_ASSURANCE_BUDGET;
   if (budget.maxReviewPasses <= 0 || (assuranceRank(required) >= assuranceRank("fresh-context") && budget.maxFrontierRuns <= 0)) {
-    return { required, selected: required, status: "budget-exhausted", budget, resourceIds: [], reason: "Review budget does not permit the required assurance." };
+    return { required, canonicalRequired, ...calibration, selected: required, status: "budget-exhausted", budget, resourceIds: [], reason: "Review budget does not permit the required assurance." };
   }
   if (assuranceRank(required) <= assuranceRank("self-check")) {
-    return { required, selected: required, status: "ready", budget, resourceIds: [], reason: `${required} assurance is satisfied by the implementation context and deterministic checks.` };
+    return { required, canonicalRequired, ...calibration, selected: required, status: "ready", budget, resourceIds: [], reason: `${required} assurance is satisfied by the implementation context and deterministic checks.` };
   }
   const reviewWorkers = request.registry.workers.filter((worker) => {
     if (!supportsRole(worker, "review") || worker.availability !== "available" || worker.occupied >= worker.capacity) return false;
@@ -195,14 +238,16 @@ export function resolveAssurancePlan(request: AssurancePlanRequest): AssurancePl
   if (required === "diverse") {
     const families = new Set(reviewWorkers.map((worker) => request.registry.models.find((model) => model.id === worker.modelId)?.family ?? worker.modelId));
     if (families.size < 2) {
-      return { required, selected: required, status: "unavailable", budget, resourceIds: reviewWorkers.map((worker) => worker.id), reason: "Diverse assurance requires review resources from two distinct model families." };
+      return { required, canonicalRequired, ...calibration, selected: required, status: "unavailable", budget, resourceIds: reviewWorkers.map((worker) => worker.id), reason: "Diverse assurance requires review resources from two distinct model families." };
     }
   }
   if (reviewWorkers.length === 0) {
-    return { required, selected: required, status: "unavailable", budget, resourceIds: [], reason: required === "fresh-context" ? "No available review resource proves an isolated session." : "No available review resource can satisfy the required assurance." };
+    return { required, canonicalRequired, ...calibration, selected: required, status: "unavailable", budget, resourceIds: [], reason: required === "fresh-context" ? "No available review resource proves an isolated session." : "No available review resource can satisfy the required assurance." };
   }
   return {
     required,
+    canonicalRequired,
+    ...calibration,
     selected: required,
     status: "ready",
     budget,
@@ -257,21 +302,36 @@ function candidateReasons(
   return reasons;
 }
 
-function deterministicRoute(request: ExecutionRouteRequest, profile: ExecutionProfile): ExecutionRoute | undefined {
+function calibrationInfluence(
+  request: ExecutionRouteRequest,
+  routeApplied: boolean,
+  reason: string,
+): { calibration?: ExecutionCalibrationInfluence } {
+  if (!request.calibration) return {};
+  return { calibration: { ...request.calibration, routeApplied, reason } };
+}
+
+function deterministicRoute(
+  request: ExecutionRouteRequest,
+  profile: ExecutionProfile,
+  profileSource: ExecutionProfileSource,
+): ExecutionRoute | undefined {
   if (request.role === "verification") {
     return {
-      profile, role: request.role, kind: "deterministic", queue: "none",
+      profile, profileSource, routeSource: "deterministic", role: request.role, kind: "deterministic", queue: "none",
       policy: { independentReview: request.policy.independentReview, reviewLevel: request.policy.reviewLevel },
       explanation: "Mechanical verification uses the deterministic lane and does not consume a worker resource.",
       candidates: [],
+      ...calibrationInfluence(request, false, "canonical deterministic lane"),
     };
   }
   if (request.role === "review" && !request.policy.independentReview) {
     return {
-      profile, role: request.role, kind: "deterministic", queue: "none",
+      profile, profileSource, routeSource: "deterministic", role: request.role, kind: "deterministic", queue: "none",
       policy: { independentReview: false, reviewLevel: request.policy.reviewLevel },
       explanation: "The upstream task policy does not require semantic review; no worker route is created.",
       candidates: [],
+      ...calibrationInfluence(request, false, "canonical deterministic lane"),
     };
   }
   return undefined;
@@ -279,23 +339,27 @@ function deterministicRoute(request: ExecutionRouteRequest, profile: ExecutionPr
 
 export function resolveExecutionRoute(request: ExecutionRouteRequest): ExecutionRoute {
   const profile = normalizedProfile(request.profile);
-  const deterministic = deterministicRoute(request, profile);
+  const profileSource = request.profileSource ?? "default";
+  const deterministic = deterministicRoute(request, profile, profileSource);
   if (deterministic) return deterministic;
   const assurance = request.role === "review" ? resolveAssurancePlan({
     policy: request.policy,
     profile,
     registry: request.registry,
     role: request.role,
+    ...(request.assuranceFloor ? { assuranceFloor: request.assuranceFloor } : {}),
   }) : undefined;
   if (assurance && assurance.status !== "ready") {
     return {
-      profile, role: request.role, kind: assurance.status === "budget-exhausted" ? "budget-exhausted" : "needs-human",
+      profile, profileSource, routeSource: "resolver",
+      role: request.role, kind: assurance.status === "budget-exhausted" ? "budget-exhausted" : "needs-human",
       queue: "manual",
       policy: { independentReview: request.policy.independentReview, reviewLevel: request.policy.reviewLevel },
       explanation: assurance.reason,
       candidates: [],
       assurance,
       ...(request.override ? { override: request.override } : {}),
+      ...calibrationInfluence(request, false, assurance.reason),
     };
   }
   const complexity = request.complexity ?? "medium";
@@ -308,37 +372,87 @@ export function resolveExecutionRoute(request: ExecutionRouteRequest): Execution
     return { worker, reasons: effectiveReasons };
   });
   const eligible = candidates.filter(({ reasons }) => reasons.length === 0);
-  const selected = override?.resourceId
-    ? eligible.find(({ worker }) => worker.id === override.resourceId)
-    : [...eligible].sort((left, right) => {
-      const leftLocation = override?.preferLocation && left.worker.location === override.preferLocation ? -1 : 0;
-      const rightLocation = override?.preferLocation && right.worker.location === override.preferLocation ? -1 : 0;
-      if (leftLocation !== rightLocation) return leftLocation - rightLocation;
-      const leftCost = override?.preferCostClass === left.worker.costClass ? -1 : COST_RANK[left.worker.costClass];
-      const rightCost = override?.preferCostClass === right.worker.costClass ? -1 : COST_RANK[right.worker.costClass];
-      return leftCost - rightCost || left.worker.id.localeCompare(right.worker.id);
-    })[0];
+  const pickResolver = () => [...eligible].sort((left, right) => {
+    const leftLocation = override?.preferLocation && left.worker.location === override.preferLocation ? -1 : 0;
+    const rightLocation = override?.preferLocation && right.worker.location === override.preferLocation ? -1 : 0;
+    if (leftLocation !== rightLocation) return leftLocation - rightLocation;
+    const leftCost = override?.preferCostClass === left.worker.costClass ? -1 : COST_RANK[left.worker.costClass];
+    const rightCost = override?.preferCostClass === right.worker.costClass ? -1 : COST_RANK[right.worker.costClass];
+    return leftCost - rightCost || left.worker.id.localeCompare(right.worker.id);
+  })[0];
   const renderedCandidates = candidates.map(({ worker, reasons }) => ({
     resourceId: worker.id,
     eligible: reasons.length === 0,
     reasons: reasons.length === 0 ? [`eligible cost=${worker.costClass} capacity=${worker.occupied}/${worker.capacity}`] : reasons,
   }));
+
+  const calibrationRoute = request.calibrationRoute;
+  const calibrationWorkerRoute = calibrationRoute !== undefined
+    && !(CALIBRATION_ROUTE_SENTINELS as readonly string[]).includes(calibrationRoute)
+    ? calibrationRoute
+    : undefined;
+  const sentinelRoute = calibrationRoute !== undefined && calibrationWorkerRoute === undefined;
+
+  let selected: { worker: WorkerResource; reasons: string[] } | undefined;
+  let routeSource: ExecutionRouteSource = "resolver";
+  let explanation: string | undefined;
+  let calibrationApplied = false;
+  let calibrationReason = "no current calibration route for this role";
+
+  if (override?.resourceId) {
+    // Explicit user override outranks calibration. Existing semantics: an
+    // override that is not eligible yields wait/needs-human, never a silent
+    // fallback to a different worker.
+    selected = eligible.find(({ worker }) => worker.id === override.resourceId);
+    if (selected) {
+      routeSource = "override";
+      explanation = `Explicit override selected ${selected.worker.id}; capability, availability, and capacity checks still apply.`;
+    }
+  } else if (calibrationWorkerRoute) {
+    selected = eligible.find(({ worker }) => worker.id === calibrationWorkerRoute);
+    if (selected) {
+      routeSource = "calibration";
+      calibrationApplied = true;
+      calibrationReason = `current calibration route ${calibrationWorkerRoute} passed capability, availability, and capacity checks`;
+      explanation = `Current calibration recommended ${selected.worker.id}; capability, availability, and capacity checks passed.`;
+    } else {
+      const fallback = pickResolver();
+      if (fallback) {
+        selected = fallback;
+        routeSource = "resolver";
+        calibrationReason = `current calibration route ${calibrationWorkerRoute} is not eligible; fell back to the deterministic resolver`;
+        explanation = `Current calibration recommended ${calibrationWorkerRoute}, which is not eligible; fallback selected ${fallback.worker.id} by deterministic profile ordering.`;
+      } else {
+        calibrationReason = `current calibration route ${calibrationWorkerRoute} is not eligible and no fallback resource is available`;
+      }
+    }
+  } else {
+    selected = pickResolver();
+    if (selected) {
+      routeSource = "resolver";
+      explanation = `Selected ${selected.worker.id} by deterministic profile ordering${override?.preferLocation || override?.preferCostClass ? " with explicit preferences" : ""}; ties are resolved by stable resource ID.`;
+    }
+    if (sentinelRoute) {
+      calibrationReason = `calibration sentinel ${calibrationRoute} is advisory; the canonical resolver remains authoritative`;
+    }
+  }
+
   if (selected) {
     return {
-      profile, role: request.role, kind: "worker", resourceId: selected.worker.id, queue: "none",
+      profile, profileSource, routeSource, role: request.role, kind: "worker", resourceId: selected.worker.id, queue: "none",
       policy: { independentReview: request.policy.independentReview, reviewLevel: request.policy.reviewLevel },
-      explanation: override?.resourceId === selected.worker.id
-        ? `Explicit override selected ${selected.worker.id}; capability, availability, and capacity checks still apply.`
-        : `Selected ${selected.worker.id} by deterministic profile ordering${override?.preferLocation || override?.preferCostClass ? " with explicit preferences" : ""}; ties are resolved by stable resource ID.`,
+      explanation: explanation ?? `Selected ${selected.worker.id}.`,
       candidates: renderedCandidates,
       ...(assurance ? { assurance } : {}),
       ...(override ? { override } : {}),
+      ...calibrationInfluence(request, calibrationApplied, calibrationReason),
     };
   }
   const hasMatchingRole = candidates.some(({ worker }) => supportsRole(worker, request.role));
   const hasBlockedMatching = candidates.some(({ worker, reasons }) => supportsRole(worker, request.role) && reasons.some((reason) => reason.includes("availability=") || reason.includes("capacity busy")));
   return {
-    profile, role: request.role, kind: hasBlockedMatching ? "wait" : "needs-human", queue: hasBlockedMatching ? "wait" : "manual",
+    profile, profileSource, routeSource: "resolver",
+    role: request.role, kind: hasBlockedMatching ? "wait" : "needs-human", queue: hasBlockedMatching ? "wait" : "manual",
     policy: { independentReview: request.policy.independentReview, reviewLevel: request.policy.reviewLevel },
     explanation: hasBlockedMatching
       ? `No eligible ${request.role} resource is currently available; wait without oversubscribing capacity.`
@@ -348,21 +462,30 @@ export function resolveExecutionRoute(request: ExecutionRouteRequest): Execution
     candidates: renderedCandidates,
     ...(assurance ? { assurance } : {}),
     ...(override ? { override } : {}),
+    ...calibrationInfluence(request, false, calibrationReason),
   };
 }
 
 export function renderExecutionRoute(route: ExecutionRoute, json = false): string {
   if (json) return `${JSON.stringify(route, null, 2)}\n`;
   const lines = [
-    `Execution profile: ${route.profile}`,
+    `Execution profile: ${route.profile} (source=${route.profileSource})`,
     `Role: ${route.role}`,
-    `Route: ${route.kind}${route.resourceId ? ` (${route.resourceId})` : ""}`,
+    `Route: ${route.kind}${route.resourceId ? ` (${route.resourceId})` : ""} (source=${route.routeSource})`,
     `Queue: ${route.queue}`,
     `Policy review: ${route.policy.independentReview ? route.policy.reviewLevel : "not-required"}`,
     `Explanation: ${route.explanation}`,
+  ];
+  if (route.assurance) {
+    lines.push(`Assurance: required=${route.assurance.required} canonical=${route.assurance.canonicalRequired}${route.assurance.calibrationPreference ? ` calibration=${route.assurance.calibrationPreference}` : ""} status=${route.assurance.status}`);
+  }
+  if (route.calibration) {
+    lines.push(`Calibration: ${route.calibration.status} planner=${route.calibration.planner} applied=${route.calibration.routeApplied}; ${route.calibration.reason}`);
+  }
+  lines.push(
     "Candidates:",
     ...route.candidates.map((candidate) => `- ${candidate.resourceId}: ${candidate.eligible ? "eligible" : "rejected"}; ${candidate.reasons.join(", ")}`),
-  ];
+  );
   return `${lines.join("\n")}\n`;
 }
 

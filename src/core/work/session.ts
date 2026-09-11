@@ -112,7 +112,23 @@ export async function listWorkerSessions(rootDirectory: string): Promise<Discove
       const directory = sessionDirectory(rootDirectory, taskId, runId);
       const metadataValue = await readOptionalText(join(directory, "metadata.json"));
       const activationValue = await readOptionalText(join(directory, "activation.json"));
-      const activated = activationValue !== undefined;
+      let activated = false;
+      let activationMalformed = false;
+      if (activationValue !== undefined) {
+        try {
+          const parsedActivation: unknown = JSON.parse(activationValue);
+          if (!parsedActivation || typeof parsedActivation !== "object" || Array.isArray(parsedActivation)) {
+            throw new Error("activation is not an object");
+          }
+          const rawActivation = parsedActivation as Record<string, unknown>;
+          activated = rawActivation.protocol === WORKER_PROTOCOL
+            && rawActivation.taskId === taskId
+            && rawActivation.runId === runId;
+          if (!activated) activationMalformed = true;
+        } catch {
+          activationMalformed = true;
+        }
+      }
 
       if (metadataValue === undefined) {
         sessions.push({
@@ -163,6 +179,20 @@ export async function listWorkerSessions(rootDirectory: string): Promise<Discove
           activated,
           state: "malformed",
           reason: "session metadata identity is malformed",
+        });
+        continue;
+      }
+
+      if (activationMalformed) {
+        sessions.push({
+          taskId,
+          runId,
+          owner,
+          role,
+          ...(resourceId ? { resourceId } : {}),
+          activated: false,
+          state: "malformed",
+          reason: "session activation marker is malformed",
         });
         continue;
       }
