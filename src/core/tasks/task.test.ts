@@ -344,7 +344,38 @@ test("task policy requires declared high-risk evidence and explains tags", () =>
   assert.match(renderTaskPolicy(release), /independent review: not required/);
 });
 
-test("task policy does not promote optional-only evidence categories", () => {
+test("optional checks never cancel tag evidence requirements", () => {
+  const deployment = resolveTaskPolicy({
+    ...TASK,
+    risk: "low",
+    tags: ["deployment"],
+    verification: [
+      {
+        id: "unit",
+        type: "automated",
+        required: true,
+        environment: "local",
+        profile: "deterministic",
+        command: "pnpm test",
+      },
+      {
+        id: "live-smoke",
+        type: "manual",
+        required: false,
+        environment: "live",
+        profile: "trusted",
+        instruction: "Check the deployment when available.",
+      },
+    ],
+  });
+  assert.equal(deployment.requirements.evidenceRequired, true);
+  assert.deepEqual(deployment.requirements.evidenceCategories, ["live"]);
+  assert.deepEqual(deployment.declaredEvidenceCategories, []);
+  assert.deepEqual(deployment.blockers, [
+    "Declare at least one evidence category in verification checks.",
+    "Evidence category live is required but not declared.",
+  ]);
+
   const release = resolveTaskPolicy({
     ...TASK,
     risk: "high",
@@ -371,15 +402,17 @@ test("task policy does not promote optional-only evidence categories", () => {
       },
     ],
   });
-
-  assert.deepEqual(release.requirements.evidenceCategories, ["report"]);
+  assert.equal(release.requirements.evidenceRequired, true);
+  assert.deepEqual(release.requirements.evidenceCategories, ["live", "report"]);
   assert.deepEqual(release.declaredEvidenceCategories, ["artifact", "evidence", "report"]);
-  assert.deepEqual(release.blockers, []);
+  assert.deepEqual(release.blockers, ["Evidence category live is required but not declared."]);
+});
 
-  const optionalOnlyDeployment = resolveTaskPolicy({
+test("optional-only checks create no evidence requirement of their own", () => {
+  const policy = resolveTaskPolicy({
     ...TASK,
     risk: "low",
-    tags: ["deployment"],
+    tags: ["ci"],
     verification: [
       {
         id: "unit",
@@ -395,14 +428,15 @@ test("task policy does not promote optional-only evidence categories", () => {
         required: false,
         environment: "live",
         profile: "trusted",
-        instruction: "Check the deployment when available.",
+        instruction: "Check the live system when available.",
+        evidence: "live URL/status",
       },
     ],
   });
-  assert.equal(optionalOnlyDeployment.requirements.evidenceRequired, false);
-  assert.deepEqual(optionalOnlyDeployment.requirements.evidenceCategories, []);
-  assert.deepEqual(optionalOnlyDeployment.declaredEvidenceCategories, []);
-  assert.deepEqual(optionalOnlyDeployment.blockers, []);
+  assert.equal(policy.requirements.evidenceRequired, false);
+  assert.deepEqual(policy.requirements.evidenceCategories, []);
+  assert.deepEqual(policy.declaredEvidenceCategories, []);
+  assert.deepEqual(policy.blockers, []);
 });
 
 test("task policy raises assurance for critical and stable escalation triggers", () => {
@@ -1973,7 +2007,7 @@ test("anonymous verification remains diagnostic and cannot satisfy the completio
   });
 });
 
-test("completion gate ignores unavailable optional-only evidence categories", async () => {
+test("completion gate does not require optional-only evidence categories", async () => {
   await withTempDirectory(async (directory) => {
     const git = async (...args: string[]) => {
       await execFileAsync("git", args, { cwd: directory });
@@ -1988,16 +2022,141 @@ test("completion gate ignores unavailable optional-only evidence categories", as
       owner: "none",
       risk: "low",
       dependsOn: [],
-      tags: ["release"],
+      tags: ["ci"],
       verification: [
         {
-          id: "release-report",
+          id: "unit",
+          type: "automated",
+          required: true,
+          environment: "local",
+          profile: "deterministic",
+          command: "pass",
+        },
+        {
+          id: "live-smoke",
+          type: "manual",
+          required: false,
+          environment: "live",
+          profile: "trusted",
+          instruction: "Check the live system when available.",
+          evidence: "live URL/status",
+        },
+      ],
+      verificationCommands: ["pass"],
+    });
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await registerAgent(directory, { id: "codex-a", developer: "alice", platform: "codex", model: "gpt-5" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a" });
+
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      runCommand: async () => 0,
+    });
+    assert.equal(verification.passed, true);
+    assert.equal(verification.checkResults.find((result) => result.id === "live-smoke")?.status, "unavailable");
+
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(gate.passed, true);
+    assert.equal(gate.blockers.some((blocker) => /live|manual|live-smoke/.test(blocker)), false);
+  });
+});
+
+test("completion gate keeps tag evidence requirements over optional checks", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeTaskFile(join(directory, ".tasks", "0007-gated-task.md"), {
+      ...TASK,
+      state: "todo",
+      owner: "none",
+      risk: "low",
+      dependsOn: [],
+      tags: ["deployment"],
+      verification: [
+        {
+          id: "unit",
+          type: "automated",
+          required: true,
+          environment: "local",
+          profile: "deterministic",
+          command: "pass",
+        },
+        {
+          id: "live-smoke",
+          type: "manual",
+          required: false,
+          environment: "live",
+          profile: "trusted",
+          instruction: "Check the deployment when available.",
+          evidence: "deployment URL/status",
+        },
+      ],
+      verificationCommands: ["pass"],
+    });
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await registerAgent(directory, { id: "codex-a", developer: "alice", platform: "codex", model: "gpt-5" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a" });
+
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      runCommand: async () => 0,
+    });
+    assert.equal(verification.passed, true);
+    assert.equal(verification.checkResults.find((result) => result.id === "live-smoke")?.status, "unavailable");
+
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(gate.passed, false);
+    assert.ok(gate.blockers.includes("Evidence category live is required but not declared."));
+    assert.ok(gate.blockers.includes("Missing current live evidence."));
+  });
+});
+
+test("completion gate does not block on optional workflow review for non-release tags", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeTaskFile(join(directory, ".tasks", "0007-gated-task.md"), {
+      ...TASK,
+      state: "todo",
+      owner: "none",
+      risk: "high",
+      dependsOn: [],
+      tags: ["ci", "quality", "clean-checkout"],
+      verification: [
+        {
+          id: "coverage",
+          type: "automated",
+          required: true,
+          environment: "local",
+          profile: "deterministic",
+          command: "pass",
+          artifact: "coverage/coverage-summary.json",
+        },
+        {
+          id: "release-check",
           type: "automated",
           required: true,
           environment: "ci",
           profile: "report",
           command: "pass",
-          artifact: "coverage/coverage-summary.json",
           evidence: "clean-checkout command output",
         },
         {
@@ -2028,8 +2187,9 @@ test("completion gate ignores unavailable optional-only evidence categories", as
     assert.equal(verification.checkResults.find((result) => result.id === "workflow-review")?.status, "unavailable");
 
     const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
-    assert.equal(gate.passed, true);
+    assert.equal(gate.passed, false);
     assert.equal(gate.blockers.some((blocker) => /live|manual|workflow-review/.test(blocker)), false);
+    assert.deepEqual(gate.blockers, ["Missing independent review evidence."]);
   });
 });
 

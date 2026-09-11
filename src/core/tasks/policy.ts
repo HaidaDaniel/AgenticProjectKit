@@ -229,12 +229,10 @@ export function resolveTaskPolicy(
   const optionalOnly = new Set(
     declaredEvidenceCategories(task).filter((category) => !declared.includes(category)),
   );
-  requirements.evidenceCategories = [...new Set(requirements.evidenceCategories)]
-    .filter((category) => !optionalOnly.has(category))
-    .sort();
+  requirements.evidenceCategories = [...new Set(requirements.evidenceCategories)].sort();
   requirements.evidenceRequired = task.risk === "high" || requirements.evidenceCategories.length > 0;
   for (const category of optionalOnly) {
-    reasons.push(`optional-only evidence category ${category} does not create a requirement`);
+    reasons.push(`optional-only evidence category ${category} creates no requirement and never cancels a risk, type, or tag requirement`);
   }
   if (requirements.evidenceRequired && declared.length === 0) {
     blockers.push("Declare at least one evidence category in verification checks.");

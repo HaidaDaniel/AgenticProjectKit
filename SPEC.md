@@ -43,7 +43,7 @@ V13: CI marker type/emptiness never masks valid markers; audit/doctor CI project
 V14: generated-file sync normalizes platform line endings before drift comparison.
 V15: candidate-bound verifier default timeout exceeds the bounded runtime of declared release validation.
 V16: CLI peer tests after async sync case → SourceFile-level declarations; async parent ⊥ register unawaited peer tests.
-V17: check.required=false -> no verification/evidence gate requirement; optional-only category overrides matching additive tag category.
+V17: check.required=false -> no verification/evidence gate requirement; optional-only category creates no requirement and never cancels a risk/type/tag requirement.
 
 ## §T
 
@@ -68,4 +68,4 @@ B3|2026-09-10|sync compared LF templates with CRLF checkout bytes and reported f
 B4|2026-09-10|candidate verify default timeout (120s) expired valid release-check before its quality and coverage checks completed|raise default verifier timeout to 10m|V15
 B5|2026-09-11|sync test missed outer closure → six peer tests nested/cancelled under Node 22|V16
 B6|2026-09-11|canonical coverage run exit 1 once; raw output unavailable; immediate full diagnostic PASS|retain failed evidence; rerun full candidate verification
-B7|2026-09-11|policy aggregated optional check metadata -> missing live/manual evidence blocked gate|V17
+B7|2026-09-11|policy aggregated optional check metadata -> optional categories promoted into gate requirements; corrective over-removal then dropped tag-derived live/report requirements|optional checks neither create nor cancel policy evidence requirements|V17

@@ -184,7 +184,7 @@ Risk must produce predictable ceremony: automated verification for low risk, sco
 
 Implementation:
 
-`resolveTaskPolicy` applies conservative defaults, merges the small built-in tag-rule registry with optional rules, deduplicates evidence categories, and reports conflicts or missing requirements as blockers. Only required checks declare gate evidence categories. A category declared exclusively by optional checks is excluded from matching tag requirements, preserving `required: false`; absent tag categories and categories declared by any required check remain fail-closed. Legacy command-only tasks normalize to local deterministic checks; high-risk legacy tasks remain readable but fail policy resolution until evidence is declared. `apk task policy` is a read-only diagnostic surface; completion enforcement is deferred to the dependent gate task.
+`resolveTaskPolicy` applies conservative defaults, merges the small built-in tag-rule registry with optional rules, deduplicates evidence categories, and reports conflicts or missing requirements as blockers. Only required checks declare gate evidence categories. A category declared exclusively by optional checks creates no requirement and never cancels an independent risk, type, or tag requirement, preserving `required: false` without weakening the tag registry; required categories remain fail-closed until declared by a required check. Legacy command-only tasks normalize to local deterministic checks; high-risk legacy tasks remain readable but fail policy resolution until evidence is declared. `apk task policy` is a read-only diagnostic surface; completion enforcement is deferred to the dependent gate task.
 
 ## ADR-0014 - Independent review uses separate revision-bound evidence
 

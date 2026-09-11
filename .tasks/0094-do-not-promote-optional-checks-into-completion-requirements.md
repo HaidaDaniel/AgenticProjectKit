@@ -57,33 +57,40 @@ Do not promote optional checks into completion requirements
 
 ## Acceptance criteria
 
-- A required false check never creates a verification or evidence gate requirement
-- Tag-required evidence remains enforced unless that category is declared only by optional checks
+- A required false check never itself becomes a mandatory check
+- An optional check does not create an evidence requirement of its own
+- An optional check does not cancel independent requirements from risk, task type, classification tags, or explicit policy rules
+- deployment plus an optional live check still requires live evidence
+- release plus an optional live check still requires release policy evidence when the task is genuinely classified release
+- Task 0079 is not blocked by its optional workflow-review because 0079 is correctly not classified as a release operation
 - Required checks and legacy tasks keep existing behavior
-- Task 0079 can omit workflow-review without an independent gate blocker
 
 ## Correctness assumptions
 
-- Optional-only category declaration is an explicit opt-out from an additive tag category requirement
+- Optional checks are not policy overrides: required false removes only that check's own pass requirement, never an independent risk/type/tag evidence requirement
 
 ## Invariants
 
 - Optional verification metadata cannot become mandatory through category aggregation
+- Optional verification metadata cannot cancel risk/type/tag evidence requirements through category aggregation
 - Required verification and evidence categories remain candidate-bound and fail closed
 
 ## Required evidence
 
 - Focused regression proving missing optional live manual evidence does not block completion
+- Focused regression proving deployment and release tag live requirements remain blocking when only optional checks declare the category
 
 ## Review questions
 
 - Does the change preserve required release evidence while respecting explicit optionality?
+- Can any optional check still cancel a tag-derived evidence requirement?
 
 ## Counterexample searches
 
 - Required live release check
 - Missing required category declaration
 - Legacy command-only task
+- deployment and release tags with optional-only live declarations
 
 ## Verification
 

@@ -104,7 +104,7 @@ The repository now has:
 
 ## Next step
 
-Current task: 0094 - Do not promote optional checks into completion requirements (`doing`, owner `codex-corrective-0094`; implementation complete and canonical verification pending). Corrective Task 0093 is done; 0079 still needs a clean new baseline after 0094 closes the optional-evidence gate defect.
+Current task: 0094 - Do not promote optional checks into completion requirements (`doing`, owner `codex-corrective-0094`; semantic correction in progress: optional checks neither create nor cancel policy evidence requirements). Corrective Task 0093 is done; 0079 still needs a clean new baseline after 0094 closes the optional-evidence gate defect.
 
 Planned pre-release chain: 0074 -> 0077 capability contract -> 0078 APK-local quality guardrails -> 0079 clean-checkout CI -> 0075 frozen release validation. Tasks 0076 lock recovery and 0080 Task 0073 P2 fixes must also finish before 0075. New tasks stay `todo` with `Owner: none`.
 
