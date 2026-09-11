@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import assert from "node:assert/strict";
 import test from "node:test";
+import ts from "typescript";
 
 import { startWork } from "../core/work/index.js";
 import { resolveExecutionRoute } from "../core/execution/index.js";
@@ -1606,6 +1607,42 @@ test("CLI writes analytics summary in a temp repository", async () => {
   });
 });
 
+test("V16: CLI peer cases remain top-level across the sync boundary", async () => {
+  const source = await readFile(join(process.cwd(), "src/cli/cli.test.ts"), "utf8");
+  const sourceFile = ts.createSourceFile(
+    "src/cli/cli.test.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  const topLevelTestNames = new Set(sourceFile.statements.flatMap((statement) => {
+    if (
+      !ts.isExpressionStatement(statement)
+      || !ts.isCallExpression(statement.expression)
+      || !ts.isIdentifier(statement.expression.expression)
+      || statement.expression.expression.text !== "test"
+    ) {
+      return [];
+    }
+
+    const [name] = statement.expression.arguments;
+    return name && ts.isStringLiteral(name) ? [name.text] : [];
+  }));
+  const peerCases = [
+    "CLI task deps shows prerequisites and dependents",
+    "CLI task deps returns exit code 1 for unknown task",
+    "CLI task deps --help shows usage",
+    "CLI task verify --help shows usage",
+    "CLI task rejects unknown subcommand",
+    "CLI task deps shows no prerequisites for independent task",
+  ];
+
+  for (const name of peerCases) {
+    assert.ok(topLevelTestNames.has(name), `${name} must remain a top-level test declaration`);
+  }
+});
+
 test("CLI sync checks and writes generated files in a temp repository", async () => {
   await withTempDirectory(async (directory) => {
     const check = await runCli(["sync", "codex"], directory);
@@ -1619,6 +1656,7 @@ test("CLI sync checks and writes generated files in a temp repository", async ()
     assert.equal(recheck.exitCode, 0);
     assert.match(recheck.stdout, /Generated files are in sync/);
     assert.match(await readFile(join(directory, ".codex/instructions.md"), "utf8"), /# Codex Instructions/);
+  });
 });
 
 test("CLI task deps shows prerequisites and dependents", async () => {
@@ -1702,7 +1740,6 @@ test("CLI task deps shows no prerequisites for independent task", async () => {
     assert.equal(result.exitCode, 0);
     assert.match(result.stdout, /Prerequisites: none/);
     assert.match(result.stdout, /Dependents: none/);
-  });
   });
 });
 

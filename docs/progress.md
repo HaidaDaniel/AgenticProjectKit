@@ -104,7 +104,7 @@ The repository now has:
 
 ## Next step
 
-Current task: 0079 - Add minimal clean-checkout CI and release quality proof for AgenticProjectKit (`review`, owner `codex-corrective-0077`).
+Current task: 0079 - Add minimal clean-checkout CI and release quality proof for AgenticProjectKit (`review`, owner `codex-corrective-0077`). Corrective Task 0093 is done; 0079 still needs a clean new baseline after the optional-evidence gate correction.
 
 Planned pre-release chain: 0074 -> 0077 capability contract -> 0078 APK-local quality guardrails -> 0079 clean-checkout CI -> 0075 frozen release validation. Tasks 0076 lock recovery and 0080 Task 0073 P2 fixes must also finish before 0075. New tasks stay `todo` with `Owner: none`.
 
@@ -125,6 +125,7 @@ After the gated-workflow release foundation, Resource-Aware Execution proceeds t
 - Task 0077: done; vendor-neutral capability detection and explicit repository quality policy contracts.
 - Task 0091: done; corrective pass for the three bounded Task 0077 quality detector review findings, linked to completed 0077 and preceding 0078.
 - Task 0092: todo; implementation-ready consolidation of agent instruction exports around canonical `AGENTS.md`, independent of the active release and resource-aware branches.
+- Task 0093: done; restored test closure restored six independent top-level CLI cases, with V16 AST regression protection and Node 22/full-suite proof.
 - Task 0078: done; APK-local typecheck, lint, coverage, fast-quality, release-check and feedback-only hooks.
 - Task 0079: APK-local tooling -> clean-checkout CI.
 - Task 0075: final frozen-candidate release validation after 0074, 0076 and 0077-0080.
