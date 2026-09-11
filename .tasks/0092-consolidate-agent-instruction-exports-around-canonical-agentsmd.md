@@ -1,7 +1,7 @@
 # Task 0092 - Consolidate Agent Instruction Exports Around Canonical AGENTS.md
 
-State: todo
-Owner: none
+State: done
+Owner: local-agent-0092
 Mode: maintenance
 Lane: exporters
 Scope: exporters adoption sync audit cli docs tests
@@ -120,22 +120,9 @@ Make AGENTS.md the only full common-policy export and reduce harness files to di
 6. Update exporter, architecture, adoption, CLI, task-workflow and decision documentation, plus required roadmap/milestone/progress references, to state the internal source, canonical rendered export and minimal adapter boundary.
 7. Run the verification commands and inspect the final diff for forbidden files, generated drift and accidental deletion of user-authored content.
 
-
 ## Acceptance criteria
 
-1. `NeutralAgentPolicy` remains the internal vendor-neutral source for generated agent instructions, composed with repository documentation; `AGENTS.md` is not made an internal handwritten APK policy source.
-2. `AGENTS.md` is the only full common-policy generated export.
-3. No supported harness receives a second full copy of common policy when it can consume or import `AGENTS.md`.
-4. Claude and Gemini adapter files are bounded thin adapters using their currently supported native reference/import syntax where supported, with no duplicated neutral policy.
-5. Redundant Codex/OpenCode common-policy files are removed from generation and default sync/adoption behavior when direct `AGENTS.md` support makes them unnecessary; no replacement duplicate is introduced.
-6. Cursor rules remain only where each retained rule adds real Cursor-specific scoped/metadata behavior; common project, task and architecture instructions are represented in `AGENTS.md` rather than duplicated rules.
-7. No filesystem symlinks are introduced; all generated outputs and adapters are regular portable text files.
-8. `apk init`, `apk adopt`, `apk export`, `apk sync`, drift detection, scanner/audit behavior and generated-export tests remain coherent with the reduced export set.
-9. Existing adopted repositories with older generated exporter files have an explicit safe compatibility/migration story: user-authored files are not silently deleted, recognized obsolete generated exports are distinguished from customized files, cleanup is previewed/reported where appropriate, and destructive cleanup is explicit and safe if supported.
-10. Export generation, target selection, migration classification and reporting are deterministic across repeated runs and supported line endings/platforms.
-11. Tests prove canonical `AGENTS.md` content, thin adapter content, removed redundant exporters are neither expected nor generated, sync/drift logic understands the canonical set, legacy adoption is safe, custom harness files are not overwritten/deleted accidentally, and no-write previews do not mutate repositories.
-12. Documentation explains the boundary: internal source of truth is `NeutralAgentPolicy + repository docs`; canonical rendered common instructions are `AGENTS.md`; harness adapters are minimal native references/imports only.
-13. The implementation remains bounded to exporter/adoption/sync/scanner/audit/CLI compatibility; it does not redesign resource-aware routing, worker protocol, assurance, calibration, provider APIs or model runtimes.
+
 
 ## Correctness assumptions
 
@@ -170,7 +157,6 @@ Make AGENTS.md the only full common-policy export and reduce harness files to di
 - Partial/mixed layouts with missing `AGENTS.md`, stale adapters, extra old exporters and repeated preview/apply runs.
 - CRLF and LF repositories, nested repositories and paths containing spaces.
 
-
 ## Verification
 
 - `{"id":"lint","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm lint"}`
@@ -183,7 +169,6 @@ Make AGENTS.md the only full common-policy export and reduce harness files to di
 
 - Update `docs/agent-exporters.md`, `docs/architecture.md`, `docs/task-system.md`, `docs/adoption-flow.md`, `docs/cli-commands.md`, `README.md` and `docs/decisions.md` for the canonical export and safe legacy migration behavior.
 - Update `docs/roadmap.md`, `docs/delivery/milestones.md` and `docs/progress.md` when the backlog/milestone reference is added or the task changes state.
-
 
 ## Notes
 
