@@ -21,6 +21,8 @@ When Agentic Project Kit is installed as a repository dev dependency, run comman
 - `apk mode <mode>` - set or inspect the current operating mode.
 - `apk resources [--json]` - render the optional secret-free model, harness, and executable worker registry without probing providers.
 - `apk resources detect [--json]` - deterministic read-only inventory of declared resources, local harness markers, and quality capabilities with a stable fingerprint.
+- `apk attention [--json]` - bounded, priority-ordered semantic attention queue derived from task/gate/review/policy/resource state; never claims live process facts.
+- `apk workers [--json]` - declared workers with semantic `ready`/`busy`/`unknown` capacity from declared availability/capacity/occupancy.
 - `apk execution explain <task-id> --role <planning|implementation|review|fix|documentation|triage|verification> [--profile <local|constrained|balanced|abundant>] [--resource <worker-id>] [--json]` - explain a deterministic resource route without starting a worker.
 - `apk execution calibrate [--json]` - emit a bounded `apk-calibration-v1` planner package; `--recommendation <json> [--apply]` validates an external recommendation and applies it only on explicit request, preserving user overrides.
 - `apk next-task` - choose the next task to work on.

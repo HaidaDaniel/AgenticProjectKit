@@ -686,3 +686,19 @@ Detection must not read secrets, log in to providers, or mutate state, and an LL
 Implementation and invariant:
 
 `src/core/resources/detect.ts` performs local marker/quality detection only and reports occupancy, location, and endpoint references. `src/core/execution/calibrate.ts` builds the package (including a deterministic strongest-planning-worker selection), validates protocol/profile/role/worker identity/free-capacity/role-capability/local-profile/assurance-floor/budget and rejects secret-shaped values, and applies idempotently by merging only the `executionCalibration` key into the raw config so user keys are preserved. The config schema accepts an optional `executionCalibration` object. `apk execution explain` surfaces calibration provenance and staleness. No provider SDK, model runtime, secret manager, or remote executor is introduced.
+
+## ADR-0043 - Worker attention is a semantic projection, not process monitoring
+
+Status: accepted
+
+Decision:
+
+`apk attention` and `apk workers` are bounded projections over existing task, gate, review, policy, provenance, and resource records. `apk workers` derives `ready`/`busy`/`unknown` from declared availability, capacity, and occupancy; `apk attention` emits a deterministic priority-ordered queue with task, state, owner, reason, blockers, assurance, review budget, and next action. Neither polls processes nor claims live PID/token/terminal/SSH state; machine-readable output stays runtime-neutral.
+
+Reason:
+
+Attention must remain meaningful without an external runtime and must not fabricate live-process knowledge APK cannot prove. Reusing canonical status/gate/policy keeps one source of truth and avoids a second state store, daemon, or scheduler.
+
+Implementation and invariant:
+
+`src/core/status/attention.ts` builds both views from `summarizeStatus` and `resolveTaskPolicy`; `src/cli/commands/attention.ts` and `workers.ts` expose human/JSON output. An external runtime owns PTY, persistent shells, detach/reattach, process lifetime, remote connectivity, and operator navigation (ADR-0039).

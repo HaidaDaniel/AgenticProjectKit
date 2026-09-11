@@ -337,6 +337,54 @@ test("CLI execution explain keeps --json valid with saved calibration", async ()
   });
 });
 
+test("CLI attention and workers project semantic state without live process claims", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(join(directory, ".agentic/config.json"), JSON.stringify({
+      schemaVersion: 2,
+      resources: {
+        models: [{ id: "model-a", roles: ["implementation"] }],
+        harnesses: [{ id: "harness-a", workerProtocols: ["apk-worker-v1"] }],
+        workers: [{
+          id: "worker-a",
+          modelId: "model-a",
+          harnessId: "harness-a",
+          location: "local",
+          billingMode: "free",
+          costClass: "local-free",
+          availability: "available",
+          capacity: 1,
+          occupied: 0,
+          capabilities: { roles: ["implementation"] },
+        }],
+      },
+    }), "utf8");
+    await writeFile(
+      join(directory, ".tasks", "0001-task.md"),
+      buildTaskMarkdown("0001", "Task", "doing", "codex-a"),
+      "utf8",
+    );
+
+    const workers = await runCli(["workers", "--json"], directory);
+    assert.equal(workers.exitCode, 0, `${workers.stdout}${workers.stderr}`);
+    const workerPayload = JSON.parse(workers.stdout) as {
+      workers: Array<{ id: string; state: string; capacity: number }>;
+    };
+    assert.equal(workerPayload.workers[0]?.id, "worker-a");
+    assert.equal(workerPayload.workers[0]?.state, "ready");
+    assert.doesNotMatch(workers.stdout, /pid|process|terminal|ssh/i);
+
+    const attention = await runCli(["attention", "--json"], directory);
+    assert.equal(attention.exitCode, 0, `${attention.stdout}${attention.stderr}`);
+    const attentionPayload = JSON.parse(attention.stdout) as {
+      items: Array<{ taskId: string; priority: string; assurance: string }>;
+    };
+    assert.ok(Array.isArray(attentionPayload.items));
+    assert.ok(attentionPayload.items.some((item) => item.taskId === "0001"));
+  });
+});
+
 test("CLI adopt previews legacy migration without writes and applies it idempotently", async () => {
   await withTempDirectory(async (directory) => {
     await cp(

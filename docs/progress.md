@@ -106,6 +106,7 @@ The repository now has:
 - Task 0092 makes `AGENTS.md` the only full common-policy export. Codex, OpenCode, and Cursor read it directly; `CLAUDE.md` and `GEMINI.md` are thin `@AGENTS.md` imports; `codex`/`opencode`/`cursor` remain compatibility aliases resolving to `AGENTS.md`. Obsolete `.codex/instructions.md`, `.opencode/AGENTS.md`, and `.cursor/rules/*.mdc` files are no longer generated and have a read-only report plus explicit exact-content cleanup that preserves customized files.
 - Corrective Task 0098 fixes a task round-trip defect found during 0092: task list sections now accept both bullet and numbered items, so numbered acceptance criteria are no longer dropped when a claimed task is re-rendered.
 - Task 0086 adds `apk resources detect` (deterministic, read-only, secret-free inventory with a stable fingerprint) and `apk execution calibrate` (bounded `apk-calibration-v1` planner package, deterministic validation, explicit idempotent apply that preserves user overrides and records inventory provenance).
+- Task 0087 adds `apk attention` and `apk workers`: a bounded, deterministic, priority-ordered semantic attention queue and declared worker capacity view derived from existing status/gate/review/policy/resource state, with no daemon, polling, or live-process claims.
 
 ## Next step
 
@@ -140,7 +141,8 @@ After the gated-workflow release foundation, Resource-Aware Execution proceeds t
 - Task 0085: done; canonical assurance levels, escalation triggers, critical risk, and bounded review budget projection.
 - Task 0077: done; shared read-only quality capability detection, optional explicit policy, and `quality detect` CLI projection. Canonical lint/test/build, CLI smoke, doctor, independent review, gate, and done evidence passed.
 - Task 0086: done; deterministic, read-only, secret-free resource detection plus validated `apk-calibration-v1` calibration with explicit idempotent apply; reuses 0077 quality-capability output.
-- Tasks 0087-0088: remaining worker attention/status after 0085, then optional safe isolated Git workspaces; 0087 remains independent of 0086.
+- Task 0087: done; bounded semantic attention/status (`apk attention`, `apk workers`) over existing records, runtime-neutral and independent of calibration.
+- Task 0088: remaining optional safe isolated Git workspaces for parallel top-level workers; depends on 0087.
 - Contracts extend existing task verify, templates, graph validation, context, sync and work loop.
 - Task links and dependency graph: [delivery milestones](delivery/milestones.md#next-gated-workflow-release-planned).
 - Task 0092 is done and depends on completed exporter/sync, contract-lint, adoption-compatibility and generated-policy foundations (`0029`, `0040`, `0066`, `0074`, `0081`); it did not block unrelated release work.

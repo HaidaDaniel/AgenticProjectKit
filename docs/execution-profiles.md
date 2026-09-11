@@ -282,7 +282,7 @@ Resource-aware parallelism initially means capacity-aware routing, queue/wait de
 
 ## Attention and isolated workspaces
 
-Task 0087 extends current status and provenance into a bounded CLI attention view: worker ready/busy/unknown, current task/run, blocked, needs-human, completed, review findings, scarce-lane occupancy, and exact next actions. It is a projection over existing canonical records, not a new state store or dashboard.
+Task 0087 extends current status and provenance into a bounded CLI attention view. `apk attention [--json]` emits a deterministic, priority-ordered queue derived from existing task, gate, review, policy, and resource state, with task/run, reason, blockers, assurance, review-budget, and next action. `apk workers [--json]` reports declared workers with semantic `ready`/`busy`/`unknown` capacity from declared availability/capacity/occupancy. It is a projection over existing canonical records, not a new state store, daemon, poller, or dashboard, and it never claims live process facts.
 
 Attention is semantic and runtime-neutral. APK may report that a task requires review, verification is stale, a dependency is blocked, a budget is exhausted, assurance is unavailable, a human decision is needed, a task is completed/failed/stale, or a run/session record is missing or unknown. APK must not assert live process facts it cannot prove — PID liveness, an agent actively generating tokens, a responsive terminal, a live SSH connection, or a physically idle agent — unless an external runtime supplies that evidence. Machine-readable output stays runtime-neutral: `apk status`, `apk workers`, and `apk attention`.
 

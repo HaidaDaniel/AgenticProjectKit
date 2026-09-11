@@ -1,7 +1,7 @@
 # Task 0087 - Worker Attention and Resource Status
 
-State: todo
-Owner: none
+State: doing
+Owner: local-agent-0087
 Mode: product
 Lane: developer-experience
 Scope: workers,status,attention,resources,provenance,cli,tests,docs
@@ -67,7 +67,6 @@ Extend the CLI control plane with bounded worker occupancy and human attention s
 3. Expose the smallest coherent CLI surface and matching JSON output without adding a daemon, dashboard, or duplicate telemetry store.
 4. Add fixture regressions for free/busy/scarce workers, completed/stale/orphaned runs, blockers, review findings, and deterministic attention ordering.
 
-
 ## Acceptance criteria
 
 - Output shows registered workers/resources, capability/cost class, declared parallel capacity, free/busy/unknown slots, scarce-lane occupancy, and current task/run where known.
@@ -83,7 +82,6 @@ Extend the CLI control plane with bounded worker occupancy and human attention s
 - Existing `apk status` remains compatible. `apk workers`/`apk attention` may be dedicated views only if they reuse one shared projection.
 - Tests cover capacity greater than one, one busy frontier slot, concurrent local/deterministic work, blocked and needs-human items, stale sessions, review findings, no-resource legacy config, and stable output limits.
 
-
 ## Verification
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm lint"}`
@@ -93,7 +91,6 @@ Extend the CLI control plane with bounded worker occupancy and human attention s
 ## Documentation updates
 
 - Update execution-profile, architecture, task-system, CLI, README, decisions, and progress docs for implemented status and attention semantics.
-
 
 ## Notes
 
