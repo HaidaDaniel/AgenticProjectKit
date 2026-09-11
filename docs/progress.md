@@ -114,7 +114,7 @@ Tasks 0093-0096 and 0079 are done, and Task 0075 is `done` after frozen-candidat
 
 Planned pre-release chain: 0074 -> 0077 capability contract -> 0078 APK-local quality guardrails -> 0079 clean-checkout CI -> 0075 frozen release validation. Tasks 0076 lock recovery and 0080 Task 0073 P2 fixes must also finish before 0075. New tasks stay `todo` with `Owner: none`.
 
-After the gated-workflow release foundation, Resource-Aware Execution proceeds through 0083 -> 0084 -> 0085 -> 0086 (calibration, also consuming 0077). The remaining work is 0087 semantic attention/status and then 0088 optional safe isolated worktrees. Task 0097 aligned the external-runtime boundary before implementation; this milestone does not add dependencies to 0075 or the independent 0077-0079 quality chain.
+After the gated-workflow release foundation, Resource-Aware Execution proceeds through 0083 -> 0084 -> 0085 -> 0086 (calibration, also consuming 0077) -> 0087 (semantic attention/status). The remaining work is 0088 optional safe isolated worktrees, which the boundary Task 0097 constrained to safe Git worktree ownership/lifecycle only. This milestone does not add dependencies to 0075 or the independent 0077-0079 quality chain.
 
 0074 dependency on completed 0073 was added after 0074 entered `doing`. Recorded owner/state/baseline were not reset. Historical start before 0073 terminal transition remains visible; final release validation must assess integrated candidate rather than treat retroactive edge as historical gate proof.
 
