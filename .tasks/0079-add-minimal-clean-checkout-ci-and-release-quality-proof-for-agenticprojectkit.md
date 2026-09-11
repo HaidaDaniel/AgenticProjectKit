@@ -8,7 +8,7 @@ Scope: ci,quality,release,docs
 Risk: high
 Parallel: false
 Depends on: 0078
-Tags: ci,quality,release,clean-checkout
+Tags: ci,quality,clean-checkout
 
 ## Goal
 

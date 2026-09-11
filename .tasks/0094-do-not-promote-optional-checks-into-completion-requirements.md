@@ -1,6 +1,6 @@
 # Task 0094 - Do not promote optional checks into completion requirements
 
-State: doing
+State: done
 Owner: codex-corrective-0094
 Mode: production
 Lane: quality
