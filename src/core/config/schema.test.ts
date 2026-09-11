@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -265,6 +265,32 @@ test("parseAgenticConfig accepts an optional generated execution calibration", (
     }),
     /executionProfile must be one of/,
   );
+  assert.throws(
+    () => parseAgenticConfig({
+      executionCalibration: {
+        profile: "constrained",
+        inventoryFingerprint: "abc",
+        generatedAt: "x",
+        planner: "p",
+        routes: {},
+        assuranceMinimum: "not-a-level",
+      },
+    }),
+    /assuranceMinimum must be one of/,
+  );
+  assert.throws(
+    () => parseAgenticConfig({
+      executionCalibration: {
+        profile: "constrained",
+        inventoryFingerprint: "abc",
+        generatedAt: "x",
+        planner: "p",
+        routes: {},
+        budget: { maxReviewPasses: 0 },
+      },
+    }),
+    /maxReviewPasses must be at least 1/,
+  );
 });
 
 test("detectResourceInventory is deterministic, marker-aware, and secret-free", async () => {
@@ -315,6 +341,7 @@ test("validateCalibrationRecommendation rejects unknown, secret-shaped, and malf
             costClass: "scarce-frontier",
             capabilities: { roles: ["planning"], workerProtocols: ["apk-worker-v1"] },
           }),
+          worker("endpoint-worker", { endpoint: "https://user:password123@example.com/v1" }),
         ],
       },
     }), "utf8");
@@ -324,6 +351,12 @@ test("validateCalibrationRecommendation rejects unknown, secret-shaped, and malf
     assert.equal(pkg.workerProtocol, "apk-worker-v1");
     assert.equal(pkg.recommendedPlanningWorker, "planner-worker");
     assert.ok(pkg.resources.some((resource) => resource.id === "local-worker"));
+
+    const endpointWorker = inventory.resources.find((resource) => resource.id === "endpoint-worker");
+    assert.ok(endpointWorker);
+    assert.equal(endpointWorker?.endpoint, undefined);
+    assert.doesNotMatch(JSON.stringify(inventory), /password123/);
+    assert.doesNotMatch(JSON.stringify(pkg), /password123/);
 
     const good = validateCalibrationRecommendation({
       protocol: "apk-calibration-v1-result",
@@ -430,6 +463,7 @@ test("applyExecutionCalibration preserves user overrides and is idempotent", asy
   await withTempDirectory(async (directory) => {
     await writeCalibrationRepo(directory, {
       executionOverrides: { resourceId: "local-worker", allowProfileBypass: true },
+      customTopLevel: "keep-me",
     });
     const inventory = await detectResourceInventory(directory);
     const recommendation = {
@@ -446,6 +480,11 @@ test("applyExecutionCalibration preserves user overrides and is idempotent", asy
     assert.equal(reread.executionOverrides?.allowProfileBypass, true);
     assert.equal(reread.executionCalibration?.inventoryFingerprint, inventory.fingerprint);
     assert.equal(reread.resources?.workers[0]?.id, "local-worker");
+
+    const rawConfig = JSON.parse(
+      await readFile(join(directory, ".agentic", "config.json"), "utf8"),
+    ) as Record<string, unknown>;
+    assert.equal(rawConfig.customTopLevel, "keep-me");
 
     const second = await applyExecutionCalibration(directory, recommendation, inventory);
     assert.equal(second.written, false);

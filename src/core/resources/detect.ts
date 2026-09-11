@@ -50,6 +50,17 @@ const HARNESS_MARKERS: readonly HarnessMarker[] = [
   { id: "cursor", paths: [".cursor"] },
 ];
 
+const ENDPOINT_SECRET_SHAPE = /(api[_-]?key|secret|token|password|credential|bearer|private[_-]?key)/i;
+const ENDPOINT_USERINFO_SHAPE = /\/\/[^/@\s]+:[^/@\s]*@/;
+
+/** Endpoints are reported only when they carry no credential-shaped content. */
+function sanitizeEndpoint(endpoint: string): string | undefined {
+  if (ENDPOINT_SECRET_SHAPE.test(endpoint) || ENDPOINT_USERINFO_SHAPE.test(endpoint)) {
+    return undefined;
+  }
+  return endpoint;
+}
+
 async function exists(path: string): Promise<boolean> {
   try {
     await access(path);
@@ -101,7 +112,7 @@ function declaredResources(registry: ResourceRegistry): DetectedResource[] {
       capacity: worker.capacity,
       occupied: worker.occupied,
       location: worker.location,
-      ...(worker.endpoint ? { endpoint: worker.endpoint } : {}),
+      ...(worker.endpoint && sanitizeEndpoint(worker.endpoint) ? { endpoint: worker.endpoint } : {}),
       available: worker.availability === "available",
       source: "config.resources.workers",
     });

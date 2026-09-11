@@ -118,13 +118,27 @@ export async function runExecutionCommand(argv: string[]): Promise<number> {
       ...(complexityValue === undefined ? {} : { complexity: complexityValue as ExecutionComplexity }),
       ...(override === undefined ? {} : { override }),
     });
-    console.log(renderExecutionRoute(route, argv.includes("--json")));
+    const json = argv.includes("--json");
+    let calibrationStatus: string | undefined;
     if (config.executionCalibration) {
       const inventory = await detectResourceInventory(rootDirectory);
-      const stale = config.executionCalibration.inventoryFingerprint !== inventory.fingerprint;
+      calibrationStatus = config.executionCalibration.inventoryFingerprint === inventory.fingerprint ? "current" : "stale";
+    }
+
+    if (json) {
+      const payload = JSON.parse(renderExecutionRoute(route, true)) as Record<string, unknown>;
+      if (config.executionCalibration) {
+        payload.calibration = { ...config.executionCalibration, status: calibrationStatus };
+      }
+      console.log(JSON.stringify(payload, null, 2));
+      return 0;
+    }
+
+    console.log(renderExecutionRoute(route, false));
+    if (config.executionCalibration) {
       console.log(
         `Calibration: profile=${config.executionCalibration.profile} planner=${config.executionCalibration.planner}`
-        + ` fingerprint=${config.executionCalibration.inventoryFingerprint}${stale ? " (stale: inventory changed)" : " (current)"}`,
+        + ` fingerprint=${config.executionCalibration.inventoryFingerprint} (${calibrationStatus})`,
       );
     }
     return 0;

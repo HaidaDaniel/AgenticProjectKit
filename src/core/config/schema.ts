@@ -125,6 +125,10 @@ function readQualityPolicy(value: unknown, issues: string[]): QualityPolicy | un
   };
 }
 
+// Same canonical assurance vocabulary as the execution policy; duplicated here
+// only to keep the config parser free of a runtime cycle with calibrate.ts.
+const CALIBRATION_ASSURANCE_LEVELS = ["none", "self-check", "fresh-context", "independent", "diverse"] as const;
+
 function readExecutionCalibration(
   value: unknown,
   issues: string[],
@@ -167,8 +171,11 @@ function readExecutionCalibration(
   let assuranceMinimum: string | undefined;
   if (value.assuranceMinimum !== undefined) {
     const level = asString(value.assuranceMinimum);
-    if (!level) issues.push("executionCalibration.assuranceMinimum must be a non-empty string.");
-    else assuranceMinimum = level;
+    if (!level || !(CALIBRATION_ASSURANCE_LEVELS as readonly string[]).includes(level)) {
+      issues.push(`executionCalibration.assuranceMinimum must be one of: ${CALIBRATION_ASSURANCE_LEVELS.join(", ")}.`);
+    } else {
+      assuranceMinimum = level;
+    }
   }
 
   let budget: ExecutionCalibration["budget"];
@@ -182,6 +189,8 @@ function readExecutionCalibration(
         if (raw === undefined) continue;
         if (typeof raw !== "number" || !Number.isInteger(raw) || raw < 0) {
           issues.push(`executionCalibration.budget.${field} must be a non-negative integer.`);
+        } else if (field === "maxReviewPasses" && raw < 1) {
+          issues.push("executionCalibration.budget.maxReviewPasses must be at least 1.");
         } else {
           parsed[field] = raw;
         }

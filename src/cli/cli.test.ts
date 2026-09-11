@@ -314,6 +314,29 @@ test("CLI execution calibrate validates and applies a recommendation", async () 
   });
 });
 
+test("CLI execution explain keeps --json valid with saved calibration", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(join(directory, ".tasks", "0001-task.md"), buildTaskMarkdown("0001", "Task", "todo"), "utf8");
+    await writeFile(join(directory, ".agentic/config.json"), JSON.stringify({
+      schemaVersion: 2,
+      executionCalibration: {
+        profile: "constrained",
+        inventoryFingerprint: "deadbeef",
+        generatedAt: "2026-01-01T00:00:00Z",
+        planner: "codex",
+        routes: { implementation: "worker-a" },
+      },
+    }), "utf8");
+
+    const result = await runCli(["execution", "explain", "0001", "--role", "implementation", "--json"], directory);
+    assert.equal(result.exitCode, 0, `${result.stdout}${result.stderr}`);
+    const payload = JSON.parse(result.stdout) as { calibration?: { status?: string } };
+    assert.equal(payload.calibration?.status, "stale");
+  });
+});
+
 test("CLI adopt previews legacy migration without writes and applies it idempotently", async () => {
   await withTempDirectory(async (directory) => {
     await cp(
