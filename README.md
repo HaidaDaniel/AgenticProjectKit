@@ -662,6 +662,12 @@ The APK-local guardrail toolchain supports Node.js `>=22.22.1`.
 
 Pre-commit runs lint-staged source lint. Pre-push runs fast quality, coverage, and build. Hooks are feedback only: they cannot satisfy `apk task verify`, independent review, CI, release, or the completion gate. For an intentional exceptional bypass use `git commit --no-verify` or Husky's supported `HUSKY=0` disable path.
 
+### Clean-checkout CI
+
+`.github/workflows/quality.yml` runs one bounded Ubuntu job for pull requests and pushes to `main`. It checks out the event SHA, installs Node.js `22.22.1` and pnpm `10.28.1` with `pnpm install --frozen-lockfile`, then runs `pnpm quality`, `pnpm test:coverage`, `pnpm build`, `pnpm release:check`, `apk lint --json`, check-only `apk sync`, and report-writing `apk audit`. The disposable runner rejects tracked or unexpected untracked drift after the checks.
+
+Hosted CI proves clean-checkout reproducibility for its exact SHA. It does not create APK task evidence, replace `apk task verify`/review/gate, or prove the frozen release candidate; Task 0075 records any exact-SHA CI URL/status separately without GitHub API coupling. Adopted repositories receive no workflow from APK.
+
 ### Scenario 6: Move from MVP to product work
 
 Use this after the first v0.1 scope is ready and the next work should focus on improving the product rather than proving the basic shape.

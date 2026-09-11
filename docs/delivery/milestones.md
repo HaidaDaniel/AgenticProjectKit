@@ -30,7 +30,7 @@
 
 ## Next gated-workflow release (planned)
 
-Tasks 0057-0073, 0076, 0080, and 0081: done. Task 0074: doing. Tasks 0075 and 0077-0079: planned `todo`, unowned. Milestone numbering below belongs to this release; earlier milestones remain historical.
+Tasks 0057-0074, 0076, 0077, 0078, 0080, and 0081: done. Task 0079: review. Task 0075 remains planned `todo`, unowned. Milestone numbering below belongs to this release; earlier milestones remain historical.
 
 APK remains model-agnostic repository-first control plane. External harnesses own model execution; APK owns task contracts, verification, scope, evidence, review and completion.
 
@@ -145,3 +145,9 @@ Each row lists direct prerequisites; all IDs numeric. Release validation include
 ```
 
 The ordering is A -> B -> adaptive assurance, after which calibration and attention can proceed independently; workspaces remain downstream of attention. `constrained` is the reference profile. Deterministic checks precede optional semantic review, frontier review loops are bounded, and an unmet mandatory assurance level remains a visible blocker.
+
+## Exporter consolidation (planned maintenance)
+
+- [0092 - Consolidate agent instruction exports around canonical `AGENTS.md`](../../.tasks/0092-consolidate-agent-instruction-exports-around-canonical-agentsmd.md)
+
+This bounded follow-up depends on completed exporter/sync, contract-lint, adoption-compatibility and generated-policy foundations (`0029`, `0040`, `0066`, `0074`, `0081`). It is independent of the active release task and the Resource-Aware Execution implementation chain.

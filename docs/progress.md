@@ -104,7 +104,7 @@ The repository now has:
 
 ## Next step
 
-Current task: 0079 - Add minimal clean-checkout CI and release quality proof for AgenticProjectKit (`todo`, owner `none`).
+Current task: 0079 - Add minimal clean-checkout CI and release quality proof for AgenticProjectKit (`review`, owner `codex-corrective-0077`).
 
 Planned pre-release chain: 0074 -> 0077 capability contract -> 0078 APK-local quality guardrails -> 0079 clean-checkout CI -> 0075 frozen release validation. Tasks 0076 lock recovery and 0080 Task 0073 P2 fixes must also finish before 0075. New tasks stay `todo` with `Owner: none`.
 
@@ -124,6 +124,7 @@ After the gated-workflow release foundation, Resource-Aware Execution proceeds t
 - Task 0073: Harness Interoperability complete.
 - Task 0077: done; vendor-neutral capability detection and explicit repository quality policy contracts.
 - Task 0091: done; corrective pass for the three bounded Task 0077 quality detector review findings, linked to completed 0077 and preceding 0078.
+- Task 0092: todo; implementation-ready consolidation of agent instruction exports around canonical `AGENTS.md`, independent of the active release and resource-aware branches.
 - Task 0078: done; APK-local typecheck, lint, coverage, fast-quality, release-check and feedback-only hooks.
 - Task 0079: APK-local tooling -> clean-checkout CI.
 - Task 0075: final frozen-candidate release validation after 0074, 0076 and 0077-0080.
@@ -136,6 +137,7 @@ After the gated-workflow release foundation, Resource-Aware Execution proceeds t
 - Tasks 0087-0088: later worker attention/status after 0085, then optional safe isolated Git workspaces; 0087 remains independent of 0086.
 - Contracts extend existing task verify, templates, graph validation, context, sync and work loop.
 - Task links and dependency graph: [delivery milestones](delivery/milestones.md#next-gated-workflow-release-planned).
+- Task 0092 depends on completed exporter/sync, contract-lint, adoption-compatibility and generated-policy foundations (`0029`, `0040`, `0066`, `0074`, `0081`); it remains `todo`/unowned and does not block unrelated release work.
 
 ## Notes
 

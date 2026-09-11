@@ -44,7 +44,7 @@
 
 ## Next gated-workflow release (planned)
 
-Tasks 0057-0081 preserve repository-first, model-agnostic control-plane direction. `done` becomes evidence-backed completion; external coding harnesses remain workers. Tasks 0057-0073, 0076, 0080, and 0081 are complete; 0074 is doing; 0075 and 0077-0079 remain planned.
+Tasks 0057-0081 preserve repository-first, model-agnostic control-plane direction. `done` becomes evidence-backed completion; external coding harnesses remain workers. Tasks 0057-0074, 0076-0078, 0080, and 0081 are complete; 0079 is review; 0075 remains planned.
 
 | Milestone | Tasks | Capability |
 | --- | --- | --- |
@@ -91,3 +91,7 @@ Tasks 0077-0079 remain an independent quality/release chain and do not wait for 
 The milestone retains the existing independent-review capability while making its use risk-, trigger-, resource-, and budget-aware. In particular, a constrained medium-risk task does not automatically require a second frontier run. Deterministic checks run before semantic review, and required but unavailable assurance remains an explicit gate/attention state.
 
 This milestone does not implement an LLM runtime, provider SDK layer, secret manager, autonomous swarm, always-on master LLM, cloud control plane, dashboard/SaaS, remote execution platform, billing system, or generic scheduler.
+
+## Exporter consolidation (planned maintenance)
+
+Task 0092 is a high-value maintenance task to make `AGENTS.md` the only full common-policy generated export and reduce other harness files to direct consumption or minimal native adapters. It depends on completed exporter, sync, contract-lint, adoption-compatibility and generated-policy foundations (`0029`, `0040`, `0066`, `0074`, `0081`) and does not block the release or Resource-Aware Execution branches.

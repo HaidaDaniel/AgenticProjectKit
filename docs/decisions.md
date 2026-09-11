@@ -474,6 +474,27 @@ Reason:
 
 APK needs maintained local source-quality feedback while adopted repositories remain toolchain-neutral. Dev dependencies, hooks, and scripts are not installed, generated, or mandated by `init`, `adopt`, templates, or quality detection. Hook success is non-authoritative developer feedback; task verification, review, gate, CI, and release evidence remain separate.
 
+## ADR-0036 - Clean-checkout CI proves repository reproducibility only
+
+Status: accepted
+
+Decision:
+
+Use one GitHub Actions workflow for AgenticProjectKit pull requests and `main` pushes. Pin Node.js `22.22.1` and pnpm `10.28.1`, install with `pnpm install --frozen-lockfile`, bind the job to `GITHUB_SHA`, and run the 0078 quality/release scripts plus read-only `apk lint --json`/`apk sync` and report-writing `apk audit`. Run audit on the disposable CI checkout and fail on tracked or unexpected untracked drift.
+
+Proof boundary:
+
+- local hooks: developer feedback;
+- APK verify/review/gate: candidate-bound task proof;
+- CI: clean-checkout exact-SHA reproducibility;
+- Task 0075: frozen release-candidate validation.
+
+CI remains repository tooling, with no GitHub API coupling, credentials, publish, deployment, matrix, or adopted-repository workflow generation. Task 0075 may record hosted URL/status/SHA as separate evidence; CI success cannot satisfy another boundary.
+
+Reason:
+
+AgenticProjectKit needs one visible hosted reproducibility signal after local guardrails, while APK remains platform-neutral and target repositories remain unmodified by adoption.
+
 ## ADR-0031 - Local mutation locks use identity, not age, for recovery
 
 Status: accepted
