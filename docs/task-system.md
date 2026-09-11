@@ -58,6 +58,7 @@ Tags: mvp,api
 - A local PID confirmed absent is recovered automatically on mutation retry. Age over five minutes is diagnostic only and never authorizes stealing a live lock.
 - Foreign hosts, PID reuse/identity mismatch, unavailable liveness, and malformed metadata fail closed. Inspect with `apk task lock status`; after independently verifying no owner runs, use `apk task lock recover --kind <task|evidence> --force`.
 - Cleanup and recovery share a serialized recovery guard and recheck the caller's owner id before removal, so an old owner or competing recoverer cannot remove a successor lock. A responding local PID is `live` only when its observed process-start identity also matches.
+- Lock reads retry transient Windows `EPERM`/`EBUSY` contention four times with a bounded delay. Persistent unreadability still fails closed and is never projected as an absent lock.
 
 ## Automatic review orchestration
 

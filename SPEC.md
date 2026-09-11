@@ -44,6 +44,7 @@ V14: generated-file sync normalizes platform line endings before drift compariso
 V15: candidate-bound verifier default timeout exceeds the bounded runtime of declared release validation.
 V16: CLI peer tests after async sync case → SourceFile-level declarations; async parent ⊥ register unawaited peer tests.
 V17: check.required=false -> no verification/evidence gate requirement; optional-only category creates no requirement and never cancels a risk/type/tag requirement.
+V18: operational lock read `EPERM`|`EBUSY` -> bounded retry; persistent unreadability fails closed; ownership never inferred absent.
 
 ## §T
 
@@ -58,6 +59,7 @@ T7|.|run 0075 frozen release validation|V1,V2,V4,V6,V7,V8,V9,V10,V11,I.task,I.qu
 T8|x|build 0081 automatic independent-review orchestration instruction|V2,V12,I.task
 T9|x|fix 0093 Linux `node:test` CLI test isolation regression|V16,I.scripts,I.ci
 T10|x|fix 0094 optional-check evidence promotion|V17,I.task,I.evidence
+T11|x|fix 0095 transient Windows lock-read contention|V3,V18,I.task,I.evidence
 
 ## §B
 
@@ -69,3 +71,4 @@ B4|2026-09-10|candidate verify default timeout (120s) expired valid release-chec
 B5|2026-09-11|sync test missed outer closure → six peer tests nested/cancelled under Node 22|V16
 B6|2026-09-11|canonical coverage run exit 1 once; raw output unavailable; immediate full diagnostic PASS|retain failed evidence; rerun full candidate verification
 B7|2026-09-11|policy aggregated optional check metadata -> optional categories promoted into gate requirements; corrective over-removal then dropped tag-derived live/report requirements|optional checks neither create nor cancel policy evidence requirements|V17
+B8|2026-09-11|Windows transient `EPERM` reading recovery marker escaped lock contention loop|V18

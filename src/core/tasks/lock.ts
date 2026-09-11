@@ -39,6 +39,7 @@ export interface LocalLockRuntime {
   processLiveness?: (pid: number) => ProcessLiveness | Promise<ProcessLiveness>;
   processStartIdentity?: (pid: number) => string | undefined | Promise<string | undefined>;
   ownerId?: () => string;
+  readLockFile?: (path: string) => Promise<string>;
   beforePublish?: (path: string, metadata: LocalLockMetadata) => void | Promise<void>;
   beforeOwnedRemoval?: (path: string, metadata: LocalLockMetadata) => void | Promise<void>;
 }
@@ -61,6 +62,7 @@ interface ResolvedLocalLockRuntime {
   processLiveness: NonNullable<LocalLockRuntime["processLiveness"]>;
   processStartIdentity: NonNullable<LocalLockRuntime["processStartIdentity"]>;
   ownerId: () => string;
+  readLockFile: NonNullable<LocalLockRuntime["readLockFile"]>;
   beforePublish?: LocalLockRuntime["beforePublish"];
   beforeOwnedRemoval?: LocalLockRuntime["beforeOwnedRemoval"];
 }
@@ -68,6 +70,9 @@ interface ResolvedLocalLockRuntime {
 const execFileAsync = promisify(execFile);
 const PROCESS_START = new Date(Date.now() - process.uptime() * 1000).toISOString();
 const PROCESS_START_TOLERANCE_MS = 5_000;
+const LOCK_READ_MAX_ATTEMPTS = 4;
+const LOCK_READ_RETRY_MS = 5;
+const TRANSIENT_LOCK_READ_ERRORS = new Set(["EBUSY", "EPERM"]);
 
 function errorCode(error: unknown): string | undefined {
   return error && typeof error === "object" && "code" in error
@@ -111,6 +116,7 @@ function runtimeValues(runtime: LocalLockRuntime = {}): ResolvedLocalLockRuntime
     processLiveness: runtime.processLiveness ?? defaultProcessLiveness,
     processStartIdentity: runtime.processStartIdentity ?? defaultProcessStartIdentity,
     ownerId: runtime.ownerId ?? randomUUID,
+    readLockFile: runtime.readLockFile ?? ((path) => readFile(path, "utf8")),
     beforePublish: runtime.beforePublish,
     beforeOwnedRemoval: runtime.beforeOwnedRemoval,
   };
@@ -136,13 +142,21 @@ function isMetadata(value: unknown): value is LocalLockMetadata {
     && (metadata.taskId === undefined || typeof metadata.taskId === "string");
 }
 
-async function missingOrRead(path: string): Promise<string | undefined> {
-  try {
-    return await readFile(path, "utf8");
-  } catch (error: unknown) {
-    if (errorCode(error) === "ENOENT") return undefined;
-    throw error;
+async function missingOrRead(
+  path: string,
+  readLockFile: NonNullable<LocalLockRuntime["readLockFile"]> = (target) => readFile(target, "utf8"),
+): Promise<string | undefined> {
+  for (let attempt = 1; attempt <= LOCK_READ_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      return await readLockFile(path);
+    } catch (error: unknown) {
+      const code = errorCode(error);
+      if (code === "ENOENT") return undefined;
+      if (!TRANSIENT_LOCK_READ_ERRORS.has(code ?? "") || attempt === LOCK_READ_MAX_ATTEMPTS) throw error;
+      await wait(LOCK_READ_RETRY_MS);
+    }
   }
+  throw new Error("Unreachable lock read retry state.");
 }
 
 function parseMetadata(raw: string | undefined): LocalLockMetadata | undefined {
@@ -193,7 +207,7 @@ export async function inspectLocalLock(
   runtime: LocalLockRuntime = {},
 ): Promise<LocalLockInspection> {
   const values = runtimeValues(runtime);
-  const raw = await missingOrRead(path);
+  const raw = await missingOrRead(path, values.readLockFile);
   if (raw === undefined) return { path, state: "absent", reason: "lock does not exist", old: false };
 
   let parsed: unknown;
@@ -343,9 +357,9 @@ async function removeIfOwned(
   values: ResolvedLocalLockRuntime,
   invokeHook: boolean,
 ): Promise<boolean> {
-  if (!sameOwner(parseMetadata(await missingOrRead(path)), metadata)) return false;
+  if (!sameOwner(parseMetadata(await missingOrRead(path, values.readLockFile)), metadata)) return false;
   if (invokeHook) await values.beforeOwnedRemoval?.(path, metadata);
-  if (!sameOwner(parseMetadata(await missingOrRead(path)), metadata)) return false;
+  if (!sameOwner(parseMetadata(await missingOrRead(path, values.readLockFile)), metadata)) return false;
   await rm(path, { force: true });
   return true;
 }
@@ -491,9 +505,10 @@ export async function recoverLocalLock(
     return { recovered, inspection: await inspectLocalLock(options.path, options.runtime) };
   }
 
-  const expectedRaw = await missingOrRead(options.path);
+  const values = runtimeValues(options.runtime);
+  const expectedRaw = await missingOrRead(options.path, values.readLockFile);
   const recovered = await withRecoveryGuard(options, async () => {
-    if (await missingOrRead(options.path) !== expectedRaw) {
+    if (await missingOrRead(options.path, values.readLockFile) !== expectedRaw) {
       throw new Error("Lock changed while recovery was being prepared; inspect the new owner and retry.");
     }
     const current = await inspectLocalLock(options.path, options.runtime);

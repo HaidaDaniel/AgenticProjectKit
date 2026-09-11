@@ -503,6 +503,8 @@ Decision:
 
 Use one exclusive-file primitive for task lifecycle/create/archive and evidence append locks. Schema v1 binds a random owner id to PID, hostname, process-start identity, creation time, command, and optional task id. Publish complete metadata through a staged same-filesystem file plus atomic exclusive link. Recover automatically only when a same-host PID is confirmed absent; a responding PID must also match observed process-start identity, and TTL affects diagnostics only. Foreign-host, PID-reuse, unavailable-liveness, and malformed states fail closed behind explicit `apk task lock` inspection/recovery. Release and recovery use the same recovery guard and recheck owner identity before removal.
 
+Operational lock reads retry transient Windows `EPERM`/`EBUSY` access contention within a fixed four-attempt bound. Exhausted or unknown read failures propagate; unreadable ownership never becomes absence.
+
 Reason:
 
 Age-only stale detection can steal a live long-running command, while unconditional cleanup can delete a successor lock. Identity-bound cleanup plus serialized dead-owner recovery preserves local mutual exclusion and removes routine manual `.apk.lock` deletion after crashes.

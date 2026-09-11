@@ -1,7 +1,7 @@
 # Task 0095 - Tolerate transient Windows lock-read contention
 
-State: todo
-Owner: none
+State: done
+Owner: codex-autonomous-20260911
 Mode: production
 Lane: task-system
 Type: bugfix

@@ -605,6 +605,51 @@ test("task evidence serializes concurrent appenders without corrupting JSONL", a
   });
 });
 
+test("V18: lock reads retry bounded transient Windows contention", async () => {
+  const metadata: LocalLockMetadata = {
+    schema: 1,
+    ownerId: "owner-transient-read",
+    kind: "evidence-append-recovery",
+    pid: 100,
+    hostname: "test-host",
+    processStart: "2026-01-01T00:00:00.000Z",
+    created: "2026-01-01T00:00:00.000Z",
+  };
+  let reads = 0;
+  const runtime = {
+    hostname: "test-host",
+    pid: 100,
+    processStart: metadata.processStart,
+    now: () => Date.parse("2026-01-01T00:00:01.000Z"),
+    processLiveness: () => "alive" as const,
+    readLockFile: async () => {
+      reads += 1;
+      if (reads < 3) throw Object.assign(new Error("transient lock contention"), { code: "EPERM" });
+      return `${JSON.stringify(metadata)}\n`;
+    },
+  };
+
+  const inspection = await inspectLocalLock("virtual-lock", runtime);
+  assert.equal(inspection.state, "live");
+  assert.equal(reads, 3);
+
+  let persistentReads = 0;
+  await assert.rejects(
+    () => inspectLocalLock("virtual-lock", {
+      ...runtime,
+      readLockFile: async () => {
+        persistentReads += 1;
+        throw Object.assign(new Error("persistent lock contention"), { code: "EBUSY" });
+      },
+    }),
+    (error: unknown) => {
+      assert.equal((error as NodeJS.ErrnoException).code, "EBUSY");
+      return true;
+    },
+  );
+  assert.equal(persistentReads, 4);
+});
+
 test("local lock inspection keeps live, reused-PID, foreign-host, and malformed owners fail-closed", async () => {
   await withTempDirectory(async (directory) => {
     const lockPath = join(directory, ".tasks", ".apk.lock");
