@@ -303,6 +303,8 @@ Human output is the default. `apk task provenance <task-id> --json` returns the 
 
 `apk status --detail` expands each active task with policy classifications/categories, dependency lists, verification counters (including stale/unknown), scope counts, review reason, evidence freshness counts, bounded gate blockers, provenance baseline/candidate/worktree/run counts, and diagnostics. It does not include raw command output or full run logs. Scope is `unavailable` when candidate comparison is unknown; low-risk review is `not-required`; task-level provenance counts task-attributed files, while repository activity remains separate. Todo tasks are evaluated with an empty implementation path set so unrelated worktree changes do not make an unclaimed task appear to have implementation scope violations.
 
+`apk attention [--json]` and `apk workers [--json]` project the same canonical status/gate/review/policy/resource state into a bounded, runtime-neutral view. Attention items are priority-ordered with reason, blockers, assurance status, review state, run count, budget, and next action; worker state is semantic `ready`/`busy`/`unknown`/`unavailable` from declared capacity/occupancy/availability. Neither command polls processes or claims live PID, terminal, or SSH state.
+
 ## CLI work loop
 
 `pnpm exec apk work <task-id> --owner <agent-id> --target <agent>` connects the existing task workflow:

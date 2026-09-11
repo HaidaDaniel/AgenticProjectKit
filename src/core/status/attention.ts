@@ -10,6 +10,9 @@ import {
 export const ATTENTION_PRIORITIES = ["P1", "P2", "P3", "P4"] as const;
 export type AttentionPriority = (typeof ATTENTION_PRIORITIES)[number];
 
+export const WORKER_SEMANTIC_STATES = ["ready", "busy", "unknown", "unavailable"] as const;
+export type WorkerSemanticState = (typeof WORKER_SEMANTIC_STATES)[number];
+
 export interface WorkerAttentionEntry {
   id: string;
   modelId: string;
@@ -20,7 +23,7 @@ export interface WorkerAttentionEntry {
   capacity: number;
   occupied: number;
   /** Semantic capacity state; never a live process observation. */
-  state: "ready" | "busy" | "unknown";
+  state: WorkerSemanticState;
 }
 
 export interface AttentionItem {
@@ -33,6 +36,15 @@ export interface AttentionItem {
   nextAction: string;
   blockers: string[];
   assurance: string;
+  review: {
+    status: string;
+    reviewer?: string;
+    outcome?: string;
+  };
+  assuranceStatus: "satisfied" | "unavailable" | "not-required";
+  reviewEscalation: boolean;
+  needsHuman: boolean;
+  runs: number;
   reviewBudget: string;
 }
 
@@ -44,31 +56,31 @@ export interface AttentionView {
 
 const PRIORITY_RANK: Record<AttentionPriority, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
 
-function buildWorkers(summary: StatusSummary, registry: Awaited<ReturnType<typeof readAgenticConfigFile>>["resources"]): WorkerAttentionEntry[] {
+function workerState(worker: { availability: string; capacity: number; occupied: number }): WorkerSemanticState {
+  if (worker.availability === "unknown" || worker.availability === "unavailable") {
+    return worker.availability === "unknown" ? "unknown" : "unavailable";
+  }
+  return worker.capacity - worker.occupied <= 0 ? "busy" : "ready";
+}
+
+function buildWorkers(
+  registry: Awaited<ReturnType<typeof readAgenticConfigFile>>["resources"],
+): WorkerAttentionEntry[] {
   if (!registry || registry.workers.length === 0) {
     return [];
   }
-  void summary;
   return registry.workers
-    .map((worker) => {
-      const free = worker.capacity - worker.occupied;
-      const state: WorkerAttentionEntry["state"] = worker.availability === "unknown"
-        ? "unknown"
-        : free <= 0
-          ? "busy"
-          : "ready";
-      return {
-        id: worker.id,
-        modelId: worker.modelId,
-        harnessId: worker.harnessId,
-        location: worker.location,
-        availability: worker.availability,
-        costClass: worker.costClass,
-        capacity: worker.capacity,
-        occupied: worker.occupied,
-        state,
-      };
-    })
+    .map((worker) => ({
+      id: worker.id,
+      modelId: worker.modelId,
+      harnessId: worker.harnessId,
+      location: worker.location,
+      availability: worker.availability,
+      costClass: worker.costClass,
+      capacity: worker.capacity,
+      occupied: worker.occupied,
+      state: workerState(worker),
+    }))
     .sort((left, right) => left.id.localeCompare(right.id));
 }
 
@@ -100,23 +112,31 @@ function taskById(tasks: readonly ProjectTask[], id: string): ProjectTask | unde
   return tasks.find((task) => task.id === id);
 }
 
+function assuranceStatus(
+  independentReview: boolean,
+  review: ActiveTaskStatus["review"],
+): AttentionItem["assuranceStatus"] {
+  if (!independentReview) return "not-required";
+  return review.status === "current" && review.outcome === "pass" ? "satisfied" : "unavailable";
+}
+
 /**
  * Bounded, deterministic attention projection over existing status, gate,
- * review, policy, and resource state. It reports semantic facts only; it does
- * not poll processes or claim live worker state APK cannot prove.
+ * review, policy, provenance, and resource state. It reports semantic facts
+ * only; it does not poll processes or claim live worker state APK cannot prove.
  */
 export async function buildAttentionView(
   rootDirectory: string,
   taskDirectory: string,
 ): Promise<AttentionView> {
   const config = await readAgenticConfigFile(rootDirectory);
-  const summary = await summarizeStatus(rootDirectory);
+  const summary: StatusSummary = await summarizeStatus(rootDirectory);
   const taskFiles = await allTaskFiles(rootDirectory, taskDirectory);
   const activeTasks = taskFiles
     .map((file) => file.task)
     .filter((task) => ["doing", "review", "blocked"].includes(task.state));
 
-  const workers = buildWorkers(summary, config.resources);
+  const workers = buildWorkers(config.resources);
 
   const items: AttentionItem[] = summary.activeTasks
     .filter((status) => ["doing", "review", "blocked"].includes(status.state))
@@ -124,6 +144,9 @@ export async function buildAttentionView(
       const task = taskById(activeTasks, status.id);
       const policy = task ? resolveTaskPolicy(task) : undefined;
       const budget = policy?.requirements.reviewBudget;
+      const independentReview = Boolean(policy?.requirements.independentReview);
+      const assurance = assuranceStatus(independentReview, status.review);
+      const blockers = [...status.gate.blockers];
       return {
         taskId: status.id,
         title: status.title,
@@ -132,8 +155,18 @@ export async function buildAttentionView(
         priority: priorityFor(status),
         reason: reasonFor(status),
         nextAction: status.nextAction,
-        blockers: [...status.gate.blockers],
+        blockers,
         assurance: policy?.requirements.assurance ?? "legacy-compatible",
+        review: {
+          status: status.review.status,
+          ...(status.review.reviewer ? { reviewer: status.review.reviewer } : {}),
+          ...(status.review.outcome ? { outcome: status.review.outcome } : {}),
+        },
+        assuranceStatus: assurance,
+        reviewEscalation: independentReview && ["missing", "stale", "unknown"].includes(status.review.status),
+        needsHuman: blockers.some((blocker) => /needs-human|review budget exhausted/i.test(blocker))
+          || (assurance === "unavailable" && status.gate.status !== "pass"),
+        runs: status.provenance.runs,
         reviewBudget: budget ? `${budget.maxReviewPasses} passes/${budget.maxFrontierReviewPasses} frontier` : "legacy-compatible",
       };
     })
@@ -142,9 +175,10 @@ export async function buildAttentionView(
       || left.taskId.localeCompare(right.taskId)
     ));
 
-  const diagnostics = workers.length === 0
-    ? ["No declared resource registry; worker occupancy is unavailable."]
-    : [];
+  const diagnostics = [
+    ...summary.warnings,
+    ...(workers.length === 0 ? ["No declared resource registry; worker occupancy is unavailable."] : []),
+  ];
 
   return { workers, items, diagnostics };
 }
@@ -157,10 +191,12 @@ export function renderAttentionView(view: AttentionView, json = false): string {
     `Attention: ${view.items.length} item(s); workers: ${view.workers.length}`,
   ];
   for (const item of view.items) {
-    lines.push(`- [${item.priority}] ${item.taskId} (${item.state}/${item.owner}) ${item.reason} -> ${item.nextAction}`);
+    lines.push(`- [${item.priority}] ${item.taskId} "${item.title}" (${item.state}/${item.owner}) ${item.reason}`);
+    lines.push(`    next=${item.nextAction} assurance=${item.assurance} (${item.assuranceStatus}) review=${item.review.status} budget=${item.reviewBudget} runs=${item.runs}`);
+    lines.push(`    blockers=${item.blockers.length > 0 ? item.blockers.join(" | ") : "none"}`);
   }
   for (const worker of view.workers) {
-    lines.push(`- worker ${worker.id} ${worker.state} ${worker.occupied}/${worker.capacity} cost=${worker.costClass}`);
+    lines.push(`- worker ${worker.id} ${worker.state} ${worker.occupied}/${worker.capacity} ${worker.location} ${worker.availability} cost=${worker.costClass} model=${worker.modelId} harness=${worker.harnessId}`);
   }
   if (view.diagnostics.length > 0) {
     lines.push("Diagnostics:", ...view.diagnostics.map((diagnostic) => `  - ${diagnostic}`));
@@ -175,7 +211,7 @@ export function renderWorkersView(view: AttentionView, json = false): string {
   }
   const lines = [`Workers: ${view.workers.length}`];
   for (const worker of view.workers) {
-    lines.push(`- ${worker.id} ${worker.state} ${worker.occupied}/${worker.capacity} ${worker.location} ${worker.availability} cost=${worker.costClass}`);
+    lines.push(`- ${worker.id} ${worker.state} ${worker.occupied}/${worker.capacity} ${worker.location} ${worker.availability} cost=${worker.costClass} model=${worker.modelId} harness=${worker.harnessId}`);
   }
   if (view.diagnostics.length > 0) {
     lines.push("Diagnostics:", ...view.diagnostics.map((diagnostic) => `  - ${diagnostic}`));

@@ -58,7 +58,11 @@ Implemented commands:
 - `apk lint [--json]`
 - `apk tasks`
 - `apk resources [--json]`
+- `apk resources detect [--json]`
+- `apk attention [--json]`
+- `apk workers [--json]`
 - `apk execution explain <task-id> --role <role> [--profile <profile>] [--resource <worker-id>] [--json]`
+- `apk execution calibrate [--recommendation <json>] [--apply] [--json]`
 - `apk work <task-id> --owner <agent-id> --target <agent> [--resource <worker-id>] [--role implement|review|fix|verify] [--json]`
 - `apk claim`
 - `apk release`

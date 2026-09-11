@@ -346,18 +346,44 @@ test("CLI attention and workers project semantic state without live process clai
       resources: {
         models: [{ id: "model-a", roles: ["implementation"] }],
         harnesses: [{ id: "harness-a", workerProtocols: ["apk-worker-v1"] }],
-        workers: [{
-          id: "worker-a",
-          modelId: "model-a",
-          harnessId: "harness-a",
-          location: "local",
-          billingMode: "free",
-          costClass: "local-free",
-          availability: "available",
-          capacity: 1,
-          occupied: 0,
-          capabilities: { roles: ["implementation"] },
-        }],
+        workers: [
+          {
+            id: "worker-a",
+            modelId: "model-a",
+            harnessId: "harness-a",
+            location: "local",
+            billingMode: "free",
+            costClass: "local-free",
+            availability: "available",
+            capacity: 1,
+            occupied: 0,
+            capabilities: { roles: ["implementation"] },
+          },
+          {
+            id: "worker-b",
+            modelId: "model-a",
+            harnessId: "harness-a",
+            location: "local",
+            billingMode: "free",
+            costClass: "standard",
+            availability: "available",
+            capacity: 2,
+            occupied: 1,
+            capabilities: { roles: ["implementation"] },
+          },
+          {
+            id: "worker-c",
+            modelId: "model-a",
+            harnessId: "harness-a",
+            location: "remote",
+            billingMode: "free",
+            costClass: "scarce-frontier",
+            availability: "unavailable",
+            capacity: 1,
+            occupied: 0,
+            capabilities: { roles: ["review"] },
+          },
+        ],
       },
     }), "utf8");
     await writeFile(
@@ -371,17 +397,43 @@ test("CLI attention and workers project semantic state without live process clai
     const workerPayload = JSON.parse(workers.stdout) as {
       workers: Array<{ id: string; state: string; capacity: number }>;
     };
-    assert.equal(workerPayload.workers[0]?.id, "worker-a");
-    assert.equal(workerPayload.workers[0]?.state, "ready");
+    const stateById = Object.fromEntries(workerPayload.workers.map((worker) => [worker.id, worker.state]));
+    assert.equal(stateById["worker-a"], "ready");
+    assert.equal(stateById["worker-b"], "ready");
+    assert.equal(stateById["worker-c"], "unavailable");
     assert.doesNotMatch(workers.stdout, /pid|process|terminal|ssh/i);
 
     const attention = await runCli(["attention", "--json"], directory);
     assert.equal(attention.exitCode, 0, `${attention.stdout}${attention.stderr}`);
     const attentionPayload = JSON.parse(attention.stdout) as {
-      items: Array<{ taskId: string; priority: string; assurance: string }>;
+      items: Array<{ taskId: string; priority: string; assurance: string; assuranceStatus: string; runs: number }>;
     };
-    assert.ok(Array.isArray(attentionPayload.items));
-    assert.ok(attentionPayload.items.some((item) => item.taskId === "0001"));
+    const item = attentionPayload.items.find((entry) => entry.taskId === "0001");
+    assert.ok(item);
+    assert.ok(["satisfied", "unavailable", "not-required"].includes(item.assuranceStatus));
+    assert.equal(typeof item.runs, "number");
+
+    const reread = await runCli(["attention", "--json"], directory);
+    assert.equal(attention.stdout, reread.stdout);
+  });
+});
+
+test("CLI attention fails conservatively without a resource registry", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(join(directory, ".agentic/config.json"), JSON.stringify({ schemaVersion: 2 }), "utf8");
+    await writeFile(
+      join(directory, ".tasks", "0001-task.md"),
+      buildTaskMarkdown("0001", "Task", "doing", "codex-a"),
+      "utf8",
+    );
+
+    const attention = await runCli(["attention", "--json"], directory);
+    assert.equal(attention.exitCode, 0, `${attention.stdout}${attention.stderr}`);
+    const payload = JSON.parse(attention.stdout) as { diagnostics: string[]; workers: unknown[] };
+    assert.equal(payload.workers.length, 0);
+    assert.ok(payload.diagnostics.some((diagnostic) => /No declared resource registry/.test(diagnostic)));
   });
 });
 
