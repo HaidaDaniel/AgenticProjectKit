@@ -1,7 +1,7 @@
 # Task 0079 - Add minimal clean-checkout CI and release-quality proof for AgenticProjectKit
 
 State: review
-Owner: codex-corrective-0077
+Owner: opencode
 Mode: production
 Lane: release
 Scope: ci,quality,release,docs
