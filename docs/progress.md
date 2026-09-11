@@ -104,7 +104,7 @@ The repository now has:
 
 ## Next step
 
-Corrective Task 0095 is done with bounded transient Windows lock-read retry. Task 0079 is active on a clean baseline; hosted run `34609969725` proved quality/release PASS but exposed exit 254 from `pnpm exec apk` self-bin resolution, so clean-checkout checks now use the built CLI directly before fresh verification/review/CI. Corrective Tasks 0093-0094 remain done.
+Tasks 0093-0095 and 0079 are done. Task 0079 passed fresh canonical verification, independent review, gate, and exact-SHA hosted run `34611729423` at `2b73a6794a877c79de979c15bece974be1772534`; clean-checkout contract checks invoke the built CLI directly. Next: Task 0075 frozen release validation.
 
 Planned pre-release chain: 0074 -> 0077 capability contract -> 0078 APK-local quality guardrails -> 0079 clean-checkout CI -> 0075 frozen release validation. Tasks 0076 lock recovery and 0080 Task 0073 P2 fixes must also finish before 0075. New tasks stay `todo` with `Owner: none`.
 
@@ -127,7 +127,7 @@ After the gated-workflow release foundation, Resource-Aware Execution proceeds t
 - Task 0092: todo; implementation-ready consolidation of agent instruction exports around canonical `AGENTS.md`, independent of the active release and resource-aware branches.
 - Task 0093: done; restored test closure restored six independent top-level CLI cases, with V16 AST regression protection and Node 22/full-suite proof.
 - Task 0078: done; APK-local typecheck, lint, coverage, fast-quality, release-check and feedback-only hooks.
-- Task 0079: APK-local tooling -> clean-checkout CI.
+- Task 0079: done; APK-local tooling -> clean-checkout CI, exact-SHA hosted proof recorded for the implementation candidate.
 - Task 0075: final frozen-candidate release validation after 0074, 0076 and 0077-0080.
 - Task 0082: Resource-Aware Execution architecture/backlog documentation complete.
 - Task 0083: done; optional secret-free model/harness/worker registry, deterministic `apk resources` introspection, and validated worker-session resource provenance.
