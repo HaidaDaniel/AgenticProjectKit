@@ -25,6 +25,8 @@ import {
   renderTaskCompletionGate,
   renderTaskProvenance,
   renderTaskVerifyResult,
+  renderRecordManualVerificationResult,
+  recordManualVerification,
   renderDogfoodResult,
   renderDogfoodSession,
   recordDogfoodResult,
@@ -61,6 +63,7 @@ const TASK_HELP_TEXT = [
   "  apk task dogfood start <task-id> --owner <agent-id> --tool <tool> --scenario <text>",
   "  apk task dogfood result <task-id> --owner <agent-id> --session <session-id> --outcome <pass|fail>",
   "  apk task verify <task-id> [--check-files-only] [--profile <profile|all>] [--owner <agent-id>]",
+  "  apk task verify <task-id> --record --owner <agent-id> --check <check-id> --result <pass|fail> --evidence <reference> [--summary <text>]",
   "  apk task create --title <title> --scope <csv> --allowed <csv> [--type <name>|--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>]",
   "",
   "Subcommands:",
@@ -191,10 +194,12 @@ const TASK_VERIFY_HELP_TEXT = [
   "",
   "Usage:",
   "  apk task verify <task-id> [--check-files-only] [--profile <profile|all>] [--owner <agent-id>]",
+  "  apk task verify <task-id> --record --owner <agent-id> --check <check-id> --result <pass|fail> --evidence <reference> [--summary <text>]",
   "",
   "Checks changed files against task allowed/forbidden files.",
   "Runs selected eligible automated checks and records per-check evidence.",
   "Manual/live and unselected checks remain visible as unavailable or not-run.",
+  "Use --record to store an externally-observed manual/live check result bound to the current candidate.",
 ].join("\n");
 
 const TASK_ARCHIVE_HELP_TEXT = [
@@ -778,17 +783,22 @@ async function runVerifySubcommand(argv: string[]): Promise<number> {
     return 0;
   }
 
-  const knownVerifyFlags = new Set(["--check-files-only", "--profile", "--owner", "--help", "-h"]);
+  const knownVerifyFlags = new Set([
+    "--check-files-only", "--profile", "--owner",
+    "--record", "--check", "--result", "--evidence", "--summary",
+    "--help", "-h",
+  ]);
   for (const arg of argv) {
     if (arg.startsWith("-") && !knownVerifyFlags.has(arg)) {
       throw new Error(`Unknown option: ${arg}`);
     }
   }
 
+  const valueFlags = new Set([
+    "--owner", "--profile", "--check", "--result", "--evidence", "--summary",
+  ]);
   const positional = argv.filter((arg, index) => (
-    !arg.startsWith("-") &&
-    argv[index - 1] !== "--owner" &&
-    argv[index - 1] !== "--profile"
+    !arg.startsWith("-") && !valueFlags.has(argv[index - 1] ?? "")
   ));
 
   if (positional.length !== 1) {
@@ -797,6 +807,26 @@ async function runVerifySubcommand(argv: string[]): Promise<number> {
 
   const rootDirectory = resolve(process.cwd());
   const config = await readAgenticConfigFile(rootDirectory);
+
+  if (hasFlag(argv, "--record")) {
+    const owner = parseFlag(argv, "--owner");
+    if (!owner) {
+      throw new Error("--owner is required for --record.");
+    }
+    const result = await recordManualVerification({
+      rootDirectory,
+      taskDirectory: config.taskDirectory,
+      taskId: positional[0],
+      owner,
+      checkId: parseFlag(argv, "--check") ?? "",
+      result: (parseFlag(argv, "--result") ?? "") as "pass" | "fail",
+      evidence: parseFlag(argv, "--evidence") ?? "",
+      summary: parseFlag(argv, "--summary"),
+    });
+    console.log(renderRecordManualVerificationResult(result));
+    return result.result === "pass" ? 0 : 1;
+  }
+
   const profile = parseFlag(argv, "--profile");
   if (
     profile !== undefined &&

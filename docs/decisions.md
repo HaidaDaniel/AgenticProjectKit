@@ -578,3 +578,19 @@ Freeze Task 0075 on a clean tracked HEAD. Treat ignored build/coverage/runtime r
 Reason:
 
 A tracked report cannot contain its own commit SHA. Separating the validated candidate from its later evidence report avoids a self-referential commit and preserves honest freshness: any tracked mutation before gate still invalidates proof.
+
+## ADR-0038 - Operator-recorded manual and live evidence is explicit and candidate-bound
+
+Status: accepted
+
+Decision:
+
+`apk task verify --record` lets a registered owner append a typed gate-eligible result for a check declared `manual` or with `environment: live`, given an explicit bounded evidence reference. It captures the current baseline/candidate subject through the same path as executed verification, rejects automated checks, and requires a registered agent. Manual/live checks remain `unavailable` under normal `verify` execution.
+
+Reason:
+
+Required manual/live checks could not be satisfied by any supported surface while the design correctly refused implicit passes, so a release contract with a required hosted-observation check was unsatisfiable. Explicit operator recording preserves the no-implicit-pass and no-automated-laundering boundaries while allowing truthful externally-observed evidence to satisfy the existing freshness and completion gate.
+
+Implementation and invariant:
+
+`recordManualVerification` validates owner registration, the declared check, manual-or-live eligibility, a non-empty bounded reference, and pass/fail, then appends through the evidence append lock with the captured candidate subject. Automated checks, unregistered owners, and missing references fail closed; the record flows through unchanged provenance and gate evaluation.

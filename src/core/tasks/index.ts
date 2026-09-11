@@ -8,6 +8,7 @@ import { appendRunLog, requireAgent } from "../agents/index.js";
 import {
   appendTaskEvidence,
   type TaskEvidenceCandidateSubject,
+  type TaskEvidenceRecord,
   type TaskEvidenceResult,
   type TaskEvidenceType,
 } from "./evidence.js";
@@ -2184,6 +2185,138 @@ export function renderTaskVerifyResult(result: TaskVerifyResult): string {
   lines.push("");
 
   return lines.join("\n");
+}
+
+export interface RecordManualVerificationOptions {
+  rootDirectory: string;
+  taskDirectory: string;
+  taskId: string;
+  owner: string;
+  checkId: string;
+  result: "pass" | "fail";
+  evidence: string;
+  summary?: string;
+}
+
+export interface RecordManualVerificationResult {
+  taskId: string;
+  checkId: string;
+  type: TaskEvidenceType;
+  profile: TaskVerificationProfile;
+  result: "pass" | "fail";
+  runId: string;
+  gateEligible: boolean;
+  subject: TaskEvidenceCandidateSubject;
+  record: TaskEvidenceRecord;
+}
+
+const MANUAL_EVIDENCE_REFERENCE_MAX_LENGTH = 500;
+
+export async function recordManualVerification(
+  options: RecordManualVerificationOptions,
+): Promise<RecordManualVerificationResult> {
+  const taskPath = await findTaskFile(
+    options.rootDirectory,
+    options.taskId,
+    options.taskDirectory,
+  );
+  const { task } = await loadTaskFile(taskPath);
+  const ownerAgent = await requireAgent(options.rootDirectory, options.owner);
+
+  const checkId = options.checkId.trim();
+  if (checkId.length === 0) {
+    throw new Error("A verification check id is required.");
+  }
+  const check = getTaskVerification(task).find((candidate) => candidate.id === checkId);
+  if (!check) {
+    throw new Error(`Task ${task.id} has no verification check ${checkId}.`);
+  }
+  if (check.type !== "manual" && check.environment !== "live") {
+    throw new Error(
+      `Verification check ${checkId} is automated and cannot be recorded externally; run apk task verify.`,
+    );
+  }
+  if (options.result !== "pass" && options.result !== "fail") {
+    throw new Error("Manual verification result must be pass or fail.");
+  }
+  const evidence = options.evidence.trim();
+  if (evidence.length === 0) {
+    throw new Error("A non-empty externally-observed evidence reference is required.");
+  }
+  if (evidence.length > MANUAL_EVIDENCE_REFERENCE_MAX_LENGTH) {
+    throw new Error(
+      `Evidence reference must be at most ${MANUAL_EVIDENCE_REFERENCE_MAX_LENGTH} characters.`,
+    );
+  }
+
+  const baseline = await readTaskBaseline(options.rootDirectory, task.id);
+  const snapshot = await captureTaskScope({
+    rootDirectory: options.rootDirectory,
+    task,
+    taskPath,
+    baseline,
+  });
+  const captured = await captureTaskEvidenceSubject(
+    options.rootDirectory,
+    task,
+    snapshot.changedFiles,
+  );
+  const subject: TaskEvidenceCandidateSubject = baseline
+    ? { ...captured, baselineId: baseline.baselineId }
+    : captured;
+  const gateEligible = snapshot.comparisonKnown
+    && snapshot.outOfScopeFiles.length === 0
+    && snapshot.forbiddenTouchedFiles.length === 0;
+  const runId = `record-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const record = await appendTaskEvidence(options.rootDirectory, {
+    taskId: task.id,
+    runId,
+    agent: ownerAgent.id,
+    gateEligible,
+    type: verificationEvidenceType(check),
+    result: options.result,
+    subject,
+    checkId: check.id,
+    profile: check.profile,
+    evidence,
+    ...(options.summary ? { summary: options.summary } : {}),
+  });
+  await appendRunLog(options.rootDirectory, {
+    event: "verify",
+    agent: ownerAgent,
+    task: task.id,
+    runId,
+    state: task.state,
+    outcome: options.result === "pass" ? "ok" : "error",
+    reason: `manual verification ${options.result} for ${check.id} (${runId})`,
+  });
+
+  return {
+    taskId: task.id,
+    checkId: check.id,
+    type: verificationEvidenceType(check),
+    profile: check.profile,
+    result: options.result,
+    runId,
+    gateEligible,
+    subject,
+    record,
+  };
+}
+
+export function renderRecordManualVerificationResult(
+  result: RecordManualVerificationResult,
+): string {
+  return [
+    `Task: ${result.taskId}`,
+    `Check: ${result.checkId}`,
+    `Result: ${result.result}`,
+    `Type: ${result.type}; profile: ${result.profile}`,
+    `Gate-eligible: ${result.gateEligible ? "yes" : "no"}`,
+    `Candidate: ${result.subject.candidateId}`,
+    `Evidence: ${result.record.id}`,
+    "",
+  ].join("\n");
 }
 
 export function renderTaskDeps(result: TaskDepsResult): string {

@@ -391,6 +391,15 @@ pnpm exec apk task evidence 0001
 
 Required manual/live checks stay unresolved and optional failures do not block verification. Every check result is appended to `.agentic/evidence.jsonl` with candidate identity; stale or mixed-revision results cannot be treated as a current pass.
 
+Record an externally-observed manual or live result explicitly when APK cannot execute it:
+
+```bash
+pnpm exec apk task verify 0001 --record --owner codex-a \
+  --check clean-checkout-ci --result pass --evidence "https://ci.example/runs/42 status=success sha=abc123"
+```
+
+Recording requires a registered owner, a declared manual or `live` check, and a bounded evidence reference. It binds the current candidate, rejects automated checks, and flows through the same freshness and gate path, so required live observations can be satisfied without weakening automated verification.
+
 ## Example workflow
 
 1. Start a new repository with `pnpm exec apk init`, or add the kit to an existing repository with `pnpm exec apk adopt`.

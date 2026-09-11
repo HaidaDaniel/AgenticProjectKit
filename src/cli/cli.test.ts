@@ -2000,6 +2000,75 @@ test("CLI task evidence lists records for one task", async () => {
   });
 });
 
+test("CLI task verify --record stores operator manual evidence and unblocks the gate", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    const verification = JSON.stringify([
+      {
+        id: "unit",
+        type: "automated",
+        required: true,
+        environment: "local",
+        profile: "deterministic",
+        command: 'node -e "process.exit(0)"',
+      },
+      {
+        id: "live-smoke",
+        type: "manual",
+        required: true,
+        environment: "live",
+        profile: "trusted",
+        instruction: "Check the hosted run.",
+        evidence: "CI run URL/status/SHA",
+      },
+    ]);
+    const created = await runCli([
+      "task", "create",
+      "--title", "Record Manual Evidence Smoke",
+      "--mode", "mvp",
+      "--lane", "verification",
+      "--scope", "cli",
+      "--risk", "low",
+      "--context", "AGENTS.md",
+      "--allowed", ".tasks/0001-record-manual-evidence-smoke.md",
+      "--verification-json", verification,
+    ], directory);
+    assert.equal(created.exitCode, 0, created.stderr);
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await runCli(["agent", "register", "--id", "codex-a", "--platform", "codex", "--model", "gpt"], directory);
+    await runCli(["claim", "0001", "--owner", "codex-a"], directory);
+
+    const automatedOnly = await runCli(["task", "verify", "0001", "--owner", "codex-a"], directory);
+    assert.equal(automatedOnly.exitCode, 1);
+    assert.match(automatedOnly.stdout, /unavailable live-smoke/);
+
+    const rejected = await runCli([
+      "task", "verify", "0001", "--record", "--owner", "codex-a",
+      "--check", "unit", "--result", "pass", "--evidence", "reference",
+    ], directory);
+    assert.equal(rejected.exitCode, 1);
+    assert.match(rejected.stderr, /automated/);
+
+    const recorded = await runCli([
+      "task", "verify", "0001", "--record", "--owner", "codex-a",
+      "--check", "live-smoke", "--result", "pass",
+      "--evidence", "https://ci.example.test/runs/7 status=success",
+    ], directory);
+    assert.equal(recorded.exitCode, 0, recorded.stderr);
+    assert.match(recorded.stdout, /Result: pass/);
+
+    const gate = await runCli(["task", "gate", "0001"], directory);
+    assert.equal(gate.exitCode, 0, gate.stdout);
+    assert.match(gate.stdout, /Gate: pass/);
+  });
+});
+
 test("CLI task create reports malformed structured verification", async () => {
   await withTempDirectory(async (directory) => {
     await mkdir(join(directory, ".agentic"), { recursive: true });

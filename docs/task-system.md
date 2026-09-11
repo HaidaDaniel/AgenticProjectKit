@@ -241,6 +241,18 @@ Claiming a task records a baseline in `.agentic/task-baselines.jsonl`: HEAD when
 
 `verifyTask` exposes machine-readable attribution with `baselineId`, `attributedFiles`, `preExistingFiles`, `bookkeepingFiles`, and diagnostics. No-git or unavailable-HEAD work remains supported but reports limited attribution instead of claiming certainty.
 
+### Externally-observed manual and live evidence
+
+`apk task verify` never infers a pass for a manual or `live` check; those remain `unavailable`. When such a required check can only be observed outside APK, a registered operator records the observed outcome explicitly:
+
+```bash
+pnpm exec apk task verify 0075 --record --owner reviewer-a \
+  --check clean-checkout-ci --result pass \
+  --evidence "https://ci.example/runs/42 status=success sha=abc123"
+```
+
+Recording validates a registered owner, an existing check declared `manual` or with `environment: live`, an explicit bounded evidence reference, and `--result pass|fail`. It captures the current baseline/candidate subject and appends a typed, candidate-bound, gate-eligible evidence record through the same append lock, freshness, and completion-gate path as executed checks. Automated checks are rejected and must be run with `apk task verify`. An unregistered owner, a missing reference, or an unknown/automated check fails closed. This keeps manual/live requirements explicit rather than implicit, so a declared requirement can be satisfied truthfully without weakening automated verification.
+
 ## Effective task policy
 
 `resolveTaskPolicy(task)` calculates completion requirements without changing task state. `pnpm exec apk task policy <task-id>` prints the same read-only result, including reasons, blockers, diagnostics, and legacy compatibility.

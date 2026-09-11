@@ -101,10 +101,11 @@ The repository now has:
 - fail-closed worker/gate trust, explicit non-Git candidate semantics, evidence-lock bookkeeping exclusions, stale/unknown status projections, and same-worktree diagnostics.
 - Task 0073 corrective regressions cover canonical current-state role resolution, post-publication review activation confirmation, worker-vs-standalone review origin binding, worker-origin `changes_requested -> fix`, issued/input versus output candidate provenance, activation-aware `apk task provenance`, safe run IDs, collision-safe atomic session publication, inactive-session warning suppression, incomplete-session rejection, review pending-result rendering, and status `run fixer` projection. Three retained P2 gaps are contracted in 0080.
 - Task 0074 contains explicit legacy/gated compatibility detection, read-only adoption preview, idempotent `--apply` migration, preserved custom config/instructions/tasks, v0.3.1 fixture regressions, and cross-platform line-ending-safe renderer assertions; lifecycle is `done`.
+- Corrective Task 0096 adds `apk task verify --record`, an explicit registered-owner surface for externally-observed manual/live check results bound to the current baseline/candidate subject; automated checks, unregistered owners, missing references, and ineligible checks fail closed. Required manual/live checks remain `unavailable` under normal verification.
 
 ## Next step
 
-Tasks 0093-0095 and 0079 are done. Task 0075 mutating preparation is complete with all dependencies done; candidate/output boundary and report protocols are declared, and the task is released for a fresh clean-HEAD freeze.
+Tasks 0093-0095, 0079, and corrective Task 0096 are done. Task 0075 mutating preparation is complete with all dependencies done; candidate/output boundary and report protocols are declared. Task 0096 was required because a required `manual`/`live` check plus required live/manual evidence categories had no supported recording surface and blocked the frozen gate; it adds explicit candidate-bound operator recording without weakening automated verification. 0075 is released for a fresh clean-HEAD freeze on the corrected candidate.
 
 Planned pre-release chain: 0074 -> 0077 capability contract -> 0078 APK-local quality guardrails -> 0079 clean-checkout CI -> 0075 frozen release validation. Tasks 0076 lock recovery and 0080 Task 0073 P2 fixes must also finish before 0075. New tasks stay `todo` with `Owner: none`.
 
