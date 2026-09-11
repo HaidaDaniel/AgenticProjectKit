@@ -109,6 +109,7 @@ The repository now has:
 - Task 0087 adds `apk attention` and `apk workers`: a bounded, deterministic, priority-ordered semantic attention queue and declared worker capacity view derived from existing status/gate/review/policy/resource state, with no daemon, polling, or live-process claims.
 - Corrective Task 0099 restores the 13 Task 0092 acceptance criteria that the pre-0098 parser dropped during the 0092 `done` round-trip, using the exact original wording from revision f82ac50, and revalidates the 0092 implementation against the restored contract.
 - Corrective Task 0100 completes the Task 0087 worker/session projection: `apk workers` now binds declared workers to canonical `apk-worker-v1` sessions, reports `busy` with a proven task/run for active open runs, `unknown` with bounded diagnostics for unactivated/orphaned/malformed sessions, ignores completed/canceled runs, exposes capabilities and remaining slots, and never claims live process state.
+- Corrective Task 0101 aligns Task 0086 calibration with task assurance policy: calibration assurance is advisory (no global `fresh-context` floor), `generatedAt` changes only on an effective change, the raw config is read once and fails closed on non-missing/invalid-JSON errors while preserving unknown user keys, and credential-like endpoint query/bearer/userinfo values are rejected or omitted without echoing the value.
 
 ## Next step
 

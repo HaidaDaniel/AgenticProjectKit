@@ -1,7 +1,8 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import { CONFIG_PATH, readAgenticConfigFile } from "../config/file.js";
+import { CONFIG_PATH } from "../config/file.js";
+import { parseAgenticConfig } from "../config/index.js";
 import type { ExecutionCalibration } from "../config/types.js";
 import type { ResourceInventory } from "../resources/detect.js";
 import { WORKER_PROTOCOL } from "../work/contract.js";
@@ -19,16 +20,10 @@ export const CALIBRATION_RESULT_PROTOCOL = "apk-calibration-v1-result";
 export const ASSURANCE_LEVELS = ["none", "self-check", "fresh-context", "independent", "diverse"] as const;
 export type CalibrationAssuranceLevel = (typeof ASSURANCE_LEVELS)[number];
 
-const ASSURANCE_RANK: Record<CalibrationAssuranceLevel, number> = {
-  none: 0,
-  "self-check": 1,
-  "fresh-context": 2,
-  independent: 3,
-  diverse: 4,
-};
-// A global calibration must not advertise an assurance floor below the
-// high-risk baseline; the per-task gate still raises assurance where required.
-const MINIMUM_CALIBRATION_ASSURANCE: CalibrationAssuranceLevel = "fresh-context";
+// Calibration assurance is an advisory preference only. The canonical task
+// policy/gate stays authoritative, so calibration must never impose a global
+// floor stronger than a low/medium task policy. Effective assurance is clamped
+// per task by `resolveTaskPolicy`, which raises but never lowers the baseline.
 
 const ROUTE_SENTINELS = ["deterministic", "wait", "needs-human"] as const;
 
@@ -146,8 +141,8 @@ export function buildCalibrationPackage(inventory: ResourceInventory): Calibrati
         ...(resource.endpoint ? { endpoint: resource.endpoint } : {}),
       })),
     constraints: [
-      `Recommendation is advisory until deterministic validation succeeds.`,
-      `Minimum calibration assurance is ${MINIMUM_CALIBRATION_ASSURANCE}; lower floors are rejected as unsafe downgrades.`,
+      "Recommendation is advisory until deterministic validation succeeds.",
+      "Calibration assurance is an advisory preference; the canonical task policy/gate clamps effective assurance and is never lowered by calibration.",
       "Only eligible worker IDs with free capacity may be routed.",
       "A worker must declare the requested role capability.",
       "A local profile may not route to a remote worker.",
@@ -231,12 +226,9 @@ export function validateCalibrationRecommendation(
     if (!(ASSURANCE_LEVELS as readonly string[]).includes(value.assuranceMinimum as string)) {
       issues.push(`Calibration recommendation.assuranceMinimum must be one of: ${ASSURANCE_LEVELS.join(", ")}.`);
     } else {
-      const level = value.assuranceMinimum as CalibrationAssuranceLevel;
-      if (ASSURANCE_RANK[level] < ASSURANCE_RANK[MINIMUM_CALIBRATION_ASSURANCE]) {
-        issues.push(`Calibration recommendation.assuranceMinimum ${level} is an unsafe downgrade below ${MINIMUM_CALIBRATION_ASSURANCE}.`);
-      } else {
-        assuranceMinimum = level;
-      }
+      // Advisory only: a valid level (including `none`/`self-check`) is accepted
+      // because canonical task policy, not calibration, is authoritative.
+      assuranceMinimum = value.assuranceMinimum as CalibrationAssuranceLevel;
     }
   }
 
@@ -291,6 +283,47 @@ function sameCalibration(left: ExecutionCalibration, right: ExecutionCalibration
     && JSON.stringify(left.budget ?? null) === JSON.stringify(right.budget ?? null);
 }
 
+function isMissingFileError(error: unknown): boolean {
+  return (
+    error !== null
+    && typeof error === "object"
+    && "code" in error
+    && (error as { code?: unknown }).code === "ENOENT"
+  );
+}
+
+/**
+ * Reread the raw config immediately before an explicit apply so unknown
+ * user-authored top-level keys survive. Only a genuinely missing file is
+ * treated as an empty object; permission, I/O, and invalid-JSON errors fail
+ * closed instead of risking a rewrite that would drop the user's config.
+ */
+async function readRawConfigForMerge(rootDirectory: string): Promise<Record<string, unknown>> {
+  const configPath = join(rootDirectory, CONFIG_PATH);
+  let content: string;
+  try {
+    content = await readFile(configPath, "utf8");
+  } catch (error: unknown) {
+    if (isMissingFileError(error)) {
+      return {};
+    }
+    throw new Error(
+      `Refusing to update ${CONFIG_PATH}: ${error instanceof Error ? error.message : String(error)}.`,
+    );
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new Error(`Refusing to update ${CONFIG_PATH}: existing file is not valid JSON.`);
+  }
+  if (!isPlainRecord(parsed)) {
+    throw new Error(`Refusing to update ${CONFIG_PATH}: existing content is not a JSON object.`);
+  }
+  return parsed;
+}
+
 /**
  * Explicit apply of a validated recommendation. Only the generated
  * `executionCalibration` key is written; the raw config file is preserved so
@@ -303,12 +336,19 @@ export async function applyExecutionCalibration(
   recommendation: CalibrationRecommendation,
   inventory: ResourceInventory,
 ): Promise<ApplyCalibrationResult> {
-  const config = await readAgenticConfigFile(rootDirectory);
-  const existing = config.executionCalibration;
+  // Read the raw config exactly once so there is no second read that could
+  // race with the validated parse. Any non-missing read/JSON error fails closed
+  // instead of silently rewriting the user's config as `{ executionCalibration }`.
+  const raw = await readRawConfigForMerge(rootDirectory);
+  const existing = parseAgenticConfig(raw).executionCalibration;
+  // Build the desired effective calibration with a fresh timestamp, then
+  // compare against the saved one ignoring the timestamp. Identical effective
+  // calibration is idempotent and preserves the existing `generatedAt`; a real
+  // change always records a new timestamp.
   const desired: ExecutionCalibration = {
     profile: recommendation.profile,
     inventoryFingerprint: inventory.fingerprint,
-    generatedAt: existing?.generatedAt ?? new Date().toISOString(),
+    generatedAt: new Date().toISOString(),
     planner: recommendation.planner,
     routes: Object.fromEntries(
       Object.entries(recommendation.routes).sort(([left], [right]) => left.localeCompare(right)),
@@ -321,15 +361,8 @@ export async function applyExecutionCalibration(
     return { written: false, calibration: existing };
   }
 
-  const configPath = join(rootDirectory, CONFIG_PATH);
-  let raw: Record<string, unknown> = {};
-  try {
-    const parsed: unknown = JSON.parse(await readFile(configPath, "utf8"));
-    if (isPlainRecord(parsed)) raw = parsed;
-  } catch {
-    raw = {};
-  }
   raw.executionCalibration = desired;
+  const configPath = join(rootDirectory, CONFIG_PATH);
   await mkdir(dirname(configPath), { recursive: true });
   await writeFile(configPath, `${JSON.stringify(raw, null, 2)}\n`, "utf8");
   return { written: true, calibration: desired };

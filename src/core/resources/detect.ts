@@ -50,12 +50,17 @@ const HARNESS_MARKERS: readonly HarnessMarker[] = [
   { id: "cursor", paths: [".cursor"] },
 ];
 
-const ENDPOINT_SECRET_SHAPE = /(api[_-]?key|secret|token|password|credential|bearer|private[_-]?key)/i;
+const ENDPOINT_SECRET_SHAPE = /(api[_-]?key|secret|token|password|credential|bearer|authorization|private[_-]?key)/i;
+const ENDPOINT_SECRET_QUERY = /[?&](?:key|auth)=/i;
 const ENDPOINT_USERINFO_SHAPE = /\/\/[^/@\s]+:[^/@\s]*@/;
 
 /** Endpoints are reported only when they carry no credential-shaped content. */
 function sanitizeEndpoint(endpoint: string): string | undefined {
-  if (ENDPOINT_SECRET_SHAPE.test(endpoint) || ENDPOINT_USERINFO_SHAPE.test(endpoint)) {
+  if (
+    ENDPOINT_SECRET_SHAPE.test(endpoint)
+    || ENDPOINT_SECRET_QUERY.test(endpoint)
+    || ENDPOINT_USERINFO_SHAPE.test(endpoint)
+  ) {
     return undefined;
   }
   return endpoint;

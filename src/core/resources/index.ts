@@ -82,7 +82,16 @@ export class ResourceRegistryValidationError extends Error {
 const MAX_ITEMS = 128;
 const MAX_STRING = 240;
 const SECRET_FIELD = /(api[_-]?key|access[_-]?token|client[_-]?secret|credential|password|private[_-]?key|secret|token)/i;
-const SECRET_QUERY = /(?:api[_-]?key|access[_-]?token|client[_-]?secret|password|secret|token)=/i;
+// Credential-like query/path parameters. Bare `key`/`auth` are included because
+// providers commonly accept them as API-key aliases. URL userinfo credentials
+// are omitted from detection instead (see `sanitizeEndpoint`).
+const SECRET_QUERY = /(?:api[_-]?key|access[_-]?token|client[_-]?secret|password|secret|token|key|auth)=/i;
+// Authorization-style material. The rejected value is never echoed.
+const SECRET_AUTHORIZATION = /\b(?:authorization|bearer)\b/i;
+
+function containsSecretMaterial(value: string): boolean {
+  return SECRET_QUERY.test(value) || SECRET_AUTHORIZATION.test(value);
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -160,7 +169,8 @@ function booleanValue(value: unknown, label: string, issues: string[], fallback:
 
 function inspectSecrets(value: unknown, path: string, issues: string[], seen = new Set<object>()): void {
   if (typeof value === "string") {
-    if (SECRET_QUERY.test(value)) {
+    if (containsSecretMaterial(value)) {
+      // Deliberately do not include the rejected value in the issue.
       issues.push(`${path} must not contain secret material.`);
     }
     return;

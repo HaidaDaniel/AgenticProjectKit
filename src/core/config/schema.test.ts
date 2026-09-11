@@ -18,6 +18,8 @@ import {
   buildCalibrationPackage,
   validateCalibrationRecommendation,
 } from "../execution/calibrate.js";
+import { parseTaskMarkdown, type ProjectTask } from "../tasks/index.js";
+import { resolveTaskPolicy } from "../tasks/policy.js";
 
 async function withTempDirectory(run: (directory: string) => Promise<void>): Promise<void> {
   const directory = await mkdtemp(join(tmpdir(), "apk-calibrate-"));
@@ -427,15 +429,29 @@ test("validateCalibrationRecommendation rejects unknown, secret-shaped, and malf
     assert.equal(localToRemote.ok, false);
     assert.ok(localToRemote.issues.some((issue) => /local profile to a remote worker/.test(issue)));
 
-    const unsafeDowngrade = validateCalibrationRecommendation({
+    // Calibration assurance is advisory; low/medium levels are accepted and the
+    // canonical task policy remains the authority (see the dedicated test).
+    for (const level of ["none", "self-check", "fresh-context", "independent", "diverse"] as const) {
+      const advisory = validateCalibrationRecommendation({
+        protocol: "apk-calibration-v1-result",
+        profile: "constrained",
+        routes: {},
+        assuranceMinimum: level,
+        planner: "codex",
+      }, inventory);
+      assert.equal(advisory.ok, true, `${level}: ${advisory.issues.join("; ")}`);
+      assert.equal(advisory.recommendation?.assuranceMinimum, level);
+    }
+
+    const invalidLevel = validateCalibrationRecommendation({
       protocol: "apk-calibration-v1-result",
       profile: "constrained",
       routes: {},
-      assuranceMinimum: "none",
+      assuranceMinimum: "ultra",
       planner: "codex",
     }, inventory);
-    assert.equal(unsafeDowngrade.ok, false);
-    assert.ok(unsafeDowngrade.issues.some((issue) => /unsafe downgrade/.test(issue)));
+    assert.equal(invalidLevel.ok, false);
+    assert.ok(invalidLevel.issues.some((issue) => /assuranceMinimum must be one of/.test(issue)));
 
     const invalidBudget = validateCalibrationRecommendation({
       protocol: "apk-calibration-v1-result",
@@ -488,5 +504,208 @@ test("applyExecutionCalibration preserves user overrides and is idempotent", asy
 
     const second = await applyExecutionCalibration(directory, recommendation, inventory);
     assert.equal(second.written, false);
+  });
+});
+
+function taskWithRisk(risk: string): ProjectTask {
+  return parseTaskMarkdown([
+    "# Task 0001 - Assurance",
+    "",
+    "State: todo",
+    "Owner: none",
+    "Mode: mvp",
+    "Lane: implementation",
+    "Scope: none",
+    `Risk: ${risk}`,
+    "Parallel: false",
+    "Depends on: none",
+    "Tags: none",
+    "",
+    "## Goal",
+    "",
+    "Assurance.",
+    "",
+    "## Context files",
+    "",
+    "- AGENTS.md",
+    "",
+    "## Files allowed to edit",
+    "",
+    "- src/a.ts",
+    "",
+    "## Files forbidden to edit",
+    "",
+    "- package.json",
+    "",
+    "## Steps",
+    "",
+    "1. Do it.",
+    "",
+    "## Acceptance criteria",
+    "",
+    "- Done.",
+    "",
+    "## Verification commands",
+    "",
+    "- pnpm test",
+    "",
+    "## Documentation updates",
+    "",
+    "- docs/progress.md",
+    "",
+    "## Notes",
+    "",
+    "None.",
+    "",
+  ].join("\n"));
+}
+
+test("calibration assurance is advisory and never lowers canonical task policy", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeCalibrationRepo(directory);
+    const inventory = await detectResourceInventory(directory);
+    const expected: Record<string, string> = {
+      low: "none",
+      medium: "self-check",
+      high: "fresh-context",
+      critical: "independent",
+    };
+    for (const [risk, assurance] of Object.entries(expected)) {
+      assert.equal(resolveTaskPolicy(taskWithRisk(risk)).requirements.assurance, assurance, risk);
+    }
+
+    // A recommendation may freely suggest a low advisory floor...
+    const advisory = validateCalibrationRecommendation({
+      protocol: "apk-calibration-v1-result",
+      profile: "constrained",
+      routes: {},
+      assuranceMinimum: "none",
+      planner: "codex",
+    }, inventory);
+    assert.equal(advisory.ok, true);
+    // ...but the canonical high-risk policy is unaffected.
+    assert.equal(resolveTaskPolicy(taskWithRisk("high")).requirements.assurance, "fresh-context");
+    assert.equal(resolveTaskPolicy(taskWithRisk("critical")).requirements.assurance, "independent");
+
+    // A recommendation may raise the advisory preference.
+    const raised = validateCalibrationRecommendation({
+      protocol: "apk-calibration-v1-result",
+      profile: "constrained",
+      routes: {},
+      assuranceMinimum: "diverse",
+      planner: "codex",
+    }, inventory);
+    assert.equal(raised.ok, true);
+    assert.equal(raised.recommendation?.assuranceMinimum, "diverse");
+
+    const pkg = buildCalibrationPackage(inventory);
+    assert.ok(pkg.constraints.some((constraint) => /advisory preference/.test(constraint)));
+    assert.ok(!pkg.constraints.some((constraint) => /Minimum calibration assurance/.test(constraint)));
+  });
+});
+
+test("applyExecutionCalibration refreshes generatedAt only on effective change", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeCalibrationRepo(directory);
+    const inventory = await detectResourceInventory(directory);
+    const recommendation = {
+      protocol: "apk-calibration-v1-result" as const,
+      profile: "constrained" as const,
+      routes: { implementation: "local-worker" },
+      planner: "codex",
+    };
+
+    const first = await applyExecutionCalibration(directory, recommendation, inventory);
+    assert.equal(first.written, true);
+    const firstStamp = first.calibration.generatedAt;
+
+    const second = await applyExecutionCalibration(directory, recommendation, inventory);
+    assert.equal(second.written, false);
+    assert.equal(second.calibration.generatedAt, firstStamp);
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const changed = await applyExecutionCalibration(
+      directory,
+      { ...recommendation, planner: "other-planner" },
+      inventory,
+    );
+    assert.equal(changed.written, true);
+    assert.equal(changed.calibration.planner, "other-planner");
+    assert.notEqual(changed.calibration.generatedAt, firstStamp);
+  });
+});
+
+test("applyExecutionCalibration fails closed when the raw config cannot be reread", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeCalibrationRepo(directory);
+    const inventory = await detectResourceInventory(directory);
+    const recommendation = {
+      protocol: "apk-calibration-v1-result" as const,
+      profile: "constrained" as const,
+      routes: { implementation: "local-worker" },
+      planner: "codex",
+    };
+    const configPath = join(directory, ".agentic", "config.json");
+    await writeFile(configPath, "{ this is not json", "utf8");
+
+    await assert.rejects(
+      () => applyExecutionCalibration(directory, recommendation, inventory),
+      /not valid JSON/,
+    );
+    assert.equal(await readFile(configPath, "utf8"), "{ this is not json");
+  });
+});
+
+test("credential-like endpoints are rejected or omitted and never echoed", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    const configPath = join(directory, ".agentic", "config.json");
+    const baseWorker = {
+      id: "worker-a",
+      modelId: "model-a",
+      harnessId: "harness-a",
+      location: "local",
+      billingMode: "free",
+      costClass: "local-free",
+      availability: "available",
+      capacity: 1,
+      capabilities: { roles: ["implementation"] },
+    };
+    const base = {
+      schemaVersion: 2,
+      resources: {
+        models: [{ id: "model-a", roles: ["implementation"] }],
+        harnesses: [{ id: "harness-a", workerProtocols: ["apk-worker-v1"] }],
+      },
+    };
+
+    await writeFile(configPath, JSON.stringify({
+      ...base,
+      resources: {
+        ...base.resources,
+        workers: [{ ...baseWorker, endpoint: "https://user:TOPSECRETPW@example.com/v1" }],
+      },
+    }), "utf8");
+    const inventory = await detectResourceInventory(directory);
+    assert.equal(inventory.resources.find((resource) => resource.id === "worker-a")?.endpoint, undefined);
+    assert.doesNotMatch(JSON.stringify(inventory), /TOPSECRETPW/);
+    assert.doesNotMatch(JSON.stringify(buildCalibrationPackage(inventory)), /TOPSECRETPW/);
+
+    await writeFile(configPath, JSON.stringify({
+      ...base,
+      resources: {
+        ...base.resources,
+        workers: [{ ...baseWorker, endpoint: "https://example.com/v1?key=TOPSECRETPW" }],
+      },
+    }), "utf8");
+    let message = "";
+    try {
+      await detectResourceInventory(directory);
+      assert.fail("expected secret endpoint to be rejected");
+    } catch (error: unknown) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    assert.match(message, /must not contain secret material/);
+    assert.doesNotMatch(message, /TOPSECRETPW/);
   });
 });

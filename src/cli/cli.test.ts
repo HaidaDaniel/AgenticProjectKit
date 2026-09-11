@@ -254,6 +254,60 @@ test("CLI resources detect reports a deterministic read-only inventory", async (
   });
 });
 
+test("CLI resources detect keeps credential-like endpoints out of human and JSON output", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    const configPath = join(directory, ".agentic", "config.json");
+    const worker = {
+      id: "worker-a",
+      modelId: "model-a",
+      harnessId: "harness-a",
+      location: "local",
+      billingMode: "free",
+      costClass: "local-free",
+      availability: "available",
+      capacity: 1,
+      capabilities: { roles: ["implementation"] },
+    };
+    const base = {
+      schemaVersion: 2,
+      resources: {
+        models: [{ id: "model-a", roles: ["implementation"] }],
+        harnesses: [{ id: "harness-a", workerProtocols: ["apk-worker-v1"] }],
+      },
+    };
+
+    await writeFile(configPath, JSON.stringify({
+      ...base,
+      resources: {
+        ...base.resources,
+        workers: [{ ...worker, endpoint: "https://user:TOPSECRETPW@example.com/v1" }],
+      },
+    }), "utf8");
+    const json = await runCli(["resources", "detect", "--json"], directory);
+    assert.equal(json.exitCode, 0, `${json.stdout}${json.stderr}`);
+    assert.doesNotMatch(json.stdout, /TOPSECRETPW/);
+    assert.doesNotMatch(json.stderr, /TOPSECRETPW/);
+
+    const human = await runCli(["resources", "detect"], directory);
+    assert.equal(human.exitCode, 0, `${human.stdout}${human.stderr}`);
+    assert.doesNotMatch(human.stdout, /TOPSECRETPW/);
+    assert.doesNotMatch(human.stderr, /TOPSECRETPW/);
+
+    await writeFile(configPath, JSON.stringify({
+      ...base,
+      resources: {
+        ...base.resources,
+        workers: [{ ...worker, endpoint: "https://example.com/v1?key=TOPSECRETPW" }],
+      },
+    }), "utf8");
+    const rejected = await runCli(["resources", "detect", "--json"], directory);
+    assert.equal(rejected.exitCode, 1);
+    assert.doesNotMatch(rejected.stdout, /TOPSECRETPW/);
+    assert.doesNotMatch(rejected.stderr, /TOPSECRETPW/);
+  });
+});
+
 test("CLI execution calibrate validates and applies a recommendation", async () => {
   await withTempDirectory(async (directory) => {
     await mkdir(join(directory, ".agentic"), { recursive: true });
