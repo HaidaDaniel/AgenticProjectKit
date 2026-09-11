@@ -142,9 +142,10 @@ function verificationChecks(task: ProjectTask): TaskVerificationCheck[] {
   }));
 }
 
-function declaredEvidenceCategories(task: ProjectTask): string[] {
+function declaredEvidenceCategories(task: ProjectTask, requiredOnly = false): string[] {
   const categories = new Set<string>();
   for (const check of verificationChecks(task)) {
+    if (requiredOnly && !check.required) continue;
     if (check.profile === "report") categories.add("report");
     if (check.environment === "live") categories.add("live");
     if (check.type === "manual") categories.add("manual");
@@ -224,8 +225,17 @@ export function resolveTaskPolicy(
     }
   }
 
-  requirements.evidenceCategories = [...new Set(requirements.evidenceCategories)].sort();
-  const declared = declaredEvidenceCategories(task);
+  const declared = declaredEvidenceCategories(task, true);
+  const optionalOnly = new Set(
+    declaredEvidenceCategories(task).filter((category) => !declared.includes(category)),
+  );
+  requirements.evidenceCategories = [...new Set(requirements.evidenceCategories)]
+    .filter((category) => !optionalOnly.has(category))
+    .sort();
+  requirements.evidenceRequired = task.risk === "high" || requirements.evidenceCategories.length > 0;
+  for (const category of optionalOnly) {
+    reasons.push(`optional-only evidence category ${category} does not create a requirement`);
+  }
   if (requirements.evidenceRequired && declared.length === 0) {
     blockers.push("Declare at least one evidence category in verification checks.");
   }

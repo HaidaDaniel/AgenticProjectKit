@@ -344,6 +344,67 @@ test("task policy requires declared high-risk evidence and explains tags", () =>
   assert.match(renderTaskPolicy(release), /independent review: not required/);
 });
 
+test("task policy does not promote optional-only evidence categories", () => {
+  const release = resolveTaskPolicy({
+    ...TASK,
+    risk: "high",
+    tags: ["release"],
+    verification: [
+      {
+        id: "release-report",
+        type: "automated",
+        required: true,
+        environment: "ci",
+        profile: "report",
+        command: "pnpm release:check",
+        artifact: "coverage/coverage-summary.json",
+        evidence: "clean-checkout command output",
+      },
+      {
+        id: "workflow-review",
+        type: "manual",
+        required: false,
+        environment: "live",
+        profile: "trusted",
+        instruction: "Record the hosted workflow when available.",
+        evidence: "workflow URL/status/SHA",
+      },
+    ],
+  });
+
+  assert.deepEqual(release.requirements.evidenceCategories, ["report"]);
+  assert.deepEqual(release.declaredEvidenceCategories, ["artifact", "evidence", "report"]);
+  assert.deepEqual(release.blockers, []);
+
+  const optionalOnlyDeployment = resolveTaskPolicy({
+    ...TASK,
+    risk: "low",
+    tags: ["deployment"],
+    verification: [
+      {
+        id: "unit",
+        type: "automated",
+        required: true,
+        environment: "local",
+        profile: "deterministic",
+        command: "pnpm test",
+      },
+      {
+        id: "live-smoke",
+        type: "manual",
+        required: false,
+        environment: "live",
+        profile: "trusted",
+        instruction: "Check the deployment when available.",
+      },
+    ],
+  });
+  assert.equal(optionalOnlyDeployment.requirements.evidenceRequired, false);
+  assert.deepEqual(optionalOnlyDeployment.requirements.evidenceCategories, []);
+  assert.deepEqual(optionalOnlyDeployment.declaredEvidenceCategories, []);
+  assert.deepEqual(optionalOnlyDeployment.blockers, []);
+});
+
 test("task policy raises assurance for critical and stable escalation triggers", () => {
   const critical = resolveTaskPolicy({
     ...TASK,
@@ -1909,6 +1970,66 @@ test("anonymous verification remains diagnostic and cannot satisfy the completio
     assert.equal(trusted.passed, true);
     const ready = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
     assert.equal(ready.passed, true);
+  });
+});
+
+test("completion gate ignores unavailable optional-only evidence categories", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeTaskFile(join(directory, ".tasks", "0007-gated-task.md"), {
+      ...TASK,
+      state: "todo",
+      owner: "none",
+      risk: "low",
+      dependsOn: [],
+      tags: ["release"],
+      verification: [
+        {
+          id: "release-report",
+          type: "automated",
+          required: true,
+          environment: "ci",
+          profile: "report",
+          command: "pass",
+          artifact: "coverage/coverage-summary.json",
+          evidence: "clean-checkout command output",
+        },
+        {
+          id: "workflow-review",
+          type: "manual",
+          required: false,
+          environment: "live",
+          profile: "trusted",
+          instruction: "Record the hosted workflow when available.",
+          evidence: "workflow URL/status/SHA",
+        },
+      ],
+      verificationCommands: ["pass"],
+    });
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await registerAgent(directory, { id: "codex-a", developer: "alice", platform: "codex", model: "gpt-5" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a" });
+
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      runCommand: async () => 0,
+    });
+    assert.equal(verification.passed, true);
+    assert.equal(verification.checkResults.find((result) => result.id === "workflow-review")?.status, "unavailable");
+
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(gate.passed, true);
+    assert.equal(gate.blockers.some((blocker) => /live|manual|workflow-review/.test(blocker)), false);
   });
 });
 
