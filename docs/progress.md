@@ -105,7 +105,7 @@ The repository now has:
 
 ## Next step
 
-Tasks 0093-0095, 0079, and corrective Task 0096 are done. Task 0075 mutating preparation is complete with all dependencies done; candidate/output boundary and report protocols are declared. Task 0096 was required because a required `manual`/`live` check plus required live/manual evidence categories had no supported recording surface and blocked the frozen gate; it adds explicit candidate-bound operator recording without weakening automated verification. 0075 is released for a fresh clean-HEAD freeze on the corrected candidate.
+Tasks 0093-0096 and 0079 are done, and Task 0075 is `done` after frozen-candidate validation. Task 0096 was required because a required `manual`/`live` check plus required live/manual evidence categories had no supported recording surface and blocked the frozen gate; it adds explicit candidate-bound operator recording without weakening automated verification. Task 0075 then validated candidate `candidate:eb36a50e...` at `5f65faa` (13/13 checks, hosted CI run 34619628681 green for the exact SHA, bounded dogfood `pass`, independent review `pass`, gate `pass`).
 
 Planned pre-release chain: 0074 -> 0077 capability contract -> 0078 APK-local quality guardrails -> 0079 clean-checkout CI -> 0075 frozen release validation. Tasks 0076 lock recovery and 0080 Task 0073 P2 fixes must also finish before 0075. New tasks stay `todo` with `Owner: none`.
 
@@ -129,7 +129,7 @@ After the gated-workflow release foundation, Resource-Aware Execution proceeds t
 - Task 0093: done; restored test closure restored six independent top-level CLI cases, with V16 AST regression protection and Node 22/full-suite proof.
 - Task 0078: done; APK-local typecheck, lint, coverage, fast-quality, release-check and feedback-only hooks.
 - Task 0079: done; APK-local tooling -> clean-checkout CI, exact-SHA hosted proof recorded for the implementation candidate.
-- Task 0075: final frozen-candidate release validation after 0074, 0076 and 0077-0080.
+- Task 0075: done; frozen-candidate release validation after 0074, 0076, 0077-0080, and corrective 0096. Exact candidate `5f65faa`, tree `64c335f0`, version 0.3.1; hosted CI run 34619628681 green for that SHA.
 - Task 0082: Resource-Aware Execution architecture/backlog documentation complete.
 - Task 0083: done; optional secret-free model/harness/worker registry, deterministic `apk resources` introspection, and validated worker-session resource provenance.
 - Task 0084: done; independent execution profiles, policy-aware routing, stable explain output, overrides, and wait/needs-human outcomes.
