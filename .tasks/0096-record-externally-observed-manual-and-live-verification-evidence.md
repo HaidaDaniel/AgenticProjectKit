@@ -1,6 +1,6 @@
 # Task 0096 - Record externally-observed manual and live verification evidence
 
-State: doing
+State: done
 Owner: local-agent-0096
 Mode: production
 Lane: verification
