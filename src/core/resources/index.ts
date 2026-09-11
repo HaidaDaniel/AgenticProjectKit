@@ -149,10 +149,6 @@ function nonNegativeInteger(value: unknown, label: string, issues: string[], fal
   return value;
 }
 
-function optionalPositiveInteger(value: unknown, label: string, issues: string[]): number | undefined {
-  return value === undefined ? undefined : positiveInteger(value, label, issues, 1);
-}
-
 function booleanValue(value: unknown, label: string, issues: string[], fallback: boolean): boolean {
   if (value === undefined) return fallback;
   if (typeof value !== "boolean") {

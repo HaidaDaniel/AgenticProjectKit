@@ -93,10 +93,6 @@ const HELP_TEXT = [
   "  work  Claim or continue a task and render its prompt.",
 ].join("\n");
 
-function hasHelpFlag(argv: string[]): boolean {
-  return argv.includes("--help") || argv.includes("-h");
-}
-
 const argv = process.argv.slice(2);
 
 async function main(): Promise<number> {

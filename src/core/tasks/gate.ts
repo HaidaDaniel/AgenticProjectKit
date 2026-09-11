@@ -122,7 +122,6 @@ export async function captureTaskCompletionCandidate(options: {
     baseline,
     changedFiles: options.changedFiles,
   });
-  const changedFiles = snapshot.changedFiles;
   const scope = snapshot;
   let capturedSubject: TaskEvidenceCandidateSubject;
   try {

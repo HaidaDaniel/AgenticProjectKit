@@ -1,6 +1,6 @@
 import { exec, execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFile, mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { promisify } from "node:util";
 
@@ -15,6 +15,7 @@ import { withLocalMutationLock } from "./lock.js";
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
+const DEFAULT_TASK_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 
 export const TASK_STATES = [
   "todo",
@@ -1841,7 +1842,7 @@ export async function captureTaskEvidenceSubject(
 async function defaultRunCommand(
   rootDirectory: string,
   command: string,
-  timeoutMs = 120_000,
+  timeoutMs = DEFAULT_TASK_COMMAND_TIMEOUT_MS,
 ): Promise<number> {
   try {
     await execAsync(command, {

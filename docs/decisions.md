@@ -455,6 +455,25 @@ Proof boundaries:
 
 No layer substitutes for missing/stale evidence from another. Hosted CI status may remain separate exact-SHA release evidence; no GitHub API coupling or CI-platform abstraction required.
 
+## ADR-0035 - APK-local guardrails stay separate from adopted-repository policy
+
+Status: accepted
+
+Decision:
+
+Use ESLint with `typescript-eslint` for real TypeScript source lint, c8 for deterministic V8 coverage, and Husky with lint-staged for local hooks in AgenticProjectKit. Rename the repository's compiler-only `lint` behavior to `typecheck`; keep `lint` source-focused. `quality` composes typecheck, lint, and tests; `release:check` additionally runs coverage, build, and APK-specific sync/audit through the built CLI.
+Declare Node.js `>=22.22.1` for this repository so the local ESLint/c8/Husky/lint-staged toolchain has an explicit supported runtime.
+
+Measured baseline and thresholds:
+
+- Baseline before guardrails: 267 deterministic tests; 91.72% lines/statements, 96.50% functions, 80.00% branches.
+- Thresholds: 90% lines, 90% statements, 95% functions, 78% branches. Small headroom protects against regression without an arbitrary 100% target.
+- Coverage output: ignored `coverage/coverage-summary.json` plus human-readable text.
+
+Reason:
+
+APK needs maintained local source-quality feedback while adopted repositories remain toolchain-neutral. Dev dependencies, hooks, and scripts are not installed, generated, or mandated by `init`, `adopt`, templates, or quality detection. Hook success is non-authoritative developer feedback; task verification, review, gate, CI, and release evidence remain separate.
+
 ## ADR-0031 - Local mutation locks use identity, not age, for recovery
 
 Status: accepted

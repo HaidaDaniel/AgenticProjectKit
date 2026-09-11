@@ -73,6 +73,8 @@ docs/**
 
 `apk quality detect [directory] [--json]` is read-only and deterministic. It reports the same sorted capability records, evidence, policy disposition, recommendations, and diagnostics in human and JSON output. Optional `.agentic/config.json` quality policy can list explicit `required` and `recommended` capability IDs. Missing recommendations do not fail diagnostics; missing or unknown required capabilities do. Doctor and audit project the shared result rather than repeating tool-specific inference.
 
+APK-local guardrails are separate from adopted-repository policy: `typecheck` runs the compiler, `lint` runs the TypeScript-aware ESLint source rules, `test:coverage` emits c8 text and JSON-summary output, and `quality` composes only the fast typecheck/lint/test lane. Husky/lint-staged hooks apply only to this checkout and provide non-authoritative developer feedback; task verification, review, gate, CI, and release evidence remain independent.
+
 ## Evidence storage
 
 Task evidence uses a dedicated append-only `.agentic/evidence.jsonl` store. It is separate from agent/run analytics so verification, manual/live checks, reports, and later review evidence retain their own typed results and revision-bound subject identities. Appends use an evidence-specific lock, never the task lifecycle lock. Records explicitly mark gate eligibility; anonymous verification remains diagnostic-only. Read operations tolerate a missing store (no evidence) and report malformed records with line diagnostics. The legacy global JSONL remains the compatibility layout; a malformed line is diagnosed at read time and can still affect the global reader until evidence sharding is introduced.

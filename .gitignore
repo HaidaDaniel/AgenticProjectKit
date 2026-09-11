@@ -1,5 +1,6 @@
 node_modules/
 dist/
+coverage/
 *.tgz
 .tasks/.apk.lock
 .agentic/agents.jsonl

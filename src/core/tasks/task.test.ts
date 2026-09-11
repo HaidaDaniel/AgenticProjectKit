@@ -123,7 +123,12 @@ async function withTempDirectory(
   try {
     await run(directory);
   } finally {
-    await rm(directory, { force: true, recursive: true });
+    await rm(directory, {
+      force: true,
+      recursive: true,
+      maxRetries: 5,
+      retryDelay: 20,
+    });
   }
 }
 
@@ -3138,7 +3143,7 @@ test("archiveAllTasks refuses archive path collisions with clear error", async (
 });
 
 test("selectNextTask considers archived done tasks as completed dependencies", async () => {
-  await withTempDirectory(async (directory) => {
+  await withTempDirectory(async (_directory) => {
     const archivedTask: ProjectTaskFile = {
       path: ".tasks/archive/0001-done-task.md",
       task: { ...TASK, id: "0001", title: "Done Task", state: "done", owner: "archive" },

@@ -58,7 +58,7 @@ async function withTempDirectory(
   try {
     await run(directory);
   } finally {
-    await rm(directory, { force: true, recursive: true });
+    await rm(directory, { force: true, recursive: true, maxRetries: 5, retryDelay: 20 });
   }
 }
 

@@ -24,6 +24,10 @@ export interface AgentSyncResult {
   hasDrift: boolean;
 }
 
+function normalizeLineEndings(value: string): string {
+  return value.replace(/\r\n/g, "\n");
+}
+
 async function readOptionalFile(path: string): Promise<string | undefined> {
   try {
     return await readFile(path, "utf8");
@@ -82,7 +86,7 @@ export async function syncAgentExports(
 
     if (actual === undefined) {
       missing.push(file.outputPath);
-    } else if (actual !== file.content) {
+    } else if (normalizeLineEndings(actual) !== normalizeLineEndings(file.content)) {
       stale.push(file.outputPath);
     } else {
       current.push(file.outputPath);

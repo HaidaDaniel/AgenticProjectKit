@@ -2,7 +2,6 @@ import type { AssuranceLevel, ReviewBudget, TaskPolicyRequirements } from "../ta
 import {
   RESOURCE_COST_CLASSES,
   RESOURCE_LOCATIONS,
-  RESOURCE_WORKSPACE_MODES,
   type ResourceCostClass,
   type ResourceLocation,
   type ResourceRegistry,
@@ -308,7 +307,7 @@ export function resolveExecutionRoute(request: ExecutionRouteRequest): Execution
     const effectiveReasons = bypass ? reasons.filter((reason) => reason !== profileReason) : reasons;
     return { worker, reasons: effectiveReasons };
   });
-  const eligible = candidates.filter(({ worker, reasons }) => reasons.length === 0);
+  const eligible = candidates.filter(({ reasons }) => reasons.length === 0);
   const selected = override?.resourceId
     ? eligible.find(({ worker }) => worker.id === override.resourceId)
     : [...eligible].sort((left, right) => {

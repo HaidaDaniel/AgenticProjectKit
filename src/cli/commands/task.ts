@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 
 import { readAgenticConfigFile } from "../../core/config/index.js";
@@ -9,7 +8,6 @@ import {
   type TaskTemplateType,
 } from "../../core/templates/task-templates.js";
 import {
-  allTaskFiles,
   archiveAllTasks,
   archiveTask,
   buildTaskProvenance,

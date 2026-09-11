@@ -15,7 +15,7 @@ async function withTempDirectory(
   try {
     await run(directory);
   } finally {
-    await rm(directory, { force: true, recursive: true });
+    await rm(directory, { force: true, recursive: true, maxRetries: 5, retryDelay: 20 });
   }
 }
 
@@ -32,6 +32,36 @@ test("syncAgentExports passes when generated files are current", async () => {
     const agents = await readFile(join(directory, "AGENTS.md"), "utf8");
     assert.match(agents, /automatically launch a separate read-only reviewer/);
     assert.match(agents, /implementation owner cannot certify its own candidate/);
+  });
+});
+
+test("syncAgentExports ignores Windows line-ending differences", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeAllAgentExports(directory);
+    const path = join(directory, "AGENTS.md");
+    const content = await readFile(path, "utf8");
+    await writeFile(path, content.replace(/\n/g, "\r\n"), "utf8");
+
+    const result = await syncAgentExports(directory, { target: "agents" });
+
+    assert.equal(result.hasDrift, false);
+    assert.deepEqual(result.current, ["AGENTS.md"]);
+    assert.deepEqual(result.stale, []);
+  });
+});
+
+test("syncAgentExports accepts normalized Unix line endings", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeAllAgentExports(directory);
+    const path = join(directory, "AGENTS.md");
+    const content = await readFile(path, "utf8");
+    await writeFile(path, content.replace(/\r\n/g, "\n"), "utf8");
+
+    const result = await syncAgentExports(directory, { target: "agents" });
+
+    assert.equal(result.hasDrift, false);
+    assert.deepEqual(result.current, ["AGENTS.md"]);
+    assert.deepEqual(result.stale, []);
   });
 });
 

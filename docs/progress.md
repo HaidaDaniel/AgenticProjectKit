@@ -2,7 +2,7 @@
 
 ## Current status
 
-Phase 1 documentation is in place, Tasks 0001 through 0074, 0076-0077, 0080, 0081, the Resource-Aware Execution planning Task 0082, and follow-up Tasks 0089-0090 are complete. Tasks 0083-0085 now provide the registry, deterministic routing, and adaptive assurance foundation for Resource-Aware Execution.
+Phase 1 documentation is in place, Tasks 0001 through 0074, 0076-0078, 0080, 0081, the Resource-Aware Execution planning Task 0082, and follow-up Tasks 0089-0090 are complete. Tasks 0083-0085 now provide the registry, deterministic routing, and adaptive assurance foundation for Resource-Aware Execution.
 
 The repository now has:
 
@@ -104,7 +104,7 @@ The repository now has:
 
 ## Next step
 
-Current task: 0078 - Add first-class local quality guardrails for AgenticProjectKit itself (`todo`, owner `none`).
+Current task: 0079 - Add minimal clean-checkout CI and release quality proof for AgenticProjectKit (`todo`, owner `none`).
 
 Planned pre-release chain: 0074 -> 0077 capability contract -> 0078 APK-local quality guardrails -> 0079 clean-checkout CI -> 0075 frozen release validation. Tasks 0076 lock recovery and 0080 Task 0073 P2 fixes must also finish before 0075. New tasks stay `todo` with `Owner: none`.
 
@@ -124,7 +124,8 @@ After the gated-workflow release foundation, Resource-Aware Execution proceeds t
 - Task 0073: Harness Interoperability complete.
 - Task 0077: done; vendor-neutral capability detection and explicit repository quality policy contracts.
 - Task 0091: done; corrective pass for the three bounded Task 0077 quality detector review findings, linked to completed 0077 and preceding 0078.
-- Tasks 0078-0079: APK-local tooling -> clean-checkout CI.
+- Task 0078: done; APK-local typecheck, lint, coverage, fast-quality, release-check and feedback-only hooks.
+- Task 0079: APK-local tooling -> clean-checkout CI.
 - Task 0075: final frozen-candidate release validation after 0074, 0076 and 0077-0080.
 - Task 0082: Resource-Aware Execution architecture/backlog documentation complete.
 - Task 0083: done; optional secret-free model/harness/worker registry, deterministic `apk resources` introspection, and validated worker-session resource provenance.

@@ -354,7 +354,7 @@ export async function summarizeStatus(rootDirectory: string): Promise<StatusSumm
   const taskCounts = emptyTaskCounts();
   let archivedCount = 0;
   let nextTask: StatusSummary["nextTask"];
-  let activeTaskStatuses: ActiveTaskStatus[] = [];
+  const activeTaskStatuses: ActiveTaskStatus[] = [];
 
   if (!configExists) {
     warnings.push("config missing; using defaults");

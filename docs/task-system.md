@@ -226,6 +226,8 @@ Use `apk task evidence <task-id>` for a safe summary of records. The append-only
 
 After the controlled session, `apk task dogfood result <task-id> --owner <agent-id> --session <session-id> --outcome <pass|fail>` appends one distinct `dogfood` evidence record. It stores scenario, tool and agent identity, task goal, start/end timestamps, bounded failures, retries, observations, discovered issues, and optional action/tool/context/duration/latency metrics. A completed session cannot be recorded again, so a failed session cannot be promoted to pass. The schema is vendor-neutral and supports comparison by agent/tool without making dogfood a required completion gate.
 
+APK-local pre-commit and pre-push hooks are developer feedback only. Hook success never creates candidate-bound verification evidence and cannot satisfy review, CI, release, or the completion gate; use `apk task verify`, independent review, and `apk task gate` for authoritative workflow proof.
+
 ## Profile-aware verification
 
 `apk task verify <task-id>` runs all eligible automated checks by default. Pass `--profile deterministic|integration|trusted|report` to select one profile; `--profile all` is equivalent to the default. Automated checks in `static`, `ci`, or `local` environments can run. Manual checks and `live` environment checks remain `unavailable`, while checks outside the selected profile remain `not-run`.

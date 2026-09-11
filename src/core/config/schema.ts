@@ -8,9 +8,6 @@ import {
   DOCUMENTATION_PROFILES,
   OPERATING_MODES,
   type AgenticConfig,
-  type AgentStyle,
-  type DocumentationProfile,
-  type OperatingMode,
 } from "./types.js";
 
 export const LEGACY_CONFIG_SCHEMA_VERSION = 1 as const;

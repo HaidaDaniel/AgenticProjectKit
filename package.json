@@ -4,6 +4,9 @@
   "description": "Repository-first workflow CLI for AI-assisted software development.",
   "private": false,
   "license": "MIT",
+  "engines": {
+    "node": ">=22.22.1"
+  },
   "type": "module",
   "main": "dist/cli/index.js",
   "bin": {
@@ -27,16 +30,24 @@
     "dev": "tsx src/cli/index.ts",
     "start": "tsx src/cli/index.ts",
     "build": "node scripts/clean-dist.mjs && tsc -p tsconfig.build.json && node scripts/copy-template-assets.mjs",
-    "prepare": "npm run build",
-    "lint": "tsc -p tsconfig.json --noEmit",
+    "prepare": "pnpm build && husky",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src",
     "test": "tsx --test src/core/config/schema.test.ts src/core/init/init.test.ts src/core/templates/renderer.test.ts src/core/tasks/task.test.ts src/core/docs/adopt.test.ts src/core/docs/prompt.test.ts src/core/modes/mode.test.ts src/core/audit/audit.test.ts src/core/sync/sync.test.ts src/core/analytics/analytics.test.ts src/cli/cli.test.ts",
-    "release:check": "pnpm lint && pnpm test && pnpm build && pnpm exec apk sync && pnpm exec apk audit",
+    "test:coverage": "c8 --reporter=text --reporter=json-summary --all --include=src/**/*.ts --exclude=src/**/*.test.ts --check-coverage --lines=90 --functions=95 --branches=78 --statements=90 pnpm test",
+    "quality": "pnpm typecheck && pnpm lint && pnpm test",
+    "release:check": "pnpm quality && pnpm test:coverage && pnpm build && node dist/cli/index.js sync && node dist/cli/index.js audit",
     "release:patch": "pnpm release:check && pnpm version patch --no-git-tag-version",
     "release:minor": "pnpm release:check && pnpm version minor --no-git-tag-version",
     "release:major": "pnpm release:check && pnpm version major --no-git-tag-version"
   },
   "devDependencies": {
-    "tsx": "^4.21.0"
+    "c8": "^12.0.0",
+    "eslint": "^10.10.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.5.1",
+    "tsx": "^4.21.0",
+    "typescript-eslint": "^8.70.0"
   },
   "dependencies": {
     "@types/node": "^25.6.0",

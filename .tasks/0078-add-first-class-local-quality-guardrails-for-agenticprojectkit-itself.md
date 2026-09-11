@@ -1,7 +1,7 @@
 # Task 0078 - Add first-class local quality guardrails for AgenticProjectKit itself
 
-State: todo
-Owner: none
+State: done
+Owner: codex-corrective-0077
 Mode: production
 Lane: quality
 Scope: quality,tooling,coverage,hooks,tests,docs
@@ -59,6 +59,7 @@ AgenticProjectKit repository has explicit fast developer quality checks, measure
 - README.md
 - docs/progress.md
 - docs/decisions.md
+- SPEC.md
 - .tasks/0078-add-first-class-local-quality-guardrails-for-agenticprojectkit-itself.md
 
 ## Files forbidden to edit
@@ -111,5 +112,6 @@ AgenticProjectKit repository has explicit fast developer quality checks, measure
 - Backlog reference: APK-QUALITY-02. AgenticProjectKit dogfood tooling only.
 - Tool selection remains implementation decision constrained by current TypeScript/ESM/node:test stack. Prefer smallest maintained set with reliable pnpm and Windows behavior.
 - Coverage output must be ignored unless intentionally committed as release evidence.
+- Scope amendment: include `SPEC.md` only to record release-check cleanup and Windows line-ending regressions in §B/§V.
 - Source glob allowed only for mechanical lint fallout. Adoption/template/export behavior changes remain out of scope even though files share broad lint-fix glob; feature/refactor changes require task amendment or separate contract.
 - Do not change APK adoption/init/templates to provision linter, test runner, hooks or CI.

@@ -643,6 +643,25 @@ pnpm exec apk sync codex --write
 `lint` is a read-only contract check for task graph, metadata, paths, policy, ownership, and generated-instruction drift. It never writes audit reports or generated files; `--json` is suitable for CI and structural/sync failures return exit code 1.
 `quality detect` is the read-only repository quality inventory. It reports stable `typecheck`, `lint`, `tests`, `build`, `coverage`, `hooks`, and `ci` capabilities with script/config evidence, recommendations, and optional explicit policy evaluation. It does not execute scripts, install packages, or create hooks/workflows. A typecheck-only `tsc --noEmit` lint script counts as typecheck, not lint; CI detection is platform-neutral.
 
+### APK-local quality guardrails
+
+AgenticProjectKit keeps its own developer guardrails separate from tooling policy for adopted repositories:
+
+```bash
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm quality
+pnpm test:coverage
+pnpm build
+pnpm release:check
+```
+
+`typecheck` runs the TypeScript compiler; `lint` runs the TypeScript-aware ESLint rules. `quality` is the fast typecheck/lint/test lane and does not run build, coverage, sync, or audit. `test:coverage` emits human-readable output and `coverage/coverage-summary.json`; its measured baseline and thresholds are documented in the testing strategy. `release:check` is the stronger local validation and invokes the built CLI directly for APK-specific sync/audit checks.
+The APK-local guardrail toolchain supports Node.js `>=22.22.1`.
+
+Pre-commit runs lint-staged source lint. Pre-push runs fast quality, coverage, and build. Hooks are feedback only: they cannot satisfy `apk task verify`, independent review, CI, release, or the completion gate. For an intentional exceptional bypass use `git commit --no-verify` or Husky's supported `HUSKY=0` disable path.
+
 ### Scenario 6: Move from MVP to product work
 
 Use this after the first v0.1 scope is ready and the next work should focus on improving the product rather than proving the basic shape.

@@ -7,7 +7,7 @@ import {
 } from "../config/index.js";
 import { detectQualityCapabilities, type QualityDetectionResult, type QualityPolicy } from "../quality/index.js";
 import { scanRepository, type RepositoryScan } from "../scanners/index.js";
-import { loadTaskFile, listArchivedTaskFiles, parseTaskMarkdown, TaskFormatError, validateTaskDependencies, type ProjectTaskFile } from "../tasks/index.js";
+import { loadTaskFile, listArchivedTaskFiles, TaskFormatError, validateTaskDependencies, type ProjectTaskFile } from "../tasks/index.js";
 
 export type AuditFindingLevel = "error" | "warning" | "info";
 

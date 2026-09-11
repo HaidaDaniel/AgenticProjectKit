@@ -30,3 +30,13 @@ The implementation should use tests to protect the CLI and repository generation
 - verify team analytics with sharded log fixtures.
 - keep dogfooding evidence separate from automated tests and benchmark fixtures; never treat a failed session as a pass.
 - assert that typecheck-only lint scripts are not source-lint evidence and that quality JSON is deterministic and mutation-free.
+
+## APK-local quality guardrails
+
+AgenticProjectKit itself uses separate `pnpm typecheck` and `pnpm lint` commands. `typecheck` runs `tsc --noEmit`; `lint` runs the TypeScript-aware ESLint configuration against `src/`. The fast `pnpm quality` command composes typecheck, source lint, and deterministic tests only.
+
+`pnpm test:coverage` uses c8 with text and `coverage/coverage-summary.json` reporters. The measured pre-guardrail baseline was 91.72% lines/statements, 96.50% functions, and 80.00% branches across 267 tests. Thresholds are 90% lines, 90% statements, 95% functions, and 78% branches: each leaves small measured headroom while preventing regression without demanding arbitrary 100% coverage.
+
+`pnpm release:check` remains the stronger local release validation: fast quality, coverage, build, and APK-specific sync/audit checks. Pre-commit runs lint-staged source lint; pre-push runs fast quality, coverage, and build. Hooks provide developer feedback only and cannot replace candidate-bound `apk task verify`, independent review, or the completion gate.
+
+Hooks can be intentionally bypassed for an exceptional commit with `git commit --no-verify`; Husky's supported disable path is `HUSKY=0` for the command (PowerShell sessions can set `$env:HUSKY=0`).
