@@ -1,6 +1,6 @@
 # Task 0087 - Worker Attention and Resource Status
 
-State: doing
+State: done
 Owner: local-agent-0087
 Mode: product
 Lane: developer-experience
