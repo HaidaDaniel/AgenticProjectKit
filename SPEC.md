@@ -72,3 +72,4 @@ B5|2026-09-11|sync test missed outer closure → six peer tests nested/cancelled
 B6|2026-09-11|canonical coverage run exit 1 once; raw output unavailable; immediate full diagnostic PASS|retain failed evidence; rerun full candidate verification
 B7|2026-09-11|policy aggregated optional check metadata -> optional categories promoted into gate requirements; corrective over-removal then dropped tag-derived live/report requirements|optional checks neither create nor cancel policy evidence requirements|V17
 B8|2026-09-11|Windows transient `EPERM` reading recovery marker escaped lock contention loop|V18
+B9|2026-09-11|clean checkout invoked root package through unlinked `pnpm exec apk` -> exit 254|use built `node dist/cli/index.js` after build; V9

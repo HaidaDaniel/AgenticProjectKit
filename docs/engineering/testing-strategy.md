@@ -50,9 +50,9 @@ pnpm quality
 pnpm test:coverage
 pnpm build
 pnpm release:check
-pnpm exec apk lint --json
-pnpm exec apk sync
-pnpm exec apk audit
+node dist/cli/index.js lint --json
+node dist/cli/index.js sync
+node dist/cli/index.js audit
 git diff --check && reject tracked/unexpected untracked drift
 ```
 

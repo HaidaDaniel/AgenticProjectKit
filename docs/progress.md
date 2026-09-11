@@ -104,7 +104,7 @@ The repository now has:
 
 ## Next step
 
-Corrective Task 0095 implements bounded transient Windows lock-read retry after a pre-push `EPERM` regression. Next: resume 0079 from its clean `todo` lifecycle baseline, obtain exact-SHA hosted CI, then complete release validation. Corrective Tasks 0093-0094 remain done.
+Corrective Task 0095 is done with bounded transient Windows lock-read retry. Task 0079 is active on a clean baseline; hosted run `34609969725` proved quality/release PASS but exposed exit 254 from `pnpm exec apk` self-bin resolution, so clean-checkout checks now use the built CLI directly before fresh verification/review/CI. Corrective Tasks 0093-0094 remain done.
 
 Planned pre-release chain: 0074 -> 0077 capability contract -> 0078 APK-local quality guardrails -> 0079 clean-checkout CI -> 0075 frozen release validation. Tasks 0076 lock recovery and 0080 Task 0073 P2 fixes must also finish before 0075. New tasks stay `todo` with `Owner: none`.
 

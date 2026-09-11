@@ -36,6 +36,7 @@ AgenticProjectKit has one minimal CI signal proving frozen-lockfile installation
 ## Files allowed to edit
 
 - .github/workflows/quality.yml
+- SPEC.md
 - package.json
 - pnpm-lock.yaml
 - README.md

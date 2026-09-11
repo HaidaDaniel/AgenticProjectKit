@@ -482,6 +482,8 @@ Decision:
 
 Use one GitHub Actions workflow for AgenticProjectKit pull requests and `main` pushes. Pin Node.js `22.22.1` and pnpm `10.28.1`, install with `pnpm install --frozen-lockfile`, bind the job to `GITHUB_SHA`, and run the 0078 quality/release scripts plus read-only `apk lint --json`/`apk sync` and report-writing `apk audit`. Run audit on the disposable CI checkout and fail on tracked or unexpected untracked drift.
 
+After package build, self-repository CLI checks use `node dist/cli/index.js`; a clean root package must not depend on a self-linked or global `apk` binary.
+
 Proof boundary:
 
 - local hooks: developer feedback;

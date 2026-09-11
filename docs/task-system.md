@@ -229,7 +229,7 @@ After the controlled session, `apk task dogfood result <task-id> --owner <agent-
 
 APK-local pre-commit and pre-push hooks are developer feedback only. Hook success never creates candidate-bound verification evidence and cannot satisfy review, CI, release, or the completion gate; use `apk task verify`, independent review, and `apk task gate` for authoritative workflow proof.
 
-The repository-only `.github/workflows/quality.yml` job is clean-checkout reproducibility evidence: it binds the run to `GITHUB_SHA`, installs with a frozen lockfile, runs local quality/release checks plus `apk lint --json`, check-only `apk sync`, and report-writing `apk audit`, then fails on tracked drift. CI success never creates task evidence or substitutes for current APK verification, independent review, gate, or Task 0075 frozen-candidate proof. APK adoption/init/templates never generate this workflow.
+The repository-only `.github/workflows/quality.yml` job is clean-checkout reproducibility evidence: it binds the run to `GITHUB_SHA`, installs with a frozen lockfile, builds the package, runs local quality/release checks, and invokes the built `node dist/cli/index.js` for contract lint, check-only sync, and report-writing audit before failing on tracked drift. A clean root checkout does not assume its own package bin is linked or globally installed. CI success never creates task evidence or substitutes for current APK verification, independent review, gate, or Task 0075 frozen-candidate proof. APK adoption/init/templates never generate this workflow.
 
 ## Profile-aware verification
 

@@ -58,13 +58,13 @@ jobs:
         run: pnpm release:check
 
       - name: Validate APK contracts
-        run: pnpm exec apk lint --json
+        run: node dist/cli/index.js lint --json
 
       - name: Check generated instruction sync
-        run: pnpm exec apk sync
+        run: node dist/cli/index.js sync
 
       - name: Run APK audit on disposable runner
-        run: pnpm exec apk audit
+        run: node dist/cli/index.js audit
 
       - name: Reject tracked drift from checks
         if: ${{ always() }}
