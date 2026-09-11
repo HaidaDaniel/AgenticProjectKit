@@ -1,7 +1,7 @@
 # Task 0075 - Validate next AgenticProjectKit release against gated workflow
 
-State: todo
-Owner: none
+State: done
+Owner: local-agent-0075
 Mode: production
 Lane: release
 Scope: release,cli,tests,docs
