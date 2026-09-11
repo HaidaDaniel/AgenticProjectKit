@@ -57,16 +57,17 @@ Semantic attention and isolated workspaces remain runtime-neutral: Task 0087 pro
 The tool may generate or maintain:
 
 ```txt
-AGENTS.md
-CLAUDE.md
-GEMINI.md
-.cursor/rules/*.mdc
-.codex/instructions.md
-.opencode/AGENTS.md
-.github/copilot-instructions.md
+AGENTS.md      # only full common-policy export
+CLAUDE.md      # thin Claude Code import of AGENTS.md
+GEMINI.md      # thin Gemini CLI import of AGENTS.md
 docs/**
 .tasks/**
 ```
+
+Codex, OpenCode and Cursor read `AGENTS.md` directly and receive no separate
+common-policy file. `apk export --report-legacy` / `--cleanup-legacy` handle
+obsolete generated exports from earlier versions without deleting customized
+files.
 
 ## Flow
 

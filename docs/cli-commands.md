@@ -151,12 +151,16 @@ Task states:
 
 Export targets:
 
-- `agents`
-- `claude`
-- `codex`
-- `gemini`
-- `opencode`
-- `cursor`
+- `agents` - full common policy (`AGENTS.md`).
+- `claude` - writes `AGENTS.md` plus a thin `CLAUDE.md` import.
+- `gemini` - writes `AGENTS.md` plus a thin `GEMINI.md` import.
+- `codex`, `opencode`, `cursor` - compatibility aliases that write `AGENTS.md`, which those harnesses read directly.
+
+Only `AGENTS.md` contains the full common policy. `CLAUDE.md` and `GEMINI.md`
+are thin `@AGENTS.md` imports. Legacy `.codex/instructions.md`,
+`.opencode/AGENTS.md`, and `.cursor/rules/*.mdc` files are no longer generated;
+`apk export --report-legacy` previews them and `apk export --cleanup-legacy`
+removes only exact unmodified generated files while preserving customized ones.
 
 Sync targets:
 
@@ -166,6 +170,8 @@ Sync targets:
 - `gemini`
 - `opencode`
 - `cursor`
+
+Sync targets use the same canonical set and aliasing as export targets.
 
 `apk task provenance <task-id>` is read-only. Human output summarizes participants, runs, commits, changed files, evidence freshness, superseding links, and the exact completion evidence set. `--json` emits the same bounded fields for automation; unavailable Git or historical links appear in `diagnostics` rather than causing non-code task history to disappear.
 

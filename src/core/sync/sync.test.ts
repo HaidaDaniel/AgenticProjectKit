@@ -26,7 +26,7 @@ test("syncAgentExports passes when generated files are current", async () => {
     const result = await syncAgentExports(directory);
 
     assert.equal(result.hasDrift, false);
-    assert.equal(result.checked.length, 9);
+    assert.equal(result.checked.length, 3);
     assert.deepEqual(result.missing, []);
     assert.deepEqual(result.stale, []);
     const agents = await readFile(join(directory, "AGENTS.md"), "utf8");
@@ -81,32 +81,31 @@ test("syncAgentExports reports stale files without writing by default", async ()
 
 test("syncAgentExports writes missing and stale target files when requested", async () => {
   await withTempDirectory(async (directory) => {
-    await mkdir(join(directory, ".codex"), { recursive: true });
-    await writeFile(join(directory, ".codex/instructions.md"), "stale\n", "utf8");
+    await writeFile(join(directory, "AGENTS.md"), "stale\n", "utf8");
 
     const writeResult = await syncAgentExports(directory, {
-      target: "codex",
+      target: "agents",
       write: true,
     });
-    const checkResult = await syncAgentExports(directory, { target: "codex" });
+    const checkResult = await syncAgentExports(directory, { target: "agents" });
 
-    assert.deepEqual(writeResult.stale, [".codex/instructions.md"]);
-    assert.deepEqual(writeResult.written, [".codex/instructions.md"]);
+    assert.deepEqual(writeResult.stale, ["AGENTS.md"]);
+    assert.deepEqual(writeResult.written, ["AGENTS.md"]);
     assert.equal(checkResult.hasDrift, false);
     assert.match(
-      await readFile(join(directory, ".codex/instructions.md"), "utf8"),
-      /# Codex Instructions/,
+      await readFile(join(directory, "AGENTS.md"), "utf8"),
+      /automatically launch a separate read-only reviewer/,
     );
   });
 });
 
-test("syncAgentExports supports every export target", async () => {
+test("syncAgentExports supports every export target with canonical dependencies", async () => {
   await withTempDirectory(async (directory) => {
     assert.equal((await syncAgentExports(directory, { target: "agents" })).checked.length, 1);
-    assert.equal((await syncAgentExports(directory, { target: "claude" })).checked.length, 1);
+    assert.equal((await syncAgentExports(directory, { target: "claude" })).checked.length, 2);
+    assert.equal((await syncAgentExports(directory, { target: "gemini" })).checked.length, 2);
     assert.equal((await syncAgentExports(directory, { target: "codex" })).checked.length, 1);
-    assert.equal((await syncAgentExports(directory, { target: "gemini" })).checked.length, 1);
     assert.equal((await syncAgentExports(directory, { target: "opencode" })).checked.length, 1);
-    assert.equal((await syncAgentExports(directory, { target: "cursor" })).checked.length, 4);
+    assert.equal((await syncAgentExports(directory, { target: "cursor" })).checked.length, 1);
   });
 });

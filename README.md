@@ -296,7 +296,7 @@ pnpm exec tsx src/cli/index.ts export
 pnpm exec tsx src/cli/index.ts export codex --force
 ```
 
-Supported export targets: `agents`, `claude`, `codex`, `gemini`, `opencode`, `cursor`.
+Supported export targets: `agents`, `claude`, `gemini`, plus `codex`, `opencode`, and `cursor` compatibility aliases. `AGENTS.md` is the only full common-policy export. `CLAUDE.md` and `GEMINI.md` are thin `@AGENTS.md` imports; Codex, OpenCode, and Cursor read `AGENTS.md` directly. Legacy generated files can be previewed with `pnpm exec apk export --report-legacy` and cleaned up explicitly with `pnpm exec apk export --cleanup-legacy`, which removes only exact unmodified generated files.
 
 `export` skips existing files by default. Use `--force` to overwrite generated instruction files. The core exporter API uses the same safe default unless `force` is explicitly true.
 
@@ -628,12 +628,11 @@ pnpm exec apk export agents --force
 
 Generated outputs include:
 
-- `AGENTS.md`
-- `CLAUDE.md`
-- `GEMINI.md`
-- `.codex/instructions.md`
-- `.opencode/AGENTS.md`
-- `.cursor/rules/*.mdc`
+- `AGENTS.md` - the only full common-policy export, read directly by Codex, OpenCode, and Cursor.
+- `CLAUDE.md` - thin `@AGENTS.md` import for Claude Code.
+- `GEMINI.md` - thin `@./AGENTS.md` import for Gemini CLI.
+
+Obsolete `.codex/instructions.md`, `.opencode/AGENTS.md`, and `.cursor/rules/*.mdc` files are no longer generated. `pnpm exec apk export --report-legacy` reports any that remain; `pnpm exec apk export --cleanup-legacy` removes only exact unmodified generated files and preserves customized content.
 
 The source of truth remains the repository docs and neutral policy content; exported files are derived artifacts.
 

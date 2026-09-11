@@ -92,9 +92,9 @@ The milestone retains the existing independent-review capability while making it
 
 This milestone does not implement an LLM runtime, provider SDK layer, secret manager, autonomous swarm, always-on master LLM, cloud control plane, dashboard/SaaS, remote execution platform, billing system, or generic scheduler.
 
-## Exporter consolidation (planned maintenance)
+## Exporter consolidation (done)
 
-Task 0092 is a high-value maintenance task to make `AGENTS.md` the only full common-policy generated export and reduce other harness files to direct consumption or minimal native adapters. It depends on completed exporter, sync, contract-lint, adoption-compatibility and generated-policy foundations (`0029`, `0040`, `0066`, `0074`, `0081`) and does not block the release or Resource-Aware Execution branches.
+Task 0092 makes `AGENTS.md` the only full common-policy generated export and reduces other harness files to direct consumption or minimal native adapters. Codex, OpenCode, and Cursor read `AGENTS.md` directly; `CLAUDE.md` and `GEMINI.md` are thin `@AGENTS.md` imports; obsolete `.codex/instructions.md`, `.opencode/AGENTS.md`, and `.cursor/rules/*.mdc` files have a conservative report/cleanup migration path. It depends on completed exporter, sync, contract-lint, adoption-compatibility and generated-policy foundations (`0029`, `0040`, `0066`, `0074`, `0081`) and does not block the release or Resource-Aware Execution branches.
 
 ## External runtime alignment (planning)
 

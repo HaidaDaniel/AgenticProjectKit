@@ -103,6 +103,7 @@ The repository now has:
 - Task 0074 contains explicit legacy/gated compatibility detection, read-only adoption preview, idempotent `--apply` migration, preserved custom config/instructions/tasks, v0.3.1 fixture regressions, and cross-platform line-ending-safe renderer assertions; lifecycle is `done`.
 - Corrective Task 0096 adds `apk task verify --record`, an explicit registered task-owner surface for externally-observed manual/live check results bound to the current baseline/candidate subject; automated checks, unregistered or non-owner agents, missing references, and ineligible checks fail closed. It also aligns declared evidence categories with the single typed record a check emits so a required `manual`+`live` check cannot declare an unsatisfiable `manual` category. Required manual/live checks remain `unavailable` under normal verification.
 - Planning Task 0097 records the boundary between APK (repository-local semantic workflow/control plane) and an external terminal/session runtime such as Herdr (PTY, persistent shells, detach/reattach, live process lifetime, remote connectivity, operator navigation), documents the multi-machine repository-local operating model, amends 0087/0088 to stay semantic-attention and safe-Git-worktree only, and defers external-runtime dogfood without adding an adapter or dependency.
+- Task 0092 makes `AGENTS.md` the only full common-policy export. Codex, OpenCode, and Cursor read it directly; `CLAUDE.md` and `GEMINI.md` are thin `@AGENTS.md` imports; `codex`/`opencode`/`cursor` remain compatibility aliases resolving to `AGENTS.md`. Obsolete `.codex/instructions.md`, `.opencode/AGENTS.md`, and `.cursor/rules/*.mdc` files are no longer generated and have a read-only report plus explicit exact-content cleanup that preserves customized files.
 
 ## Next step
 
@@ -126,7 +127,7 @@ After the gated-workflow release foundation, Resource-Aware Execution proceeds t
 - Task 0073: Harness Interoperability complete.
 - Task 0077: done; vendor-neutral capability detection and explicit repository quality policy contracts.
 - Task 0091: done; corrective pass for the three bounded Task 0077 quality detector review findings, linked to completed 0077 and preceding 0078.
-- Task 0092: todo; implementation-ready consolidation of agent instruction exports around canonical `AGENTS.md`, independent of the active release and resource-aware branches.
+- Task 0092: done; agent instruction exports consolidated around canonical `AGENTS.md` with thin Claude/Gemini adapters, direct Codex/OpenCode/Cursor consumption, and conservative legacy report/cleanup.
 - Task 0093: done; restored test closure restored six independent top-level CLI cases, with V16 AST regression protection and Node 22/full-suite proof.
 - Task 0078: done; APK-local typecheck, lint, coverage, fast-quality, release-check and feedback-only hooks.
 - Task 0079: done; APK-local tooling -> clean-checkout CI, exact-SHA hosted proof recorded for the implementation candidate.
@@ -140,7 +141,7 @@ After the gated-workflow release foundation, Resource-Aware Execution proceeds t
 - Tasks 0087-0088: later worker attention/status after 0085, then optional safe isolated Git workspaces; 0087 remains independent of 0086.
 - Contracts extend existing task verify, templates, graph validation, context, sync and work loop.
 - Task links and dependency graph: [delivery milestones](delivery/milestones.md#next-gated-workflow-release-planned).
-- Task 0092 depends on completed exporter/sync, contract-lint, adoption-compatibility and generated-policy foundations (`0029`, `0040`, `0066`, `0074`, `0081`); it remains `todo`/unowned and does not block unrelated release work.
+- Task 0092 is done and depends on completed exporter/sync, contract-lint, adoption-compatibility and generated-policy foundations (`0029`, `0040`, `0066`, `0074`, `0081`); it did not block unrelated release work.
 
 ## Notes
 

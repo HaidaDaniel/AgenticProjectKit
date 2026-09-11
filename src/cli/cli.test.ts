@@ -1645,9 +1645,9 @@ test("V16: CLI peer cases remain top-level across the sync boundary", async () =
 
 test("CLI sync checks and writes generated files in a temp repository", async () => {
   await withTempDirectory(async (directory) => {
-    const check = await runCli(["sync", "codex"], directory);
-    const write = await runCli(["sync", "codex", "--write"], directory);
-    const recheck = await runCli(["sync", "codex"], directory);
+    const check = await runCli(["sync", "claude"], directory);
+    const write = await runCli(["sync", "claude", "--write"], directory);
+    const recheck = await runCli(["sync", "claude"], directory);
 
     assert.equal(check.exitCode, 1);
     assert.match(check.stdout, /Generated files are out of sync/);
@@ -1655,7 +1655,8 @@ test("CLI sync checks and writes generated files in a temp repository", async ()
     assert.match(write.stdout, /Generated files were updated/);
     assert.equal(recheck.exitCode, 0);
     assert.match(recheck.stdout, /Generated files are in sync/);
-    assert.match(await readFile(join(directory, ".codex/instructions.md"), "utf8"), /# Codex Instructions/);
+    assert.match(await readFile(join(directory, "CLAUDE.md"), "utf8"), /@AGENTS\.md/);
+    assert.match(await readFile(join(directory, "AGENTS.md"), "utf8"), /automatically launch a separate read-only reviewer/);
   });
 });
 

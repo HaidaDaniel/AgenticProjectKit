@@ -634,3 +634,23 @@ persistent Ubuntu dev host
 ```
 
 APK state stays in each repository; the external runtime may open a repository or an APK-managed Git worktree path as a pane/workspace cwd.
+
+## ADR-0040 - Canonical AGENTS.md export with thin harness adapters
+
+Status: accepted
+
+Decision:
+
+`AGENTS.md` is the only full common-policy generated export. Codex, OpenCode, and Cursor read `AGENTS.md` directly (root and nested), so APK stops generating `.codex/instructions.md`, `.opencode/AGENTS.md`, and `.cursor/rules/*.mdc`. Claude Code does not read `AGENTS.md`; its `CLAUDE.md` is a thin `@AGENTS.md` import. Gemini CLI reads `GEMINI.md` and supports `@file.md` imports; its `GEMINI.md` is a thin `@./AGENTS.md` import. No filesystem symlinks are used.
+
+`NeutralAgentPolicy` plus repository docs remain the internal source of truth; `AGENTS.md` is a generated rendering, not a handwritten policy source. Only `agents`, `claude`, and `gemini` are active exporters; `codex`, `opencode`, and `cursor` remain accepted export/sync targets that resolve to `AGENTS.md` for backward compatibility.
+
+Legacy cleanup is conservative. `apk export --report-legacy` classifies obsolete files read-only; `apk export --cleanup-legacy` removes only files whose normalized content exactly matches the known legacy rendering. Any differing existing file is treated as customized and preserved. A filename alone is never proof.
+
+Reason:
+
+Generating a full second copy of common policy per harness multiplied drift and review surface. Current harnesses either consume `AGENTS.md` natively or offer a documented native import, so thin adapters preserve one source of truth without symlinks or duplication. Exact-content classification prevents accidental deletion of user-authored files.
+
+Implementation and invariant:
+
+`src/core/exporters/index.ts` holds the reduced registry, thin-adapter targets, compatibility aliases, and legacy classification/cleanup. `src/core/templates/exporters/agents.md.hbs` carries the full policy (including the worker contract); `claude.md.hbs` and `gemini.md.hbs` are thin imports. Init/adopt/export/sync/scanner/audit/lint derive from the same registry, so the canonical set cannot drift between surfaces.

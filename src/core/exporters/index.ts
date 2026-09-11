@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,13 +7,7 @@ import { renderTemplateFile, type TemplateData } from "../templates/index.js";
 export const AGENT_EXPORTER_IDS = [
   "agents",
   "claude",
-  "codex",
   "gemini",
-  "opencode",
-  "cursor-project-overview",
-  "cursor-architecture",
-  "cursor-task-workflow",
-  "cursor-local-llm-safe",
 ] as const;
 
 export type AgentExporterId = (typeof AGENT_EXPORTER_IDS)[number];
@@ -28,6 +22,30 @@ export const AGENT_EXPORT_TARGETS = [
 ] as const;
 
 export type AgentExportTarget = (typeof AGENT_EXPORT_TARGETS)[number];
+
+export interface LegacyAgentExporter {
+  id: string;
+  outputPath: string;
+  templatePath: string;
+  reason: string;
+}
+
+export const LEGACY_AGENT_EXPORT_STATUSES = ["generated", "customized"] as const;
+export type LegacyAgentExportStatus = (typeof LEGACY_AGENT_EXPORT_STATUSES)[number];
+
+export interface LegacyAgentExportFinding {
+  id: string;
+  outputPath: string;
+  status: LegacyAgentExportStatus;
+  reason: string;
+}
+
+export interface CleanupLegacyAgentExportsResult {
+  applied: boolean;
+  removed: string[];
+  preserved: string[];
+  findings: LegacyAgentExportFinding[];
+}
 
 export interface NeutralAgentPolicy extends TemplateData {
   projectName: string;
@@ -78,39 +96,51 @@ const EXPORTERS: readonly AgentExporter[] = [
     templatePath: join(templateDirectory, "claude.md.hbs"),
   },
   {
-    id: "codex",
-    outputPath: ".codex/instructions.md",
-    templatePath: join(templateDirectory, "codex.md.hbs"),
-  },
-  {
     id: "gemini",
     outputPath: "GEMINI.md",
     templatePath: join(templateDirectory, "gemini.md.hbs"),
+  },
+];
+
+// Obsolete generated exports from earlier APK versions. Their templates are
+// retained only to recognize an unmodified generated file by exact content;
+// they are never part of the active export registry and are never generated.
+const LEGACY_EXPORTERS: readonly LegacyAgentExporter[] = [
+  {
+    id: "codex",
+    outputPath: ".codex/instructions.md",
+    templatePath: join(templateDirectory, "codex.md.hbs"),
+    reason: "Codex reads AGENTS.md directly; the separate common-policy export is obsolete.",
   },
   {
     id: "opencode",
     outputPath: ".opencode/AGENTS.md",
     templatePath: join(templateDirectory, "opencode.md.hbs"),
+    reason: "OpenCode reads AGENTS.md directly; the separate common-policy export is obsolete.",
   },
   {
     id: "cursor-project-overview",
     outputPath: ".cursor/rules/project-overview.mdc",
     templatePath: join(templateDirectory, "cursor-project-overview.mdc.hbs"),
+    reason: "Cursor reads AGENTS.md directly; the duplicated project rule is obsolete.",
   },
   {
     id: "cursor-architecture",
     outputPath: ".cursor/rules/architecture.mdc",
     templatePath: join(templateDirectory, "cursor-architecture.mdc.hbs"),
+    reason: "Cursor reads AGENTS.md directly; the duplicated architecture rule is obsolete.",
   },
   {
     id: "cursor-task-workflow",
     outputPath: ".cursor/rules/task-workflow.mdc",
     templatePath: join(templateDirectory, "cursor-task-workflow.mdc.hbs"),
+    reason: "Cursor reads AGENTS.md directly; the duplicated task rule is obsolete.",
   },
   {
     id: "cursor-local-llm-safe",
     outputPath: ".cursor/rules/local-llm-safe.mdc",
     templatePath: join(templateDirectory, "cursor-local-llm-safe.mdc.hbs"),
+    reason: "Cursor reads AGENTS.md directly; the duplicated local-model rule is obsolete.",
   },
 ];
 
@@ -175,6 +205,21 @@ export function listAgentExporters(): readonly AgentExporter[] {
   return EXPORTERS;
 }
 
+export function listLegacyAgentExporters(): readonly LegacyAgentExporter[] {
+  return LEGACY_EXPORTERS;
+}
+
+export async function renderLegacyAgentExportFile(
+  id: string,
+  policy: NeutralAgentPolicy = DEFAULT_AGENT_POLICY,
+): Promise<string> {
+  const legacy = LEGACY_EXPORTERS.find((exporter) => exporter.id === id);
+  if (!legacy) {
+    throw new Error(`Unknown legacy agent exporter: ${id}`);
+  }
+  return renderTemplateFile(legacy.templatePath, { data: policy });
+}
+
 export function parseAgentExportTarget(target: string): AgentExportTarget {
   if ((AGENT_EXPORT_TARGETS as readonly string[]).includes(target)) {
     return target as AgentExportTarget;
@@ -186,16 +231,17 @@ export function parseAgentExportTarget(target: string): AgentExportTarget {
 export function exporterIdsForTarget(
   target: AgentExportTarget,
 ): readonly AgentExporterId[] {
-  if (target === "cursor") {
-    return [
-      "cursor-project-overview",
-      "cursor-architecture",
-      "cursor-task-workflow",
-      "cursor-local-llm-safe",
-    ];
+  // Every harness either consumes the canonical AGENTS.md directly (agents,
+  // codex, opencode, cursor) or imports it from a thin adapter.
+  if (target === "agents" || target === "codex" || target === "opencode" || target === "cursor") {
+    return ["agents"];
   }
 
-  return [target];
+  if (target === "claude") {
+    return ["agents", "claude"];
+  }
+
+  return ["agents", "gemini"];
 }
 
 export async function renderAgentExportFile(
@@ -300,4 +346,89 @@ export async function writeAgentExportTarget(
     await renderAgentExportTarget(target, policy),
     options,
   );
+}
+
+function normalizeLineEndings(value: string): string {
+  return value.replace(/\r\n?/g, "\n");
+}
+
+async function readOptionalText(path: string): Promise<string | undefined> {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error: unknown) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "ENOENT"
+    ) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Read-only classification of obsolete generated exports for one repository.
+ * A file counts as `generated` only when its normalized content exactly matches
+ * the legacy rendering; a filename alone is never treated as proof. Anything
+ * else that exists is treated as `customized` and must be preserved.
+ */
+export async function classifyLegacyAgentExports(
+  rootDirectory: string,
+  policy: NeutralAgentPolicy = DEFAULT_AGENT_POLICY,
+): Promise<LegacyAgentExportFinding[]> {
+  const findings: LegacyAgentExportFinding[] = [];
+
+  for (const legacy of LEGACY_EXPORTERS) {
+    const actual = await readOptionalText(join(rootDirectory, legacy.outputPath));
+    if (actual === undefined) {
+      continue;
+    }
+    const expected = await renderTemplateFile(legacy.templatePath, { data: policy });
+    const generated = normalizeLineEndings(actual) === normalizeLineEndings(expected);
+    findings.push({
+      id: legacy.id,
+      outputPath: legacy.outputPath,
+      status: generated ? "generated" : "customized",
+      reason: generated
+        ? legacy.reason
+        : "Content differs from the known generated rendering; treated as customized and preserved.",
+    });
+  }
+
+  return findings;
+}
+
+/**
+ * Preview or apply cleanup of obsolete generated exports. Cleanup is explicit:
+ * without `apply` nothing is removed. Only exact `generated` files are removed;
+ * `customized` files are always preserved.
+ */
+export async function cleanupLegacyAgentExports(
+  rootDirectory: string,
+  options: { apply?: boolean; policy?: NeutralAgentPolicy } = {},
+): Promise<CleanupLegacyAgentExportsResult> {
+  const policy = options.policy ?? DEFAULT_AGENT_POLICY;
+  const findings = await classifyLegacyAgentExports(rootDirectory, policy);
+  const generated = findings.filter((finding) => finding.status === "generated");
+  const customized = findings.filter((finding) => finding.status === "customized");
+  const removed: string[] = [];
+
+  if (options.apply) {
+    for (const finding of generated) {
+      await rm(join(rootDirectory, finding.outputPath), { force: true });
+      removed.push(finding.outputPath);
+    }
+  }
+
+  return {
+    applied: options.apply ?? false,
+    removed,
+    preserved: [
+      ...customized.map((finding) => finding.outputPath),
+      ...(options.apply ? [] : generated.map((finding) => finding.outputPath)),
+    ].sort(),
+    findings,
+  };
 }

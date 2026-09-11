@@ -146,8 +146,8 @@ Each row lists direct prerequisites; all IDs numeric. Release validation include
 
 The ordering is A -> B -> adaptive assurance, after which calibration and attention can proceed independently; workspaces remain downstream of attention. `constrained` is the reference profile. Deterministic checks precede optional semantic review, frontier review loops are bounded, and an unmet mandatory assurance level remains a visible blocker.
 
-## Exporter consolidation (planned maintenance)
+## Exporter consolidation (done)
 
 - [0092 - Consolidate agent instruction exports around canonical `AGENTS.md`](../../.tasks/0092-consolidate-agent-instruction-exports-around-canonical-agentsmd.md)
 
-This bounded follow-up depends on completed exporter/sync, contract-lint, adoption-compatibility and generated-policy foundations (`0029`, `0040`, `0066`, `0074`, `0081`). It is independent of the active release task and the Resource-Aware Execution implementation chain.
+This bounded follow-up depends on completed exporter/sync, contract-lint, adoption-compatibility and generated-policy foundations (`0029`, `0040`, `0066`, `0074`, `0081`). `AGENTS.md` is now the only full common-policy export; `CLAUDE.md` and `GEMINI.md` are thin `@AGENTS.md` imports, Codex/OpenCode/Cursor read `AGENTS.md` directly, and obsolete generated files have a conservative report/cleanup migration path. It is independent of the active release task and the Resource-Aware Execution implementation chain.

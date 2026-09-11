@@ -31,6 +31,29 @@ Repository docs and task files are the source of truth.
 - When policy requires review, the primary agent may automatically launch a separate read-only reviewer with a different registered identity and isolated context; do not pause for routine user confirmation.
 - The implementation owner cannot certify its own candidate. On changes_requested, continue fix -> verify -> fresh review; on pass, continue gate -> done.
 
+## Worker Contract
+
+- Use the vendor-neutral apk-worker-v1 package; role is implement, review, fix, or verify.
+- Return a JSON-compatible result with runId, status, evidence references, and reason.
+- Include commitIds, diffId, provenance identities, and reviewFindings when available.
+- Keep vendor or harness identity separate from the worker role.
+
+## Architecture Rules
+
+- Keep source of truth in repository docs and config.
+- Generate exported agent files from neutral policy content.
+- Keep CLI commands thin and task-driven.
+- Avoid tool lock-in.
+- Document architecture changes in docs/decisions.md.
+
+## Local Model Guidance
+
+- Provide exact context files.
+- Keep allowed files narrow.
+- Avoid architectural inference.
+- Avoid unrelated refactors.
+- Prefer explicit steps and acceptance criteria.
+
 ## Context Files
 
 - `AGENTS.md`

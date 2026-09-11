@@ -1,13 +1,17 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  DEFAULT_AGENT_POLICY,
+  classifyLegacyAgentExports,
+  cleanupLegacyAgentExports,
   listAgentExporters,
   parseAgentExportTarget,
   renderAgentExportFiles,
+  renderLegacyAgentExportFile,
   writeAgentExportFiles,
   writeAgentExportTarget,
   writeAllAgentExports,
@@ -138,19 +142,13 @@ test("renderMinimalDocs renders the minimal documentation set", async () => {
   assert.match(normalizeLineEndings(docs[2].content), /## Rules\n\n- keep commands thin/);
 });
 
-test("agent exporters expose expected output files", () => {
+test("agent exporters expose only the canonical file and thin adapters", () => {
   assert.deepEqual(
     listAgentExporters().map((exporter) => exporter.outputPath),
     [
       "AGENTS.md",
       "CLAUDE.md",
-      ".codex/instructions.md",
       "GEMINI.md",
-      ".opencode/AGENTS.md",
-      ".cursor/rules/project-overview.mdc",
-      ".cursor/rules/architecture.mdc",
-      ".cursor/rules/task-workflow.mdc",
-      ".cursor/rules/local-llm-safe.mdc",
     ],
   );
 });
@@ -164,35 +162,47 @@ test("default agent exports match generated instruction files", async () => {
   }
 });
 
-test("default agent exports use repo-local apk commands for task workflow", async () => {
+test("canonical AGENTS.md carries the repo-local task workflow and worker contract", async () => {
   const exports = await renderAgentExportFiles();
-  const workflowExports = exports.filter((file) => [
-    "AGENTS.md",
-    "CLAUDE.md",
-    ".codex/instructions.md",
-    "GEMINI.md",
-    ".opencode/AGENTS.md",
-    ".cursor/rules/task-workflow.mdc",
-  ].includes(file.outputPath));
+  const agents = exports.find((file) => file.outputPath === "AGENTS.md");
 
-  for (const file of workflowExports) {
-    assert.match(file.content, /pnpm exec apk agent register/);
-    assert.match(file.content, /pnpm exec apk claim/);
-    assert.doesNotMatch(file.content, /: apk agent register/);
-    assert.doesNotMatch(file.content, /: apk claim/);
+  assert.ok(agents);
+  assert.match(agents.content, /pnpm exec apk agent register/);
+  assert.match(agents.content, /pnpm exec apk claim/);
+  assert.doesNotMatch(agents.content, /: apk agent register/);
+  assert.doesNotMatch(agents.content, /: apk claim/);
+  assert.match(agents.content, /apk-worker-v1/);
+});
+
+test("Claude and Gemini adapters are thin AGENTS.md imports with no duplicated policy", async () => {
+  const exports = await renderAgentExportFiles();
+  const claude = exports.find((file) => file.outputPath === "CLAUDE.md");
+  const gemini = exports.find((file) => file.outputPath === "GEMINI.md");
+
+  assert.ok(claude);
+  assert.ok(gemini);
+  assert.match(claude.content, /^@AGENTS\.md$/m);
+  assert.match(gemini.content, /^@\.\/AGENTS\.md$/m);
+  for (const adapter of [claude, gemini]) {
+    assert.doesNotMatch(adapter.content, /pnpm exec apk agent register/);
+    assert.doesNotMatch(adapter.content, /apk-worker-v1/);
+    assert.ok(adapter.content.length < 400);
   }
 });
 
-test("Codex and OpenCode exports expose the shared worker contract", async () => {
+test("removed Codex, OpenCode and Cursor common-policy exports are not generated", async () => {
   const exports = await renderAgentExportFiles();
-  const codex = exports.find((file) => file.outputPath === ".codex/instructions.md");
-  const opencode = exports.find((file) => file.outputPath === ".opencode/AGENTS.md");
-
-  assert.ok(codex);
-  assert.ok(opencode);
-  assert.match(codex.content, /apk-worker-v1/);
-  assert.match(codex.content, /role is implement, review, fix, or verify/);
-  assert.match(opencode.content, /Return a JSON-compatible result/);
+  const paths = exports.map((file) => file.outputPath);
+  for (const removed of [
+    ".codex/instructions.md",
+    ".opencode/AGENTS.md",
+    ".cursor/rules/project-overview.mdc",
+    ".cursor/rules/architecture.mdc",
+    ".cursor/rules/task-workflow.mdc",
+    ".cursor/rules/local-llm-safe.mdc",
+  ]) {
+    assert.equal(paths.includes(removed), false, `${removed} must not be generated`);
+  }
 });
 
 async function withTempDirectory(
@@ -214,18 +224,12 @@ test("writeAllAgentExports writes every supported output", async () => {
     assert.deepEqual(result.written, [
       "AGENTS.md",
       "CLAUDE.md",
-      ".codex/instructions.md",
       "GEMINI.md",
-      ".opencode/AGENTS.md",
-      ".cursor/rules/project-overview.mdc",
-      ".cursor/rules/architecture.mdc",
-      ".cursor/rules/task-workflow.mdc",
-      ".cursor/rules/local-llm-safe.mdc",
     ]);
     assert.deepEqual(result.skipped, []);
     assert.match(
-      await readFile(join(directory, ".codex/instructions.md"), "utf8"),
-      /# Codex Instructions/,
+      await readFile(join(directory, "CLAUDE.md"), "utf8"),
+      /@AGENTS\.md/,
     );
   });
 });
@@ -242,13 +246,7 @@ test("writeAllAgentExports can skip existing files", async () => {
     assert.deepEqual(result.skipped, [
       "AGENTS.md",
       "CLAUDE.md",
-      ".codex/instructions.md",
       "GEMINI.md",
-      ".opencode/AGENTS.md",
-      ".cursor/rules/project-overview.mdc",
-      ".cursor/rules/architecture.mdc",
-      ".cursor/rules/task-workflow.mdc",
-      ".cursor/rules/local-llm-safe.mdc",
     ]);
   });
 });
@@ -271,20 +269,65 @@ test("writeAgentExportFiles skips existing files by default", async () => {
   });
 });
 
-test("writeAgentExportTarget writes only selected target group", async () => {
+test("writeAgentExportTarget writes the canonical file plus the selected adapter", async () => {
   await withTempDirectory(async (directory) => {
-    const result = await writeAgentExportTarget(directory, "cursor");
+    const result = await writeAgentExportTarget(directory, "claude");
 
     assert.deepEqual(result.written, [
-      ".cursor/rules/project-overview.mdc",
-      ".cursor/rules/architecture.mdc",
-      ".cursor/rules/task-workflow.mdc",
-      ".cursor/rules/local-llm-safe.mdc",
+      "AGENTS.md",
+      "CLAUDE.md",
     ]);
     assert.match(
-      await readFile(join(directory, ".cursor/rules/task-workflow.mdc"), "utf8"),
-      /Task files define the implementation contract\./,
+      await readFile(join(directory, "CLAUDE.md"), "utf8"),
+      /@AGENTS\.md/,
     );
+  });
+});
+
+test("legacy exporter aliases resolve to the canonical AGENTS.md", async () => {
+  await withTempDirectory(async (directory) => {
+    for (const target of ["codex", "opencode", "cursor"] as const) {
+      const result = await writeAgentExportTarget(directory, target, undefined, { force: true });
+      assert.deepEqual(result.written, ["AGENTS.md"], `${target} should map to AGENTS.md`);
+    }
+  });
+});
+
+test("classifyLegacyAgentExports distinguishes generated from customized files", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".codex"), { recursive: true });
+    await mkdir(join(directory, ".opencode"), { recursive: true });
+    const generated = await renderLegacyAgentExportFile("codex", DEFAULT_AGENT_POLICY);
+    await writeFile(join(directory, ".codex/instructions.md"), generated, "utf8");
+    await writeFile(join(directory, ".opencode/AGENTS.md"), "customized by a human\n", "utf8");
+
+    const findings = await classifyLegacyAgentExports(directory);
+    const codex = findings.find((finding) => finding.outputPath === ".codex/instructions.md");
+    const opencode = findings.find((finding) => finding.outputPath === ".opencode/AGENTS.md");
+
+    assert.equal(codex?.status, "generated");
+    assert.equal(opencode?.status, "customized");
+  });
+});
+
+test("cleanupLegacyAgentExports is a no-write preview by default and preserves customized files on apply", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".codex"), { recursive: true });
+    await mkdir(join(directory, ".opencode"), { recursive: true });
+    const generated = await renderLegacyAgentExportFile("codex", DEFAULT_AGENT_POLICY);
+    await writeFile(join(directory, ".codex/instructions.md"), generated, "utf8");
+    await writeFile(join(directory, ".opencode/AGENTS.md"), "customized\n", "utf8");
+
+    const preview = await cleanupLegacyAgentExports(directory);
+    assert.equal(preview.applied, false);
+    assert.deepEqual(preview.removed, []);
+    assert.equal(await readFile(join(directory, ".codex/instructions.md"), "utf8"), generated);
+
+    const applied = await cleanupLegacyAgentExports(directory, { apply: true });
+    assert.deepEqual(applied.removed, [".codex/instructions.md"]);
+    assert.deepEqual(applied.preserved, [".opencode/AGENTS.md"]);
+    await assert.rejects(readFile(join(directory, ".codex/instructions.md"), "utf8"));
+    assert.equal(await readFile(join(directory, ".opencode/AGENTS.md"), "utf8"), "customized\n");
   });
 });
 
