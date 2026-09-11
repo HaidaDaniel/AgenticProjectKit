@@ -110,6 +110,7 @@ The repository now has:
 - Corrective Task 0099 restores the 13 Task 0092 acceptance criteria that the pre-0098 parser dropped during the 0092 `done` round-trip, using the exact original wording from revision f82ac50, and revalidates the 0092 implementation against the restored contract.
 - Corrective Task 0100 completes the Task 0087 worker/session projection: `apk workers` now binds declared workers to canonical `apk-worker-v1` sessions, reports `busy` with a proven task/run for active open runs, `unknown` with bounded diagnostics for unactivated/orphaned/malformed sessions, ignores completed/canceled runs, exposes capabilities and remaining slots, and never claims live process state.
 - Corrective Task 0101 aligns Task 0086 calibration with task assurance policy: calibration assurance is advisory (no global `fresh-context` floor), `generatedAt` changes only on an effective change, the raw config is read once and fails closed on non-missing/invalid-JSON errors while preserving unknown user keys, and credential-like endpoint query/bearer/userinfo values are rejected or omitted without echoing the value.
+- Task 0088 adds `apk workspaces create|list|status|cleanup`: optional APK-owned isolated Git worktrees bound to task/run/resource/branch/baseline/candidate with a Git administrative ownership marker, real-path containment, collision validation before mutation, dry-run cleanup by default, and exact ownership proof (record + marker + Git registration + contained path + clean/unmerged-free state) before any removal. It never deletes a repository root, foreign/user worktree, dirty or unmerged worktree, active-run workspace, path-escape, or ambiguous metadata, and it adds no PTY/SSH/multiplexer/process-supervisor/scheduler/auto-merge behavior.
 
 ## Next step
 
@@ -117,7 +118,7 @@ Tasks 0093-0096 and 0079 are done, and Task 0075 is `done` after frozen-candidat
 
 Planned pre-release chain: 0074 -> 0077 capability contract -> 0078 APK-local quality guardrails -> 0079 clean-checkout CI -> 0075 frozen release validation. Tasks 0076 lock recovery and 0080 Task 0073 P2 fixes must also finish before 0075. New tasks stay `todo` with `Owner: none`.
 
-After the gated-workflow release foundation, Resource-Aware Execution proceeds through 0083 -> 0084 -> 0085 -> 0086 (calibration, also consuming 0077) -> 0087 (semantic attention/status). The remaining work is 0088 optional safe isolated worktrees, which the boundary Task 0097 constrained to safe Git worktree ownership/lifecycle only. This milestone does not add dependencies to 0075 or the independent 0077-0079 quality chain.
+After the gated-workflow release foundation, Resource-Aware Execution proceeds through 0083 -> 0084 -> 0085 -> 0086 (calibration, also consuming 0077) -> 0087 (semantic attention/status) -> 0088 (safe isolated Git worktrees). The Resource-Aware Execution milestone is complete; the boundary Task 0097 constrained 0088 to safe Git worktree ownership/lifecycle only. This milestone does not add dependencies to 0075 or the independent 0077-0079 quality chain.
 
 0074 dependency on completed 0073 was added after 0074 entered `doing`. Recorded owner/state/baseline were not reset. Historical start before 0073 terminal transition remains visible; final release validation must assess integrated candidate rather than treat retroactive edge as historical gate proof.
 
@@ -145,7 +146,7 @@ After the gated-workflow release foundation, Resource-Aware Execution proceeds t
 - Task 0077: done; shared read-only quality capability detection, optional explicit policy, and `quality detect` CLI projection. Canonical lint/test/build, CLI smoke, doctor, independent review, gate, and done evidence passed.
 - Task 0086: done; deterministic, read-only, secret-free resource detection plus validated `apk-calibration-v1` calibration with explicit idempotent apply; reuses 0077 quality-capability output.
 - Task 0087: done; bounded semantic attention/status (`apk attention`, `apk workers`) over existing records, runtime-neutral and independent of calibration.
-- Task 0088: remaining optional safe isolated Git workspaces for parallel top-level workers; depends on 0087.
+- Task 0088: done; optional safe isolated Git worktrees for parallel top-level workers with ownership-proof creation/cleanup and default single-worktree compatibility.
 - Contracts extend existing task verify, templates, graph validation, context, sync and work loop.
 - Task links and dependency graph: [delivery milestones](delivery/milestones.md#next-gated-workflow-release-planned).
 - Task 0092 is done and depends on completed exporter/sync, contract-lint, adoption-compatibility and generated-policy foundations (`0029`, `0040`, `0066`, `0074`, `0081`); it did not block unrelated release work.

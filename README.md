@@ -61,6 +61,7 @@ Implemented commands:
 - `apk resources detect [--json]`
 - `apk attention [--json]`
 - `apk workers [--json]`
+- `apk workspaces <create|list|status|cleanup> [--json] [--apply]`
 - `apk execution explain <task-id> --role <role> [--profile <profile>] [--resource <worker-id>] [--json]`
 - `apk execution calibrate [--recommendation <json>] [--apply] [--json]`
 - `apk work <task-id> --owner <agent-id> --target <agent> [--resource <worker-id>] [--role implement|review|fix|verify] [--json]`

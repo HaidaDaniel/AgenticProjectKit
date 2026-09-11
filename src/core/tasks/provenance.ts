@@ -22,6 +22,7 @@ import {
 } from "./evidence.js";
 import { isSafeRunId } from "../work/contract.js";
 import { readActiveWorkerSession } from "../work/session.js";
+import { listWorkspaceStatuses, type WorkspaceStatusEntry } from "../workspaces/index.js";
 
 const execFileAsync = promisify(execFile);
 const MAX_COMMITS = 64;
@@ -123,6 +124,8 @@ export interface TaskProvenance {
   participants: TaskProvenanceParticipant[];
   runs: TaskProvenanceRun[];
   workerRuns: TaskProvenanceWorkerRun[];
+  /** Bounded managed-worktree bindings for this task; no absolute paths. */
+  workspaces: WorkspaceStatusEntry[];
   evidence: TaskProvenanceEvidence[];
   completion?: TaskProvenanceCompletion;
   diagnostics: string[];
@@ -430,6 +433,12 @@ export async function buildTaskProvenance(
     : undefined;
   const diagnostics: string[] = [...candidate.diagnostics];
   const workerRuns = await readWorkerRuns(rootDirectory, taskId, records, diagnostics);
+  let workspaces: WorkspaceStatusEntry[] = [];
+  try {
+    workspaces = (await listWorkspaceStatuses(rootDirectory)).filter((workspace) => workspace.taskId === taskId);
+  } catch (error: unknown) {
+    diagnostics.push(`Workspace provenance unavailable for ${taskId}: ${error instanceof Error ? error.message : String(error)}.`);
+  }
   const commits = baseline?.headSha
     ? parseCommits(await gitLines(rootDirectory, ["log", "--no-decorate", "--format=%H%x09%aI%x09%an%x09%s", `--max-count=${MAX_COMMITS}`, `${baseline.headSha}..HEAD`]))
     : [];
@@ -477,6 +486,7 @@ export async function buildTaskProvenance(
     participants: participantRecords(agents, allRuns, workerRuns, evidence),
     runs: allRuns,
     workerRuns,
+    workspaces,
     evidence,
     ...(completion && completionFreshness ? {
       completion: {
@@ -525,6 +535,10 @@ export function renderTaskProvenance(provenance: TaskProvenance): string {
     "Worker runs:",
     ...(provenance.workerRuns.length > 0
       ? provenance.workerRuns.map((run) => `  - ${run.runId} ${run.role}: ${run.issuedSubject.candidateId} -> ${run.outputSubject?.candidateId ?? "pending"} activated=${run.activated} status=${run.status}${run.evidenceId ? ` evidence=${run.evidenceId}` : ""}`)
+      : ["  - none"]),
+    "Workspaces:",
+    ...(provenance.workspaces.length > 0
+      ? provenance.workspaces.map((workspace) => `  - ${workspace.id} state=${workspace.state} cleanup=${workspace.safeToCleanup ? "safe" : "blocked"} worktree=${workspace.worktreeId.slice(0, 16)}${workspace.runId ? ` run=${workspace.runId}` : ""}`)
       : ["  - none"]),
     "Evidence:",
     ...(provenance.evidence.length > 0

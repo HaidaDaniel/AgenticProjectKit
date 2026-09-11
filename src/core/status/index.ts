@@ -19,6 +19,7 @@ import {
 } from "../tasks/index.js";
 import { TASK_EVIDENCE_LOCK_PATH } from "../tasks/evidence.js";
 import { inspectLocalMutationLock, renderLocalLockInspection } from "../tasks/lock.js";
+import { listWorkspaceStatuses } from "../workspaces/index.js";
 
 const MAX_ACTIVE_TASKS = 32;
 const MAX_STATUS_BLOCKERS = 8;
@@ -396,6 +397,17 @@ export async function summarizeStatus(rootDirectory: string): Promise<StatusSumm
   }
 
   warnings.push(...await localLockWarnings(rootDirectory, config.taskDirectory));
+
+  try {
+    const workspaces = await listWorkspaceStatuses(rootDirectory);
+    for (const workspace of workspaces) {
+      if (!workspace.safeToCleanup) {
+        warnings.push(`workspace ${workspace.id} (task ${workspace.taskId}) ${workspace.state}: ${capStatusText(workspace.reason)}; next: ${capStatusText(workspace.nextAction)}`);
+      }
+    }
+  } catch (error: unknown) {
+    warnings.push(`workspace status warning: ${capStatusText(error instanceof Error ? error.message.split("\n")[0] : String(error))}`);
+  }
 
   const sync = await syncAgentExports(rootDirectory);
   if (sync.hasDrift) {

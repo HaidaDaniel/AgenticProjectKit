@@ -1,7 +1,7 @@
 # Task 0088 - Optional Isolated Parallel Workspaces
 
-State: todo
-Owner: none
+State: done
+Owner: local-agent-0088
 Mode: product
 Lane: workflow
 Scope: workspaces,worktrees,workers,provenance,git,cli,tests,docs
@@ -69,7 +69,6 @@ Add optional safe Git worktree lifecycle for parallel top-level workers while pr
 3. Integrate workspace identity with existing worker sessions, claim ownership, same-worktree warnings, provenance, status, and attention output while keeping the default single-worktree path unchanged.
 4. Add isolated Git fixture regressions for create/use/cleanup, ambiguous or dirty state, user-created worktrees, concurrent requests, stale metadata, and recovery guidance.
 
-
 ## Acceptance criteria
 
 - Workspaces are optional. Existing single-worker/single-worktree commands behave as before when no workspace option is selected.
@@ -83,7 +82,6 @@ Add optional safe Git worktree lifecycle for parallel top-level workers while pr
 - APK owns only safe Git worktree ownership/lifecycle and the task/run/worktree binding. This task does not implement PTY, SSH, a terminal multiplexer, a process supervisor, or a remote scheduler; an external runtime may open an APK-managed worktree path as a pane/workspace cwd.
 - Tests use temporary repositories and prove user-worktree preservation, path containment, idempotent listing, refused unsafe cleanup, concurrent collision handling, single-worktree compatibility, and provenance continuity.
 
-
 ## Verification
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm lint"}`
@@ -93,7 +91,6 @@ Add optional safe Git worktree lifecycle for parallel top-level workers while pr
 ## Documentation updates
 
 - Update execution-profile, architecture, task-system, CLI, README, decisions, and progress docs for implemented optional workspace lifecycle and safety boundary.
-
 
 ## Notes
 

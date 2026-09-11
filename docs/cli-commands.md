@@ -23,6 +23,9 @@ When Agentic Project Kit is installed as a repository dev dependency, run comman
 - `apk resources detect [--json]` - deterministic read-only inventory of declared resources, local harness markers, and quality capabilities with a stable fingerprint.
 - `apk attention [--json]` - bounded, priority-ordered semantic attention queue derived from task/gate/review/policy/resource state; never claims live process facts.
 - `apk workers [--json]` - declared workers with semantic `ready`/`busy`/`unknown`/`unavailable` state from declared availability/capacity/occupancy plus canonical issued work sessions; exposes bounded capabilities, effective/declared occupancy, remaining slots, and a proven current task/run when one active session exists.
+- `apk workspaces create --task <task-id> --owner <agent-id> [--resource <worker-id>] [--run <run-id>] [--branch <name>] [--name <dir>] [--baseline <ref>] [--base <dir>] [--json]` - create an APK-owned isolated Git worktree bound to the task/run/resource after validating repository root, path containment, ownership, and collisions.
+- `apk workspaces list|status [--json]` - bounded managed-workspace state (`active`/`missing`/`unregistered`/`foreign`/`unsafe`/`ambiguous`) with a cleanup/merge/human next action and no broad absolute paths.
+- `apk workspaces cleanup <workspace-id> [--apply] [--json]` - dry-run preview by default; `--apply` removes only an exact APK-owned, marker-matched, Git-registered, clean, inactive worktree.
 - `apk execution explain <task-id> --role <planning|implementation|review|fix|documentation|triage|verification> [--profile <local|constrained|balanced|abundant>] [--resource <worker-id>] [--json]` - explain a deterministic resource route without starting a worker.
 - `apk execution calibrate [--json]` - emit a bounded `apk-calibration-v1` planner package; `--recommendation <json> [--apply]` validates an external recommendation and applies it only on explicit request, preserving user overrides.
 - `apk next-task` - choose the next task to work on.
@@ -80,6 +83,10 @@ pnpm exec apk sync cursor
 pnpm exec apk status
 pnpm exec apk suggest-context "Add auth middleware"
 pnpm exec apk work 0043 --owner codex-a --target codex
+pnpm exec apk workspaces create --task 0043 --owner codex-a --resource local-worker --run run-123
+pnpm exec apk workspaces status --json
+pnpm exec apk workspaces cleanup ws-abc123
+pnpm exec apk workspaces cleanup ws-abc123 --apply
 pnpm exec apk analytics summary --month 2026-05 --write
 pnpm exec apk task deps 0043
 pnpm exec apk task verify 0043 --owner codex-a

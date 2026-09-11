@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -10,6 +10,15 @@ import ts from "typescript";
 
 import { startWork } from "../core/work/index.js";
 import { resolveExecutionRoute } from "../core/execution/index.js";
+import {
+  assessWorkspaceSafety,
+  createWorkspace,
+  listWorkspaceStatuses,
+  removeWorkspace,
+  workspaceRecordPath,
+  type WorkspaceRecord,
+} from "../core/workspaces/index.js";
+import { captureTaskEvidenceSubject, parseTaskMarkdown } from "../core/tasks/index.js";
 
 const execFileAsync = promisify(execFile);
 const CLI_PATH = join(process.cwd(), "src/cli/index.ts");
@@ -614,6 +623,239 @@ test("CLI workers binds canonical sessions and fails closed on stale or orphaned
     assert.match(human.stdout, /capabilities=implementation,review/);
     assert.match(human.stdout, /remaining=2/);
     assert.doesNotMatch(human.stdout, /pid|process|terminal|ssh/i);
+  });
+});
+
+async function pathExistsForTest(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function initGitRepo(directory: string): Promise<void> {
+  await execFileAsync("git", ["init", "-q"], { cwd: directory });
+  await execFileAsync("git", ["config", "user.email", "test@example.com"], { cwd: directory });
+  await execFileAsync("git", ["config", "user.name", "Test"], { cwd: directory });
+  await writeFile(join(directory, ".gitignore"), ".apk-workspaces/\n.agentic/workspaces/\n", "utf8");
+  await writeFile(join(directory, "README.md"), "init\n", "utf8");
+  await execFileAsync("git", ["add", ".gitignore", "README.md"], { cwd: directory });
+  await execFileAsync("git", ["commit", "-q", "-m", "init"], { cwd: directory });
+}
+
+async function writeTaskFile(directory: string, id: string, state: string, owner: string): Promise<void> {
+  await mkdir(join(directory, ".tasks"), { recursive: true });
+  await writeFile(join(directory, ".tasks", `${id}-task.md`), buildTaskMarkdown(id, "Task", state, owner), "utf8");
+}
+
+async function writeWorkspaceRecord(directory: string, record: WorkspaceRecord): Promise<void> {
+  await mkdir(join(directory, ".agentic", "workspaces"), { recursive: true });
+  await writeFile(workspaceRecordPath(directory, record.id), `${JSON.stringify(record, null, 2)}\n`, "utf8");
+}
+
+test("CLI workspaces creates lists idempotently and removes only an exact owned worktree", async () => {
+  await withTempDirectory(async (directory) => {
+    await initGitRepo(directory);
+    await writeTaskFile(directory, "0001", "doing", "owner");
+
+    const created = await runCli(["workspaces", "create", "--task", "0001", "--owner", "owner", "--json"], directory);
+    assert.equal(created.exitCode, 0, `${created.stdout}${created.stderr}`);
+    const record = (JSON.parse(created.stdout) as { workspace: WorkspaceRecord }).workspace;
+    assert.equal(record.taskId, "0001");
+    assert.equal(record.baselineHeadSha, record.candidateRevision);
+    assert.ok(record.worktreePath.includes(".apk-workspaces"));
+    assert.ok(await pathExistsForTest(record.worktreePath));
+
+    const first = await runCli(["workspaces", "list", "--json"], directory);
+    const second = await runCli(["workspaces", "list", "--json"], directory);
+    assert.equal(first.stdout, second.stdout);
+    const entries = (JSON.parse(first.stdout) as { workspaces: Array<{ id: string; state: string }> }).workspaces;
+    assert.equal(entries[0]?.state, "active");
+
+    const dry = await runCli(["workspaces", "cleanup", record.id], directory);
+    assert.equal(dry.exitCode, 0, `${dry.stdout}${dry.stderr}`);
+    assert.match(dry.stdout, /Applied: false/);
+    assert.ok(await pathExistsForTest(record.worktreePath));
+
+    const applied = await runCli(["workspaces", "cleanup", record.id, "--apply"], directory);
+    assert.equal(applied.exitCode, 0, `${applied.stdout}${applied.stderr}`);
+    assert.match(applied.stdout, /Removed: true/);
+    assert.equal(await pathExistsForTest(record.worktreePath), false);
+
+    // The default single-worktree workflow still runs.
+    const status = await runCli(["status"], directory);
+    assert.equal(status.exitCode, 0, `${status.stdout}${status.stderr}`);
+  });
+});
+
+test("CLI workspaces create rejects unsafe names and foreign task owners", async () => {
+  await withTempDirectory(async (directory) => {
+    await initGitRepo(directory);
+    await writeTaskFile(directory, "0001", "doing", "owner");
+
+    const escape = await runCli(["workspaces", "create", "--task", "0001", "--owner", "owner", "--name", "../escape"], directory);
+    assert.equal(escape.exitCode, 1);
+    assert.match(escape.stderr, /safe path segment/i);
+
+    const wrongOwner = await runCli(["workspaces", "create", "--task", "0001", "--owner", "someone-else"], directory);
+    assert.equal(wrongOwner.exitCode, 1);
+    assert.match(wrongOwner.stderr, /owned by owner, not someone-else/);
+  });
+});
+
+test("workspace safety refuses root, path escape, foreign, dirty, unmerged, and active-run cases", async () => {
+  await withTempDirectory(async (directory) => {
+    await initGitRepo(directory);
+    await writeTaskFile(directory, "0001", "doing", "owner");
+    const created = await createWorkspace({ rootDirectory: directory, taskId: "0001", owner: "owner" });
+    const record = created.record;
+
+    await assert.rejects(
+      () => createWorkspace({ rootDirectory: directory, taskId: "0001", owner: "owner" }),
+      /already has managed workspace/i,
+    );
+
+    const rootRecord: WorkspaceRecord = { ...record, id: "ws-root", worktreePath: directory, worktreeId: "worktree:root", marker: "root" };
+    assert.equal((await assessWorkspaceSafety(directory, rootRecord)).state, "unsafe");
+
+    const escapeRecord: WorkspaceRecord = {
+      ...record,
+      id: "ws-escape",
+      worktreePath: join(directory, "..", "outside-worktree"),
+      worktreeId: "worktree:escape",
+      marker: "escape",
+    };
+    await writeWorkspaceRecord(directory, escapeRecord);
+    assert.equal((await assessWorkspaceSafety(directory, escapeRecord)).state, "unsafe");
+    await assert.rejects(
+      () => removeWorkspace({ rootDirectory: directory, id: "ws-escape", apply: true }),
+      /Refusing to remove/,
+    );
+
+    const userWorktree = join(directory, ".apk-workspaces", "user-made");
+    await execFileAsync("git", ["worktree", "add", "-b", "user-branch", userWorktree, "HEAD"], { cwd: directory });
+    const foreignRecord: WorkspaceRecord = { ...record, id: "ws-foreign", worktreePath: userWorktree, worktreeId: "worktree:foreign", marker: "foreign" };
+    await writeWorkspaceRecord(directory, foreignRecord);
+    assert.equal((await assessWorkspaceSafety(directory, foreignRecord)).state, "foreign");
+    await assert.rejects(
+      () => removeWorkspace({ rootDirectory: directory, id: "ws-foreign", apply: true }),
+      /Refusing to remove/,
+    );
+    assert.ok(await pathExistsForTest(userWorktree), "foreign/user worktree must be preserved");
+
+    // Active run binding blocks cleanup.
+    const runDir = join(directory, ".agentic", "sessions", "work", "0001", "run-x");
+    await mkdir(runDir, { recursive: true });
+    await writeFile(join(runDir, "metadata.json"), JSON.stringify({ protocol: "apk-worker-v1", taskId: "0001", runId: "run-x", owner: "owner", role: "implement" }), "utf8");
+    await writeFile(join(runDir, "activation.json"), JSON.stringify({ protocol: "apk-worker-v1", taskId: "0001", runId: "run-x", packageHash: "x", activatedAt: "2026-01-01T00:00:00.000Z" }), "utf8");
+    const activeRecord: WorkspaceRecord = { ...record, runId: "run-x" };
+    const assessed = await assessWorkspaceSafety(directory, activeRecord);
+    assert.equal(assessed.safeToCleanup, false);
+    assert.match(assessed.reason, /activated worker run/);
+
+    // Dirty state blocks cleanup.
+    await writeFile(join(record.worktreePath, "README.md"), "dirty\n", "utf8");
+    const dirty = await assessWorkspaceSafety(directory, record);
+    assert.equal(dirty.safeToCleanup, false);
+    await assert.rejects(
+      () => removeWorkspace({ rootDirectory: directory, id: record.id, apply: true }),
+      /Refusing to remove/,
+    );
+    assert.ok(await pathExistsForTest(record.worktreePath), "dirty worktree must be preserved");
+  });
+});
+
+test("workspace safety refuses an unmerged worktree", async () => {
+  await withTempDirectory(async (directory) => {
+    await initGitRepo(directory);
+    await writeTaskFile(directory, "0001", "doing", "owner");
+    const created = await createWorkspace({ rootDirectory: directory, taskId: "0001", owner: "owner" });
+    const record = created.record;
+    const mainBranch = (await execFileAsync("git", ["symbolic-ref", "--short", "HEAD"], { cwd: directory })).stdout.trim();
+
+    await writeFile(join(record.worktreePath, "README.md"), "workspace-side\n", "utf8");
+    await execFileAsync("git", ["commit", "-qam", "workspace"], { cwd: record.worktreePath });
+    await writeFile(join(directory, "README.md"), "main-side\n", "utf8");
+    await execFileAsync("git", ["commit", "-qam", "main"], { cwd: directory });
+
+    try {
+      await execFileAsync("git", ["merge", mainBranch], { cwd: record.worktreePath });
+    } catch {
+      // expected conflict
+    }
+    const status = (await execFileAsync("git", ["status", "--porcelain"], { cwd: record.worktreePath })).stdout;
+    assert.match(status, /UU README\.md/);
+    const assessed = await assessWorkspaceSafety(directory, record);
+    assert.equal(assessed.safeToCleanup, false);
+    await assert.rejects(
+      () => removeWorkspace({ rootDirectory: directory, id: record.id, apply: true }),
+      /Refusing to remove/,
+    );
+    assert.ok(await pathExistsForTest(record.worktreePath));
+  });
+});
+
+test("workspace stale metadata reports recovery guidance and is removable only with apply", async () => {
+  await withTempDirectory(async (directory) => {
+    await initGitRepo(directory);
+    await writeTaskFile(directory, "0001", "doing", "owner");
+    const created = await createWorkspace({ rootDirectory: directory, taskId: "0001", owner: "owner" });
+    const stale: WorkspaceRecord = {
+      ...created.record,
+      id: "ws-stale",
+      worktreePath: join(directory, ".apk-workspaces", "ghost"),
+      worktreeId: "worktree:ghost",
+      marker: "ghost",
+    };
+    await writeWorkspaceRecord(directory, stale);
+
+    const statuses = await listWorkspaceStatuses(directory);
+    const entry = statuses.find((workspace) => workspace.id === "ws-stale");
+    assert.equal(entry?.state, "missing");
+    assert.match(entry?.nextAction ?? "", /cleanup/);
+
+    const dry = await removeWorkspace({ rootDirectory: directory, id: "ws-stale" });
+    assert.equal(dry.removed, false);
+    assert.equal(await pathExistsForTest(workspaceRecordPath(directory, "ws-stale")), true);
+
+    const applied = await removeWorkspace({ rootDirectory: directory, id: "ws-stale", apply: true });
+    assert.equal(applied.removed, true);
+    assert.equal(await pathExistsForTest(workspaceRecordPath(directory, "ws-stale")), false);
+
+    // Malformed metadata is surfaced as ambiguous and refused.
+    await writeFile(join(directory, ".agentic", "workspaces", "ws-bad.json"), "{ not json", "utf8");
+    const withMalformed = await listWorkspaceStatuses(directory);
+    const badEntry = withMalformed.find((workspace) => workspace.id === "ws-bad");
+    assert.equal(badEntry?.state, "ambiguous");
+    assert.equal(badEntry?.safeToCleanup, false);
+    await assert.rejects(
+      () => removeWorkspace({ rootDirectory: directory, id: "ws-bad", apply: true }),
+      /unreadable|malformed/i,
+    );
+  });
+});
+
+test("workspace records bind distinct candidates across revisions", async () => {
+  await withTempDirectory(async (directory) => {
+    await initGitRepo(directory);
+    await writeTaskFile(directory, "0001", "doing", "owner");
+    const task = parseTaskMarkdown(buildTaskMarkdown("0001", "Task", "doing", "owner"));
+
+    const first = await createWorkspace({ rootDirectory: directory, taskId: "0001", owner: "owner" });
+    const subjectA = await captureTaskEvidenceSubject(first.record.worktreePath, task, []);
+    await removeWorkspace({ rootDirectory: directory, id: first.record.id, apply: true });
+
+    await writeFile(join(directory, "README.md"), "second\n", "utf8");
+    await execFileAsync("git", ["commit", "-qam", "second"], { cwd: directory });
+
+    const second = await createWorkspace({ rootDirectory: directory, taskId: "0001", owner: "owner" });
+    const subjectB = await captureTaskEvidenceSubject(second.record.worktreePath, task, []);
+
+    assert.notEqual(subjectA.candidateId, subjectB.candidateId);
+    assert.notEqual(first.record.worktreeId, second.record.worktreeId);
+    assert.notEqual(first.record.candidateRevision, second.record.candidateRevision);
   });
 });
 

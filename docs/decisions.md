@@ -702,3 +702,19 @@ Attention must remain meaningful without an external runtime and must not fabric
 Implementation and invariant:
 
 `src/core/status/attention.ts` builds both views from `summarizeStatus`, `resolveTaskPolicy`, and `listWorkerSessions`; `src/core/work/session.ts` enumerates issued sessions without requiring a full package round-trip so malformed/incomplete sessions become diagnostics rather than free capacity. `src/cli/commands/attention.ts` and `workers.ts` expose human/JSON output with bounded `capabilities`, effective/declared occupancy, `remainingSlots`, and a proven current task/run only when exactly one active session exists. An external runtime owns PTY, persistent shells, detach/reattach, process lifetime, remote connectivity, and operator navigation (ADR-0039).
+
+## ADR-0044 - Isolated parallel workspaces are safe Git worktree lifecycle only
+
+Status: accepted
+
+Decision:
+
+`apk workspaces` provides an optional, repository-local APK-owned Git worktree lifecycle for parallel top-level workers. A workspace record binds `taskId`, optional `runId`, optional `resourceId`, branch, normalized absolute worktree path, a hashed `worktreeId`/`repositoryId`, baseline and candidate revisions, and a random ownership `marker`; runtime records live under `.agentic/workspaces/` and worktrees default under the gitignored `.apk-worktrees/` area. The default single-worktree workflow is unchanged when no workspace is selected.
+
+Reason:
+
+Concurrent mutable tasks in one working tree break baseline attribution. Native Git worktrees isolate changes without a custom VCS, but destructive cleanup of a worktree is dangerous, so creation and removal must prove ownership before mutation. A global workspace database would contradict the repository-local, provenance-first design.
+
+Implementation and invariant:
+
+`src/core/workspaces/index.ts` resolves the real repository root and real (or nearest-existing) absolute target path, rejects repository-root targets, path escape, symlink/`..` tricks, non-segment names, existing paths, registered worktrees, and APK marker/record collisions before running `git worktree add -b`. It writes the ownership marker into the worktree's Git administrative directory (never the main repository) and the record into `.agentic/workspaces/`. `assessWorkspaceSafety` requires agreement between the record, marker, Git worktree registration, contained real path, task/run binding, and a clean Git status; mismatch yields `foreign`/`unsafe`/`ambiguous` and refuses cleanup. `removeWorkspace` is dry-run by default and requires `--apply`; it never deletes a repository root, user/foreign worktree, dirty or unmerged worktree, active-run workspace, path outside the allowed area, or malformed metadata, and removes stale metadata only when Git has no registration. `apk status` surfaces bounded non-safe workspace diagnostics and `apk task provenance` lists bounded workspace bindings without absolute paths. APK does not start a PTY, SSH, terminal multiplexer, process supervisor, scheduler, automatic merge, or remote executor; an external runtime may open an APK-managed worktree path as a cwd (ADR-0039).

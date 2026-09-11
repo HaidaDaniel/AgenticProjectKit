@@ -25,7 +25,7 @@ The target extends current task policy, gate, evidence, review, provenance, stat
 
 Portable resource/profile/budget/override state should extend the existing optional config schema. Deterministic detection is read-only by default; generated calibration remains distinct from user overrides and is applied only after schema validation. Secrets stay outside APK configuration.
 
-Tasks 0083-0085 implement the optional secret-free model/harness/worker registry, deterministic profile/routing foundation, and adaptive assurance/budget projection. Task 0086 adds read-only resource detection and validated calibration; Task 0087 adds the semantic `apk attention`/`apk workers` projection, which binds workers to canonical issued work sessions and fails closed on stale/orphaned runs without claiming live process state. Optional isolated workspaces (Task 0088) remain subsequent. Legacy `none`/`lightweight`/`independent` policy fields and the existing completion gate remain authoritative compatibility boundaries.
+Tasks 0083-0085 implement the optional secret-free model/harness/worker registry, deterministic profile/routing foundation, and adaptive assurance/budget projection. Task 0086 adds read-only resource detection and validated calibration; Task 0087 adds the semantic `apk attention`/`apk workers` projection, which binds workers to canonical issued work sessions and fails closed on stale/orphaned runs without claiming live process state. Task 0088 adds optional APK-owned isolated Git worktree workspaces with ownership-marker, path-containment, and clean/registered-state proof before destructive cleanup. Legacy `none`/`lightweight`/`independent` policy fields and the existing completion gate remain authoritative compatibility boundaries.
 
 ## External runtime boundary
 
@@ -39,7 +39,7 @@ APK does not implement a terminal emulator, a tmux clone, a Herdr clone, an SSH 
 
 The supported operating model is a Windows/macOS operator machine connecting over remote SSH or an external runtime to a persistent Ubuntu dev host that holds several repositories. Each repository has its own repository-local APK state; there is no global APK project database, and one APK executable/package serves many repositories. An external runtime may open a repository or an APK-managed Git worktree path as a pane/workspace cwd.
 
-Semantic attention and isolated workspaces remain runtime-neutral: Task 0087 projects task/run/gate/review/evidence state without asserting live-process facts, and Task 0088 owns safe Git worktree lifecycle without PTY/SSH/multiplexer/process-supervisor behavior. A future external-runtime dogfood plan is documented in [execution profiles](execution-profiles.md#external-runtime-dogfood-deferred); no integration implementation is planned here.
+Semantic attention and isolated workspaces remain runtime-neutral: Task 0087 projects task/run/gate/review/evidence state (including canonical worker-session binding) without asserting live-process facts, and Task 0088 owns safe Git worktree lifecycle without PTY/SSH/multiplexer/process-supervisor behavior. A future external-runtime dogfood plan is documented in [execution profiles](execution-profiles.md#external-runtime-dogfood-deferred); no integration implementation is planned here.
 
 ## Proposed internal layout
 

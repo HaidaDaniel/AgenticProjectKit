@@ -14,6 +14,8 @@ coverage/
 .agentic/evidence.append.lock
 .agentic/reviews/*
 .agentic/sessions/*
+.agentic/workspaces/*
+.apk-workspaces/
 docs/audit-report.md
 docs/project-map.md
 .opencode/node_modules/

@@ -24,6 +24,7 @@ import { runTaskCommand } from "./commands/task.js";
 import { runTaskStateCommand } from "./commands/task-state.js";
 import { runWorkCommand } from "./commands/work.js";
 import { runWorkersCommand } from "./commands/workers.js";
+import { runWorkspacesCommand } from "./commands/workspaces.js";
 
 const HELP_TEXT = [
   "Agentic Project Kit",
@@ -66,6 +67,7 @@ const HELP_TEXT = [
   "  apk tasks [--all] [--state <state>] [--owner <agent-id>]",
   "  apk work <task-id> --owner <agent-id> --target <agent> [--resource <worker-id>] [--level 1|2|3|auto] [--write-session]",
   "  apk workers [--json]",
+  "  apk workspaces <create|list|status|cleanup> [--json] [--apply]",
   "",
   "Commands:",
   "  agent  Register and list task agents.",
@@ -97,6 +99,7 @@ const HELP_TEXT = [
   "  tasks  List tasks in compact form.",
   "  work  Claim or continue a task and render its prompt.",
   "  workers  Show declared worker/resources and semantic capacity state.",
+  "  workspaces  Manage optional isolated Git worktrees for parallel workers.",
 ].join("\n");
 
 const argv = process.argv.slice(2);
@@ -203,6 +206,10 @@ async function main(): Promise<number> {
 
   if (command === "workers") {
     return runWorkersCommand(commandArgs);
+  }
+
+  if (command === "workspaces") {
+    return runWorkspacesCommand(commandArgs);
   }
 
   console.error(`Unknown command: ${command}`);
