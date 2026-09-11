@@ -14,6 +14,14 @@ import {
   type ExecutionRole,
 } from "../../core/config/index.js";
 import { readAgenticConfigFile } from "../../core/config/index.js";
+import {
+  applyExecutionCalibration,
+  buildCalibrationPackage,
+  renderCalibrationPackage,
+  renderCalibrationValidation,
+  validateCalibrationRecommendation,
+} from "../../core/execution/calibrate.js";
+import { detectResourceInventory } from "../../core/resources/detect.js";
 import { findTaskFile, loadTaskFile } from "../../core/tasks/index.js";
 import { resolveTaskPolicy } from "../../core/tasks/policy.js";
 
@@ -22,8 +30,11 @@ const HELP_TEXT = [
   "",
   "Usage:",
   `  apk execution explain <task-id> --role ${EXECUTION_ROLES.join("|")} [--profile ${DEFAULT_EXECUTION_PROFILE}|local|balanced|abundant] [--resource <worker-id>] [--complexity simple|medium|complex] [--json]`,
+  "  apk execution calibrate [--json]",
+  "  apk execution calibrate --recommendation <json> [--apply]",
   "",
   "Explain a deterministic execution route without starting a worker or probing a provider.",
+  "Calibrate emits a bounded planner package, validates an external recommendation, and applies only on explicit request.",
 ].join("\n");
 
 function readFlagValue(argv: readonly string[], flag: string): string | undefined {
@@ -48,6 +59,30 @@ export async function runExecutionCommand(argv: string[]): Promise<number> {
     return 0;
   }
   try {
+    if (argv[0] === "calibrate") {
+      const rootDirectory = resolve(process.cwd());
+      const inventory = await detectResourceInventory(rootDirectory);
+      const recommendationValue = readFlagValue(argv, "--recommendation");
+      if (recommendationValue === undefined) {
+        console.log(renderCalibrationPackage(buildCalibrationPackage(inventory), argv.includes("--json")));
+        return 0;
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(recommendationValue);
+      } catch (error: unknown) {
+        throw new Error(`--recommendation must be valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      const validation = validateCalibrationRecommendation(parsed, inventory);
+      console.log(renderCalibrationValidation(validation));
+      if (!validation.ok || !validation.recommendation) return 1;
+      if (argv.includes("--apply")) {
+        const result = await applyExecutionCalibration(rootDirectory, validation.recommendation, inventory);
+        console.log(result.written ? "Applied calibration recommendation." : "Calibration unchanged (idempotent).");
+      }
+      return 0;
+    }
+
     if (argv[0] !== "explain") throw new Error(HELP_TEXT);
     const positional = positionalArgs(argv.slice(1));
     if (positional.length !== 1) throw new Error(HELP_TEXT);

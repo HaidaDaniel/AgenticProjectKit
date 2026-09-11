@@ -257,20 +257,18 @@ Resource detection and semantic calibration are separate operations.
 
 ### Deterministic detection
 
-A future `resources detect`-style command can inspect known harness/runtime markers, declared compatible endpoints, local model descriptions, resource capabilities, cost classes, availability, and concurrency. It reuses repository quality-capability detection from Task 0077. It does not log in to providers, call proprietary APIs, execute a model, or handle secrets.
+`apk resources detect [--json]` reports a deterministic, read-only inventory of declared models/harnesses/workers, local harness/runtime markers, and the shared Task 0077 quality capabilities. Each entry records `declared`/`detected` availability, capabilities, cost class, capacity, and its source/reason; the inventory carries a stable fingerprint that excludes the observation timestamp. It does not log in to providers, call proprietary APIs, execute a model, read environment secrets, or persist anything.
 
 ### Semantic calibration
 
-A future `execution calibrate`-style command:
+`apk execution calibrate [--json]` emits a bounded vendor-neutral `apk-calibration-v1` planner package carrying the inventory fingerprint, allowed profiles/roles/assurance levels, eligible resources, and constraints. `apk execution calibrate --recommendation <json> [--apply]` then:
 
-1. Collects the deterministic inventory, project mode, repository characteristics, quality capabilities, budgets, and overrides.
-2. Selects the strongest eligible available planning worker by registry capability and stable policy.
-3. Issues a bounded vendor-neutral planning/calibration package by extending the existing worker contract.
-4. Receives a routing recommendation from the external harness.
-5. Deterministically validates resource IDs, capabilities, capacity, profiles, budgets, and assurance floors.
-6. Saves only after explicit apply, preserving user overrides and recording provenance.
+1. Collects the deterministic inventory and project config.
+2. Accepts a planner recommendation from any external harness (Codex, OpenCode, Claude Code, Pi, or a local endpoint).
+3. Deterministically validates protocol, profile, role IDs, resource IDs, worker availability/capacity, assurance level, and rejects secret-shaped values.
+4. Applies only on explicit `--apply`, writing just the generated `executionCalibration` field while preserving resources, profile, overrides, and quality policy. Re-applying an identical recommendation and inventory fingerprint is idempotent.
 
-An `execution explain`-style view reports the effective profile, routes, assurance, triggers, selected/rejected workers, capacity, budgets, overrides, and calibration provenance. Exact command names remain an implementation taxonomy decision in Task 0086.
+An `apk execution explain` view reports the effective profile, route, assurance target, budgets, overrides, and reasons. Saved calibration is advisory and becomes stale when its inventory fingerprint changes.
 
 APK does not directly become an OpenAI, Anthropic, Grok, or local-runtime SDK router. The external harness executes the planner.
 

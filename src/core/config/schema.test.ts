@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -6,8 +9,52 @@ import {
   DEFAULT_CONFIG,
   parseAgenticConfig,
   parseAgenticConfigJson,
+  readAgenticConfigFile,
   serializeAgenticConfig,
 } from "./index.js";
+import { detectResourceInventory } from "../resources/detect.js";
+import {
+  applyExecutionCalibration,
+  buildCalibrationPackage,
+  validateCalibrationRecommendation,
+} from "../execution/calibrate.js";
+
+async function withTempDirectory(run: (directory: string) => Promise<void>): Promise<void> {
+  const directory = await mkdtemp(join(tmpdir(), "apk-calibrate-"));
+  try {
+    await run(directory);
+  } finally {
+    await rm(directory, { force: true, recursive: true, maxRetries: 5, retryDelay: 20 });
+  }
+}
+
+const CALIBRATION_CONFIG = {
+  schemaVersion: 2,
+  resources: {
+    models: [{ id: "local-model", roles: ["implement"] }],
+    harnesses: [{ id: "opencode", workerProtocols: ["apk-worker-v1"] }],
+    workers: [{
+      id: "local-worker",
+      modelId: "local-model",
+      harnessId: "opencode",
+      location: "local",
+      billingMode: "free",
+      costClass: "local-free",
+      availability: "available",
+      capacity: 1,
+      capabilities: { roles: ["implement"], workerProtocols: ["apk-worker-v1"] },
+    }],
+  },
+};
+
+async function writeCalibrationRepo(directory: string, extra: Record<string, unknown> = {}): Promise<void> {
+  await mkdir(join(directory, ".agentic"), { recursive: true });
+  await writeFile(
+    join(directory, ".agentic", "config.json"),
+    JSON.stringify({ ...CALIBRATION_CONFIG, ...extra }),
+    "utf8",
+  );
+}
 
 test("parseAgenticConfig returns defaults for empty config", () => {
   const config = parseAgenticConfig({});
@@ -191,4 +238,128 @@ test("parseAgenticConfig rejects unknown quality capability IDs", () => {
     () => parseAgenticConfig({ quality: { required: ["eslint"] } }),
     /unknown capability ID: eslint/,
   );
+});
+
+test("parseAgenticConfig accepts an optional generated execution calibration", () => {
+  const config = parseAgenticConfig({
+    executionCalibration: {
+      profile: "balanced",
+      inventoryFingerprint: "abc123",
+      generatedAt: "2026-01-01T00:00:00Z",
+      planner: "codex",
+      routes: { implementation: "local-worker" },
+    },
+  });
+  assert.equal(config.executionCalibration?.profile, "balanced");
+  assert.equal(config.executionCalibration?.inventoryFingerprint, "abc123");
+  assert.deepEqual(config.executionCalibration?.routes, { implementation: "local-worker" });
+  assert.throws(
+    () => parseAgenticConfig({
+      executionCalibration: {
+        profile: "nope",
+        inventoryFingerprint: "abc",
+        generatedAt: "x",
+        planner: "p",
+        routes: {},
+      },
+    }),
+    /executionProfile must be one of/,
+  );
+});
+
+test("detectResourceInventory is deterministic, marker-aware, and secret-free", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeCalibrationRepo(directory);
+    await writeFile(join(directory, "CLAUDE.md"), "@AGENTS.md\n", "utf8");
+
+    const first = await detectResourceInventory(directory);
+    const second = await detectResourceInventory(directory);
+
+    assert.equal(first.fingerprint, second.fingerprint);
+    assert.ok(first.resources.some((resource) => (
+      resource.id === "local-worker" && resource.kind === "worker" && resource.available === true
+    )));
+    assert.ok(first.resources.some((resource) => (
+      resource.id === "claude" && resource.kind === "harness" && resource.availability === "detected"
+    )));
+    assert.doesNotMatch(JSON.stringify(first), /apiKey|secret|password|credential/i);
+  });
+});
+
+test("validateCalibrationRecommendation rejects unknown, secret-shaped, and malformed input", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeCalibrationRepo(directory);
+    const inventory = await detectResourceInventory(directory);
+    const pkg = buildCalibrationPackage(inventory);
+    assert.equal(pkg.protocol, "apk-calibration-v1");
+    assert.ok(pkg.resources.some((resource) => resource.id === "local-worker"));
+
+    const good = validateCalibrationRecommendation({
+      protocol: "apk-calibration-v1-result",
+      profile: "constrained",
+      routes: { implementation: "local-worker", review: "needs-human" },
+      planner: "codex",
+    }, inventory);
+    assert.equal(good.ok, true, good.issues.join("; "));
+    assert.equal(good.recommendation?.routes.implementation, "local-worker");
+
+    const unknown = validateCalibrationRecommendation({
+      protocol: "apk-calibration-v1-result",
+      profile: "constrained",
+      routes: { implementation: "ghost-worker" },
+      planner: "codex",
+    }, inventory);
+    assert.equal(unknown.ok, false);
+    assert.ok(unknown.issues.some((issue) => /unknown resource/.test(issue)));
+
+    const secret = validateCalibrationRecommendation({
+      protocol: "apk-calibration-v1-result",
+      profile: "constrained",
+      routes: { implementation: "api-key-123" },
+      planner: "codex",
+    }, inventory);
+    assert.equal(secret.ok, false);
+
+    const badProfile = validateCalibrationRecommendation({
+      protocol: "apk-calibration-v1-result",
+      profile: "nope",
+      routes: {},
+      planner: "codex",
+    }, inventory);
+    assert.equal(badProfile.ok, false);
+
+    const badProtocol = validateCalibrationRecommendation({
+      protocol: "other",
+      profile: "constrained",
+      routes: {},
+      planner: "codex",
+    }, inventory);
+    assert.equal(badProtocol.ok, false);
+  });
+});
+
+test("applyExecutionCalibration preserves user overrides and is idempotent", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeCalibrationRepo(directory, {
+      executionOverrides: { resourceId: "local-worker", allowProfileBypass: true },
+    });
+    const inventory = await detectResourceInventory(directory);
+    const recommendation = {
+      protocol: "apk-calibration-v1-result" as const,
+      profile: "constrained" as const,
+      routes: { implementation: "local-worker" },
+      planner: "codex",
+    };
+
+    const first = await applyExecutionCalibration(directory, recommendation, inventory);
+    assert.equal(first.written, true);
+    const reread = await readAgenticConfigFile(directory);
+    assert.equal(reread.executionOverrides?.resourceId, "local-worker");
+    assert.equal(reread.executionOverrides?.allowProfileBypass, true);
+    assert.equal(reread.executionCalibration?.inventoryFingerprint, inventory.fingerprint);
+    assert.equal(reread.resources?.workers[0]?.id, "local-worker");
+
+    const second = await applyExecutionCalibration(directory, recommendation, inventory);
+    assert.equal(second.written, false);
+  });
 });

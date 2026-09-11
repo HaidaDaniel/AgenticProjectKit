@@ -218,6 +218,102 @@ test("CLI resources renders a stable read-only registry in human and JSON forms"
   });
 });
 
+test("CLI resources detect reports a deterministic read-only inventory", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic/config.json"), JSON.stringify({
+      schemaVersion: 2,
+      resources: {
+        models: [{ id: "model-a", roles: ["implementation"] }],
+        harnesses: [{ id: "harness-a", workerProtocols: ["apk-worker-v1"] }],
+        workers: [{
+          id: "worker-a",
+          modelId: "model-a",
+          harnessId: "harness-a",
+          location: "local",
+          billingMode: "free",
+          costClass: "local-free",
+          availability: "available",
+          capacity: 1,
+          capabilities: { roles: ["implementation"] },
+        }],
+      },
+    }), "utf8");
+    await writeFile(join(directory, "CLAUDE.md"), "@AGENTS.md\n", "utf8");
+
+    const first = await runCli(["resources", "detect", "--json"], directory);
+    assert.equal(first.exitCode, 0, `${first.stdout}${first.stderr}`);
+    const inventory = JSON.parse(first.stdout) as { fingerprint: string; resources: Array<{ id: string; kind: string }> };
+    assert.ok(inventory.resources.some((resource) => resource.id === "worker-a" && resource.kind === "worker"));
+    assert.ok(inventory.resources.some((resource) => resource.id === "claude" && resource.kind === "harness"));
+    assert.doesNotMatch(first.stdout, /apiKey|secret|password/i);
+
+    const second = await runCli(["resources", "detect", "--json"], directory);
+    const secondInventory = JSON.parse(second.stdout) as { fingerprint: string };
+    assert.equal(inventory.fingerprint, secondInventory.fingerprint);
+  });
+});
+
+test("CLI execution calibrate validates and applies a recommendation", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic/config.json"), JSON.stringify({
+      schemaVersion: 2,
+      executionOverrides: { resourceId: "worker-a", allowProfileBypass: true },
+      resources: {
+        models: [{ id: "model-a", roles: ["implementation"] }],
+        harnesses: [{ id: "harness-a", workerProtocols: ["apk-worker-v1"] }],
+        workers: [{
+          id: "worker-a",
+          modelId: "model-a",
+          harnessId: "harness-a",
+          location: "local",
+          billingMode: "free",
+          costClass: "local-free",
+          availability: "available",
+          capacity: 1,
+          capabilities: { roles: ["implementation"] },
+        }],
+      },
+    }), "utf8");
+
+    const pkg = await runCli(["execution", "calibrate", "--json"], directory);
+    assert.equal(pkg.exitCode, 0, `${pkg.stdout}${pkg.stderr}`);
+    assert.match(pkg.stdout, /apk-calibration-v1/);
+
+    const valid = JSON.stringify({
+      protocol: "apk-calibration-v1-result",
+      profile: "constrained",
+      routes: { implementation: "worker-a" },
+      planner: "codex",
+    });
+    const applied = await runCli(["execution", "calibrate", "--recommendation", valid, "--apply"], directory);
+    assert.equal(applied.exitCode, 0, `${applied.stdout}${applied.stderr}`);
+    const config = JSON.parse(await readFile(join(directory, ".agentic/config.json"), "utf8")) as {
+      executionOverrides?: { resourceId?: string };
+      executionCalibration?: { profile?: string };
+    };
+    assert.equal(config.executionOverrides?.resourceId, "worker-a");
+    assert.equal(config.executionCalibration?.profile, "constrained");
+
+    const idempotent = await runCli(["execution", "calibrate", "--recommendation", valid, "--apply"], directory);
+    assert.match(idempotent.stdout, /unchanged/);
+
+    const rejected = await runCli([
+      "execution", "calibrate",
+      "--recommendation",
+      JSON.stringify({
+        protocol: "apk-calibration-v1-result",
+        profile: "constrained",
+        routes: { implementation: "ghost" },
+        planner: "codex",
+      }),
+    ], directory);
+    assert.equal(rejected.exitCode, 1);
+    assert.match(rejected.stdout, /unknown resource/);
+  });
+});
+
 test("CLI adopt previews legacy migration without writes and applies it idempotently", async () => {
   await withTempDirectory(async (directory) => {
     await cp(

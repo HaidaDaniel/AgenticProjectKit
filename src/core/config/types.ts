@@ -26,6 +26,15 @@ export const AGENT_STYLES = ["caveman", "normal"] as const;
 
 export type AgentStyle = (typeof AGENT_STYLES)[number];
 
+export interface ExecutionCalibration {
+  /** Generated recommendation written by explicit calibration apply. */
+  profile: ExecutionProfile;
+  inventoryFingerprint: string;
+  generatedAt: string;
+  planner: string;
+  routes: Record<string, string>;
+}
+
 export interface AgenticConfig {
   /** Explicitly present in newly generated configs; absent means legacy config. */
   schemaVersion?: number;
@@ -38,5 +47,6 @@ export interface AgenticConfig {
   resources?: ResourceRegistry;
   executionProfile?: ExecutionProfile;
   executionOverrides?: ExecutionOverride;
+  executionCalibration?: ExecutionCalibration;
   quality?: QualityPolicy;
 }

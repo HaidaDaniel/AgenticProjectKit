@@ -8,6 +8,7 @@ import {
   DOCUMENTATION_PROFILES,
   OPERATING_MODES,
   type AgenticConfig,
+  type ExecutionCalibration,
 } from "./types.js";
 
 export const LEGACY_CONFIG_SCHEMA_VERSION = 1 as const;
@@ -124,6 +125,51 @@ function readQualityPolicy(value: unknown, issues: string[]): QualityPolicy | un
   };
 }
 
+function readExecutionCalibration(
+  value: unknown,
+  issues: string[],
+): ExecutionCalibration | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isPlainRecord(value)) {
+    issues.push("executionCalibration must be an object.");
+    return undefined;
+  }
+
+  let profile: ExecutionCalibration["profile"] | undefined;
+  try {
+    profile = parseExecutionProfile(value.profile);
+  } catch (error: unknown) {
+    if (error instanceof ExecutionValidationError) issues.push(...error.issues);
+    else issues.push("executionCalibration.profile is invalid.");
+  }
+  const inventoryFingerprint = asString(value.inventoryFingerprint);
+  if (!inventoryFingerprint) issues.push("executionCalibration.inventoryFingerprint must be a non-empty string.");
+  const generatedAt = asString(value.generatedAt);
+  if (!generatedAt) issues.push("executionCalibration.generatedAt must be a non-empty string.");
+  const planner = asString(value.planner);
+  if (!planner) issues.push("executionCalibration.planner must be a non-empty string.");
+
+  const routes: Record<string, string> = {};
+  if (value.routes !== undefined) {
+    if (!isPlainRecord(value.routes)) {
+      issues.push("executionCalibration.routes must be an object.");
+    } else {
+      for (const [key, entry] of Object.entries(value.routes)) {
+        const text = asString(entry);
+        if (!text) issues.push(`executionCalibration.routes.${key} must be a non-empty string.`);
+        else routes[key] = text;
+      }
+    }
+  }
+
+  if (!profile || !inventoryFingerprint || !generatedAt || !planner) {
+    return undefined;
+  }
+  return { profile, inventoryFingerprint, generatedAt, planner, routes };
+}
+
 export function parseAgenticConfig(raw: unknown): AgenticConfig {
   if (raw === undefined || raw === null) {
     return { ...DEFAULT_CONFIG };
@@ -216,6 +262,8 @@ export function parseAgenticConfig(raw: unknown): AgenticConfig {
     }
   }
 
+  const executionCalibration = readExecutionCalibration(raw.executionCalibration, issues);
+
   if (issues.length > 0) {
     throw new ConfigValidationError(issues);
   }
@@ -231,6 +279,7 @@ export function parseAgenticConfig(raw: unknown): AgenticConfig {
     ...(resources === undefined ? {} : { resources }),
     ...(executionProfile === undefined ? {} : { executionProfile }),
     ...(executionOverrides === undefined ? {} : { executionOverrides }),
+    ...(executionCalibration === undefined ? {} : { executionCalibration }),
     ...(quality === undefined ? {} : { quality }),
   };
 }

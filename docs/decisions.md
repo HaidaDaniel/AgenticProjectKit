@@ -670,3 +670,19 @@ Task contracts are authored in Markdown and sometimes use numbered acceptance cr
 Implementation and invariant:
 
 `parseList` in `src/core/tasks/index.ts` filters and strips both markers. A round-trip regression parses numbered acceptance criteria, re-renders, and re-parses without losing item text. Steps remain parsed by the separate ordered parser.
+
+## ADR-0042 - Resource detection is read-only and calibration is validated before explicit apply
+
+Status: accepted
+
+Decision:
+
+Deterministic resource detection is read-only, bounded, secret-free, and vendor-neutral: `apk resources detect` merges declared resources, local harness markers, and the shared quality-capability detector, and reports a stable inventory fingerprint. Calibration emits a bounded `apk-calibration-v1` planner package for an external harness; the returned recommendation is advisory until `apk execution calibrate --recommendation` deterministically validates it, and it is written only on explicit `--apply`, updating only the generated `executionCalibration` field. User `resources`, `executionProfile`, `executionOverrides`, and `quality` remain distinct and are never rewritten. Saved calibration is stale when its inventory fingerprint changes.
+
+Reason:
+
+Detection must not read secrets, log in to providers, or mutate state, and an LLM planner must not silently reconfigure routing. Separating read-only detection, a recommendation, deterministic validation, and explicit apply preserves the human override boundary and the single completion gate.
+
+Implementation and invariant:
+
+`src/core/resources/detect.ts` performs local marker/quality detection only. `src/core/execution/calibrate.ts` builds the package, validates protocol/profile/role/resource/capacity/availability/assurance and rejects secret-shaped values, and applies idempotently. The config schema accepts an optional `executionCalibration` object. No provider SDK, model runtime, secret manager, or remote executor is introduced.

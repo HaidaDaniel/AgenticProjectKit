@@ -1,7 +1,7 @@
 # Task 0086 - Resource Detection and Workflow Calibration
 
-State: todo
-Owner: none
+State: doing
+Owner: local-agent-0086
 Mode: product
 Lane: execution
 Scope: resources,detection,calibration,planning,config,cli,tests,docs
@@ -68,7 +68,6 @@ Add deterministic resource inventory and vendor-neutral planner calibration with
 3. Validate planner output deterministically against registered resources, profiles, capability requirements, budgets, capacity, and safety minima before it can be applied.
 4. Add read-only detect/explain and explicit calibration/apply behavior that preserves user-authored overrides and records inventory/policy provenance.
 
-
 ## Acceptance criteria
 
 - Resource detection is deterministic, read-only by default, bounded, and vendor-neutral. It reports declared/detected/unknown availability, harness/runtime markers, compatible endpoint references, capabilities, cost class, and parallel capacity with source/reason.
@@ -82,7 +81,6 @@ Add deterministic resource inventory and vendor-neutral planner calibration with
 - CLI taxonomy is coherent with existing commands; `resources detect`, `execution calibrate`, and `execution explain` are preferred unless implementation finds and documents a more consistent bounded shape.
 - Tests cover no-resource/local/constrained/balanced inventories, strongest-planner selection, malformed planner output, override preservation, stale inventory, secret rejection, deterministic repeated output, and no-provider-SDK imports.
 
-
 ## Verification
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm lint"}`
@@ -92,7 +90,6 @@ Add deterministic resource inventory and vendor-neutral planner calibration with
 ## Documentation updates
 
 - Update execution-profile, architecture, task-system, CLI, README, decisions, and progress docs for implemented detection/calibration/apply/explain behavior.
-
 
 ## Notes
 
