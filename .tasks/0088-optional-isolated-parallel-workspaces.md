@@ -80,6 +80,7 @@ Add optional safe Git worktree lifecycle for parallel top-level workers while pr
 - Parallel workers no longer share attribution when isolated workspaces are used. Candidate/review/evidence freshness remains bound to the exact workspace and revision; no cross-worktree PASS can satisfy another candidate.
 - Task claiming and resource capacity remain authoritative; workspace creation does not create an autonomous swarm, scheduler, implicit merge, automatic conflict resolver, or background worker.
 - Status/attention can distinguish managed workspace state and surface cleanup/merge/human actions without exposing broad absolute paths in persisted analytics.
+- APK owns only safe Git worktree ownership/lifecycle and the task/run/worktree binding. This task does not implement PTY, SSH, a terminal multiplexer, a process supervisor, or a remote scheduler; an external runtime may open an APK-managed worktree path as a pane/workspace cwd.
 - Tests use temporary repositories and prove user-worktree preservation, path containment, idempotent listing, refused unsafe cleanup, concurrent collision handling, single-worktree compatibility, and provenance continuity.
 
 
@@ -99,3 +100,4 @@ Add optional safe Git worktree lifecycle for parallel top-level workers while pr
 - Priority: later/future; depends on worker status so ownership and attention are visible before parallel workspace automation.
 - Use native Git worktrees and existing APK locks/session/provenance contracts. No custom VCS, automatic merge, remote execution, cloud workspace service, or autonomous top-level swarm.
 - Treat every cleanup operation as destructive: resolve and verify exact absolute targets inside the intended repository/workspace area before removal, and preserve user worktrees on uncertainty.
+- Boundary (ADR-0039): this is safe Git worktree ownership/lifecycle only. External runtimes own PTY, persistent shells, detach/reattach, process lifetime, remote connectivity, and operator navigation; do not add terminal/multiplexer/SSH/process-supervisor/remote-scheduler behavior here. An external runtime may consume an APK-managed worktree path as a pane/workspace cwd.

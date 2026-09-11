@@ -286,7 +286,37 @@ Resource-aware parallelism initially means capacity-aware routing, queue/wait de
 
 Task 0087 extends current status and provenance into a bounded CLI attention view: worker ready/busy/unknown, current task/run, blocked, needs-human, completed, review findings, scarce-lane occupancy, and exact next actions. It is a projection over existing canonical records, not a new state store or dashboard.
 
+Attention is semantic and runtime-neutral. APK may report that a task requires review, verification is stale, a dependency is blocked, a budget is exhausted, assurance is unavailable, a human decision is needed, a task is completed/failed/stale, or a run/session record is missing or unknown. APK must not assert live process facts it cannot prove — PID liveness, an agent actively generating tokens, a responsive terminal, a live SSH connection, or a physically idle agent — unless an external runtime supplies that evidence. Machine-readable output stays runtime-neutral: `apk status`, `apk workers`, and `apk attention`.
+
 Task 0088 adds optional Git worktrees/isolated workspaces for true parallel top-level mutation. It binds task, run, worker/resource, branch, workspace, baseline, and candidate revision. Single-worker operation remains unchanged. Creation and cleanup fail closed; APK removes only exact APK-owned safe worktrees and never deletes user-created, dirty, active, ambiguous, or repository-root paths.
+
+Workspace ownership is likewise Git-only. APK owns worktree creation, the task/run/worktree binding, ownership identity, baseline/provenance, collision prevention, dirty protection, and safe cleanup. An external runtime may open an APK-managed worktree path as a pane/workspace cwd. Task 0088 does not implement PTY, SSH, a terminal multiplexer, a process supervisor, or a remote scheduler.
+
+## External runtime boundary
+
+APK is a repository-local semantic control plane, not a terminal or process runtime. See [ADR-0039](decisions.md#adr-0039---apk-is-a-repository-local-semantic-control-plane-not-an-external-runtime).
+
+External runtime ownership: PTY, terminal panes, persistent shells, detach/reattach, live process lifetime, remote-machine connectivity, SSH/session UI, and operator navigation.
+
+APK ownership: tasks, dependencies, claim/ownership, scope, risk, execution profile, resources, routing, assurance, verification, review, evidence, provenance, gate, semantic attention, and safe Git worktree ownership/lifecycle.
+
+The supported multi-machine model is an operator machine connecting over remote SSH or an external runtime to a persistent Ubuntu dev host that holds multiple repositories. APK state is repository-local; there is no global APK project DB, and one APK executable/package can be used in many repositories.
+
+## External runtime dogfood (deferred)
+
+A future external-runtime (for example Herdr) dogfood is deferred until the APK backlog is complete. It is validation, not implementation:
+
+1. use a persistent Ubuntu dev host;
+2. install the external runtime separately;
+3. use one runtime workspace per repository;
+4. run Codex/OpenCode in the repository cwd;
+5. test multiple repositories;
+6. test a Windows -> Ubuntu remote workflow;
+7. test parallel APK worktrees;
+8. collect UX problems;
+9. only then decide whether a runtime adapter is needed.
+
+No external-runtime integration implementation task or dependency is created now. APK remains usable without any such runtime.
 
 ## Compatibility and ownership
 
@@ -311,6 +341,10 @@ This milestone does not build:
 - a remote execution platform;
 - a billing system;
 - a generic Kubernetes-like scheduler;
-- mandatory worktrees for single-worker use.
+- mandatory worktrees for single-worker use;
+- a terminal emulator, tmux clone, or Herdr clone;
+- an SSH manager or remote session UI;
+- a global process supervisor or global APK daemon;
+- cloud coordination or a generic swarm.
 
 APK remains a lightweight repository-first control plane for coding agents.

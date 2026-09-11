@@ -44,7 +44,7 @@
 
 ## Next gated-workflow release (planned)
 
-Tasks 0057-0081 preserve repository-first, model-agnostic control-plane direction. `done` becomes evidence-backed completion; external coding harnesses remain workers. All implementation prerequisites are complete; 0075 is the active frozen-release validation.
+Tasks 0057-0081 preserve repository-first, model-agnostic control-plane direction. `done` becomes evidence-backed completion; external coding harnesses remain workers. All implementation prerequisites are complete; 0075 is done and validated candidate `5f65faa` against gated workflow plus hosted clean-checkout CI.
 
 | Milestone | Tasks | Capability |
 | --- | --- | --- |
@@ -95,3 +95,9 @@ This milestone does not implement an LLM runtime, provider SDK layer, secret man
 ## Exporter consolidation (planned maintenance)
 
 Task 0092 is a high-value maintenance task to make `AGENTS.md` the only full common-policy generated export and reduce other harness files to direct consumption or minimal native adapters. It depends on completed exporter, sync, contract-lint, adoption-compatibility and generated-policy foundations (`0029`, `0040`, `0066`, `0074`, `0081`) and does not block the release or Resource-Aware Execution branches.
+
+## External runtime alignment (planning)
+
+Task 0097 records the boundary between APK and an external terminal/session runtime such as Herdr. APK is a repository-local semantic workflow/control plane; the external runtime owns PTY, persistent shells, detach/reattach, live process lifetime, remote connectivity, and operator navigation. APK state is repository-local and one APK package may serve many repositories.
+
+Task 0097 amends Tasks 0087 and 0088 before their implementation so attention/status stays semantic and runtime-neutral and isolated workspaces stay safe Git worktree lifecycle only. A future external-runtime dogfood is documented and deferred; no runtime adapter is implemented or planned as a dependency. See [ADR-0039](decisions.md#adr-0039---apk-is-a-repository-local-semantic-control-plane-not-an-external-runtime).

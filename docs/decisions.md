@@ -594,3 +594,43 @@ Required manual/live checks could not be satisfied by any supported surface whil
 Implementation and invariant:
 
 `recordManualVerification` validates owner registration and task-owner match, `doing`/`review` state, the declared check, manual-or-live eligibility, a non-empty bounded reference, and pass/fail, then appends through the evidence append lock with the captured candidate subject. A check declares exactly the evidence category its verifier emits (`report` > `live` > `manual`), so a required `manual`+`live` check declares `live` and a single recorded observation satisfies both the required per-check pass and the `live` category. Automated checks, unregistered or non-owner agents, and missing references fail closed; the record flows through unchanged provenance and gate evaluation.
+
+## ADR-0039 - APK is a repository-local semantic control plane, not an external runtime
+
+Status: accepted
+
+Decision:
+
+APK remains a repository-local semantic workflow and control plane. An external terminal/process/session runtime (for example Herdr) is a separate product that owns the live operator environment. APK state is repository-local; there is no global APK project database, and one APK executable/package may serve many repositories. APK integrates with an external runtime only through the repository, file paths, and the existing vendor-neutral worker/package contract — never by embedding the runtime.
+
+APK owns: tasks, dependencies, claim/ownership, scope, risk, execution profile, resources, routing, assurance, verification, review, evidence, provenance, gate, semantic attention, and safe Git worktree ownership/lifecycle.
+
+An external runtime owns: PTY, terminal panes, persistent shells, detach/reattach, live process lifetime, remote-machine connectivity, SSH/session UI, and operator navigation.
+
+APK must not implement: a terminal emulator, a tmux clone, a Herdr clone, an SSH manager, a global process supervisor, a global APK daemon, cloud coordination, or a generic swarm.
+
+Reason:
+
+Conflating the semantic workflow layer with the live terminal/process layer would couple APK to platform-specific PTY, session, and remote-transport concerns, duplicate mature external tooling, and create a global daemon/state that contradicts the repository-local, provenance-first design. Keeping the boundary explicit lets APK stay lightweight and deterministic while an external runtime provides persistence and remote operator ergonomics.
+
+Implementation and invariant:
+
+The boundary is documented in `docs/architecture.md` and `docs/execution-profiles.md`. Tasks 0087 and 0088 are constrained to semantic attention/status and safe Git worktree lifecycle respectively; neither may claim live process facts or implement PTY/SSH/multiplexer/process-supervisor/remote-scheduler behavior. Adoption by an external runtime is deferred to a documented future dogfood plan; no integration implementation task or dependency is added by this decision.
+
+Supported operating model:
+
+```text
+Windows/macOS operator machine
+        |
+        v
+Remote SSH / external runtime
+        |
+        v
+persistent Ubuntu dev host
+        |
+        +--> repo A -> APK state A (repository-local)
+        +--> repo B -> APK state B (repository-local)
+        +--> repo C -> APK state C (repository-local)
+```
+
+APK state stays in each repository; the external runtime may open a repository or an APK-managed Git worktree path as a pane/workspace cwd.
