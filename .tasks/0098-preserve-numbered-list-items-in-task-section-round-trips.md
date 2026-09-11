@@ -1,6 +1,6 @@
 # Task 0098 - Preserve numbered list items in task section round-trips
 
-State: doing
+State: done
 Owner: local-agent-0098
 Mode: maintenance
 Lane: task-system
