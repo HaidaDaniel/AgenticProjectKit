@@ -107,3 +107,4 @@ Make budgeted context and prompt discovery honor .gitignore and an explicit conf
 ## Notes
 
 - No network compiler or embedding service. Keep the fix bounded and deterministic.
+- Before implementation, prefer delegating ignore semantics to Git where practical (e.g. Git-native file/ignore queries) rather than implementing a partial custom .gitignore parser.
