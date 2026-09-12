@@ -1,6 +1,6 @@
 # Task 0111 - Generate canonical APK operational ignores during init and adoption
 
-State: doing
+State: done
 Owner: opencode-ds-v41
 Mode: maintenance
 Lane: workflow
