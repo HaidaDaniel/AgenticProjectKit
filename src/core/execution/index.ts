@@ -343,9 +343,25 @@ function deterministicRoute(
 export function resolveExecutionRoute(request: ExecutionRouteRequest): ExecutionRoute {
   const profile = normalizedProfile(request.profile);
   const profileSource = request.profileSource ?? "default";
+  const override = request.override;
+
+  const calibrationRoute = request.calibrationRoute;
+  const calibrationWorkerRoute = calibrationRoute !== undefined
+    && !(CALIBRATION_ROUTE_SENTINELS as readonly string[]).includes(calibrationRoute)
+    ? calibrationRoute
+    : undefined;
+  const calibrationSentinel = calibrationRoute !== undefined && calibrationWorkerRoute === undefined
+    ? calibrationRoute as (typeof CALIBRATION_ROUTE_SENTINELS)[number]
+    : undefined;
+
+  // Canonical deterministic lanes never dispatch a semantic worker. They are
+  // resolved first so a calibration `wait`/`needs-human` can still pause or
+  // escalate them, while the `deterministic` sentinel stays restricted to them.
   const deterministic = deterministicRoute(request, profile, profileSource);
-  if (deterministic) return deterministic;
-  const assurance = request.role === "review" ? resolveAssurancePlan({
+
+  // Canonical assurance is authoritative: a non-ready requirement returns before
+  // any calibration sentinel can influence the route.
+  const assurance = request.role === "review" && !deterministic ? resolveAssurancePlan({
     policy: request.policy,
     profile,
     registry: request.registry,
@@ -361,12 +377,11 @@ export function resolveExecutionRoute(request: ExecutionRouteRequest): Execution
       explanation: assurance.reason,
       candidates: [],
       assurance,
-      ...(request.override ? { override: request.override } : {}),
+      ...(override ? { override } : {}),
       ...calibrationInfluence(request, false, assurance.reason),
     };
   }
   const complexity = request.complexity ?? "medium";
-  const override = request.override;
   const candidates = request.registry.workers.map((worker) => {
     const reasons = candidateReasons(worker, request, profile, complexity);
     const bypass = override?.resourceId === worker.id && override.allowProfileBypass === true;
@@ -389,15 +404,6 @@ export function resolveExecutionRoute(request: ExecutionRouteRequest): Execution
     reasons: reasons.length === 0 ? [`eligible cost=${worker.costClass} capacity=${worker.occupied}/${worker.capacity}`] : reasons,
   }));
 
-  const calibrationRoute = request.calibrationRoute;
-  const calibrationWorkerRoute = calibrationRoute !== undefined
-    && !(CALIBRATION_ROUTE_SENTINELS as readonly string[]).includes(calibrationRoute)
-    ? calibrationRoute
-    : undefined;
-  const calibrationSentinel = calibrationRoute !== undefined && calibrationWorkerRoute === undefined
-    ? calibrationRoute as (typeof CALIBRATION_ROUTE_SENTINELS)[number]
-    : undefined;
-
   const sentinelRoute = (
     kind: ExecutionRouteKind,
     queue: "none" | "wait" | "manual",
@@ -407,11 +413,36 @@ export function resolveExecutionRoute(request: ExecutionRouteRequest): Execution
     profile, profileSource, routeSource: "calibration", role: request.role, kind, queue,
     policy: { independentReview: request.policy.independentReview, reviewLevel: request.policy.reviewLevel },
     explanation,
-    candidates: renderedCandidates,
+    candidates: deterministic ? [] : renderedCandidates,
     ...(assurance ? { assurance } : {}),
     ...(override ? { override } : {}),
     ...calibrationInfluence(request, true, reason),
   });
+
+  // A current calibration `wait`/`needs-human` is a conservative pause or
+  // escalation. It may apply even when the underlying canonical lane is
+  // deterministic because it only prevents automatic execution and never
+  // weakens policy. A hard `resourceId` override outranks calibration and skips
+  // these sentinels; soft location/cost preferences do not.
+  if (!override?.resourceId && calibrationSentinel === "wait") {
+    return sentinelRoute(
+      "wait",
+      "wait",
+      "Current calibration recommends waiting; no worker is dispatched.",
+      "current calibration sentinel: wait",
+    );
+  }
+  if (!override?.resourceId && calibrationSentinel === "needs-human") {
+    return sentinelRoute(
+      "needs-human",
+      "manual",
+      "Current calibration recommends a human decision; the resolver does not auto-select a worker.",
+      "current calibration sentinel: needs-human",
+    );
+  }
+
+  // No sentinel applies: the canonical deterministic lane wins where defined.
+  if (deterministic) return deterministic;
 
   let selected: { worker: WorkerResource; reasons: string[] } | undefined;
   let routeSource: ExecutionRouteSource = "resolver";
@@ -420,9 +451,9 @@ export function resolveExecutionRoute(request: ExecutionRouteRequest): Execution
   let calibrationReason = "no current calibration route for this role";
 
   if (override?.resourceId) {
-    // Explicit user override outranks calibration. Existing semantics: an
-    // override that is not eligible yields wait/needs-human, never a silent
-    // fallback to a different worker.
+    // Explicit resource selection outranks calibration. An override that is not
+    // eligible yields wait/needs-human, never a silent fallback to a different
+    // worker.
     selected = eligible.find(({ worker }) => worker.id === override.resourceId);
     if (selected) {
       routeSource = "override";
@@ -446,22 +477,6 @@ export function resolveExecutionRoute(request: ExecutionRouteRequest): Execution
         calibrationReason = `current calibration route ${calibrationWorkerRoute} is not eligible and no fallback resource is available`;
       }
     }
-  } else if (calibrationSentinel === "wait") {
-    // A current calibration may deliberately hold work while a constrained lane
-    // is busy. It is calibration-sourced and never a silent resolver decision.
-    return sentinelRoute(
-      "wait",
-      "wait",
-      "Current calibration recommends waiting; no worker is dispatched.",
-      "current calibration sentinel: wait",
-    );
-  } else if (calibrationSentinel === "needs-human") {
-    return sentinelRoute(
-      "needs-human",
-      "manual",
-      "Current calibration recommends a human decision; the resolver does not auto-select a worker.",
-      "current calibration sentinel: needs-human",
-    );
   } else {
     selected = pickResolver();
     if (selected) {

@@ -61,8 +61,8 @@ Implemented commands:
 - `apk resources detect [--json]`
 - `apk attention [--json]`
 - `apk workers [--json]`
-- `apk workspaces <create|list|status|cleanup> [--json] [--apply]` - `create --run` proves the canonical task/run/resource binding before mutation (`--resource` requires `--run`); cleanup re-validates it and fails closed.
-- `apk execution explain <task-id> --role <role> [--profile <profile>] [--resource <worker-id>] [--json]` - show effective profile/route source; a current applied calibration (including `wait`/`needs-human`/`deterministic` sentinels under canonical policy) participates, stale calibration is ignored.
+- `apk workspaces <create|list|status|cleanup> [--json] [--apply]` - `create --run` proves the canonical task/run binding before mutation and captures the canonical resource (`--resource` requires `--run` and must match exactly); cleanup re-validates it and fails closed.
+- `apk execution explain <task-id> --role <role> [--profile <profile>] [--resource <worker-id>] [--json]` - show effective profile/route source; a current applied calibration (including `wait`/`needs-human` sentinels that pause even deterministic lanes, and `deterministic` under canonical policy) participates, stale calibration is ignored.
 - `apk execution calibrate [--recommendation <json>] [--apply] [--json]` - current recommendations influence routing subject to canonical policy; assurance is raise-only.
 - `apk work <task-id> --owner <agent-id> --target <agent> [--resource <worker-id>] [--role implement|review|fix|verify] [--json]`
 - `apk claim`

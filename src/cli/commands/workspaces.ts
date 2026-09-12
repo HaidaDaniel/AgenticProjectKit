@@ -20,6 +20,8 @@ const WORKSPACES_HELP_TEXT = [
   "",
   "Safe Git worktree lifecycle for parallel top-level workers.",
   "Creation validates repository root, path containment, ownership, and collisions before mutation.",
+  "--run proves the task/run binding against canonical session state before mutation and automatically captures that session's resource identity.",
+  "--resource requires --run and must equal the canonical session resource exactly; omit it to inherit the canonical resource.",
   "Cleanup is dry-run by default; --apply removes only an exact APK-owned, clean, registered worktree.",
   "APK never deletes a repository root, foreign/user worktree, dirty worktree, or unmarked path.",
 ].join("\n");

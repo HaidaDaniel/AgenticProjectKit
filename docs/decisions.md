@@ -752,3 +752,21 @@ Workspaces previously trusted a syntactically valid `runId` and an existing conf
 Implementation and invariant:
 
 `src/core/work/session.ts` exposes `resolveCanonicalRunBinding` over the existing `listWorkerSessions` primitive with no second state store. `src/core/workspaces/index.ts` calls it before `git worktree add` and from `assessWorkspaceRun` during cleanup. `src/core/execution/index.ts` applies sentinel outcomes in `resolveExecutionRoute` after override precedence and never lowers canonical assurance; `renderExecutionRoute` reports the recommendation, status, and applied flag. No provider SDK, model runtime, scheduler, daemon, PTY, SSH, remote executor, or Herdr integration is introduced.
+
+## ADR-0047 - Workspace create captures canonical resource identity and sentinels pause deterministic lanes
+
+Status: accepted
+
+Decision:
+
+When a workspace is created with `--run`, the matched canonical session's own `resourceId` is persisted onto the workspace record and ownership marker even when `--resource` is omitted; an explicit `--resource` still requires an exact canonical match and a legacy resource-less session yields no resource binding (nothing is invented). Cleanup keeps re-validating the persisted resource against the canonical session and fails closed on divergence.
+
+Calibration `wait` and `needs-human` are conservative and apply to any otherwise-executable current-calibration lane, including canonically deterministic lanes such as mechanical verification, because they only prevent automatic execution. Canonical safety/policy (unavailable or budget-exhausted assurance) still returns first and is authoritative. The `deterministic` sentinel remains restricted to canonically deterministic lanes and is refused elsewhere. Route selection distinguishes hard and soft overrides: an explicit `resourceId` selection outranks calibration, while `preferLocation`/`preferCostClass` only affect resolver ordering and do not defeat `wait`/`needs-human`.
+
+Reason:
+
+Run-only workspace creation lost the proven canonical `resourceId`, leaving resource-level provenance unrecorded even though the session carried it. Separately, `deterministicRoute()` returned before sentinel handling, so a documented `wait`/`needs-human` recommendation on verification silently produced a deterministic route; the code and contract were inconsistent. Broad "authored executionOverrides outrank calibration" wording also overstated soft preferences.
+
+Implementation and invariant:
+
+`src/core/workspaces/index.ts` derives `effectiveResourceId = options.resourceId ?? binding.resourceId` and writes it to both the record and marker. `src/core/execution/index.ts` computes `deterministic` and canonical assurance first, then applies current-calibration `wait`/`needs-human` when no hard `resourceId` override is present, and only then returns the deterministic lane or selects a worker. `src/cli/commands/workspaces.ts` documents that `--resource` requires `--run` and `--run` captures canonical resource identity. No Herdr, PTY, SSH, provider SDK, scheduler, daemon, remote executor, or new resource architecture is introduced.

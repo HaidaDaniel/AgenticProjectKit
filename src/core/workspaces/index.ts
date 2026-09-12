@@ -404,10 +404,13 @@ async function createWorkspaceLocked(options: CreateWorkspaceOptions): Promise<C
     throw new WorkspaceSafetyError("A workspace resource binding requires a canonical run id; pass --run together with --resource.");
   }
 
+  let canonicalResourceId: string | undefined;
   if (options.runId !== undefined) {
     // Prove the caller-supplied task/run/resource binding against canonical
     // session state before any mutation. A user-provided binding is never
-    // trusted on its own.
+    // trusted on its own, and a matched session's own resource identity is
+    // captured automatically so provenance is not lost when --resource is
+    // omitted.
     const binding = await resolveCanonicalRunBinding(
       options.rootDirectory,
       task.id,
@@ -419,7 +422,13 @@ async function createWorkspaceLocked(options: CreateWorkspaceOptions): Promise<C
         `Workspace run binding refused for task ${task.id} run ${options.runId}: ${binding.reason}.`,
       );
     }
+    canonicalResourceId = binding.resourceId;
   }
+
+  // Explicit selection wins; otherwise the proven canonical session resource is
+  // persisted. A legacy resource-less session yields undefined, which carries no
+  // resource-level provenance.
+  const effectiveResourceId = options.resourceId ?? canonicalResourceId;
 
   const base = workspaceBaseDirectory(repoRoot, options.baseDirectory);
   const baseReal = await realpathAllowMissing(base);
@@ -497,7 +506,7 @@ async function createWorkspaceLocked(options: CreateWorkspaceOptions): Promise<C
       id,
       taskId: task.id,
       ...(options.runId ? { runId: options.runId } : {}),
-      ...(options.resourceId ? { resourceId: options.resourceId } : {}),
+      ...(effectiveResourceId ? { resourceId: effectiveResourceId } : {}),
       worktreeId,
       marker,
     };
@@ -508,7 +517,7 @@ async function createWorkspaceLocked(options: CreateWorkspaceOptions): Promise<C
       id,
       taskId: task.id,
       ...(options.runId ? { runId: options.runId } : {}),
-      ...(options.resourceId ? { resourceId: options.resourceId } : {}),
+      ...(effectiveResourceId ? { resourceId: effectiveResourceId } : {}),
       branch,
       worktreePath: worktreeRealAfter,
       worktreeId,

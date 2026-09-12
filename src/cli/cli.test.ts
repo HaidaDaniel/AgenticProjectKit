@@ -17,6 +17,7 @@ import {
   listWorkspaceStatuses,
   removeWorkspace,
   workspaceRecordPath,
+  WORKSPACE_MARKER_FILE,
   type WorkspaceRecord,
 } from "../core/workspaces/index.js";
 import { captureTaskEvidenceSubject, parseTaskMarkdown } from "../core/tasks/index.js";
@@ -622,6 +623,24 @@ test("CLI execution explain honors current calibration wait and needs-human sent
     assert.equal(human.routeSource, "calibration");
     assert.equal(human.resourceId, undefined);
     assert.equal(human.calibration?.routeApplied, true);
+
+    // A deterministic lane (verification) is also pausable by current calibration.
+    await runCli(["execution", "calibrate", "--recommendation", JSON.stringify({
+      protocol: "apk-calibration-v1-result",
+      profile: "constrained",
+      routes: { verification: "wait" },
+      planner: "codex",
+    }), "--apply"], directory);
+    const verificationWait = JSON.parse((await runCli(["execution", "explain", "0001", "--role", "verification", "--json"], directory)).stdout) as {
+      kind?: string;
+      queue?: string;
+      routeSource?: string;
+      calibration?: { routeApplied?: boolean };
+    };
+    assert.equal(verificationWait.kind, "wait");
+    assert.equal(verificationWait.queue, "wait");
+    assert.equal(verificationWait.routeSource, "calibration");
+    assert.equal(verificationWait.calibration?.routeApplied, true);
   });
 });
 
@@ -760,6 +779,77 @@ test("execution resolver applies wait, needs-human, and override precedence dete
   assert.equal(overrideRoute.resourceId, "local-a");
   assert.equal(overrideRoute.routeSource, "override");
   assert.equal(overrideRoute.calibration?.routeApplied, false);
+});
+
+test("calibration wait/needs-human pause deterministic lanes while soft preferences do not defeat them", () => {
+  const registry = {
+    models: [],
+    harnesses: [],
+    workers: [executionWorker("local-a", ["implementation"])],
+  };
+  const calibration = {
+    status: "current" as const,
+    planner: "codex",
+    inventoryFingerprint: "fp",
+    routeApplied: false,
+    reason: "seed",
+  };
+
+  const waitVerification = resolveExecutionRoute({
+    profile: "constrained",
+    profileSource: "calibration",
+    role: "verification",
+    policy: BASE_EXECUTION_POLICY,
+    registry,
+    calibrationRoute: "wait",
+    calibration: { ...calibration, routeRecommendation: "wait" },
+  });
+  assert.equal(waitVerification.kind, "wait");
+  assert.equal(waitVerification.queue, "wait");
+  assert.equal(waitVerification.routeSource, "calibration");
+  assert.equal(waitVerification.calibration?.routeApplied, true);
+
+  const humanVerification = resolveExecutionRoute({
+    profile: "constrained",
+    profileSource: "calibration",
+    role: "verification",
+    policy: BASE_EXECUTION_POLICY,
+    registry,
+    calibrationRoute: "needs-human",
+    calibration: { ...calibration, routeRecommendation: "needs-human" },
+  });
+  assert.equal(humanVerification.kind, "needs-human");
+  assert.equal(humanVerification.queue, "manual");
+  assert.equal(humanVerification.routeSource, "calibration");
+
+  // A soft location/cost preference must not defeat the conservative pause.
+  const softPreference = resolveExecutionRoute({
+    profile: "constrained",
+    profileSource: "calibration",
+    role: "implementation",
+    policy: BASE_EXECUTION_POLICY,
+    registry,
+    calibrationRoute: "wait",
+    calibration: { ...calibration, routeRecommendation: "wait" },
+    override: { preferCostClass: "cheap" },
+  });
+  assert.equal(softPreference.kind, "wait");
+  assert.equal(softPreference.routeSource, "calibration");
+
+  // A hard resource selection outranks the sentinel.
+  const hardOverride = resolveExecutionRoute({
+    profile: "constrained",
+    profileSource: "calibration",
+    role: "implementation",
+    policy: BASE_EXECUTION_POLICY,
+    registry,
+    calibrationRoute: "wait",
+    calibration: { ...calibration, routeRecommendation: "wait" },
+    override: { resourceId: "local-a" },
+  });
+  assert.equal(hardOverride.resourceId, "local-a");
+  assert.equal(hardOverride.routeSource, "override");
+  assert.equal(hardOverride.kind, "worker");
 });
 
 test("execution resolver rejects an ineligible calibrated worker and clamps assurance", () => {
@@ -1301,6 +1391,11 @@ async function writeWorkspaceRepo(directory: string): Promise<void> {
   }), "utf8");
 }
 
+async function readWorkspaceMarkerForTest(worktreePath: string): Promise<Record<string, unknown>> {
+  const gitDir = (await execFileAsync("git", ["rev-parse", "--absolute-git-dir"], { cwd: worktreePath })).stdout.trim();
+  return JSON.parse(await readFile(join(gitDir, WORKSPACE_MARKER_FILE), "utf8")) as Record<string, unknown>;
+}
+
 test("workspace run lifecycle treats terminal runs as historical and open runs as active", async () => {
   await withTempDirectory(async (directory) => {
     await initGitRepo(directory);
@@ -1450,6 +1545,52 @@ test("workspace create proves the canonical task/run/resource binding before mut
       () => createWorkspace({ rootDirectory: directory, taskId: "0001", owner: "owner", resourceId: "worker-a" }),
       /requires a canonical run id/i,
     );
+  });
+});
+
+test("workspace create infers and persists the canonical resource when --resource is omitted", async () => {
+  await withTempDirectory(async (directory) => {
+    await initGitRepo(directory);
+    await writeWorkspaceRepo(directory);
+    await writeTaskFile(directory, "0001", "doing", "owner");
+    await writeRunSession(directory, "0001", "run-x", activationJson("0001", "run-x"), "worker-a");
+
+    const created = await createWorkspace({ rootDirectory: directory, taskId: "0001", owner: "owner", runId: "run-x" });
+    assert.equal(created.record.runId, "run-x");
+    assert.equal(created.record.resourceId, "worker-a");
+
+    const record = JSON.parse(await readFile(workspaceRecordPath(directory, created.record.id), "utf8")) as WorkspaceRecord;
+    assert.equal(record.resourceId, "worker-a");
+    const marker = await readWorkspaceMarkerForTest(created.record.worktreePath);
+    assert.equal(marker.resourceId, "worker-a");
+    const entry = (await listWorkspaceStatuses(directory)).find((workspace) => workspace.id === created.record.id);
+    assert.equal(entry?.resourceId, "worker-a");
+
+    // Cleanup re-validates the inferred binding and succeeds for a terminal task.
+    await writeTaskFile(directory, "0001", "done", "owner");
+    const removed = await removeWorkspace({ rootDirectory: directory, id: created.record.id, apply: true });
+    assert.equal(removed.removed, true);
+  });
+});
+
+test("workspace create keeps a legacy resource-less session without inventing a resource", async () => {
+  await withTempDirectory(async (directory) => {
+    await initGitRepo(directory);
+    await writeWorkspaceRepo(directory);
+    await writeTaskFile(directory, "0001", "doing", "owner");
+    const runDir = join(directory, ".agentic", "sessions", "work", "0001", "run-legacy");
+    await mkdir(runDir, { recursive: true });
+    await writeFile(join(runDir, "metadata.json"), JSON.stringify({
+      protocol: "apk-worker-v1", taskId: "0001", runId: "run-legacy", owner: "owner", role: "implement",
+    }), "utf8");
+    await writeFile(join(runDir, "activation.json"), activationJson("0001", "run-legacy"), "utf8");
+
+    const created = await createWorkspace({ rootDirectory: directory, taskId: "0001", owner: "owner", runId: "run-legacy" });
+    assert.equal(created.record.resourceId, undefined);
+    const record = JSON.parse(await readFile(workspaceRecordPath(directory, created.record.id), "utf8")) as WorkspaceRecord;
+    assert.equal(record.resourceId, undefined);
+    const marker = await readWorkspaceMarkerForTest(created.record.worktreePath);
+    assert.equal(marker.resourceId, undefined);
   });
 });
 
