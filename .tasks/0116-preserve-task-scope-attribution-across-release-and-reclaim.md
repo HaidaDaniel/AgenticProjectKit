@@ -27,6 +27,8 @@ Important legitimate behavior to preserve: files that were already dirty before 
 
 Backward compatibility: existing append-only baseline files may contain multiple baseline records for one task because old APK versions captured on every claim. Define deterministic compatibility semantics. Do not silently select the newest baseline merely because it is newest; preserve the earliest valid authoritative lifecycle baseline unless repository evidence proves a distinct new task lifecycle, and surface ambiguity diagnostically or fail closed if history cannot be interpreted safely. Do not invent a complex migration framework unless required.
 
+Intervening unrelated work: while a task is released, another task, human, or agent may legitimately advance the repository from X to Y and change unrelated files. Reclaiming the first task must neither silently rebase it and launder its previous task-owned changes, nor blindly attribute all unrelated X to Y repository changes to that task. Release/reclaim must preserve task attribution history without silently laundering previous task work or silently attributing unrelated intervening work to the task. If APK cannot safely distinguish lineage from existing repository evidence, it must fail closed with an explicit bounded ambiguity/intervening-changes diagnostic rather than choosing whichever baseline makes verification pass. This must not be implemented as naive earliest-baseline attribution of every subsequent repository commit.
+
 ## Context files
 
 - AGENTS.md
@@ -67,7 +69,8 @@ Backward compatibility: existing append-only baseline files may contain multiple
 7. Preserve legitimate pre-existing behavior: dirty before the first claim and unchanged stays pre-existing.
 8. Define deterministic compatibility semantics for existing multiple-baseline history; fail closed on uninterpretable history.
 9. Ensure the completion gate uses the same authoritative scope baseline with no force bypass and unchanged candidate/evidence freshness.
-10. Add regression tests for scenarios 1-12 and run verification.
+10. Reproduce intervening unrelated work: claim A at X; release A; unrelated task B advances X to Y and changes unrelated files; reclaim A; attribution must not launder A's old changes and must not silently own all of B's changes; if lineage is ambiguous, fail closed with an explicit diagnostic.
+11. Add regression tests for scenarios 1-13 and run verification.
 
 ## Acceptance criteria
 
@@ -83,27 +86,33 @@ Backward compatibility: existing append-only baseline files may contain multiple
 - old multiple-baseline history is handled deterministically and safely.
 - the gate cannot pass solely because reclaim changed the selected baseline.
 - baseline and evidence candidate identities remain coherent.
+- unrelated repository advancement while a task is released cannot silently reset authoritative task attribution.
+- unrelated intervening work cannot silently become task-owned merely because the original task retains its historical baseline.
+- ambiguous lifecycle lineage fails closed explicitly.
+- no convenient latest-baseline selection.
+- no naive earliest-baseline attribution of every subsequent repository commit.
 
 ## Correctness assumptions
 
 - v0.4.2 captures a baseline on every claim and `readTaskBaseline` selects the latest, so release/reclaim can rebase scope attribution.
 - ResLedger dogfood showed claim, repeated verify FAIL, release, claim, verify PASS, review, done for a narrow-scope task while substantial bootstrap changes were present.
 - existing append-only baseline files may contain multiple baseline records for one task because old APK versions captured on every claim.
+- while a task is released, unrelated work may legitimately advance HEAD and change unrelated files.
 
 ## Invariants
 
 - prior verification evidence still follows candidate/baseline freshness rules.
 - reclaim must not make stale or failing evidence current.
 - the completion gate must use the same authoritative scope baseline and has no force bypass.
-- malformed or ambiguous baseline history fails closed rather than choosing a convenient newer baseline.
+- malformed or ambiguous baseline history fails closed rather than choosing a convenient newer baseline or attributing unrelated intervening commits to the task.
 - candidate freshness and evidence binding are not weakened.
 - ownership transfer does not erase scope history.
 - files dirty before the first claim and unchanged remain pre-existing.
 
 ## Required evidence
 
-- old-behavior reproducer result plus regression test output for scenarios 1-12.
-- gate behavior when reclaim would otherwise change the selected baseline.
+- old-behavior reproducer result plus regression test output for scenarios 1-13.
+- gate behavior when reclaim would otherwise change the selected baseline, including the intervening unrelated-work case.
 
 ## Review questions
 
@@ -112,6 +121,7 @@ Backward compatibility: existing append-only baseline files may contain multiple
 - Does ownership transfer reset scope attribution?
 - Is multiple-baseline history interpreted deterministically and safely?
 - Do candidate and evidence identities remain coherent?
+- Can unrelated intervening repository advancement be silently laundered into or out of task attribution?
 
 ## Counterexample searches
 
@@ -123,6 +133,7 @@ Backward compatibility: existing append-only baseline files may contain multiple
 - review then release then claim
 - old multiple-baseline history
 - malformed or ambiguous baseline history
+- claim A at X; release A; unrelated task B advances X to Y; reclaim A; attribution neither launders A's old changes nor owns all B changes
 
 ## Verification
 

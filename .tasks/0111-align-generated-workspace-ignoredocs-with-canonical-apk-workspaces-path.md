@@ -41,6 +41,8 @@ Canonical APK-owned operational/generated ignore entries expected (audit the act
 
 Do not blindly copy unrelated APK-repository development ignores such as its own `node_modules/`, npm logs, environment files, OpenCode package files, or build output. This task concerns APK-owned generated/operational state only.
 
+`.gitignore` rules do not untrack files that Git already tracks. A brownfield repository may already contain tracked APK-owned runtime records such as `.agentic/agents/<agent>.json` and `.agentic/runs/<run>.jsonl`. After canonical ignore rules are added those files remain tracked. `apk init` and `apk adopt` must not automatically delete or untrack user files, must never run `git rm --cached`, and must not silently report repository hygiene as fully fixed while tracked APK-owned operational/generated paths remain. That state must be explicitly detected (using read-only Git queries) and surfaced as a bounded diagnostic/remediation finding or an equivalent safe warning, so the user or agent can separately decide whether to untrack those files.
+
 ## Context files
 
 - AGENTS.md
@@ -82,7 +84,8 @@ Do not blindly copy unrelated APK-repository development ignores such as its own
 3. Implement additive, idempotent, deterministic `.gitignore` generation for `apk init` and `apk adopt`; preserve existing content, comments, and unrelated rules.
 4. Handle a missing `.gitignore`, an existing `.gitignore`, a missing trailing newline, and avoid duplicate entries; never emit `.apk-worktrees/`.
 5. Update canonical docs to name `.apk-workspaces/` and describe the generated ignore contract.
-6. Add regression tests and run verification.
+6. Detect already-tracked APK-owned operational/generated paths with read-only Git queries and surface a bounded diagnostic/remediation finding; never delete or untrack them automatically.
+7. Add regression tests and run verification.
 
 ## Acceptance criteria
 
@@ -96,6 +99,7 @@ Do not blindly copy unrelated APK-repository development ignores such as its own
 - generated audit/project-map files follow canonical policy.
 - generated output never introduces `.apk-worktrees/`.
 - workspace safety and runtime semantics themselves are unchanged.
+- existing tracked APK-owned operational state is surfaced explicitly; adding ignore rules must not silently report the repository as clean with respect to those tracked files, and APK must never automatically delete or untrack them.
 
 ## Correctness assumptions
 
@@ -103,6 +107,7 @@ Do not blindly copy unrelated APK-repository development ignores such as its own
 - init and adopt currently emit no `.gitignore` entry so a safe additive generator is required.
 - an existing user `.gitignore` may have no trailing newline or may already contain some APK entries.
 - a stale `.apk-worktrees/` line is not proven to be an exact APK-generated artifact and is not aggressively removed; adding the correct `.apk-workspaces/` rule is sufficient.
+- a brownfield repository may already have tracked APK-owned runtime records, so adding ignore rules does not untrack them; detecting such paths requires only read-only Git queries and must not mutate the index.
 
 ## Invariants
 
@@ -110,16 +115,21 @@ Do not blindly copy unrelated APK-repository development ignores such as its own
 - no general-purpose `.gitignore` formatter or parser is introduced.
 - workspace safety and runtime semantics are unchanged.
 - generated output never uses `.apk-worktrees/` as the canonical path.
+- APK never runs `git rm --cached`, `git add`, or any index/working-tree mutation for hygiene.
+- tracked APK-owned operational state is reported, never silently deleted or silently treated as clean.
 
 ## Required evidence
 
 - regression test output for init and adopt plus the generated ignore block for a fresh and a customized `.gitignore`.
+- regression test output showing a tracked `.agentic/runs/foo.jsonl` remains present and tracked after init/adopt, with an explicit diagnostic and no `git rm --cached`.
 
 ## Review questions
 
 - Is the generated ignore additive, idempotent, and byte-preserving for existing content?
 - Are agents/runs records ignored while `.gitkeep` stays trackable?
 - Is `.apk-workspaces/` canonical and `.apk-worktrees/` never generated?
+- Does init/adopt surface tracked APK-owned operational state instead of silently reporting hygiene as fixed?
+- Is there any automatic index mutation or `git rm --cached`?
 
 ## Counterexample searches
 
@@ -129,6 +139,9 @@ Do not blindly copy unrelated APK-repository development ignores such as its own
 - customized `.gitignore` with comments and unrelated rules
 - CRLF line endings
 - stale `.apk-worktrees/` line present
+- repository already tracks `.agentic/runs/foo.jsonl` before init/adopt
+- tracked `.agentic/agents/<agent>.json` present
+- read-only Git queries must not mutate the index
 
 ## Verification
 

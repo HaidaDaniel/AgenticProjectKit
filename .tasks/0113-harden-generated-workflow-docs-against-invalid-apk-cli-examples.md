@@ -60,7 +60,7 @@ Do not assert that a downstream hand-authored document (for example `translator-
 
 ## Acceptance criteria
 
-- Every canonical review-result example that records a review includes `--review-run <review-run-id>`.
+- If any APK-owned canonical documentation or template contains an example that records a review result, that specific example must include `--review-run <review-run-id>`.
 - Docs explain that `apk review --prompt` prepares and returns a `reviewRunId` that must be supplied when recording the result.
 - Canonical `execution explain` examples use only execution roles: `planning`, `implementation`, `review`, `fix`, `documentation`, `triage`, `verification`.
 - Canonical `apk work` examples use only worker roles: `implement`, `review`, `fix`, `verify`.
@@ -86,7 +86,7 @@ Do not assert that a downstream hand-authored document (for example `translator-
 ## Review questions
 
 - Does the test verify canonical APK-owned examples rather than downstream hand-authored documentation?
-- Do all canonical review-result examples include `--review-run`?
+- Does each actual review-recording example include `--review-run`, without requiring every document to contain such an example?
 - Are `execution explain` roles and `apk work` roles kept distinct in every canonical example?
 - Does the guard assert against exported role constants or actual parsers rather than an unrelated string?
 
@@ -105,7 +105,8 @@ Do not assert that a downstream hand-authored document (for example `translator-
 - `{"id":"tests","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test"}`
 - `{"id":"build","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}`
 - `{"id":"dist-current","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"test -z \"$(git status --porcelain --untracked-files=all -- dist)\""}`
-- `{"id":"review-run-docs","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"for f in docs/task-system.md README.md docs/cli-commands.md; do grep -q -- '--review-run' \"$f\" || { echo \"missing --review-run in $f\"; exit 1; }; done"}`
+- `{"id":"review-run-examples","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"if grep -rnE 'apk review .*--result' docs/task-system.md README.md docs/cli-commands.md | grep -v -- '--review-run' | grep -q .; then echo 'review-record example missing --review-run'; exit 1; fi"}`
+- `{"id":"cli-role-vocabulary","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"if grep -rnE 'execution explain.*--role implement([^a-z]|$)' docs/task-system.md README.md docs/cli-commands.md; then echo 'execution explain must not use the worker role implement'; exit 1; fi"}`
 - `{"id":"built-lint","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"node dist/cli/index.js lint"}`
 - `{"id":"diff-check","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"git diff --check"}`
 
@@ -118,4 +119,5 @@ Do not assert that a downstream hand-authored document (for example `translator-
 ## Notes
 
 - Keep the fix narrow.
+- The guard must not require every document to contain a review example; it asserts that any review-recording example includes `--review-run`.
 - Do not add `adoption` to scope unless repository evidence shows canonical adopt-generated docs contain the affected examples.
