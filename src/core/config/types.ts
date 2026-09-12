@@ -56,4 +56,10 @@ export interface AgenticConfig {
   executionOverrides?: ExecutionOverride;
   executionCalibration?: ExecutionCalibration;
   quality?: QualityPolicy;
+  /**
+   * Optional additive exclusions for repository file discovery. Git-native
+   * `.gitignore` semantics are authoritative; these entries remove additional
+   * candidate paths without dropping required or explicitly named context.
+   */
+  contextExcludes?: string[];
 }

@@ -1,5 +1,9 @@
+import { execFile } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { promisify } from "node:util";
+import { readAgenticConfigFile } from "../config/index.js";
+const execFileAsync = promisify(execFile);
 const DEFAULT_DOCS_DIRECTORY = "docs";
 const DEFAULT_TASK_DIRECTORY = ".tasks";
 function docsPath(docsDirectory, fileName) {
@@ -286,7 +290,16 @@ const CONTEXT_IGNORED_DIRECTORIES = new Set([
     ".cache",
     "coverage",
 ]);
-async function listRepositoryFiles(rootDirectory, relativeDirectory = "") {
+function hasIgnoredContextSegment(path) {
+    return normalizePath(path).split("/").some((segment) => CONTEXT_IGNORED_DIRECTORIES.has(segment));
+}
+function normalizeRepositoryFiles(files) {
+    return [...new Set(files
+            .map((file) => normalizePath(file.trim()))
+            .filter((file) => file.length > 0)
+            .filter((file) => !hasIgnoredContextSegment(file)))].sort();
+}
+async function listFilesystemRepositoryFiles(rootDirectory, relativeDirectory = "") {
     const directory = join(rootDirectory, relativeDirectory);
     const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
     const files = [];
@@ -294,7 +307,7 @@ async function listRepositoryFiles(rootDirectory, relativeDirectory = "") {
         const relativePath = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
         if (entry.isDirectory()) {
             if (!CONTEXT_IGNORED_DIRECTORIES.has(entry.name)) {
-                files.push(...await listRepositoryFiles(rootDirectory, relativePath));
+                files.push(...await listFilesystemRepositoryFiles(rootDirectory, relativePath));
             }
         }
         else if (entry.isFile()) {
@@ -302,6 +315,43 @@ async function listRepositoryFiles(rootDirectory, relativeDirectory = "") {
         }
     }
     return files.sort();
+}
+/**
+ * Prefer Git's canonical repository view so `.gitignore` semantics (root and
+ * nested rules, negation, CRLF) are honored without a custom parser. Falls back
+ * to the bounded filesystem walk when Git is unavailable.
+ */
+async function listRepositoryFiles(rootDirectory) {
+    try {
+        const { stdout } = await execFileAsync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { cwd: rootDirectory, maxBuffer: 8 * 1024 * 1024 });
+        return normalizeRepositoryFiles(stdout.split(/\r?\n/));
+    }
+    catch {
+        return normalizeRepositoryFiles(await listFilesystemRepositoryFiles(rootDirectory));
+    }
+}
+function matchesConfiguredExclude(path, entry) {
+    const normalizedPath = normalizePath(path);
+    const normalizedEntry = normalizePath(entry).replace(/\/$/, "");
+    if (normalizedEntry.length === 0)
+        return false;
+    return normalizedPath === normalizedEntry
+        || normalizedPath.startsWith(`${normalizedEntry}/`)
+        || pathMatchesPattern(normalizedPath, normalizedEntry);
+}
+function applyConfiguredExcludes(files, excludes) {
+    if (excludes.length === 0)
+        return [...files];
+    return files.filter((file) => !excludes.some((entry) => matchesConfiguredExclude(file, entry)));
+}
+async function configuredContextExcludes(rootDirectory) {
+    try {
+        const config = await readAgenticConfigFile(rootDirectory);
+        return config.contextExcludes ?? [];
+    }
+    catch {
+        return [];
+    }
 }
 async function repositoryFileSizes(rootDirectory, files) {
     const sizes = {};
@@ -325,7 +375,9 @@ function dependencyTaskFiles(task, taskDirectory, availableFiles) {
 export async function buildTaskContextPack(rootDirectory, task, level, options = {}) {
     if (options.budget === undefined)
         return selectTaskContext(task, level, options);
-    const availableFiles = options.availableFiles ?? await listRepositoryFiles(rootDirectory);
+    const excludes = options.excludePaths ?? await configuredContextExcludes(rootDirectory);
+    const discoveredFiles = options.availableFiles ?? await listRepositoryFiles(rootDirectory);
+    const availableFiles = applyConfiguredExcludes(discoveredFiles, excludes);
     const fileSizes = options.fileSizes ?? await repositoryFileSizes(rootDirectory, availableFiles);
     const dependencyFiles = [
         ...(options.dependencyFiles ?? []),

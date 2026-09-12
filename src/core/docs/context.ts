@@ -1,8 +1,13 @@
+import { execFile } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { promisify } from "node:util";
 
+import { readAgenticConfigFile } from "../config/index.js";
 import type { RepositoryScan } from "../scanners/index.js";
 import type { ProjectTask, TaskMode } from "../tasks/index.js";
+
+const execFileAsync = promisify(execFile);
 
 export type ContextLevel = 1 | 2 | 3;
 export type ContextTier = "required" | "relevant" | "optional";
@@ -43,6 +48,8 @@ export interface TaskContextOptions {
   changedFiles?: string[];
   dependencyFiles?: string[];
   recentFiles?: string[];
+  /** Additive configured exclusions; Git-native ignore semantics remain authoritative. */
+  excludePaths?: string[];
   repositoryScan?: Pick<RepositoryScan, "agentExports" | "kitDocs" | "taskFiles">;
 }
 
@@ -379,7 +386,23 @@ const CONTEXT_IGNORED_DIRECTORIES = new Set([
   "coverage",
 ]);
 
-async function listRepositoryFiles(rootDirectory: string, relativeDirectory = ""): Promise<string[]> {
+function hasIgnoredContextSegment(path: string): boolean {
+  return normalizePath(path).split("/").some((segment) => CONTEXT_IGNORED_DIRECTORIES.has(segment));
+}
+
+function normalizeRepositoryFiles(files: readonly string[]): string[] {
+  return [...new Set(
+    files
+      .map((file) => normalizePath(file.trim()))
+      .filter((file) => file.length > 0)
+      .filter((file) => !hasIgnoredContextSegment(file)),
+  )].sort();
+}
+
+async function listFilesystemRepositoryFiles(
+  rootDirectory: string,
+  relativeDirectory = "",
+): Promise<string[]> {
   const directory = join(rootDirectory, relativeDirectory);
   const entries = await readdir(directory, { withFileTypes: true }).catch(() => []);
   const files: string[] = [];
@@ -387,13 +410,57 @@ async function listRepositoryFiles(rootDirectory: string, relativeDirectory = ""
     const relativePath = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
     if (entry.isDirectory()) {
       if (!CONTEXT_IGNORED_DIRECTORIES.has(entry.name)) {
-        files.push(...await listRepositoryFiles(rootDirectory, relativePath));
+        files.push(...await listFilesystemRepositoryFiles(rootDirectory, relativePath));
       }
     } else if (entry.isFile()) {
       files.push(normalizePath(relativePath));
     }
   }
   return files.sort();
+}
+
+/**
+ * Prefer Git's canonical repository view so `.gitignore` semantics (root and
+ * nested rules, negation, CRLF) are honored without a custom parser. Falls back
+ * to the bounded filesystem walk when Git is unavailable.
+ */
+async function listRepositoryFiles(rootDirectory: string): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["ls-files", "--cached", "--others", "--exclude-standard"],
+      { cwd: rootDirectory, maxBuffer: 8 * 1024 * 1024 },
+    );
+    return normalizeRepositoryFiles(stdout.split(/\r?\n/));
+  } catch {
+    return normalizeRepositoryFiles(await listFilesystemRepositoryFiles(rootDirectory));
+  }
+}
+
+function matchesConfiguredExclude(path: string, entry: string): boolean {
+  const normalizedPath = normalizePath(path);
+  const normalizedEntry = normalizePath(entry).replace(/\/$/, "");
+  if (normalizedEntry.length === 0) return false;
+  return normalizedPath === normalizedEntry
+    || normalizedPath.startsWith(`${normalizedEntry}/`)
+    || pathMatchesPattern(normalizedPath, normalizedEntry);
+}
+
+function applyConfiguredExcludes(
+  files: readonly string[],
+  excludes: readonly string[],
+): string[] {
+  if (excludes.length === 0) return [...files];
+  return files.filter((file) => !excludes.some((entry) => matchesConfiguredExclude(file, entry)));
+}
+
+async function configuredContextExcludes(rootDirectory: string): Promise<string[]> {
+  try {
+    const config = await readAgenticConfigFile(rootDirectory);
+    return config.contextExcludes ?? [];
+  } catch {
+    return [];
+  }
 }
 
 async function repositoryFileSizes(rootDirectory: string, files: readonly string[]): Promise<Record<string, number>> {
@@ -429,7 +496,9 @@ export async function buildTaskContextPack(
   options: TaskContextOptions = {},
 ): Promise<TaskContextSelection> {
   if (options.budget === undefined) return selectTaskContext(task, level, options);
-  const availableFiles = options.availableFiles ?? await listRepositoryFiles(rootDirectory);
+  const excludes = options.excludePaths ?? await configuredContextExcludes(rootDirectory);
+  const discoveredFiles = options.availableFiles ?? await listRepositoryFiles(rootDirectory);
+  const availableFiles = applyConfiguredExcludes(discoveredFiles, excludes);
   const fileSizes = options.fileSizes ?? await repositoryFileSizes(rootDirectory, availableFiles);
   const dependencyFiles = [
     ...(options.dependencyFiles ?? []),

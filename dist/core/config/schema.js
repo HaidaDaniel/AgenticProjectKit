@@ -179,6 +179,26 @@ function readExecutionCalibration(value, issues) {
         ...(budget ? { budget } : {}),
     };
 }
+function readContextExcludes(value, issues) {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (!Array.isArray(value)) {
+        issues.push("contextExcludes must be an array of non-empty path strings.");
+        return undefined;
+    }
+    const result = [];
+    for (const item of value) {
+        const text = asString(item);
+        if (!text) {
+            issues.push("contextExcludes must contain only non-empty path strings.");
+            continue;
+        }
+        if (!result.includes(text))
+            result.push(text);
+    }
+    return result;
+}
 export function parseAgenticConfig(raw) {
     if (raw === undefined || raw === null) {
         return { ...DEFAULT_CONFIG };
@@ -234,6 +254,7 @@ export function parseAgenticConfig(raw) {
         }
     }
     const executionCalibration = readExecutionCalibration(raw.executionCalibration, issues);
+    const contextExcludes = readContextExcludes(raw.contextExcludes, issues);
     if (issues.length > 0) {
         throw new ConfigValidationError(issues);
     }
@@ -250,6 +271,7 @@ export function parseAgenticConfig(raw) {
         ...(executionOverrides === undefined ? {} : { executionOverrides }),
         ...(executionCalibration === undefined ? {} : { executionCalibration }),
         ...(quality === undefined ? {} : { quality }),
+        ...(contextExcludes === undefined ? {} : { contextExcludes }),
     };
 }
 export function parseAgenticConfigJson(text) {

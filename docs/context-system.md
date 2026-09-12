@@ -63,6 +63,10 @@ The following operational files are not prompt context by default:
 
 Agent registry, run logs, and archived tasks are analytics and history, not implementation context.
 
+Budgeted discovery prefers Git's canonical repository view (`git ls-files --cached --others --exclude-standard`) so root and nested `.gitignore` rules, negation patterns, and CRLF line endings are honored through Git-native semantics without a custom `.gitignore` parser. A bounded filesystem walk is the fallback when Git is unavailable, retaining the hardcoded heavy-directory exclusions (`node_modules`, `dist`, `build`, `.next`, `.turbo`, `.cache`, `coverage`, `.git`). Ignored/untracked runtime state therefore does not become a context candidate and a large ignored directory is not walked.
+
+`contextExcludes` in `.agentic/config.json` is an additive layer of explicit exclusion paths on top of Git semantics; it can also be supplied per call through the `excludePaths` option. Configured exclusions only remove discovery candidates: required and explicitly named task context (including `## Context files` entries and an explicit `--task-file`) are always retained, even when Git ignores them or a configured exclusion matches them.
+
 ## Selection rules
 
 - Prefer the smallest context set that still makes the task safe.

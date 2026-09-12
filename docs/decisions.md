@@ -866,3 +866,19 @@ Downstream repos had to reconstruct APK's ignore rules manually, which was error
 Implementation and invariant:
 
 `src/core/init/index.ts` owns `APK_OPERATIONAL_IGNORE_ENTRIES`, `renderApkGitignoreUpdate`, `planApkGitignore`, `ensureApkGitignore`, and `detectTrackedApkOperationalPaths`; `src/core/docs/adopt.ts` includes the ignore change in plans/results and `src/cli/commands/{init,adopt}.ts` print the bounded warning. Existing `.gitignore` bytes are preserved and missing entries appended with the detected EOL; repeated runs are unchanged. No general-purpose `.gitignore` parser, formatter, index mutation, or unrelated development ignore is introduced.
+
+## ADR-0054 - Context discovery delegates ignore semantics to Git and keeps required context
+
+Status: accepted
+
+Decision:
+
+Budgeted context and prompt discovery prefer Git's canonical repository view (`git ls-files --cached --others --exclude-standard`) instead of a custom `.gitignore` parser, falling back to the existing bounded filesystem walk when Git is unavailable. `.agentic/config.json` gains an optional `contextExcludes` array (also accepted per call as `excludePaths`) as an additive exclusion layer. Git and configured exclusions only remove discovery candidates; required and explicitly named task context is always retained.
+
+Reason:
+
+Ignored runtime state could become a context candidate and large ignored directories were walked. A partial hand-written `.gitignore` parser would be incorrect for nested rules, negation, and CRLF, while a full glob engine or indexing subsystem is out of scope. Git already implements the authoritative semantics locally, with no new dependency or network coupling.
+
+Implementation and invariant:
+
+`src/core/docs/context.ts` adds `listRepositoryFiles` (Git-native with filesystem fallback), `matchesConfiguredExcludes`, and configured-exclusion resolution through `readAgenticConfigFile`; `src/core/config/types.ts`/`schema.ts` add and validate `contextExcludes`. Selection order, unit accounting, repository immutability, and the rule that required/explicit context wins are preserved. No custom `.gitignore` parser, glob engine, indexing subsystem, persistent context database, cache architecture, or network service is introduced.
