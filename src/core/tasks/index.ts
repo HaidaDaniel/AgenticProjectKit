@@ -1172,6 +1172,10 @@ export interface TaskScopeAttribution {
   diagnostics: string[];
 }
 
+export type TaskBaselinePhase = "claim" | "release" | "block";
+
+export type TaskBaselineLineageStatus = "clean" | "intervening" | "unresolved";
+
 export interface TaskClaimBaseline {
   baselineId: string;
   taskId: string;
@@ -1183,6 +1187,11 @@ export interface TaskClaimBaseline {
   dirtyFiles: Record<string, string>;
   bookkeepingPaths: string[];
   diagnostics: string[];
+  /** Lifecycle event that produced this record. Legacy records default to `claim`. */
+  phase?: TaskBaselinePhase;
+  /** Authoritative baseline lineage result; only set by `readTaskBaseline`. */
+  lineageStatus?: TaskBaselineLineageStatus;
+  lineageDiagnostic?: string;
 }
 
 export class TaskBaselineFormatError extends Error {
@@ -1579,6 +1588,14 @@ function normalizeBaseline(value: unknown, lineNumber: number): TaskClaimBaselin
   const diagnostics = Array.isArray(raw.diagnostics)
     ? raw.diagnostics.filter((item): item is string => typeof item === "string")
     : [];
+  let phase: TaskBaselinePhase = "claim";
+  if (raw.phase !== undefined) {
+    if (raw.phase === "claim" || raw.phase === "release" || raw.phase === "block") {
+      phase = raw.phase;
+    } else {
+      issues.push(`Baseline line ${lineNumber}.phase must be claim, release, or block.`);
+    }
+  }
   const baseline: TaskClaimBaseline = {
     baselineId: text("baselineId", 240),
     taskId: text("taskId"),
@@ -1590,6 +1607,7 @@ function normalizeBaseline(value: unknown, lineNumber: number): TaskClaimBaselin
     dirtyFiles,
     bookkeepingPaths,
     diagnostics,
+    phase,
   };
   if (baseline.repository === "git" && !baseline.headSha) {
     issues.push(`Baseline line ${lineNumber}.headSha is required for git baselines.`);
@@ -1605,6 +1623,7 @@ export async function captureTaskBaseline(
   taskId: string,
   owner: string,
   taskFile: string,
+  phase: TaskBaselinePhase = "claim",
 ): Promise<TaskClaimBaseline> {
   let changedFiles: string[] = [];
   const diagnostics: string[] = [];
@@ -1626,7 +1645,7 @@ export async function captureTaskBaseline(
   }
   const time = new Date().toISOString();
   const bookkeepingPaths = [...DEFAULT_BOOKKEEPING_PATHS];
-  const baselineId = `baseline:${hashCandidatePart({ taskId, owner, time, headSha, changedFiles })}`;
+  const baselineId = `baseline:${hashCandidatePart({ taskId, owner, time, headSha, changedFiles, phase })}`;
   const baseline: TaskClaimBaseline = {
     baselineId,
     taskId,
@@ -1638,11 +1657,110 @@ export async function captureTaskBaseline(
     dirtyFiles: Object.fromEntries(fingerprints.map(({ path, sha256 }) => [path, sha256])),
     bookkeepingPaths,
     diagnostics,
+    phase,
   };
   const path = join(rootDirectory, TASK_BASELINES_PATH);
   await mkdir(dirname(path), { recursive: true });
   await appendFile(path, `${JSON.stringify(baseline)}\n`, "utf8");
   return baseline;
+}
+
+/**
+ * Claim capture is append-only for lifecycle evidence, but the authoritative
+ * scope baseline is always the earliest claim record for the task. A reclaim
+ * appends a new claim marker so `readTaskBaseline` can detect the handoff; it
+ * never rebases the authoritative baseline.
+ */
+export async function ensureTaskBaseline(
+  rootDirectory: string,
+  taskId: string,
+  owner: string,
+  taskFile: string,
+): Promise<TaskClaimBaseline> {
+  return captureTaskBaseline(rootDirectory, taskId, owner, taskFile, "claim");
+}
+
+/** Record a release/block handoff snapshot used to detect intervening work. */
+export async function recordTaskHandoff(
+  rootDirectory: string,
+  taskId: string,
+  owner: string,
+  taskFile: string,
+  phase: "release" | "block",
+): Promise<TaskClaimBaseline> {
+  return captureTaskBaseline(rootDirectory, taskId, owner, taskFile, phase);
+}
+
+function shortenSha(sha: string | undefined): string {
+  return sha ? sha.slice(0, 12) : "none";
+}
+
+async function handoffDirtyDiffers(
+  rootDirectory: string,
+  handoff: TaskClaimBaseline,
+): Promise<{ differs: boolean; file?: string }> {
+  let currentDirty: string[];
+  try {
+    currentDirty = (await listGitChangedFiles(rootDirectory))
+      .map(normalizeRepoPath)
+      .filter((file) => !isBookkeepingPath(file, handoff));
+  } catch (error: unknown) {
+    return { differs: true, file: `unreadable working tree (${error instanceof Error ? error.message : String(error)})` };
+  }
+  const current = new Set(currentDirty);
+  for (const file of currentDirty) {
+    const [fingerprint] = await fingerprintChangedFiles(rootDirectory, [file]);
+    if (handoff.dirtyFiles[file] !== fingerprint?.sha256) {
+      return { differs: true, file };
+    }
+  }
+  for (const file of Object.keys(handoff.dirtyFiles)) {
+    if (isBookkeepingPath(file, handoff)) continue;
+    if (!current.has(file)) {
+      return { differs: true, file };
+    }
+  }
+  return { differs: false };
+}
+
+async function resolveReclaimLineage(
+  rootDirectory: string,
+  authoritative: TaskClaimBaseline,
+  handoff: TaskClaimBaseline | undefined,
+): Promise<Pick<TaskClaimBaseline, "lineageStatus" | "lineageDiagnostic">> {
+  if (authoritative.repository !== "git" || !authoritative.headSha) {
+    return {
+      lineageStatus: "unresolved",
+      lineageDiagnostic: "Task was released and reclaimed without a Git baseline HEAD; scope lineage cannot be re-verified.",
+    };
+  }
+  let currentHead: string;
+  try {
+    currentHead = (await gitOutput(rootDirectory, ["rev-parse", "HEAD"])).trim();
+  } catch (error: unknown) {
+    return {
+      lineageStatus: "intervening",
+      lineageDiagnostic: `Task was released and reclaimed but current HEAD is unreadable (${error instanceof Error ? error.message : String(error)}); scope lineage fails closed.`,
+    };
+  }
+  if (currentHead !== authoritative.headSha) {
+    if (!handoff?.headSha || handoff.headSha !== currentHead) {
+      return {
+        lineageStatus: "intervening",
+        lineageDiagnostic: `Repository HEAD advanced from authoritative baseline ${shortenSha(authoritative.headSha)} to ${shortenSha(currentHead)} while the task was released; intervening work cannot be distinguished safely and scope fails closed.`,
+      };
+    }
+  }
+  if (handoff) {
+    const dirtyDiff = await handoffDirtyDiffers(rootDirectory, handoff);
+    if (dirtyDiff.differs) {
+      return {
+        lineageStatus: "intervening",
+        lineageDiagnostic: `Working-tree changes appeared while the task was released (${dirtyDiff.file ?? "unknown path"}); scope lineage is ambiguous and fails closed.`,
+      };
+    }
+  }
+  return { lineageStatus: "clean" };
 }
 
 export async function readTaskBaseline(
@@ -1659,7 +1777,7 @@ export async function readTaskBaseline(
     throw error;
   }
 
-  let latest: TaskClaimBaseline | undefined;
+  const records: TaskClaimBaseline[] = [];
   for (const [index, line] of content.split("\n").entries()) {
     if (line.trim().length === 0) continue;
     let value: unknown;
@@ -1672,10 +1790,26 @@ export async function readTaskBaseline(
     }
     const baseline = normalizeBaseline(value, index + 1);
     if (baseline.taskId === taskId) {
-      latest = baseline;
+      records.push(baseline);
     }
   }
-  return latest;
+  if (records.length === 0) {
+    return undefined;
+  }
+
+  const claims = records.filter((record) => (record.phase ?? "claim") === "claim");
+  const authoritative = claims[0] ?? records[0];
+  const latestClaim = claims.length > 0 ? claims[claims.length - 1] : undefined;
+  const handoffs = records.filter((record) => record.phase === "release" || record.phase === "block");
+  const latestHandoff = handoffs.length > 0 ? handoffs[handoffs.length - 1] : undefined;
+
+  // No reclaim after the authoritative claim: normal same-claim continuation.
+  if (!latestClaim || latestClaim.baselineId === authoritative.baselineId) {
+    return { ...authoritative, lineageStatus: "clean" };
+  }
+
+  const lineage = await resolveReclaimLineage(rootDirectory, authoritative, latestHandoff);
+  return { ...authoritative, ...lineage };
 }
 
 export async function listTaskChangedFilesSinceBaseline(
@@ -1744,6 +1878,15 @@ export async function captureTaskScope(options: {
         ? rawChangedFiles.filter((path) => !isDefaultBookkeepingPath(normalizeRepoPath(path), normalizedTaskPath))
         : rawChangedFiles,
     );
+
+  const lineage = options.baseline?.lineageStatus;
+  if (options.baseline?.repository === "git" && lineage !== undefined && lineage !== "clean") {
+    comparisonKnown = false;
+    diagnostics.push(
+      options.baseline.lineageDiagnostic
+        ?? `Task baseline lineage is ${lineage}; scope comparison fails closed.`,
+    );
+  }
 
   return {
     ...scope,

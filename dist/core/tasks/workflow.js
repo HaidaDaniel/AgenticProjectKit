@@ -3,7 +3,7 @@ import { dirname, join, relative } from "node:path";
 import { appendRunLog, durationSinceLastClaim, requireAgent, } from "../agents/index.js";
 import { appendTaskEvidence } from "./evidence.js";
 import { captureTaskCompletionCandidate, evaluateTaskCompletionGate, TaskCompletionGateError, } from "./gate.js";
-import { findTaskFile, captureTaskBaseline, loadTaskFile, writeTaskFile, } from "./index.js";
+import { findTaskFile, ensureTaskBaseline, loadTaskFile, recordTaskHandoff, writeTaskFile, } from "./index.js";
 import { withLocalMutationLock } from "./lock.js";
 async function withTaskLock(rootDirectory, taskDirectory, command, taskId, run) {
     const lockPath = join(rootDirectory, taskDirectory, ".apk.lock");
@@ -39,8 +39,12 @@ async function transition(options, event, update) {
         const taskPath = await findTaskFile(options.rootDirectory, options.taskId, options.taskDirectory);
         const { task } = await loadTaskFile(taskPath);
         const nextTask = await update(task, agent);
+        const taskRelativePath = relative(options.rootDirectory, taskPath).replace(/\\/g, "/");
         if (event === "claim") {
-            await captureTaskBaseline(options.rootDirectory, task.id, agent.id, relative(options.rootDirectory, taskPath).replace(/\\/g, "/"));
+            await ensureTaskBaseline(options.rootDirectory, task.id, agent.id, taskRelativePath);
+        }
+        if (event === "release" || event === "block") {
+            await recordTaskHandoff(options.rootDirectory, task.id, agent.id, taskRelativePath, event);
         }
         const durationSec = event === "done"
             ? await durationSinceLastClaim(options.rootDirectory, task.id, agent.id)

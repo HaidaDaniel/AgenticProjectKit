@@ -25,6 +25,7 @@ import {
   buildTaskDeps,
   buildTaskProvenance,
   buildTaskFileName,
+  captureTaskBaseline,
   captureTaskEvidenceSubject,
   captureTaskCompletionCandidate,
   createTask,
@@ -79,6 +80,7 @@ import {
 } from "./index.js";
 import {
   claimTask,
+  blockTask,
   createStaleTaskLock,
   doneTask,
   releaseTask,
@@ -1737,6 +1739,181 @@ test("claim baseline attributes later git changes without blaming pre-existing d
     assert.ok(result.attribution?.attributedFiles.includes("secrets/config.txt"));
     assert.deepEqual(result.outOfScopeFiles, ["docs/foobar.md"]);
     assert.deepEqual(result.forbiddenTouchedFiles, ["secrets/config.txt"]);
+  });
+});
+
+async function setupReclaimRepo(directory: string): Promise<void> {
+  const git = async (...args: string[]) => {
+    await execFileAsync("git", args, { cwd: directory });
+  };
+  await git("init", "--quiet");
+  await git("config", "user.email", "codex@example.test");
+  await git("config", "user.name", "Codex");
+  await mkdir(join(directory, ".tasks"), { recursive: true });
+  await mkdir(join(directory, "src", "core", "tasks"), { recursive: true });
+  await mkdir(join(directory, "secrets"), { recursive: true });
+  await writeFile(join(directory, "secrets", "config.txt"), "clean\n", "utf8");
+  await writeTaskFile(join(directory, ".tasks", "0007-scoped-task.md"), {
+    ...TASK,
+    risk: "low",
+    dependsOn: [],
+    allowedFiles: ["src/core/tasks/**"],
+    forbiddenFiles: ["secrets/**"],
+    verificationCommands: [],
+    verification: [
+      { id: "check", type: "automated", required: true, environment: "local", profile: "deterministic", command: "true" },
+    ],
+  });
+  await git("add", ".");
+  await git("commit", "--quiet", "-m", "initial");
+  await registerAgent(directory, { id: "agent-a", developer: "alice", platform: "opencode", model: "m1" });
+  await registerAgent(directory, { id: "agent-b", developer: "bob", platform: "opencode", model: "m1" });
+}
+
+function verifyScopedTask(directory: string, owner = "agent-a") {
+  return verifyTask({
+    rootDirectory: directory,
+    taskDirectory: ".tasks",
+    taskId: "0007",
+    owner,
+    checkFilesOnly: true,
+  });
+}
+
+test("release and reclaim cannot launder a task-created dirty out-of-scope file", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await mkdir(join(directory, "src", "bootstrap"), { recursive: true });
+    await writeFile(join(directory, "src", "bootstrap", "setup.ts"), "bootstrap\n", "utf8");
+
+    const first = await verifyScopedTask(directory);
+    assert.equal(first.passed, false);
+    assert.deepEqual(first.outOfScopeFiles, ["src/bootstrap/setup.ts"]);
+
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const second = await verifyScopedTask(directory);
+    assert.equal(second.passed, false);
+    assert.deepEqual(second.outOfScopeFiles, ["src/bootstrap/setup.ts"]);
+    assert.deepEqual(second.attribution?.preExistingFiles, []);
+    assert.ok(second.attribution?.attributedFiles.includes("src/bootstrap/setup.ts"));
+  });
+});
+
+test("release and reclaim cannot launder a committed out-of-scope change", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await mkdir(join(directory, "src", "bootstrap"), { recursive: true });
+    await writeFile(join(directory, "src", "bootstrap", "setup.ts"), "bootstrap\n", "utf8");
+    await execFileAsync("git", ["add", "src/bootstrap/setup.ts"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "out-of-scope"], { cwd: directory });
+
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const result = await verifyScopedTask(directory);
+    assert.equal(result.passed, false);
+    assert.deepEqual(result.outOfScopeFiles, ["src/bootstrap/setup.ts"]);
+  });
+});
+
+test("release and reclaim keeps files that were dirty before the first claim pre-existing", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await writeFile(join(directory, "secrets", "config.txt"), "preexisting\n", "utf8");
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const result = await verifyScopedTask(directory);
+    assert.equal(result.passed, true);
+    assert.deepEqual(result.attribution?.preExistingFiles, ["secrets/config.txt"]);
+    assert.deepEqual(result.attribution?.attributedFiles, []);
+  });
+});
+
+test("different-owner reclaim preserves the authoritative baseline and attribution", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const authoritative = await readTaskBaseline(directory, "0007");
+    await writeFile(join(directory, "src", "core", "tasks", "new.ts"), "new\n", "utf8");
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-b" });
+
+    const afterReclaim = await readTaskBaseline(directory, "0007");
+    assert.equal(afterReclaim?.baselineId, authoritative?.baselineId);
+
+    const result = await verifyScopedTask(directory, "agent-b");
+    assert.equal(result.passed, true);
+    assert.ok(result.attribution?.attributedFiles.includes("src/core/tasks/new.ts"));
+  });
+});
+
+test("block then release then claim does not reset attribution", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await writeFile(join(directory, "src", "core", "tasks", "new.ts"), "new\n", "utf8");
+    await blockTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const result = await verifyScopedTask(directory);
+    assert.ok(result.attribution?.attributedFiles.includes("src/core/tasks/new.ts"));
+  });
+});
+
+test("intervening unrelated commits after release fail scope closed", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    await writeFile(join(directory, "src", "core", "tasks", "unrelated.ts"), "unrelated\n", "utf8");
+    await execFileAsync("git", ["add", "src/core/tasks/unrelated.ts"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "unrelated work"], { cwd: directory });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.equal(baseline?.lineageStatus, "intervening");
+
+    const result = await verifyScopedTask(directory);
+    assert.equal(result.passed, false);
+    assert.ok(result.diagnostics.some((diagnostic) => /advanced|intervening|ambiguous/i.test(diagnostic)));
+  });
+});
+
+test("legacy multiple-claim baseline history selects the earliest authoritative baseline", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await mkdir(join(directory, "src", "bootstrap"), { recursive: true });
+    await writeFile(join(directory, "src", "bootstrap", "setup.ts"), "bootstrap\n", "utf8");
+    // Simulate an old APK version that captured a fresh baseline on reclaim while
+    // leaving the out-of-scope file dirty.
+    await captureTaskBaseline(directory, "0007", "agent-a", ".tasks/0007-scoped-task.md", "claim");
+
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.equal(baseline?.lineageStatus, "clean");
+    const result = await verifyScopedTask(directory);
+    assert.equal(result.passed, false);
+    assert.deepEqual(result.outOfScopeFiles, ["src/bootstrap/setup.ts"]);
+    assert.deepEqual(result.attribution?.preExistingFiles, []);
+  });
+});
+
+test("a released task without reclaim stays clean and does not fail closed", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.equal(baseline?.lineageStatus, "clean");
   });
 });
 

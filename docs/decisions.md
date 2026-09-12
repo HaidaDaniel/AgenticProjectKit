@@ -818,3 +818,19 @@ The canonical generated workflow required claim/verify/review/gate/done but neve
 Implementation and invariant:
 
 `DEFAULT_AGENT_POLICY.taskRules` carries the hygiene rules and `apk sync` regenerates `AGENTS.md`; renderer and sync regression tests assert the rule is present and drift-free. Committing task-owned changes before final verify/review/gate keeps candidate-bound evidence pointing at the committed candidate; because APK candidate identity is content-derived, a pure commit does not invalidate it. Terminal `apk done` bookkeeping remains excluded workflow state. No Git transaction manager, auto-push, daemon, branch-protection change, squash/amend policy, or provider integration is introduced.
+
+## ADR-0051 - One authoritative scope baseline per unfinished task lifecycle
+
+Status: accepted
+
+Decision:
+
+The authoritative scope baseline for an unfinished task is the earliest `claim` record in `.agentic/task-baselines.jsonl`, not the newest. `release` and `block` append handoff snapshots (HEAD and dirty fingerprints); a reclaim appends a new `claim` marker so the transition is visible, but `readTaskBaseline` always returns the earliest claim. When it detects a reclaim, it resolves lineage: a commit range that advanced past the authoritative HEAD without a matching handoff, or working-tree changes that appeared since the handoff, marks the baseline `intervening`, and scope comparison fails closed with an explicit diagnostic. Legacy files with multiple unphased claim records select the earliest claim deterministically.
+
+Reason:
+
+v0.4.2 captured a fresh baseline on every claim and `readTaskBaseline` selected the latest, so `claim -> out-of-scope change -> verify FAIL -> release -> reclaim -> verify PASS` laundered the out-of-scope change into `preExistingFiles`, and a committed violation disappeared behind the advanced HEAD. The ResLedger dogfood exercised exactly this sequence. Selecting the latest baseline was the root cause; always using the earliest would instead blindly attribute unrelated repository advancement to the task, so neither naive rule is safe.
+
+Implementation and invariant:
+
+`src/core/tasks/index.ts` adds `phase`, `ensureTaskBaseline`, `recordTaskHandoff`, and lineage resolution in `readTaskBaseline`; `src/core/tasks/workflow.ts` records `claim` and `release`/`block` phases. `captureTaskScope` sets `comparisonKnown=false` (blocking verify/gate/review/dogfood) when a Git baseline is `intervening` or `unresolved`. Legitimate pre-claim dirty files stay `preExistingFiles`, ownership transfer preserves the authoritative `baselineId`, and candidate/evidence freshness is unchanged. No provenance subsystem, migration framework, force bypass, or new dependency is introduced.

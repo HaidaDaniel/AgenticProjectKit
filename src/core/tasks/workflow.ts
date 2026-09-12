@@ -16,8 +16,9 @@ import {
 } from "./gate.js";
 import {
   findTaskFile,
-  captureTaskBaseline,
+  ensureTaskBaseline,
   loadTaskFile,
+  recordTaskHandoff,
   writeTaskFile,
   type ProjectTask,
   type TaskState,
@@ -85,12 +86,22 @@ async function transition(
     );
     const { task } = await loadTaskFile(taskPath);
     const nextTask = await update(task, agent);
+    const taskRelativePath = relative(options.rootDirectory, taskPath).replace(/\\/g, "/");
     if (event === "claim") {
-      await captureTaskBaseline(
+      await ensureTaskBaseline(
         options.rootDirectory,
         task.id,
         agent.id,
-        relative(options.rootDirectory, taskPath).replace(/\\/g, "/"),
+        taskRelativePath,
+      );
+    }
+    if (event === "release" || event === "block") {
+      await recordTaskHandoff(
+        options.rootDirectory,
+        task.id,
+        agent.id,
+        taskRelativePath,
+        event,
       );
     }
     const durationSec = event === "done"
