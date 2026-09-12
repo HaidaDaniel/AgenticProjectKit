@@ -1,7 +1,7 @@
 # Task 0105 - Prepare v0.4.0 dogfood release
 
-State: doing
-Owner: codex-v040
+State: blocked
+Owner: none
 Mode: production
 Lane: release
 Type: release
@@ -126,3 +126,4 @@ Turn the completed resource-aware and workspace milestone into a reproducible v0
 ## Notes
 
 - Minor release only. No speculative features. No Herdr dependency or adapter. External terminal or session runtimes may be used alongside APK.
+- block: Await exact-SHA clean-checkout CI; agent registration is intentionally local-only.

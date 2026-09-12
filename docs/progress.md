@@ -2,7 +2,7 @@
 
 ## Current status
 
-Task 0105 is in progress to prepare the completed resource-aware/workspace milestone as the reproducible v0.4.0 dogfood release. Scope is limited to version metadata, bounded release documentation, generated audit reports, verification, exact-SHA hosted CI, and release artifacts; no Herdr dependency or adapter is included.
+Task 0105 has prepared the v0.4.0 release candidate and is temporarily blocked for exact-SHA clean-checkout CI. The first hosted run exposed the expected clean-checkout boundary: registered agent records are local runtime state, so a tracked `doing` task cannot pass repository lint in a fresh clone; the bounded release lifecycle now parks the task as ownerless `blocked` during hosted validation and will reopen it only after a green exact-SHA run. No source behavior or Herdr integration is added.
 
 Phase 1 documentation is in place, Tasks 0001 through 0074, 0076-0078, 0080, 0081, the Resource-Aware Execution planning Task 0082, and follow-up Tasks 0089-0090 are complete. Tasks 0083-0085 now provide the registry, deterministic routing, and adaptive assurance foundation for Resource-Aware Execution.
 
