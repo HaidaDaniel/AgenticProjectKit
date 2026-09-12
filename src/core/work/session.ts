@@ -212,6 +212,73 @@ export async function listWorkerSessions(rootDirectory: string): Promise<Discove
   return sessions;
 }
 
+export const CANONICAL_RUN_BINDING_STATUSES = ["matched", "missing", "malformed", "mismatch", "unavailable"] as const;
+export type CanonicalRunBindingStatus = (typeof CANONICAL_RUN_BINDING_STATUSES)[number];
+
+export interface CanonicalRunBinding {
+  status: CanonicalRunBindingStatus;
+  taskId: string;
+  runId: string;
+  resourceId?: string;
+  activated: boolean;
+  reason: string;
+}
+
+/**
+ * Single shared primitive that proves the canonical task/run/resource identity
+ * of an issued worker session. Workspace creation and cleanup both use it so the
+ * binding semantics cannot drift, and no second state store is introduced. A
+ * missing, malformed, mismatched, or unreadable session is reported explicitly
+ * so callers can fail closed instead of trusting a caller-supplied binding.
+ */
+export async function resolveCanonicalRunBinding(
+  rootDirectory: string,
+  taskId: string,
+  runId: string,
+  options: { resourceId?: string } = {},
+): Promise<CanonicalRunBinding> {
+  let sessions: DiscoveredWorkerSession[];
+  try {
+    sessions = await listWorkerSessions(rootDirectory);
+  } catch (error: unknown) {
+    return {
+      status: "unavailable",
+      taskId,
+      runId,
+      activated: false,
+      reason: `canonical worker-session scan failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+  const session = sessions.find((entry) => entry.taskId === taskId && entry.runId === runId);
+  if (!session) {
+    return { status: "missing", taskId, runId, activated: false, reason: "no canonical worker-session record for this task/run" };
+  }
+  if (session.state === "malformed") {
+    return { status: "malformed", taskId, runId, activated: false, reason: "canonical worker-session metadata is malformed" };
+  }
+  const sessionResourceId = session.resourceId;
+  if (options.resourceId !== undefined && sessionResourceId !== options.resourceId) {
+    return {
+      status: "mismatch",
+      taskId,
+      runId,
+      ...(sessionResourceId ? { resourceId: sessionResourceId } : {}),
+      activated: session.activated,
+      reason: `canonical session resource ${sessionResourceId ?? "none"} does not match requested resource ${options.resourceId}`,
+    };
+  }
+  return {
+    status: "matched",
+    taskId,
+    runId,
+    ...(sessionResourceId ? { resourceId: sessionResourceId } : {}),
+    activated: session.activated,
+    reason: session.activated
+      ? "canonical activated worker session matches task/run/resource"
+      : "canonical worker session exists but is not activated",
+  };
+}
+
 function hashText(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }

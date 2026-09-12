@@ -316,13 +316,16 @@ function deterministicRoute(
   profile: ExecutionProfile,
   profileSource: ExecutionProfileSource,
 ): ExecutionRoute | undefined {
+  const deterministicCalibration = request.calibrationRoute === "deterministic"
+    ? { applied: true, reason: "current calibration deterministic sentinel matches the canonical deterministic lane" }
+    : { applied: false, reason: "canonical deterministic lane" };
   if (request.role === "verification") {
     return {
       profile, profileSource, routeSource: "deterministic", role: request.role, kind: "deterministic", queue: "none",
       policy: { independentReview: request.policy.independentReview, reviewLevel: request.policy.reviewLevel },
       explanation: "Mechanical verification uses the deterministic lane and does not consume a worker resource.",
       candidates: [],
-      ...calibrationInfluence(request, false, "canonical deterministic lane"),
+      ...calibrationInfluence(request, deterministicCalibration.applied, deterministicCalibration.reason),
     };
   }
   if (request.role === "review" && !request.policy.independentReview) {
@@ -331,7 +334,7 @@ function deterministicRoute(
       policy: { independentReview: false, reviewLevel: request.policy.reviewLevel },
       explanation: "The upstream task policy does not require semantic review; no worker route is created.",
       candidates: [],
-      ...calibrationInfluence(request, false, "canonical deterministic lane"),
+      ...calibrationInfluence(request, deterministicCalibration.applied, deterministicCalibration.reason),
     };
   }
   return undefined;
@@ -391,7 +394,24 @@ export function resolveExecutionRoute(request: ExecutionRouteRequest): Execution
     && !(CALIBRATION_ROUTE_SENTINELS as readonly string[]).includes(calibrationRoute)
     ? calibrationRoute
     : undefined;
-  const sentinelRoute = calibrationRoute !== undefined && calibrationWorkerRoute === undefined;
+  const calibrationSentinel = calibrationRoute !== undefined && calibrationWorkerRoute === undefined
+    ? calibrationRoute as (typeof CALIBRATION_ROUTE_SENTINELS)[number]
+    : undefined;
+
+  const sentinelRoute = (
+    kind: ExecutionRouteKind,
+    queue: "none" | "wait" | "manual",
+    explanation: string,
+    reason: string,
+  ): ExecutionRoute => ({
+    profile, profileSource, routeSource: "calibration", role: request.role, kind, queue,
+    policy: { independentReview: request.policy.independentReview, reviewLevel: request.policy.reviewLevel },
+    explanation,
+    candidates: renderedCandidates,
+    ...(assurance ? { assurance } : {}),
+    ...(override ? { override } : {}),
+    ...calibrationInfluence(request, true, reason),
+  });
 
   let selected: { worker: WorkerResource; reasons: string[] } | undefined;
   let routeSource: ExecutionRouteSource = "resolver";
@@ -426,14 +446,34 @@ export function resolveExecutionRoute(request: ExecutionRouteRequest): Execution
         calibrationReason = `current calibration route ${calibrationWorkerRoute} is not eligible and no fallback resource is available`;
       }
     }
+  } else if (calibrationSentinel === "wait") {
+    // A current calibration may deliberately hold work while a constrained lane
+    // is busy. It is calibration-sourced and never a silent resolver decision.
+    return sentinelRoute(
+      "wait",
+      "wait",
+      "Current calibration recommends waiting; no worker is dispatched.",
+      "current calibration sentinel: wait",
+    );
+  } else if (calibrationSentinel === "needs-human") {
+    return sentinelRoute(
+      "needs-human",
+      "manual",
+      "Current calibration recommends a human decision; the resolver does not auto-select a worker.",
+      "current calibration sentinel: needs-human",
+    );
   } else {
     selected = pickResolver();
     if (selected) {
       routeSource = "resolver";
       explanation = `Selected ${selected.worker.id} by deterministic profile ordering${override?.preferLocation || override?.preferCostClass ? " with explicit preferences" : ""}; ties are resolved by stable resource ID.`;
     }
-    if (sentinelRoute) {
-      calibrationReason = `calibration sentinel ${calibrationRoute} is advisory; the canonical resolver remains authoritative`;
+    if (calibrationSentinel === "deterministic") {
+      // `deterministic` only applies where canonical semantics already permit a
+      // deterministic lane (verification, or review not required by policy).
+      // Those cases returned above, so reaching here means the sentinel would
+      // bypass required semantic work: refuse it and let canonical policy win.
+      calibrationReason = "calibration deterministic sentinel is incompatible with the canonical semantic route for this role; canonical policy remains authoritative";
     }
   }
 
@@ -480,7 +520,8 @@ export function renderExecutionRoute(route: ExecutionRoute, json = false): strin
     lines.push(`Assurance: required=${route.assurance.required} canonical=${route.assurance.canonicalRequired}${route.assurance.calibrationPreference ? ` calibration=${route.assurance.calibrationPreference}` : ""} status=${route.assurance.status}`);
   }
   if (route.calibration) {
-    lines.push(`Calibration: ${route.calibration.status} planner=${route.calibration.planner} applied=${route.calibration.routeApplied}; ${route.calibration.reason}`);
+    const recommendation = route.calibration.routeRecommendation ? ` route=${route.calibration.routeRecommendation}` : "";
+    lines.push(`Calibration: ${route.calibration.status}${recommendation} planner=${route.calibration.planner} applied=${route.calibration.routeApplied}; ${route.calibration.reason}`);
   }
   lines.push(
     "Candidates:",

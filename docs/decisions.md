@@ -734,3 +734,21 @@ Prior to this decision, calibration was only saved and displayed, so the documen
 Implementation and invariant:
 
 `src/core/execution/index.ts` exposes `resolveExecutionRoute` with `profileSource`, `routeSource`, and a bounded `ExecutionCalibrationInfluence`; `resolveAssurancePlan` clamps `assuranceFloor` upward against the canonical requirement and reports `canonicalRequired`/`calibrationPreference`. `src/cli/commands/execution.ts` computes calibration status from `detectResourceInventory`, ignores stale calibration, applies the precedence above, and emits effective sources plus the exact saved recommendation (`savedCalibration`). No provider SDK, model runtime, scheduler, daemon, remote executor, or AI-Herdr integration is introduced.
+
+## ADR-0046 - Workspace provenance proves canonical run/resource binding and calibration sentinels execute
+
+Status: accepted
+
+Decision:
+
+Workspace provenance is proven, not caller-asserted. `apk workspaces create --run` resolves the canonical `apk-worker-v1` session through a single shared `resolveCanonicalRunBinding` helper and refuses before any mutation when the session is missing, malformed, unreadable, belongs to another task, or (when `--resource` is supplied) names a different resource. `--resource` requires `--run` because a declared planned resource without a run cannot be re-validated later. Cleanup re-resolves the same binding and fails closed to `unknown` when the record's `resourceId` no longer equals the canonical session resource.
+
+Calibration sentinels execute with explicit, bounded semantics. A current `wait` yields a calibration-sourced `wait`/`wait` route and a current `needs-human` yields `needs-human`/`manual`; both set `routeSource=calibration` and `routeApplied=true` and are outranked by an explicit CLI or authored override. A current `deterministic` sentinel applies only where canonical semantics already select the deterministic lane (mechanical `verification`, or `review` not required by policy); on any role that requires semantic work it is refused with `routeApplied=false` and the canonical resolver/policy decides, so calibration can never bypass required review or assurance. Stale calibration contributes nothing.
+
+Reason:
+
+Workspaces previously trusted a syntactically valid `runId` and an existing configured `resourceId` without proving the canonical session relationship, so a caller could bind a workspace to a run or resource it did not own, and cleanup could not detect later divergence. Calibration sentinels were accepted by the schema but silently downgraded to advisory, so the documented semantics did not match effective routing.
+
+Implementation and invariant:
+
+`src/core/work/session.ts` exposes `resolveCanonicalRunBinding` over the existing `listWorkerSessions` primitive with no second state store. `src/core/workspaces/index.ts` calls it before `git worktree add` and from `assessWorkspaceRun` during cleanup. `src/core/execution/index.ts` applies sentinel outcomes in `resolveExecutionRoute` after override precedence and never lowers canonical assurance; `renderExecutionRoute` reports the recommendation, status, and applied flag. No provider SDK, model runtime, scheduler, daemon, PTY, SSH, remote executor, or Herdr integration is introduced.

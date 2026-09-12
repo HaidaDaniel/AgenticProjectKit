@@ -8,7 +8,7 @@ import { readAgenticConfigFile } from "../config/index.js";
 import { findTaskFile, loadTaskFile, type TaskState } from "../tasks/index.js";
 import { withLocalMutationLock } from "../tasks/lock.js";
 import { isSafeRunId } from "../work/contract.js";
-import { listWorkerSessions } from "../work/session.js";
+import { resolveCanonicalRunBinding } from "../work/session.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -398,6 +398,29 @@ async function createWorkspaceLocked(options: CreateWorkspaceOptions): Promise<C
     }
   }
 
+  if (options.resourceId !== undefined && options.runId === undefined) {
+    // A resource binding is only meaningful as provenance when the canonical run
+    // it belongs to can be proven; otherwise cleanup could not re-validate it.
+    throw new WorkspaceSafetyError("A workspace resource binding requires a canonical run id; pass --run together with --resource.");
+  }
+
+  if (options.runId !== undefined) {
+    // Prove the caller-supplied task/run/resource binding against canonical
+    // session state before any mutation. A user-provided binding is never
+    // trusted on its own.
+    const binding = await resolveCanonicalRunBinding(
+      options.rootDirectory,
+      task.id,
+      options.runId,
+      options.resourceId !== undefined ? { resourceId: options.resourceId } : {},
+    );
+    if (binding.status !== "matched") {
+      throw new WorkspaceSafetyError(
+        `Workspace run binding refused for task ${task.id} run ${options.runId}: ${binding.reason}.`,
+      );
+    }
+  }
+
   const base = workspaceBaseDirectory(repoRoot, options.baseDirectory);
   const baseReal = await realpathAllowMissing(base);
   if (!isContainedWithin(await realpath(repoRoot), baseReal) && normalizePathCase(resolve(baseReal)) !== normalizePathCase(resolve(repoRoot))) {
@@ -591,7 +614,7 @@ export async function assessWorkspaceSafety(
   }
 
   if (record.runId) {
-    const runState = await assessWorkspaceRun(rootDirectory, record.taskId, record.runId);
+    const runState = await assessWorkspaceRun(rootDirectory, record.taskId, record.runId, record.resourceId);
     if (runState.state === "active") {
       return { state: "active", safeToCleanup: false, reason: `Workspace is bound to an open activated run: ${runState.reason}`, nextAction: `finish or release run ${record.runId} before cleanup` };
     }
@@ -612,30 +635,38 @@ export interface WorkspaceRunAssessment {
 }
 
 /**
- * Resolve a bound worker run's lifecycle without ever treating an unreadable or
- * malformed record as inactive. An activated session is active only while its
- * task is still open; a done/canceled task makes the activation historical. Any
- * uncertainty fails closed to `unknown`.
+ * Resolve a bound worker run's lifecycle and canonical resource identity without
+ * ever treating an unreadable or malformed record as inactive. An activated
+ * session is active only while its task is still open; a done/canceled task
+ * makes the activation historical. When the record carries a resourceId it must
+ * match the canonical session resource exactly. Any uncertainty fails closed to
+ * `unknown`, which refuses destructive cleanup.
  */
 export async function assessWorkspaceRun(
   rootDirectory: string,
   taskId: string,
   runId: string,
+  expectedResourceId?: string,
 ): Promise<WorkspaceRunAssessment> {
-  let sessions;
-  try {
-    sessions = await listWorkerSessions(rootDirectory);
-  } catch (error: unknown) {
-    return { state: "unknown", reason: `canonical worker-session scan failed: ${error instanceof Error ? error.message : String(error)}` };
+  const binding = await resolveCanonicalRunBinding(
+    rootDirectory,
+    taskId,
+    runId,
+    expectedResourceId !== undefined ? { resourceId: expectedResourceId } : {},
+  );
+  if (binding.status === "unavailable") {
+    return { state: "unknown", reason: `canonical worker-session state unavailable: ${binding.reason}` };
   }
-  const session = sessions.find((entry) => entry.taskId === taskId && entry.runId === runId);
-  if (!session) {
+  if (binding.status === "missing") {
     return { state: "unknown", reason: "no canonical worker-session record for the bound run" };
   }
-  if (session.state === "malformed") {
+  if (binding.status === "malformed") {
     return { state: "unknown", reason: "bound worker-session metadata is malformed" };
   }
-  if (session.state === "unactivated") {
+  if (binding.status === "mismatch") {
+    return { state: "unknown", reason: `bound run/resource identity mismatch: ${binding.reason}` };
+  }
+  if (!binding.activated) {
     return { state: "unknown", reason: "bound worker session has no activation marker" };
   }
 
