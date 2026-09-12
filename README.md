@@ -99,26 +99,26 @@ Use SSH when the machine already has GitHub credentials:
 
 ```bash
 cd path/to/your-project
-pnpm add -D git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.2
+pnpm add -D git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.3
 pnpm exec apk init
 ```
 
 For an existing repository:
 
 ```bash
-pnpm add -D git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.2
+pnpm add -D git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.3
 pnpm exec apk adopt
 ```
 
 HTTPS equivalent when GitHub auth is configured for HTTPS:
 
 ```bash
-pnpm add -D git+https://github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.2
+pnpm add -D git+https://github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.3
 ```
 
 `#main` tracks unreleased development and is for development/testing only. Do not use `#main` as the stable installation path; pin a tag for repeatable installs.
 
-`v0.4.2` and newer ship a runnable `dist/` inside the tag, so no build-script allowlist is needed. `v0.4.1` and earlier build from source on install and may require `onlyBuiltDependencies`/`allowBuilds`; prefer `v0.4.2` or newer.
+`v0.4.2` and newer ship a runnable `dist/` inside the tag, so no build-script allowlist is needed. `v0.4.1` and earlier build from source on install and may require `onlyBuiltDependencies`/`allowBuilds`; prefer `v0.4.3` or newer.
 
 This is usually better than a global install because every repository pins the exact CLI version it expects.
 
@@ -135,14 +135,14 @@ pnpm exec apk doctor
 Best for personal use across many local repositories. Repository-local pinning is still preferred for reproducibility.
 
 ```bash
-npm install -g git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.2
+npm install -g git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.3
 apk --help
 ```
 
 or:
 
 ```bash
-pnpm add -g git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.2
+pnpm add -g git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.3
 apk --help
 ```
 

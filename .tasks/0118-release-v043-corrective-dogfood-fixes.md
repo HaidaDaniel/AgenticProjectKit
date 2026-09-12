@@ -1,7 +1,7 @@
 # Task 0118 - Release v0.4.3 corrective dogfood fixes
 
-State: todo
-Owner: none
+State: doing
+Owner: opencode-ds-v41
 Mode: production
 Lane: release
 Type: release
