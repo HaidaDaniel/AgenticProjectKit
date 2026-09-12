@@ -1,11 +1,11 @@
-# Task 0111 - Align generated workspace ignore/docs with canonical .apk-workspaces path
+# Task 0111 - Generate canonical APK operational ignores during init and adoption
 
 State: todo
 Owner: none
 Mode: maintenance
 Lane: workflow
 Type: bugfix
-Scope: workspaces,adoption,docs,templates
+Scope: init,adoption,gitignore,operational-state,workspaces,docs
 Risk: medium
 Parallel: false
 Depends on: none
@@ -13,19 +13,46 @@ Tags: bugfix
 
 ## Goal
 
-Make .apk-workspaces/ the single canonical APK workspace base in generated ignore output, init/adopt templates, and canonical docs; remove stale .apk-worktrees/ naming; keep committed dist current.
+Make `apk init` and `apk adopt` establish the canonical APK operational/generated ignore contract additively and idempotently without destroying user `.gitignore` content. The contract covers APK runtime records under `.agentic/` (agents, runs, evidence, baselines, reviews, sessions, workspaces), the task/evidence locks, `.apk-workspaces/`, and generated audit/project-map reports.
+
+Two independent downstream repositories demonstrated that requiring integration agents to reconstruct APK's ignore rules manually is error-prone:
+
+- ResLedger tracked `.agentic/agents/<agent>.json` and `.agentic/runs/<run>.jsonl` and omitted `.apk-workspaces/`.
+- translator-agent independently exposed stale `.apk-worktrees/` versus the canonical `.apk-workspaces/` naming.
+
+Canonical APK-owned operational/generated ignore entries expected (audit the actual current implementation and the APK repository `.gitignore`):
+
+- `.tasks/.apk.lock`
+- `.agentic/agents.jsonl`
+- `.agentic/runs.jsonl`
+- `.agentic/agents/*`
+- `!.agentic/agents/.gitkeep`
+- `.agentic/runs/*`
+- `!.agentic/runs/.gitkeep`
+- `.agentic/evidence.jsonl`
+- `.agentic/task-baselines.jsonl`
+- `.agentic/evidence.append.lock`
+- `.agentic/reviews/*`
+- `.agentic/sessions/*`
+- `.agentic/workspaces/*`
+- `.apk-workspaces/`
+- `docs/audit-report.md`
+- `docs/project-map.md`
+
+Do not blindly copy unrelated APK-repository development ignores such as its own `node_modules/`, npm logs, environment files, OpenCode package files, or build output. This task concerns APK-owned generated/operational state only.
 
 ## Context files
 
 - AGENTS.md
+- .gitignore
 - docs/task-system.md
 - docs/decisions.md
 - README.md
-- src/core/workspaces/index.ts
 - src/core/init/index.ts
+- src/core/init/init.test.ts
 - src/core/docs/adopt.ts
+- src/core/workspaces/index.ts
 - src/cli/cli.test.ts
-- .gitignore
 
 ## Files allowed to edit
 
@@ -33,6 +60,7 @@ Make .apk-workspaces/ the single canonical APK workspace base in generated ignor
 - src/core/init/index.ts
 - src/core/init/init.test.ts
 - src/core/docs/adopt.ts
+- src/core/docs/adopt.test.ts
 - src/cli/cli.test.ts
 - docs/task-system.md
 - docs/decisions.md
@@ -49,34 +77,58 @@ Make .apk-workspaces/ the single canonical APK workspace base in generated ignor
 
 ## Steps
 
-1. Capture a reproducer that fails on the old behavior.
-2. Identify and document the root cause before changing code.
-3. Implement the smallest safe fix; do not perform unrelated refactors.
-4. Add regression coverage and run verification.
+1. Capture the downstream reproducers: ResLedger tracked `.agentic/agents/*.json` and `.agentic/runs/*.jsonl` and omitted `.apk-workspaces/`; translator-agent exposed stale `.apk-worktrees/`.
+2. Define the canonical APK-owned operational/generated ignore set from the actual implementation and the APK repository `.gitignore`.
+3. Implement additive, idempotent, deterministic `.gitignore` generation for `apk init` and `apk adopt`; preserve existing content, comments, and unrelated rules.
+4. Handle a missing `.gitignore`, an existing `.gitignore`, a missing trailing newline, and avoid duplicate entries; never emit `.apk-worktrees/`.
+5. Update canonical docs to name `.apk-workspaces/` and describe the generated ignore contract.
+6. Add regression tests and run verification.
 
 ## Acceptance criteria
 
-- fresh apk init ignores .apk-workspaces/; fresh apk adopt ignores .apk-workspaces/ without overwriting existing .gitignore content; generated ignore and doc output never introduces .apk-worktrees/; the runtime default remains .apk-workspaces/; canonical docs name .apk-workspaces/; committed dist stays current; sync and lint stay clean after generation
+- fresh `apk init` creates or adds the canonical APK operational ignore block.
+- fresh `apk adopt` creates or adds it.
+- existing custom `.gitignore` content survives byte-semantically except for the bounded additive APK entries and the newline needed for append.
+- a second init/adopt-compatible operation does not duplicate entries.
+- `.agentic/agents/*` and `.agentic/runs/*` runtime records are ignored while `.gitkeep` remains trackable.
+- evidence, baseline, session, review, and workspace runtime state is ignored.
+- `.apk-workspaces/` is ignored.
+- generated audit/project-map files follow canonical policy.
+- generated output never introduces `.apk-worktrees/`.
+- workspace safety and runtime semantics themselves are unchanged.
 
 ## Correctness assumptions
 
-- the runtime constant .apk-workspaces is canonical; init and adopt currently emit no .gitignore entry so a safe additive entry may be required; no persisted APK-owned .apk-worktrees path exists that requires migration
+- the runtime constant `.apk-workspaces` is canonical.
+- init and adopt currently emit no `.gitignore` entry so a safe additive generator is required.
+- an existing user `.gitignore` may have no trailing newline or may already contain some APK entries.
+- a stale `.apk-worktrees/` line is not proven to be an exact APK-generated artifact and is not aggressively removed; adding the correct `.apk-workspaces/` rule is sufficient.
 
 ## Invariants
 
-- existing user .gitignore content is never overwritten; workspace safety semantics are unchanged; no existing worktree is renamed or migrated automatically
+- existing user `.gitignore` content, comments, and unrelated rules are never destroyed.
+- no general-purpose `.gitignore` formatter or parser is introduced.
+- workspace safety and runtime semantics are unchanged.
+- generated output never uses `.apk-worktrees/` as the canonical path.
 
 ## Required evidence
 
-- regression test output plus generated init and adopt ignore content
+- regression test output for init and adopt plus the generated ignore block for a fresh and a customized `.gitignore`.
 
 ## Review questions
 
-- Does any canonical source still name .apk-worktrees; is the generated ignore entry additive and idempotent; does built sync and lint stay clean
+- Is the generated ignore additive, idempotent, and byte-preserving for existing content?
+- Are agents/runs records ignored while `.gitkeep` stays trackable?
+- Is `.apk-workspaces/` canonical and `.apk-worktrees/` never generated?
 
 ## Counterexample searches
 
-- existing .gitignore without a trailing newline; existing .gitignore already containing .apk-workspaces; adopt into a repo with a customized .gitignore; CRLF line endings
+- missing `.gitignore`
+- existing `.gitignore` with no trailing newline
+- existing `.gitignore` already containing `.apk-workspaces/`
+- customized `.gitignore` with comments and unrelated rules
+- CRLF line endings
+- stale `.apk-worktrees/` line present
 
 ## Verification
 
@@ -98,4 +150,5 @@ Make .apk-workspaces/ the single canonical APK workspace base in generated ignor
 
 ## Notes
 
-- Keep the fix narrow.
+- Keep the fix narrow and limited to APK-owned operational/generated ignore state.
+- Prefer a bounded block that is appended once and matched idempotently; do not reformat the rest of the file.
