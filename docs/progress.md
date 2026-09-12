@@ -4,6 +4,8 @@
 
 Task 0105 is complete: AgenticProjectKit v0.4.0 is the current validated dogfood release. Version `0.4.0`, release notes, committed release checks, and the annotated tag all agree on release commit `2309fb03e06c5228e8ec738a22fa3dc62a98c75b`, and the exact-SHA clean-checkout CI run ([run 34700249057](https://github.com/HaidaDaniel/AgenticProjectKit/actions/runs/34700249057)) concluded `success` for that SHA. The clean-checkout boundary was handled by parking the task as ownerless `blocked` during hosted validation and reopening it only after a green exact-SHA run; the final lifecycle closure is an evidence-only follow-up commit. No source behavior or Herdr dependency/adapter is added.
 
+Corrective Task 0106 fixed a v0.4.0 adoption defect found during the downstream Herdr-readiness pass: `apk adopt` rendered an AGENTS.md summary that differed from the canonical agent exporter, so `apk lint` and `apk sync` reported a freshly adopted file as stale. Adopt now renders the canonical policy (project name and configured agent style), and a regression test asserts generated exports are current immediately after adoption.
+
 Phase 1 documentation is in place, Tasks 0001 through 0074, 0076-0078, 0080, 0081, the Resource-Aware Execution planning Task 0082, and follow-up Tasks 0089-0090 are complete. Tasks 0083-0085 now provide the registry, deterministic routing, and adaptive assurance foundation for Resource-Aware Execution.
 
 The repository now has:

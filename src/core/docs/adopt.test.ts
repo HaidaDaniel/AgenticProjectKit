@@ -10,6 +10,7 @@ import {
   suggestContext,
 } from "../context-suggestions/index.js";
 import { adoptRepository, planAdoption } from "./adopt.js";
+import { syncAgentExports } from "../sync/index.js";
 import type { ProjectTask } from "../tasks/index.js";
 
 async function withTempRepository(
@@ -89,6 +90,19 @@ test("adoptRepository scans repository shape and creates kit files", async () =>
       /pnpm exec apk agent register --id codex-a --platform codex --model gpt-5\.5/,
     );
     assert.doesNotMatch(taskSystem, /^apk agent register/m);
+  });
+});
+
+test("adoptRepository writes agent exports current for the canonical drift check", async () => {
+  await withTempRepository(async (directory) => {
+    await createExistingRepository(directory);
+
+    await adoptRepository(directory);
+
+    const sync = await syncAgentExports(directory);
+    assert.deepEqual(sync.stale, []);
+    assert.deepEqual(sync.missing, []);
+    assert.equal(sync.hasDrift, false);
   });
 });
 

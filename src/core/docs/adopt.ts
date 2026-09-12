@@ -218,7 +218,8 @@ async function buildAdoptionPlan(
 
   const exportFiles = await renderAgentExportFiles({
     ...DEFAULT_AGENT_POLICY,
-    summary: "Repository docs and task files are the source of truth for this adopted project.",
+    projectName: scan.rootName,
+    defaultStyle: DEFAULT_CONFIG.agentStyle,
   });
   const files: AdoptFile[] = [
     {
