@@ -1,6 +1,6 @@
 # Task 0116 - Preserve task scope attribution across release and reclaim
 
-State: doing
+State: done
 Owner: opencode-ds-v41
 Mode: maintenance
 Lane: workflow
