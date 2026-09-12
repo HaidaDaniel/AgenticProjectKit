@@ -1,6 +1,6 @@
 # Task 0112 - Detect modern Python and Go repositories during repository scanning
 
-State: doing
+State: done
 Owner: opencode-ds-v41
 Mode: maintenance
 Lane: adoption
