@@ -2025,7 +2025,7 @@ function verifyNextStep(result: {
   return "move task to review or done with a registered owner";
 }
 
-function verificationEvidenceType(check: TaskVerificationCheck): TaskEvidenceType {
+function verificationEvidenceType(check: TaskVerificationCheck, externallyObserved = false): TaskEvidenceType {
   if (check.profile === "report") {
     return "report";
   }
@@ -2036,9 +2036,20 @@ function verificationEvidenceType(check: TaskVerificationCheck): TaskEvidenceTyp
     return "manual";
   }
   if (check.environment === "ci") {
-    return "ci";
+    // A local execution of an `environment: ci` check is automated/local
+    // diagnostic evidence. Only an externally observed hosted result is `ci`.
+    return externallyObserved ? "ci" : "automated-test";
   }
   return "automated-test";
+}
+
+/**
+ * A locally executed `environment: ci` check is hosted-CI diagnostic only when
+ * its externally observed record would be typed `ci`. Report, live, and manual
+ * checks keep their own external category and gate-eligibility.
+ */
+function isHostedCiCheck(check: TaskVerificationCheck): boolean {
+  return verificationEvidenceType(check, true) === "ci";
 }
 
 function verificationRunId(): string {
@@ -2232,11 +2243,16 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
   let evidenceWritten = 0;
   for (const [index, check] of checks.entries()) {
     const result = checkResults[index];
+    const hostedCheck = isHostedCiCheck(check);
+    const localSummary = hostedCheck
+      ? `${result.reason ? `${result.reason}; ` : ""}local diagnostic only; hosted ci evidence must be recorded externally`
+      : result.reason;
     await appendTaskEvidence(options.rootDirectory, {
       taskId: task.id,
       runId,
       agent: options.owner ?? "unknown",
-      gateEligible: Boolean(ownerAgent) && candidateStable,
+      // A local run can never manufacture gate-eligible hosted CI proof.
+      gateEligible: Boolean(ownerAgent) && candidateStable && !hostedCheck,
       type: verificationEvidenceType(check),
       result: result.status,
       subject,
@@ -2245,7 +2261,7 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
       ...(check.command ? { command: check.command } : {}),
       ...(check.artifact ? { artifact: check.artifact } : {}),
       ...(check.evidence ? { evidence: check.evidence } : {}),
-      ...(result.reason ? { summary: result.reason } : {}),
+      ...(localSummary ? { summary: localSummary } : {}),
     });
     evidenceWritten += 1;
   }
@@ -2386,9 +2402,10 @@ export async function recordManualVerification(
   if (!check) {
     throw new Error(`Task ${task.id} has no verification check ${checkId}.`);
   }
-  if (check.type !== "manual" && check.environment !== "live") {
+  const externallyObservable = check.type === "manual" || check.environment === "live" || check.environment === "ci";
+  if (!externallyObservable) {
     throw new Error(
-      `Verification check ${checkId} is automated and cannot be recorded externally; run apk task verify.`,
+      `Verification check ${checkId} is a local automated check and cannot be recorded externally; run apk task verify.`,
     );
   }
   if (options.result !== "pass" && options.result !== "fail") {
@@ -2428,7 +2445,7 @@ export async function recordManualVerification(
     runId,
     agent: ownerAgent.id,
     gateEligible,
-    type: verificationEvidenceType(check),
+    type: verificationEvidenceType(check, true),
     result: options.result,
     subject,
     checkId: check.id,
@@ -2443,13 +2460,13 @@ export async function recordManualVerification(
     runId,
     state: task.state,
     outcome: options.result === "pass" ? "ok" : "error",
-    reason: `manual verification ${options.result} for ${check.id} (${runId})`,
+    reason: `external verification ${options.result} for ${check.id} (${runId})`,
   });
 
   return {
     taskId: task.id,
     checkId: check.id,
-    type: verificationEvidenceType(check),
+    type: verificationEvidenceType(check, true),
     profile: check.profile,
     result: options.result,
     runId,

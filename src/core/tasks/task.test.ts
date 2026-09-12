@@ -2267,6 +2267,163 @@ test("recordManualVerification rejects automated checks, missing evidence, forei
   });
 });
 
+async function setupHostedCiRepo(directory: string): Promise<void> {
+  const git = async (...args: string[]) => {
+    await execFileAsync("git", args, { cwd: directory });
+  };
+  await git("init", "--quiet");
+  await git("config", "user.email", "codex@example.test");
+  await git("config", "user.name", "Codex");
+  await mkdir(join(directory, ".tasks"), { recursive: true });
+  await mkdir(join(directory, "src", "core", "tasks"), { recursive: true });
+  await writeTaskFile(join(directory, ".tasks", "0007-hosted-task.md"), {
+    ...TASK,
+    state: "todo",
+    owner: "none",
+    risk: "low",
+    dependsOn: [],
+    tags: [],
+    allowedFiles: ["src/core/tasks/**"],
+    forbiddenFiles: [],
+    verificationCommands: [],
+    verification: [
+      { id: "hosted-ci", type: "automated", required: true, environment: "ci", profile: "deterministic", command: "pass" },
+    ],
+  });
+  await git("add", ".");
+  await git("commit", "--quiet", "-m", "initial");
+  await registerAgent(directory, { id: "codex-a", developer: "alice", platform: "codex", model: "gpt-5" });
+  await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a" });
+}
+
+test("required environment ci checks declare the ci evidence category", () => {
+  const policy = resolveTaskPolicy({
+    ...TASK,
+    risk: "high",
+    tags: [],
+    verification: [
+      { id: "hosted-ci", type: "automated", required: true, environment: "ci", profile: "deterministic", command: "pass" },
+    ],
+  });
+  assert.ok(policy.declaredEvidenceCategories.includes("ci"));
+});
+
+test("local verify of an environment ci check records diagnostic-only evidence", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupHostedCiRepo(directory);
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      runCommand: async () => 0,
+    });
+    assert.equal(verification.checkResults.find((check) => check.id === "hosted-ci")?.status, "pass");
+
+    const records = (await readTaskEvidence(directory, "0007")).filter((record) => record.checkId === "hosted-ci");
+    assert.ok(records.length > 0);
+    assert.ok(records.every((record) => record.type !== "ci"));
+    assert.ok(records.every((record) => record.gateEligible !== true));
+
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(gate.passed, false);
+    assert.ok(gate.blockers.some((blocker) => blocker.includes("hosted-ci")));
+  });
+});
+
+test("explicit candidate-bound hosted ci evidence satisfies the gate requirement", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupHostedCiRepo(directory);
+    await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      runCommand: async () => 0,
+    });
+
+    const recorded = await recordManualVerification({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      checkId: "hosted-ci",
+      result: "pass",
+      evidence: "https://ci.example.test/runs/1 status=success sha=abc",
+    });
+    assert.equal(recorded.type, "ci");
+    assert.equal(recorded.gateEligible, true);
+
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(gate.passed, true, gate.blockers.join("; "));
+  });
+});
+
+test("a later local verify does not shadow a current hosted ci pass", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupHostedCiRepo(directory);
+    await recordManualVerification({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      checkId: "hosted-ci",
+      result: "pass",
+      evidence: "https://ci.example.test/runs/2 status=success sha=abc",
+    });
+    await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      runCommand: async () => 0,
+    });
+
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(gate.passed, true, gate.blockers.join("; "));
+    assert.equal(gate.verification.find((check) => check.checkId === "hosted-ci")?.result, "pass");
+  });
+});
+
+test("a candidate change makes a prior hosted ci pass stale and blocks the gate", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupHostedCiRepo(directory);
+    await recordManualVerification({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      checkId: "hosted-ci",
+      result: "pass",
+      evidence: "https://ci.example.test/runs/3 status=success sha=old",
+    });
+    await writeFile(join(directory, "src", "core", "tasks", "change.ts"), "change\n", "utf8");
+
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(gate.passed, false);
+    assert.ok(gate.blockers.some((blocker) => /hosted-ci/.test(blocker) && /another candidate revision|stale/.test(blocker)));
+  });
+});
+
+test("a hosted ci failure blocks the gate", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupHostedCiRepo(directory);
+    await recordManualVerification({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      checkId: "hosted-ci",
+      result: "fail",
+      evidence: "https://ci.example.test/runs/4 status=failure sha=abc",
+    });
+
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(gate.passed, false);
+    assert.ok(gate.blockers.some((blocker) => blocker.includes("hosted-ci") && blocker.includes("fail")));
+  });
+});
+
 test("verifyTask profile selection leaves required unselected checks not-run", async () => {
   await withTempDirectory(async (directory) => {
     const task: ProjectTask = {

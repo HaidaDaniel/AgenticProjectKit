@@ -1,7 +1,7 @@
 # Task 0115 - Distinguish hosted CI evidence from local runs of environment ci checks
 
-State: todo
-Owner: none
+State: doing
+Owner: opencode-ds-v41
 Mode: maintenance
 Lane: workflow
 Type: bugfix

@@ -125,14 +125,18 @@ function declaredEvidenceCategories(task, requiredOnly = false) {
         if (requiredOnly && !check.required)
             continue;
         // A single check appends exactly one typed record. Declare the same
-        // category the verifier would emit (report > live > manual) so a
-        // required check cannot declare an unsatisfiable extra category.
+        // category the verifier would emit (report > live > manual > ci) so a
+        // required check cannot declare an unsatisfiable extra category. A local
+        // run of an `environment: ci` check is diagnostic only; the authoritative
+        // `ci` record is recorded externally.
         if (check.profile === "report")
             categories.add("report");
         else if (check.environment === "live")
             categories.add("live");
         else if (check.type === "manual")
             categories.add("manual");
+        else if (check.environment === "ci")
+            categories.add("ci");
         if (check.artifact)
             categories.add("artifact");
         if (check.evidence)

@@ -834,3 +834,19 @@ v0.4.2 captured a fresh baseline on every claim and `readTaskBaseline` selected 
 Implementation and invariant:
 
 `src/core/tasks/index.ts` adds `phase`, `ensureTaskBaseline`, `recordTaskHandoff`, and lineage resolution in `readTaskBaseline`; `src/core/tasks/workflow.ts` records `claim` and `release`/`block` phases. `captureTaskScope` sets `comparisonKnown=false` (blocking verify/gate/review/dogfood) when a Git baseline is `intervening` or `unresolved`. Legitimate pre-claim dirty files stay `preExistingFiles`, ownership transfer preserves the authoritative `baselineId`, and candidate/evidence freshness is unchanged. No provenance subsystem, migration framework, force bypass, or new dependency is introduced.
+
+## ADR-0052 - Hosted CI evidence is distinct from local verification
+
+Status: accepted
+
+Decision:
+
+`environment: ci` denotes an external CI environment. A local `apk task verify` may execute such a check as a local diagnostic, but its record is typed `automated-test`, is never gate-eligible, and never carries the `ci` evidence type. The authoritative hosted outcome is recorded explicitly with `apk task verify --record --check <id> --result pass|fail --evidence <bounded reference>`, which appends a candidate-bound, gate-eligible `ci` record under a registered owner. A required `environment: ci` check declares the `ci` evidence category (`report` > `live` > `manual` > `ci` precedence). A later local diagnostic cannot shadow a current hosted `ci` PASS, and a candidate change makes the hosted record stale normally. No GitHub/GitLab/vendor API or CI-service dependency is introduced.
+
+Reason:
+
+`verificationEvidenceType` typed a local run of an `environment: ci` check as `ci` and marked it gate-eligible, so `apk task verify` could manufacture hosted-CI proof without any external run. That conflated local command success with an externally observed CI result and let the completion gate accept evidence it should not.
+
+Implementation and invariant:
+
+`src/core/tasks/index.ts` makes `verificationEvidenceType(check, externallyObserved)` map local `ci` runs to `automated-test` and uses `isHostedCiCheck` to force `gateEligible === false` for local hosted-ci diagnostics while leaving report/live/manual checks unchanged; `recordManualVerification` accepts `environment: ci` and records type `ci`. `src/core/tasks/policy.ts` declares the `ci` category for required `environment: ci` checks. Candidate-bound freshness, append-only evidence, and the per-check gate remain unchanged.
