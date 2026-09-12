@@ -8,6 +8,8 @@ Corrective Task 0106 fixed a v0.4.0 adoption defect found during the downstream 
 
 Corrective Task 0107 fixed a second adoption defect: `apk adopt` hardcoded the follow-up task id `0001`, so adopting a repository that already had `.tasks` created a duplicate id that `apk lint` rejected. Adopt now reuses an existing adoption task when present (keeping re-runs idempotent) and otherwise selects the next free numeric id after the repository's existing tasks.
 
+Corrective Task 0108 made the legacy `independentReview`/`reviewLevel` fields a coherent projection of canonical assurance: ordinary medium tasks are `self-check` with no separate reviewer, high is `fresh-context`, critical is `independent`, and security/migration/async/release triggers still escalate monotonically while calibration can only raise. This removes the medium-risk semantic-review lifecycle and the associated constrained scarce-frontier consumption, while gate, `apk done`, `apk work`, `apk status`, and `apk attention` continue to read the same single requirement.
+
 Phase 1 documentation is in place, Tasks 0001 through 0074, 0076-0078, 0080, 0081, the Resource-Aware Execution planning Task 0082, and follow-up Tasks 0089-0090 are complete. Tasks 0083-0085 now provide the registry, deterministic routing, and adaptive assurance foundation for Resource-Aware Execution.
 
 The repository now has:

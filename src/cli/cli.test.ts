@@ -10,6 +10,7 @@ import ts from "typescript";
 
 import { startWork } from "../core/work/index.js";
 import { resolveExecutionRoute, resolveAssurancePlan } from "../core/execution/index.js";
+import { resolveTaskPolicy } from "../core/tasks/policy.js";
 import {
   assessWorkspaceRun,
   assessWorkspaceSafety,
@@ -192,6 +193,41 @@ test("execution resolver keeps profiles independent and handles tie, capacity, a
     policy: { ...lightweightReview, assurance: "independent", reviewBudget: { maxReviewPasses: 0, maxFrontierReviewPasses: 0, maxFrontierRuns: 0, paidEscalation: false } },
     registry: diverseRegistry,
   }).kind, "budget-exhausted");
+});
+
+test("ordinary medium task does not spend constrained scarce-frontier review capacity", () => {
+  const task = parseTaskMarkdown(buildTaskMarkdown("0001", "Ordinary Medium", "todo").replace("Risk: low", "Risk: medium"));
+  const policy = resolveTaskPolicy(task).requirements;
+  assert.equal(policy.assurance, "self-check");
+  assert.equal(policy.independentReview, false);
+
+  const frontierReviewWorker = {
+    id: "frontier-review",
+    modelId: "frontier-model",
+    harnessId: "frontier-harness",
+    location: "remote" as const,
+    billingMode: "metered" as const,
+    costClass: "scarce-frontier" as const,
+    availability: "available" as const,
+    capacity: 1,
+    occupied: 0,
+    capabilities: { roles: ["review"], tools: [], workspaceModes: [], workerProtocols: ["apk-worker-v1"] },
+  };
+  const route = resolveExecutionRoute({
+    profile: "constrained",
+    role: "review",
+    policy,
+    registry: { models: [], harnesses: [], workers: [frontierReviewWorker] },
+  });
+  assert.equal(route.kind, "deterministic");
+  assert.equal(route.resourceId, undefined);
+
+  const assurance = resolveAssurancePlan({
+    policy,
+    registry: { models: [], harnesses: [], workers: [frontierReviewWorker] },
+  });
+  assert.equal(assurance.status, "ready");
+  assert.deepEqual(assurance.resourceIds, []);
 });
 
 test("CLI resources renders a stable read-only registry in human and JSON forms", async () => {
@@ -544,11 +580,11 @@ test("CLI execution explain clamps calibration assurance to canonical policy", a
       planner: "codex",
     }), "--apply"], directory);
     const medium = JSON.parse((await runCli(["execution", "explain", "0001", "--role", "review", "--json"], directory)).stdout) as {
+      kind?: string;
       assurance?: { required?: string; canonicalRequired?: string; calibrationPreference?: string };
     };
-    assert.equal(medium.assurance?.canonicalRequired, "self-check");
-    assert.equal(medium.assurance?.required, "fresh-context");
-    assert.equal(medium.assurance?.calibrationPreference, "fresh-context");
+    assert.equal(medium.kind, "deterministic");
+    assert.equal(medium.assurance, undefined);
 
     await writeFile(taskPath, buildTaskMarkdown("0001", "Task", "todo").replace("Risk: low", "Risk: high"), "utf8");
     await runCli(["execution", "calibrate", "--recommendation", JSON.stringify({
@@ -1970,12 +2006,11 @@ test("CLI status detail matches gate blockers and includes pending live review",
     assert.equal(status.exitCode, 0);
     assert.equal(gate.exitCode, 1);
     assert.match(status.stdout, /Task 0001: Live Task/);
-    assert.match(status.stdout, /Policy: .*review=lightweight/);
+    assert.match(status.stdout, /Policy: .*review=none/);
     assert.match(status.stdout, /Verification: required=1/);
-    assert.match(status.stdout, /Review: missing/);
+    assert.match(status.stdout, /Review: not-required/);
     assert.match(status.stdout, /Provenance:/);
-    assert.match(status.stdout, /missing independent review evidence/);
-    assert.match(gate.stdout, /missing independent review evidence/);
+    assert.match(gate.stdout, /live-smoke/);
     assert.match(status.stdout, /live-smoke/);
   });
 });
@@ -2726,7 +2761,8 @@ test("CLI work explains the lifecycle transition for standalone review findings"
     await git("config", "user.name", "Codex");
     await mkdir(join(directory, ".tasks"), { recursive: true });
     const task = buildTaskMarkdown("0001", "Standalone Findings", "todo")
-      .replace("Risk: low", "Risk: medium");
+      .replace("Risk: low", "Risk: medium")
+      .replace("Tags: none", "Tags: large");
     const taskPath = join(directory, ".tasks", "0001-standalone-findings.md");
     await writeFile(taskPath, task, "utf8");
     await git("add", ".");

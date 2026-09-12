@@ -321,11 +321,65 @@ test("task policy applies deterministic risk defaults", () => {
   const medium = resolveTaskPolicy(TASK);
   assert.equal(medium.requirements.automatedVerification, true);
   assert.equal(medium.requirements.scope, true);
-  assert.equal(medium.requirements.independentReview, true);
-  assert.equal(medium.requirements.reviewLevel, "lightweight");
+  assert.equal(medium.requirements.independentReview, false);
+  assert.equal(medium.requirements.reviewLevel, "none");
   assert.equal(medium.requirements.assurance, "self-check");
   assert.equal(medium.requirements.evidenceRequired, false);
   assert.deepEqual(medium.blockers, []);
+});
+
+test("review fields are a coherent projection of canonical assurance", () => {
+  const low = resolveTaskPolicy({ ...TASK, risk: "low", tags: ["docs"] });
+  assert.equal(low.requirements.assurance, "none");
+  assert.equal(low.requirements.independentReview, false);
+  assert.equal(low.requirements.reviewLevel, "none");
+
+  const medium = resolveTaskPolicy({ ...TASK, risk: "medium", tags: ["docs"] });
+  assert.equal(medium.requirements.assurance, "self-check");
+  assert.equal(medium.requirements.independentReview, false);
+  assert.equal(medium.requirements.reviewLevel, "none");
+  assert.deepEqual(medium.requirements.reviewBudget, {
+    maxReviewPasses: 2,
+    maxFrontierReviewPasses: 1,
+    maxFrontierRuns: 1,
+    paidEscalation: false,
+  });
+
+  const high = resolveTaskPolicy({ ...TASK, risk: "high", tags: ["docs"] });
+  assert.equal(high.requirements.assurance, "fresh-context");
+  assert.equal(high.requirements.independentReview, true);
+  assert.equal(high.requirements.reviewLevel, "lightweight");
+
+  const critical = resolveTaskPolicy({ ...TASK, risk: "critical", tags: ["docs"] });
+  assert.equal(critical.requirements.assurance, "independent");
+  assert.equal(critical.requirements.independentReview, true);
+  assert.equal(critical.requirements.reviewLevel, "independent");
+});
+
+test("escalation triggers raise canonical assurance and the review projection", () => {
+  const medium = (tags: string[]) => resolveTaskPolicy({ ...TASK, risk: "medium", tags });
+
+  const security = medium(["security"]);
+  assert.equal(security.requirements.assurance, "independent");
+  assert.equal(security.requirements.independentReview, true);
+  assert.equal(security.requirements.reviewLevel, "independent");
+
+  const migration = medium(["migration"]);
+  assert.equal(migration.requirements.assurance, "fresh-context");
+  assert.equal(migration.requirements.independentReview, true);
+  assert.equal(migration.requirements.reviewLevel, "lightweight");
+
+  const asyncTag = medium(["async"]);
+  assert.equal(asyncTag.requirements.assurance, "fresh-context");
+  assert.equal(asyncTag.requirements.independentReview, true);
+
+  const workerType = resolveTaskPolicy({ ...TASK, risk: "medium", tags: [], type: "async-worker" });
+  assert.equal(workerType.requirements.assurance, "fresh-context");
+  assert.equal(workerType.requirements.independentReview, true);
+
+  const integration = medium(["integration"]);
+  assert.equal(integration.requirements.assurance, "independent");
+  assert.equal(integration.requirements.independentReview, true);
 });
 
 test("task policy requires declared high-risk evidence and explains tags", () => {
@@ -368,7 +422,8 @@ test("task policy requires declared high-risk evidence and explains tags", () =>
   assert.deepEqual(release.requirements.evidenceCategories, ["live", "report"]);
   assert.deepEqual(release.declaredEvidenceCategories, ["artifact", "evidence", "live", "report"]);
   assert.deepEqual(release.blockers, []);
-  assert.match(renderTaskPolicy(release), /independent review: not required/);
+  assert.equal(release.requirements.assurance, "independent");
+  assert.match(renderTaskPolicy(release), /independent review: independent/);
 });
 
 test("optional checks never cancel tag evidence requirements", () => {
@@ -1192,6 +1247,7 @@ test("prepared review rejects a mixed revision and keeps the reviewed subject im
       ...TASK,
       state: "todo",
       owner: "none",
+      tags: [...TASK.tags, "large"],
       dependsOn: [],
       allowedFiles: ["src/**"],
       forbiddenFiles: [],
@@ -1882,7 +1938,7 @@ test("recorded live evidence satisfies a required manual/live check and its live
       state: "todo",
       owner: "none",
       risk: "low",
-      tags: ["release"],
+      tags: ["deployment"],
       dependsOn: [],
       verification: [
         {
@@ -2544,6 +2600,7 @@ test("completion gate reports dependencies, scope, evidence, and review blockers
     await writeTaskFile(join(directory, ".tasks", "0007-gated-task.md"), {
       ...TASK,
       risk: "medium",
+      tags: [...TASK.tags, "large"],
       dependsOn: ["9999"],
       allowedFiles: ["src/core/tasks/**"],
       forbiddenFiles: [],
@@ -2562,6 +2619,47 @@ test("completion gate reports dependencies, scope, evidence, and review blockers
     assert.ok(gate.blockers.some((blocker) => blocker.includes("missing verification evidence")));
     assert.ok(gate.blockers.some((blocker) => blocker.includes("Missing independent review")));
     assert.match(renderTaskCompletionGate(gate), /Gate: blocked/);
+  });
+});
+
+test("ordinary medium task completes without a separate review record", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await mkdir(join(directory, "src", "core", "tasks"), { recursive: true });
+    await writeTaskFile(join(directory, ".tasks", "0007-medium-task.md"), {
+      ...TASK,
+      risk: "medium",
+      state: "todo",
+      owner: "none",
+      dependsOn: [],
+      allowedFiles: ["src/core/tasks/**"],
+      forbiddenFiles: [],
+      verificationCommands: ["pass"],
+    });
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await registerAgent(directory, { id: "codex-owner", developer: "alice", platform: "codex", model: "gpt-5" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-owner" });
+    await writeFile(join(directory, "src", "core", "tasks", "changed.ts"), "export const version = 1;\n", "utf8");
+    await verifyTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-owner", runCommand: async () => 0 });
+
+    const policy = resolveTaskPolicy(await loadTaskFile(join(directory, ".tasks", "0007-medium-task.md")).then((loaded) => loaded.task));
+    assert.equal(policy.requirements.assurance, "self-check");
+    assert.equal(policy.requirements.independentReview, false);
+
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(gate.passed, true, gate.blockers.join("; "));
+    assert.equal(gate.review.freshness, "missing");
+    assert.equal(gate.review.reason, "independent review is not required");
+
+    const done = await doneTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-owner" });
+    assert.equal(done.state, "done");
   });
 });
 
@@ -2652,6 +2750,7 @@ test("completion gate accepts current evidence, rejects stale candidates, and re
       risk: "medium",
       state: "todo",
       owner: "none",
+      tags: [...TASK.tags, "large"],
       dependsOn: [],
       allowedFiles: ["src/core/tasks/**"],
       forbiddenFiles: [],
@@ -2787,6 +2886,7 @@ test("task provenance reconstructs stale and superseded runs plus final evidence
       ...TASK,
       state: "todo",
       owner: "none",
+      tags: [...TASK.tags, "large"],
       dependsOn: [],
       allowedFiles: ["src/core/tasks/**"],
       forbiddenFiles: [],

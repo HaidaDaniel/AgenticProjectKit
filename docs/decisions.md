@@ -770,3 +770,19 @@ Run-only workspace creation lost the proven canonical `resourceId`, leaving reso
 Implementation and invariant:
 
 `src/core/workspaces/index.ts` derives `effectiveResourceId = options.resourceId ?? binding.resourceId` and writes it to both the record and marker. `src/core/execution/index.ts` computes `deterministic` and canonical assurance first, then applies current-calibration `wait`/`needs-human` when no hard `resourceId` override is present, and only then returns the deterministic lane or selects a worker. `src/cli/commands/workspaces.ts` documents that `--resource` requires `--run` and `--run` captures canonical resource identity. No Herdr, PTY, SSH, provider SDK, scheduler, daemon, remote executor, or new resource architecture is introduced.
+
+## ADR-0048 - Legacy review fields project from canonical assurance
+
+Status: accepted
+
+Decision:
+
+`resolveTaskPolicy` derives the compatibility `independentReview`/`reviewLevel` fields from the final canonical assurance level instead of from risk directly. `none` and `self-check` require no independent semantic review; `fresh-context` requires a separate isolated reviewer projected as `lightweight`; `independent` and `diverse` require independent review. Assurance escalation triggers evaluate the effective policy tags (including type-derived tags), so `type: async-worker` earns the same `concurrency-async` escalation as an explicit `async` tag. Built-in tag rules contribute evidence categories only; a custom tag rule that sets `independentReview` or `reviewLevel` acts as a raise-only assurance floor and can never lower the canonical requirement. Calibration remains a raise-only preference and cannot create a semantic review lane for a task whose canonical assurance is `none`/`self-check`.
+
+Reason:
+
+Medium risk previously produced `independentReview: true` with `reviewLevel: lightweight` while canonical assurance said `self-check`. That competing projection made ordinary medium tasks enter a separate semantic-review lifecycle, blocked `apk done` on a review record, and could spend constrained scarce-frontier review capacity, contradicting the resource-aware design.
+
+Implementation and invariant:
+
+`src/core/tasks/policy.ts` exposes `reviewProjection` and `assuranceFloorForRule`; `assuranceTriggers` reads `policyTags(task)`. Gate, `apk done`, `apk work`, `apk status`, and `apk attention` keep consuming `requirements.independentReview` as the single review requirement, so they now agree with canonical assurance. No provider SDK, model runtime, scheduler, daemon, PTY, SSH, remote executor, or Herdr integration is introduced.

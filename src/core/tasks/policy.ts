@@ -58,13 +58,13 @@ export interface EffectiveTaskPolicy {
 }
 
 export const DEFAULT_TASK_POLICY_TAG_RULES: readonly TaskPolicyTagRule[] = [
-  { tag: "migration", evidenceCategories: ["report"], independentReview: true, reviewLevel: "independent" },
-  { tag: "async", evidenceCategories: ["report"], independentReview: true, reviewLevel: "independent" },
-  { tag: "worker", evidenceCategories: ["report"], independentReview: true, reviewLevel: "independent" },
+  { tag: "migration", evidenceCategories: ["report"] },
+  { tag: "async", evidenceCategories: ["report"] },
+  { tag: "worker", evidenceCategories: ["report"] },
   { tag: "deployment", evidenceCategories: ["live"] },
   { tag: "benchmark", evidenceCategories: ["benchmark"] },
   { tag: "evaluation", evidenceCategories: ["benchmark", "report"] },
-  { tag: "security", evidenceCategories: ["report"], independentReview: true, reviewLevel: "independent" },
+  { tag: "security", evidenceCategories: ["report"] },
   { tag: "provider", evidenceCategories: ["report"] },
   { tag: "integration", evidenceCategories: ["report"] },
   { tag: "release", evidenceCategories: ["live", "report"] },
@@ -106,8 +106,40 @@ function assuranceForRisk(risk: TaskRisk): AssuranceLevel {
   return "none";
 }
 
+/**
+ * Legacy review fields are a projection of canonical assurance, not a second
+ * policy engine. `none`/`self-check` need no separate semantic reviewer;
+ * `fresh-context` needs a separate isolated context; `independent`/`diverse`
+ * need independent (and possibly diverse) review.
+ */
+function reviewProjection(assurance: AssuranceLevel): {
+  independentReview: boolean;
+  reviewLevel: TaskPolicyReviewLevel;
+} {
+  if (assurance === "none" || assurance === "self-check") {
+    return { independentReview: false, reviewLevel: "none" };
+  }
+  if (assurance === "fresh-context") {
+    return { independentReview: true, reviewLevel: "lightweight" };
+  }
+  return { independentReview: true, reviewLevel: "independent" };
+}
+
+/**
+ * An explicit custom tag rule may raise assurance. It can never lower the
+ * canonical requirement; callers take the maximum against the trigger result.
+ */
+function assuranceFloorForRule(rule: TaskPolicyTagRule): AssuranceLevel | undefined {
+  if (rule.independentReview === true) {
+    return rule.reviewLevel === "independent" ? "independent" : "fresh-context";
+  }
+  if (rule.reviewLevel === "independent") return "independent";
+  if (rule.reviewLevel === "lightweight") return "fresh-context";
+  return undefined;
+}
+
 function assuranceTriggers(task: ProjectTask): AssuranceTrigger[] {
-  const tags = new Set(task.tags);
+  const tags = new Set(policyTags(task));
   const triggers: AssuranceTrigger[] = [];
   if (tags.has("security") || tags.has("auth")) triggers.push({ id: "security-auth", reason: "Security or authentication changes require independent assurance.", raisesTo: "independent" });
   if (tags.has("migration")) triggers.push({ id: "schema-migration", reason: "Schema or data migration changes require fresh semantic context.", raisesTo: "fresh-context" });
@@ -158,18 +190,6 @@ function declaredEvidenceCategories(task: ProjectTask, requiredOnly = false): st
   return [...categories].sort();
 }
 
-function mergeReviewLevel(
-  current: TaskPolicyReviewLevel,
-  next: TaskPolicyReviewLevel,
-): TaskPolicyReviewLevel {
-  const rank: Record<TaskPolicyReviewLevel, number> = {
-    none: 0,
-    lightweight: 1,
-    independent: 2,
-  };
-  return rank[next] > rank[current] ? next : current;
-}
-
 export function resolveTaskPolicy(
   task: ProjectTask,
   options: TaskPolicyOptions = {},
@@ -178,8 +198,8 @@ export function resolveTaskPolicy(
   const requirements: TaskPolicyRequirements = {
     automatedVerification: true,
     scope: task.risk !== "low",
-    independentReview: task.risk !== "low",
-    reviewLevel: task.risk === "high" ? "independent" : task.risk === "medium" ? "lightweight" : "none",
+    independentReview: false,
+    reviewLevel: "none",
     evidenceRequired: task.risk === "high",
     evidenceCategories: [],
   };
@@ -190,7 +210,6 @@ export function resolveTaskPolicy(
     ...DEFAULT_REVIEW_BUDGET,
     ...(task.risk === "critical" ? { maxReviewPasses: 3, maxFrontierReviewPasses: 2, maxFrontierRuns: 2, paidEscalation: true } : {}),
   };
-  requirements.assurance = assurance;
   requirements.assuranceTriggers = triggers;
   requirements.reviewBudget = reviewBudget;
   const reasons = [`risk=${task.risk} defaults applied`];
@@ -200,6 +219,7 @@ export function resolveTaskPolicy(
   const rules = [...DEFAULT_TASK_POLICY_TAG_RULES, ...(options.tagRules ?? [])];
   const matchedRules = new Map<string, TaskPolicyTagRule[]>();
 
+  let explicitAssuranceFloor: AssuranceLevel | undefined;
   for (const rule of rules) {
     if (!tags.includes(rule.tag)) continue;
     const matches = matchedRules.get(rule.tag) ?? [];
@@ -210,13 +230,21 @@ export function resolveTaskPolicy(
       requirements.evidenceRequired = true;
       requirements.evidenceCategories.push(...rule.evidenceCategories);
     }
-    if (rule.independentReview !== undefined) {
-      requirements.independentReview = requirements.independentReview || rule.independentReview;
-    }
-    if (rule.reviewLevel) {
-      requirements.reviewLevel = mergeReviewLevel(requirements.reviewLevel, rule.reviewLevel);
+    const floor = assuranceFloorForRule(rule);
+    if (floor) {
+      explicitAssuranceFloor = explicitAssuranceFloor === undefined
+        ? floor
+        : maxAssurance(explicitAssuranceFloor, floor);
     }
   }
+
+  if (explicitAssuranceFloor) {
+    assurance = maxAssurance(assurance, explicitAssuranceFloor);
+  }
+  const review = reviewProjection(assurance);
+  requirements.assurance = assurance;
+  requirements.independentReview = review.independentReview;
+  requirements.reviewLevel = review.reviewLevel;
 
   for (const [tag, matches] of matchedRules) {
     const reviewValues = new Set(matches
@@ -263,10 +291,6 @@ export function resolveTaskPolicy(
   if (tags.includes("local-only") && requirements.evidenceCategories.includes("live")) {
     diagnostics.push("Tag local-only conflicts with a live evidence requirement.");
     blockers.push("Remove local-only or remove the live policy requirement.");
-  }
-  if (requirements.independentReview && requirements.reviewLevel === "none") {
-    diagnostics.push("Review requirement is enabled without a review level; using independent.");
-    requirements.reviewLevel = "independent";
   }
 
   return {
