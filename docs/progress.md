@@ -6,6 +6,8 @@ Task 0105 is complete: AgenticProjectKit v0.4.0 is the current validated dogfood
 
 Corrective Task 0106 fixed a v0.4.0 adoption defect found during the downstream Herdr-readiness pass: `apk adopt` rendered an AGENTS.md summary that differed from the canonical agent exporter, so `apk lint` and `apk sync` reported a freshly adopted file as stale. Adopt now renders the canonical policy (project name and configured agent style), and a regression test asserts generated exports are current immediately after adoption.
 
+Corrective Task 0107 fixed a second adoption defect: `apk adopt` hardcoded the follow-up task id `0001`, so adopting a repository that already had `.tasks` created a duplicate id that `apk lint` rejected. Adopt now reuses an existing adoption task when present (keeping re-runs idempotent) and otherwise selects the next free numeric id after the repository's existing tasks.
+
 Phase 1 documentation is in place, Tasks 0001 through 0074, 0076-0078, 0080, 0081, the Resource-Aware Execution planning Task 0082, and follow-up Tasks 0089-0090 are complete. Tasks 0083-0085 now provide the registry, deterministic routing, and adaptive assurance foundation for Resource-Aware Execution.
 
 The repository now has:

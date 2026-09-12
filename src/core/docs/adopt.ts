@@ -138,9 +138,32 @@ function renderAdoptionReport(scan: RepositoryScan, compatibility: Compatibility
   ].join("\n");
 }
 
-function createDocumentationCleanupTask(): ProjectTask {
+const ADOPTION_TASK_SLUG = "document-adopted-repository";
+
+function nextAdoptionTaskId(taskFiles: readonly string[]): string {
+  const maxId = taskFiles.reduce((max, file) => {
+    const match = /(?:^|\/)(\d+)(?:-|\.md$)/.exec(file);
+    const value = match ? Number.parseInt(match[1]!, 10) : 0;
+    return Number.isNaN(value) ? max : Math.max(max, value);
+  }, 0);
+  return String(maxId + 1).padStart(4, "0");
+}
+
+function resolveAdoptionTask(taskFiles: readonly string[]): { id: string; fileName: string } {
+  for (const file of taskFiles) {
+    const match = new RegExp(`(?:^|/)(\\d+)-${ADOPTION_TASK_SLUG}\\.md$`).exec(file);
+    if (match) {
+      return { id: match[1]!, fileName: `${match[1]}-${ADOPTION_TASK_SLUG}.md` };
+    }
+  }
+
+  const id = nextAdoptionTaskId(taskFiles);
+  return { id, fileName: `${id}-${ADOPTION_TASK_SLUG}.md` };
+}
+
+function createDocumentationCleanupTask(id: string): ProjectTask {
   return {
-    id: "0001",
+    id,
     title: "Document Adopted Repository",
     state: "todo",
     owner: "none",
@@ -165,7 +188,7 @@ function createDocumentationCleanupTask(): ProjectTask {
       "docs/scope.md",
       "docs/architecture.md",
       "docs/progress.md",
-      ".tasks/0001-document-adopted-repository.md",
+      `.tasks/${id}-document-adopted-repository.md`,
     ],
     forbiddenFiles: ["application source files"],
     steps: [
@@ -215,6 +238,8 @@ async function buildAdoptionPlan(
       compatibility.diagnostics[0] ?? `Cannot migrate ${CONFIG_PATH}: unsupported compatibility state.`,
     );
   }
+
+  const adoptionTask = resolveAdoptionTask(scan.taskFiles);
 
   const exportFiles = await renderAgentExportFiles({
     ...DEFAULT_AGENT_POLICY,
@@ -293,7 +318,7 @@ async function buildAdoptionPlan(
         "",
         "## Next step",
         "",
-        "Complete `.tasks/0001-document-adopted-repository.md`.",
+        "Complete `.tasks/${adoptionTask.fileName}`.",
         "",
       ].join("\n"),
     },
@@ -439,8 +464,8 @@ async function buildAdoptionPlan(
       ].join("\n"),
     },
     {
-      path: ".tasks/0001-document-adopted-repository.md",
-      content: renderTaskMarkdown(createDocumentationCleanupTask()),
+      path: `.tasks/${adoptionTask.fileName}`,
+      content: renderTaskMarkdown(createDocumentationCleanupTask(adoptionTask.id)),
     },
     ...exportFiles.map((file) => ({
       path: file.outputPath,

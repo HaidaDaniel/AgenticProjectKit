@@ -106,6 +106,28 @@ test("adoptRepository writes agent exports current for the canonical drift check
   });
 });
 
+test("adoptRepository selects the next free task id when tasks already exist", async () => {
+  await withTempRepository(async (directory) => {
+    await createExistingRepository(directory);
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(
+      join(directory, ".tasks/0001-existing.md"),
+      "# Task 0001 - Existing\n\nStatus: todo\nOwner: none\nMode: maintenance\nRisk: low\nDepends on: none\n\n## Goal\n\nExisting task.\n",
+      "utf8",
+    );
+    await writeFile(
+      join(directory, ".tasks/0007-other.md"),
+      "# Task 0007 - Other\n\nStatus: todo\nOwner: none\nMode: maintenance\nRisk: low\nDepends on: none\n\n## Goal\n\nOther task.\n",
+      "utf8",
+    );
+
+    const result = await adoptRepository(directory);
+
+    assert.ok(result.created.includes(".tasks/0008-document-adopted-repository.md"));
+    assert.ok(!result.created.includes(".tasks/0001-document-adopted-repository.md"));
+  });
+});
+
 test("adoptRepository skips existing files instead of overwriting them", async () => {
   await withTempRepository(async (directory) => {
     await createExistingRepository(directory);
