@@ -1,7 +1,7 @@
 # Task 0110 - Make Git-tag distribution self-contained and prepare v0.4.2
 
-State: blocked
-Owner: none
+State: done
+Owner: opencode-0110
 Mode: production
 Lane: release
 Type: release
