@@ -1,6 +1,6 @@
 # Task 0114 - Make context tree walking gitignore-aware with configurable exclusions
 
-State: doing
+State: done
 Owner: opencode-ds-v41
 Mode: maintenance
 Lane: workflow
