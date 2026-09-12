@@ -1,6 +1,6 @@
 # Task 0117 - Enforce successful task commit hygiene
 
-State: doing
+State: done
 Owner: opencode-ds-v41
 Mode: maintenance
 Lane: workflow
