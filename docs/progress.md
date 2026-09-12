@@ -2,7 +2,7 @@
 
 ## Current status
 
-Task 0105 has prepared the v0.4.0 release candidate and is temporarily blocked for exact-SHA clean-checkout CI. The first hosted run exposed the expected clean-checkout boundary: registered agent records are local runtime state, so a tracked `doing` task cannot pass repository lint in a fresh clone; the bounded release lifecycle now parks the task as ownerless `blocked` during hosted validation and will reopen it only after a green exact-SHA run. No source behavior or Herdr integration is added.
+Task 0105 is complete: AgenticProjectKit v0.4.0 is the current validated dogfood release. Version `0.4.0`, release notes, committed release checks, and the annotated tag all agree on release commit `2309fb03e06c5228e8ec738a22fa3dc62a98c75b`, and the exact-SHA clean-checkout CI run ([run 34700249057](https://github.com/HaidaDaniel/AgenticProjectKit/actions/runs/34700249057)) concluded `success` for that SHA. The clean-checkout boundary was handled by parking the task as ownerless `blocked` during hosted validation and reopening it only after a green exact-SHA run; the final lifecycle closure is an evidence-only follow-up commit. No source behavior or Herdr dependency/adapter is added.
 
 Phase 1 documentation is in place, Tasks 0001 through 0074, 0076-0078, 0080, 0081, the Resource-Aware Execution planning Task 0082, and follow-up Tasks 0089-0090 are complete. Tasks 0083-0085 now provide the registry, deterministic routing, and adaptive assurance foundation for Resource-Aware Execution.
 

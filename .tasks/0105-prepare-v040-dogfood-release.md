@@ -1,7 +1,7 @@
 # Task 0105 - Prepare v0.4.0 dogfood release
 
-State: blocked
-Owner: none
+State: done
+Owner: codex-v040
 Mode: production
 Lane: release
 Type: release
