@@ -1,6 +1,6 @@
 # Task 0113 - Align canonical CLI documentation with parser contracts
 
-State: doing
+State: done
 Owner: opencode-ds-v41
 Mode: maintenance
 Lane: docs
