@@ -1,7 +1,7 @@
 # Task 0112 - Detect modern Python and Go repositories during repository scanning
 
-State: todo
-Owner: none
+State: doing
+Owner: opencode-ds-v41
 Mode: maintenance
 Lane: adoption
 Type: bugfix
@@ -107,9 +107,9 @@ Do not infer Go merely from arbitrary `.go` files when `go.mod` is the canonical
 ## Counterexample searches
 
 - `pyproject.toml`-only repository
-- `requirements-dev.lock` without `requirements.txt`
+- requirements-dev.lock` without `requirements.txt
 - `go.mod`-only repository
-- `go.mod` plus APK `package.json`
+- go.mod` plus APK `package.json
 - ordinary Node repository
 - repository with no markers
 - repository with both `pyproject.toml` and `go.mod`

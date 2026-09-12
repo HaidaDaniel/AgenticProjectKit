@@ -194,6 +194,32 @@ async function detectPackageStack(rootDirectory: string): Promise<string[]> {
   return stack;
 }
 
+const PYTHON_MARKER_FILES = [
+  "pyproject.toml",
+  "requirements.txt",
+  "uv.lock",
+  "setup.py",
+  "setup.cfg",
+] as const;
+
+const PYTHON_REQUIREMENTS_PATTERN = /^requirements-.*\.(?:txt|lock)$/;
+
+/**
+ * Cross-stack primary-runtime markers. Bounded to Python and Go: these are
+ * evidenced by canonical project markers, not by arbitrary source-file
+ * extensions, and never suppress an evidenced Node/pnpm stack.
+ */
+function hasPythonMarkers(topLevelFiles: readonly string[]): boolean {
+  return topLevelFiles.some((file) => (
+    (PYTHON_MARKER_FILES as readonly string[]).includes(file)
+    || PYTHON_REQUIREMENTS_PATTERN.test(file)
+  ));
+}
+
+function hasGoMarkers(topLevelFiles: readonly string[]): boolean {
+  return topLevelFiles.includes("go.mod");
+}
+
 async function readJsonFile(path: string): Promise<Record<string, unknown> | undefined> {
   if (!(await fileExists(path))) {
     return undefined;
@@ -267,8 +293,12 @@ export async function scanRepository(rootDirectory: string): Promise<RepositoryS
     detectedStack.add("pnpm");
   }
 
-  if (await fileExists(join(rootDirectory, "requirements.txt"))) {
+  if (hasPythonMarkers(topLevelFiles)) {
     detectedStack.add("Python");
+  }
+
+  if (hasGoMarkers(topLevelFiles)) {
+    detectedStack.add("Go");
   }
 
   const agentExportPaths = listAgentExporters().map((exporter) => exporter.outputPath);

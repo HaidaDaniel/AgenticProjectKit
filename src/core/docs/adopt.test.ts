@@ -12,6 +12,7 @@ import {
   suggestContext,
 } from "../context-suggestions/index.js";
 import { APK_OPERATIONAL_IGNORE_ENTRIES } from "../init/index.js";
+import { scanRepository } from "../scanners/index.js";
 import { adoptRepository, planAdoption } from "./adopt.js";
 import { syncAgentExports } from "../sync/index.js";
 import type { ProjectTask } from "../tasks/index.js";
@@ -313,5 +314,104 @@ test("adoptRepository surfaces tracked APK operational state without deleting or
     const { stdout } = await execFileAsync("git", ["ls-files", ".agentic/runs/foo.jsonl"], { cwd: directory });
     assert.equal(stdout.trim(), ".agentic/runs/foo.jsonl");
     assert.equal(await readFile(join(directory, ".agentic", "runs", "foo.jsonl"), "utf8"), "{}\n");
+  });
+});
+
+const PYTHON_MARKERS = [
+  "pyproject.toml",
+  "requirements.txt",
+  "requirements-dev.lock",
+  "uv.lock",
+  "setup.py",
+  "setup.cfg",
+] as const;
+
+test("repository scanning detects Python from each canonical marker", async () => {
+  for (const marker of PYTHON_MARKERS) {
+    await withTempRepository(async (directory) => {
+      await writeFile(join(directory, marker), "marker\n", "utf8");
+      const scan = await scanRepository(directory);
+      assert.ok(scan.detectedStack.includes("Python"), `${marker} -> ${scan.detectedStack.join(",")}`);
+    });
+  }
+});
+
+test("repository scanning detects Python and Go alongside Node and pnpm", async () => {
+  await withTempRepository(async (directory) => {
+    await createExistingRepository(directory);
+    await writeFile(join(directory, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n", "utf8");
+    await writeFile(join(directory, "pyproject.toml"), "[project]\n", "utf8");
+    await writeFile(join(directory, "go.mod"), "module example\n", "utf8");
+
+    const scan = await scanRepository(directory);
+    assert.deepEqual(scan.detectedStack, [
+      "Go",
+      "Node.js",
+      "Python",
+      "React",
+      "TypeScript",
+      "Vite",
+      "pnpm",
+    ]);
+  });
+});
+
+test("repository scanning detects go.mod but never infers Go from .go files", async () => {
+  await withTempRepository(async (directory) => {
+    await mkdir(join(directory, "cmd"), { recursive: true });
+    await writeFile(join(directory, "cmd/main.go"), "package main\n", "utf8");
+    assert.deepEqual((await scanRepository(directory)).detectedStack, []);
+  });
+
+  await withTempRepository(async (directory) => {
+    await writeFile(join(directory, "go.mod"), "module example\n", "utf8");
+    assert.deepEqual((await scanRepository(directory)).detectedStack, ["Go"]);
+  });
+});
+
+test("repository scanning keeps ordinary Node and minimal repositories unchanged", async () => {
+  await withTempRepository(async (directory) => {
+    await createExistingRepository(directory);
+    await writeFile(join(directory, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n", "utf8");
+    assert.deepEqual((await scanRepository(directory)).detectedStack, [
+      "Node.js",
+      "React",
+      "TypeScript",
+      "Vite",
+      "pnpm",
+    ]);
+  });
+
+  await withTempRepository(async (directory) => {
+    assert.deepEqual((await scanRepository(directory)).detectedStack, []);
+  });
+});
+
+test("translator-like and ResLedger-like adoption output carries the corrected stack", async () => {
+  await withTempRepository(async (directory) => {
+    await createExistingRepository(directory);
+    await writeFile(join(directory, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n", "utf8");
+    await writeFile(join(directory, "pyproject.toml"), "[project]\n", "utf8");
+    await writeFile(join(directory, "requirements-dev.lock"), "flask==1\n", "utf8");
+
+    const result = await adoptRepository(directory);
+    assert.ok(result.scan.detectedStack.includes("Python"));
+    assert.ok(result.scan.detectedStack.includes("Node.js"));
+    assert.ok(result.scan.detectedStack.includes("pnpm"));
+    assert.match(await readFile(join(directory, "docs/project-map.md"), "utf8"), /- Python/);
+    assert.match(await readFile(join(directory, "docs/adoption-report.md"), "utf8"), /Stack: .*Python/);
+  });
+
+  await withTempRepository(async (directory) => {
+    await createExistingRepository(directory);
+    await writeFile(join(directory, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n", "utf8");
+    await writeFile(join(directory, "go.mod"), "module example\n", "utf8");
+
+    const result = await adoptRepository(directory);
+    assert.deepEqual(
+      result.scan.detectedStack.filter((stack) => ["Go", "Node.js", "pnpm"].includes(stack)),
+      ["Go", "Node.js", "pnpm"],
+    );
+    assert.match(await readFile(join(directory, "docs/project-map.md"), "utf8"), /- Go/);
   });
 });

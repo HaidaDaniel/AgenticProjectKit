@@ -370,3 +370,15 @@ test("auditRepository accepts active task depending on archived done task", asyn
     );
   });
 });
+
+test("auditRepository reports Python and Go stacks from canonical markers", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeFile(join(directory, "pyproject.toml"), "[project]\n", "utf8");
+    await writeFile(join(directory, "go.mod"), "module example\n", "utf8");
+
+    await auditRepository(directory);
+
+    const projectMap = await readFile(join(directory, "docs/project-map.md"), "utf8");
+    assert.match(projectMap, /## Detected Stack\n\n- Go\n- Python/);
+  });
+});
