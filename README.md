@@ -91,36 +91,32 @@ Implemented commands:
 
 There are four practical ways to use Agentic Project Kit outside this repository without publishing it to npm.
 
-### Option 1: Use a pinned GitHub dev dependency
+### Option 1: Pin a stable release tag (recommended)
 
-Best for teams and real projects.
+Best for teams and real projects. Pin a stable tag so every repository uses the exact CLI version it expects.
 
 Use SSH when the machine already has GitHub credentials:
 
 ```bash
 cd path/to/your-project
-pnpm add -D git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#main
+pnpm add -D git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.1
 pnpm exec apk init
 ```
 
 For an existing repository:
 
 ```bash
-pnpm add -D git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#main
+pnpm add -D git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.1
 pnpm exec apk adopt
 ```
 
-Pin a tag or commit SHA for repeatable installs:
+HTTPS equivalent when GitHub auth is configured for HTTPS:
 
 ```bash
-pnpm add -D git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#<tag-or-commit>
+pnpm add -D git+https://github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.1
 ```
 
-HTTPS also works when GitHub auth is configured for HTTPS:
-
-```bash
-pnpm add -D git+https://github.com/HaidaDaniel/AgenticProjectKit.git#main
-```
+`#main` tracks unreleased development and is for development/testing only. Do not use `#main` as the stable installation path; pin a tag for repeatable installs.
 
 This is usually better than a global install because every repository pins the exact CLI version it expects.
 
@@ -134,17 +130,17 @@ pnpm exec apk doctor
 
 ### Option 2: Install globally from GitHub
 
-Best for personal use across many local repositories.
+Best for personal use across many local repositories. Repository-local pinning is still preferred for reproducibility.
 
 ```bash
-npm install -g git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#main
+npm install -g git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.1
 apk --help
 ```
 
 or:
 
 ```bash
-pnpm add -g git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#main
+pnpm add -g git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.1
 apk --help
 ```
 
@@ -216,6 +212,33 @@ Optional shell alias for personal use:
 echo 'alias apk="node ~/tools/AgenticProjectKit/dist/cli/index.js"' >> ~/.bashrc
 source ~/.bashrc
 apk adopt
+```
+
+## Dogfood workflow (Codex/OpenCode from VS Code)
+
+APK is the repository control plane; it keeps task contracts, verification, review, and gated completion in the repository.
+
+- Codex and OpenCode are used normally from VS Code.
+- Codex and OpenCode read the canonical `AGENTS.md`; no redundant Codex/OpenCode common-policy files are required.
+- APK does not need to launch, supervise, or proxy Codex or OpenCode.
+- External terminal/session runtimes (for example a persistent dev host or Herdr) are optional and deferred; they are not required for this workflow. APK adds no Herdr dependency, adapter, PTY, SSH, process supervisor, scheduler, or runtime orchestration.
+
+A typical loop in a repository that pins a stable tag:
+
+```bash
+pnpm exec apk doctor
+pnpm exec apk next-task
+pnpm exec apk context 0001
+pnpm exec apk prompt codex --task 0001
+pnpm exec apk prompt opencode --task 0001
+```
+
+Implement with Codex or OpenCode in VS Code, then:
+
+```bash
+pnpm exec apk task verify 0001 --owner <agent-id>
+pnpm exec apk task gate 0001
+pnpm exec apk done 0001 --owner <agent-id>
 ```
 
 ## Quickstart
