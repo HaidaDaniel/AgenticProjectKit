@@ -34,7 +34,7 @@
     "setup:dev": "husky",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src",
-    "test": "tsx --test src/core/config/schema.test.ts src/core/init/init.test.ts src/core/templates/renderer.test.ts src/core/tasks/task.test.ts src/core/docs/adopt.test.ts src/core/docs/prompt.test.ts src/core/modes/mode.test.ts src/core/audit/audit.test.ts src/core/sync/sync.test.ts src/core/analytics/analytics.test.ts src/cli/cli.test.ts",
+    "test": "tsx --test src/core/config/schema.test.ts src/core/init/init.test.ts src/core/templates/renderer.test.ts src/core/tasks/task.test.ts src/core/docs/adopt.test.ts src/core/docs/context.test.ts src/core/docs/prompt.test.ts src/core/modes/mode.test.ts src/core/audit/audit.test.ts src/core/sync/sync.test.ts src/core/analytics/analytics.test.ts src/cli/cli.test.ts",
     "test:coverage": "c8 --reporter=text --reporter=json-summary --all --include=src/**/*.ts --exclude=src/**/*.test.ts --check-coverage --lines=90 --functions=95 --branches=78 --statements=90 pnpm test",
     "quality": "pnpm typecheck && pnpm lint && pnpm test",
     "release:check": "pnpm quality && pnpm test:coverage && pnpm build && node dist/cli/index.js sync && node dist/cli/index.js audit",
