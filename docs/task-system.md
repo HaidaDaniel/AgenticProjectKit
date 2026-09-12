@@ -286,6 +286,21 @@ Reviewers must be registered and cannot equal the implementation owner. Review r
 
 Completion accepts only current PASS evidence for the evaluated task/baseline/candidate/worktree. Missing, failed, pending, unavailable, not-run, stale, or different-candidate verification/review evidence blocks completion. A successful transition appends a `completion` evidence record containing the exact evidence ID set before writing `State: done`; persistence or candidate-mutation errors fail closed. Existing task readability is preserved, but legacy tasks still need current verification evidence and any policy-required review/evidence.
 
+## Successful task commit hygiene
+
+APK does not run Git itself: no `git commit`, `git add`, `git push`, or `git rm`. The workflow invariant lives in the canonical generated agent policy (`DEFAULT_AGENT_POLICY.taskRules`) so every harness receives the same rule.
+
+A successfully completed task must not be handed back with uncommitted task-owned implementation or fix changes. Commit task-owned changes before final verify/review/gate so candidate-bound evidence refers to the committed candidate; because APK candidate identity is content-derived, committing does not by itself invalidate a candidate unless the committed content differs. Terminal `apk done` bookkeeping (task state, run, and completion evidence) is excluded workflow state and may follow as an intentional follow-up commit; the reviewed implementation candidate, terminal APK bookkeeping, and final repository cleanliness are distinct.
+
+Commit safety rules:
+
+- stage only files attributable to the current task; never run `git add -A` or `git add .` to absorb unrelated or pre-existing dirty state;
+- leave unrelated and pre-existing dirty changes untouched and never discard, rewrite, force-push, or amend unrelated work;
+- do not create an empty commit when the task has no task-owned changes;
+- report the resulting commit SHA(s) in the final handoff;
+- if a required commit fails (hook, conflict, missing identity, permission), surface the blocker and do not report a clean successful handoff;
+- blocked, released-unfinished, canceled, or failed tasks do not require a completion commit; an explicit checkpoint commit is allowed only when policy requires it.
+
 ## Task provenance
 
 `apk task provenance <task-id>` reconstructs a bounded end-to-end trace from the task file, claim baseline, existing run log, evidence records, worker-session metadata, and local Git state. The trace connects:

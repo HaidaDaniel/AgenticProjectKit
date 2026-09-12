@@ -222,3 +222,4 @@ After the gated-workflow release foundation, Resource-Aware Execution proceeds t
 - Completion-gate verification passed with `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm exec apk task create --help`, and `pnpm exec apk doctor`.
 - Correctness-contract verification passed with `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm exec apk task create --help`, and `pnpm exec apk doctor`.
 - Typed-template verification passed with `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm exec apk task create --help`, and `pnpm exec apk doctor`.
+- Task 0117 verification passed: canonical `DEFAULT_AGENT_POLICY.taskRules` now requires safe commit hygiene for successful tasks; `AGENTS.md` regenerated via `apk sync`; renderer and sync regression tests assert the rule and drift-freedom.

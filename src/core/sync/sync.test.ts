@@ -32,6 +32,9 @@ test("syncAgentExports passes when generated files are current", async () => {
     const agents = await readFile(join(directory, "AGENTS.md"), "utf8");
     assert.match(agents, /automatically launch a separate read-only reviewer/);
     assert.match(agents, /implementation owner cannot certify its own candidate/);
+    assert.match(agents, /must not leave task-owned changes uncommitted/);
+    assert.match(agents, /Never run `git add -A` or `git add \.`/);
+    assert.match(agents, /APK never runs git commit, add, push, or rm itself/);
   });
 });
 

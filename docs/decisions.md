@@ -802,3 +802,19 @@ v0.4.1 was installable only after configuring `onlyBuiltDependencies`/`allowBuil
 Implementation and invariant:
 
 `.gitignore` no longer ignores `dist/`; `package.json` exposes `build` and `setup:dev` but no install lifecycle build hook; `.github/workflows/quality.yml` runs `pnpm build` and rejects any working-tree or untracked drift under `dist/`. The fresh-store install acceptance test proves a brand-new pnpm store installs `#v0.4.2` with no allowlist and starts the built CLI. No provider SDK, model runtime, scheduler, daemon, PTY, SSH, remote executor, or Herdr integration is introduced.
+
+## ADR-0050 - Successful tasks require safe commit hygiene, not APK auto-commit
+
+Status: accepted
+
+Decision:
+
+A successfully completed task must not be handed back with task-owned implementation/fix changes left uncommitted. The rule lives in the canonical neutral policy (`DEFAULT_AGENT_POLICY.taskRules` in `src/core/exporters/index.ts`) and is rendered into `AGENTS.md`; APK itself never runs `git commit`, `git add`, `git push`, or `git rm`. Agents must stage only task-attributed files, must never use `git add -A`/`git add .` to absorb unrelated or pre-existing dirty state, must not create an empty commit, must report the resulting commit SHA(s), and must surface commit failure instead of claiming a clean handoff. Blocked, released-unfinished, canceled, or failed tasks do not require a completion commit.
+
+Reason:
+
+The canonical generated workflow required claim/verify/review/gate/done but never a Git commit, while the worker contract only mentioned `commitIds` "when available". Agents therefore legitimately completed tasks with dirty repositories, so approved work could be lost and task provenance could not point at an immutable candidate. Leaving commit policy to individual agents produced inconsistent, sometimes unsafe staging.
+
+Implementation and invariant:
+
+`DEFAULT_AGENT_POLICY.taskRules` carries the hygiene rules and `apk sync` regenerates `AGENTS.md`; renderer and sync regression tests assert the rule is present and drift-free. Committing task-owned changes before final verify/review/gate keeps candidate-bound evidence pointing at the committed candidate; because APK candidate identity is content-derived, a pure commit does not invalidate it. Terminal `apk done` bookkeeping remains excluded workflow state. No Git transaction manager, auto-push, daemon, branch-protection change, squash/amend policy, or provider integration is introduced.

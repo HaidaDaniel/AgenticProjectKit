@@ -30,6 +30,11 @@ Repository docs and task files are the source of truth.
 - Update the task if scope must expand.
 - When policy requires review, the primary agent may automatically launch a separate read-only reviewer with a different registered identity and isolated context; do not pause for routine user confirmation.
 - The implementation owner cannot certify its own candidate. On changes_requested, continue fix -> verify -> fresh review; on pass, continue gate -> done.
+- Commit task-owned implementation and fix changes before final verify/review/gate so candidate-bound evidence refers to the committed candidate; a successful handoff must not leave task-owned changes uncommitted.
+- Stage only files attributable to the current task. Never run `git add -A` or `git add .` to absorb unrelated or pre-existing dirty state, and never discard, rewrite, force-push, or amend unrelated work.
+- Leave unrelated and pre-existing dirty changes untouched; do not include them in the task commit and do not create an empty commit when the task has no task-owned changes.
+- Report the resulting commit SHA(s) in the final handoff. If a required commit fails (hook, conflict, identity, permission), surface the blocker and do not report a clean successful handoff.
+- Blocked, released unfinished, canceled, or failed tasks do not require a completion commit; an explicit checkpoint commit is allowed only when policy requires it. APK never runs git commit, add, push, or rm itself.
 
 ## Worker Contract
 

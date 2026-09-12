@@ -174,6 +174,29 @@ test("canonical AGENTS.md carries the repo-local task workflow and worker contra
   assert.match(agents.content, /apk-worker-v1/);
 });
 
+test("canonical agent policy requires safe commit hygiene for successful tasks", async () => {
+  const rules = DEFAULT_AGENT_POLICY.taskRules.join("\n");
+
+  assert.match(rules, /must not leave task-owned changes uncommitted/);
+  assert.match(rules, /Never run `git add -A` or `git add \.`/);
+  assert.match(rules, /do not create an empty commit/);
+  assert.match(rules, /Report the resulting commit SHA\(s\)/);
+  assert.match(rules, /surface the blocker and do not report a clean successful handoff/);
+  assert.match(rules, /Blocked, released unfinished, canceled, or failed tasks do not require a completion commit/);
+  assert.match(rules, /APK never runs git commit, add, push, or rm itself/);
+  assert.doesNotMatch(rules, /apk (done|task done)[^\n]*git commit/i);
+
+  const exports = await renderAgentExportFiles();
+  const agents = exports.find((file) => file.outputPath === "AGENTS.md");
+
+  assert.ok(agents);
+  assert.match(agents.content, /must not leave task-owned changes uncommitted/);
+  assert.match(agents.content, /Never run `git add -A` or `git add \.`/);
+  assert.match(agents.content, /do not create an empty commit/);
+  assert.match(agents.content, /Report the resulting commit SHA\(s\)/);
+  assert.match(agents.content, /pre-existing dirty changes untouched/);
+});
+
 test("Claude and Gemini adapters are thin AGENTS.md imports with no duplicated policy", async () => {
   const exports = await renderAgentExportFiles();
   const claude = exports.find((file) => file.outputPath === "CLAUDE.md");
