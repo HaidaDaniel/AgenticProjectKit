@@ -1,0 +1,289 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { CONFIG_PATH, parseAgenticConfigJson, } from "../config/index.js";
+import { detectQualityCapabilities } from "../quality/index.js";
+import { scanRepository } from "../scanners/index.js";
+import { loadTaskFile, listArchivedTaskFiles, TaskFormatError, validateTaskDependencies } from "../tasks/index.js";
+const AUDIT_REPORT_PATH = "docs/audit-report.md";
+const PROJECT_MAP_PATH = "docs/project-map.md";
+async function readOptionalFile(path) {
+    try {
+        return await readFile(path, "utf8");
+    }
+    catch (error) {
+        if (error &&
+            typeof error === "object" &&
+            "code" in error &&
+            error.code === "ENOENT") {
+            return undefined;
+        }
+        throw error;
+    }
+}
+function renderBulletList(items) {
+    return items.length > 0 ? items.map((item) => `- ${item}`) : ["- none"];
+}
+function renderProjectMap(scan, quality) {
+    const ciDetected = quality.capabilities.find((capability) => capability.id === "ci")?.status === "detected";
+    return [
+        "# Project Map",
+        "",
+        `Repository: ${scan.rootName}`,
+        "",
+        "## Detected Stack",
+        "",
+        ...renderBulletList(scan.detectedStack),
+        "",
+        "## Top-level Directories",
+        "",
+        ...renderBulletList(scan.topLevelDirectories),
+        "",
+        "## Top-level Files",
+        "",
+        ...renderBulletList(scan.topLevelFiles),
+        "",
+        "## Kit Docs Present",
+        "",
+        ...renderBulletList(scan.kitDocs.present),
+        "",
+        "## Kit Docs Missing",
+        "",
+        ...renderBulletList(scan.kitDocs.missing),
+        "",
+        "## Agent Exports Present",
+        "",
+        ...renderBulletList(scan.agentExports.present),
+        "",
+        "## Agent Exports Missing",
+        "",
+        ...renderBulletList(scan.agentExports.missing),
+        "",
+        "## Task Files",
+        "",
+        ...renderBulletList(scan.taskFiles),
+        "",
+        "## Repository Readiness",
+        "",
+        `- Package manager: ${scan.readiness.packageManager ?? "unknown"}`,
+        `- Package scripts: ${scan.readiness.packageScripts.length === 0 ? "none" : scan.readiness.packageScripts.join(",")}`,
+        `- Lockfiles: ${scan.readiness.lockfiles.length === 0 ? "none" : scan.readiness.lockfiles.join(",")}`,
+        `- CI: ${ciDetected ? "yes" : "no"}`,
+        `- Env example: ${scan.readiness.hasEnvExample ? "yes" : "no"}`,
+        `- Dockerfile: ${scan.readiness.hasDockerfile ? "yes" : "no"}`,
+        `- Docker compose: ${scan.readiness.hasDockerCompose ? "yes" : "no"}`,
+        `- README: ${scan.readiness.hasReadme ? "yes" : "no"}`,
+        `- License: ${scan.readiness.hasLicense ? "yes" : "no"}`,
+        `- Test directories: ${scan.readiness.testDirectories.length === 0 ? "none" : scan.readiness.testDirectories.join(",")}`,
+        `- Generated directories: ${scan.readiness.generatedDirectories.length === 0 ? "none" : scan.readiness.generatedDirectories.join(",")}`,
+        `- Monorepo: ${scan.readiness.monorepo ? "yes" : "no"}`,
+        `- TypeScript strict: ${scan.readiness.tsStrict === undefined ? "unknown" : scan.readiness.tsStrict ? "yes" : "no"}`,
+        "",
+    ].join("\n");
+}
+function renderAuditReport(result) {
+    const status = result.hasErrors ? "error" : result.findings.length > 0 ? "warning" : "pass";
+    return [
+        "# Audit Report",
+        "",
+        `Repository: ${result.scan.rootName}`,
+        `Status: ${status}`,
+        `Task files checked: ${result.taskCount}`,
+        "",
+        "## Findings",
+        "",
+        ...(result.findings.length > 0
+            ? result.findings.map((finding) => `- ${finding.level.toUpperCase()} ${finding.area}: ${finding.message}`)
+            : ["- none"]),
+        "",
+        "## Summary",
+        "",
+        `- Missing kit docs: ${result.scan.kitDocs.missing.length}`,
+        `- Missing agent exports: ${result.scan.agentExports.missing.length}`,
+        `- Agentic config present: ${result.scan.hasAgenticConfig ? "yes" : "no"}`,
+        `- Package manager: ${result.scan.readiness.packageManager ?? "unknown"}`,
+        `- CI present: ${result.quality.capabilities.find((capability) => capability.id === "ci")?.status === "detected" ? "yes" : "no"}`,
+        "",
+        "## Quality Capabilities",
+        "",
+        `- Policy: ${result.quality.policy.status}`,
+        ...result.quality.capabilities.map((capability) => `- ${capability.id}: ${capability.status} (${capability.disposition})`),
+        "",
+    ].join("\n");
+}
+function addMissingFindings(findings, area, files) {
+    for (const file of files) {
+        findings.push({
+            level: "warning",
+            area,
+            message: `Missing ${file}.`,
+        });
+    }
+}
+async function auditConfig(rootDirectory, findings) {
+    const configText = await readOptionalFile(join(rootDirectory, CONFIG_PATH));
+    if (configText === undefined) {
+        findings.push({
+            level: "warning",
+            area: "config",
+            message: `Missing ${CONFIG_PATH}.`,
+        });
+        return undefined;
+    }
+    try {
+        return parseAgenticConfigJson(configText).quality;
+    }
+    catch (error) {
+        findings.push({
+            level: "error",
+            area: "config",
+            message: error instanceof Error ? error.message : String(error),
+        });
+        return undefined;
+    }
+}
+async function auditTasks(rootDirectory, scan, findings) {
+    if (scan.taskFiles.length === 0) {
+        findings.push({
+            level: "warning",
+            area: "tasks",
+            message: "No task files found in .tasks.",
+        });
+        return 0;
+    }
+    const validTaskFiles = [];
+    for (const taskPath of scan.taskFiles) {
+        try {
+            const loaded = await loadTaskFile(join(rootDirectory, taskPath));
+            validTaskFiles.push(loaded);
+        }
+        catch (error) {
+            const detail = error instanceof TaskFormatError
+                ? error.issues.join("; ")
+                : error instanceof Error
+                    ? error.message
+                    : String(error);
+            findings.push({
+                level: "error",
+                area: "tasks",
+                message: `${taskPath}: ${detail}`,
+            });
+        }
+    }
+    const archivedFiles = await listArchivedTaskFiles(rootDirectory);
+    const depIssues = validateTaskDependencies(validTaskFiles, archivedFiles);
+    for (const issue of depIssues) {
+        findings.push({
+            level: issue.kind === "cycle" ? "error" : "warning",
+            area: "dependencies",
+            message: issue.message,
+        });
+    }
+    return scan.taskFiles.length;
+}
+function auditRepoReadiness(scan, findings) {
+    if (scan.topLevelFiles.includes("package.json")) {
+        for (const script of ["test", "lint", "typecheck", "build"]) {
+            if (!scan.readiness.packageScripts.includes(script)) {
+                findings.push({
+                    level: "warning",
+                    area: "repo-readiness",
+                    message: `Missing package script: ${script}.`,
+                });
+            }
+        }
+    }
+    if (scan.readiness.lockfiles.length > 1) {
+        findings.push({
+            level: "warning",
+            area: "repo-readiness",
+            message: `Multiple lockfiles detected: ${scan.readiness.lockfiles.join(",")}.`,
+        });
+    }
+    if (!scan.readiness.hasEnvExample) {
+        findings.push({
+            level: "info",
+            area: "repo-readiness",
+            message: ".env.example not detected.",
+        });
+    }
+    if (scan.topLevelFiles.includes("package.json") && scan.readiness.testDirectories.length === 0) {
+        findings.push({
+            level: "info",
+            area: "repo-readiness",
+            message: "Top-level test directory not detected.",
+        });
+    }
+    if (!scan.readiness.hasLicense) {
+        findings.push({
+            level: "info",
+            area: "repo-readiness",
+            message: "License file not detected.",
+        });
+    }
+    if (!scan.readiness.hasReadme) {
+        findings.push({
+            level: "info",
+            area: "repo-readiness",
+            message: "README not detected.",
+        });
+    }
+    if (scan.readiness.tsStrict === false) {
+        findings.push({
+            level: "warning",
+            area: "repo-readiness",
+            message: "TypeScript strict mode is disabled.",
+        });
+    }
+}
+export async function auditRepository(rootDirectory) {
+    const scan = await scanRepository(rootDirectory);
+    const findings = [];
+    addMissingFindings(findings, "docs", scan.kitDocs.missing);
+    addMissingFindings(findings, "exports", scan.agentExports.missing);
+    auditRepoReadiness(scan, findings);
+    const qualityPolicy = await auditConfig(rootDirectory, findings);
+    const quality = await detectQualityCapabilities(rootDirectory, qualityPolicy);
+    if (quality.policy.status === "fail") {
+        findings.push({
+            level: "error",
+            area: "quality-policy",
+            message: quality.diagnostics.filter((diagnostic) => diagnostic.startsWith("Required capabilities")).join(" "),
+        });
+    }
+    else if (quality.capabilities.some((capability) => capability.status !== "detected")) {
+        findings.push({
+            level: "info",
+            area: "quality",
+            message: "Optional quality capabilities are missing or unknown; detection is non-mutating and no toolchain setup was applied.",
+        });
+    }
+    const taskCount = await auditTasks(rootDirectory, scan, findings);
+    const hasErrors = findings.some((finding) => finding.level === "error");
+    const result = {
+        scan,
+        quality,
+        findings,
+        taskCount,
+        hasErrors,
+    };
+    const reportPath = join(rootDirectory, AUDIT_REPORT_PATH);
+    const projectMapPath = join(rootDirectory, PROJECT_MAP_PATH);
+    await mkdir(dirname(reportPath), { recursive: true });
+    await writeFile(reportPath, renderAuditReport(result), "utf8");
+    await writeFile(projectMapPath, renderProjectMap(scan, quality), "utf8");
+    return {
+        ...result,
+        reportPath: AUDIT_REPORT_PATH,
+        projectMapPath: PROJECT_MAP_PATH,
+    };
+}
+export function renderAuditSummary(result) {
+    return [
+        `Audit: ${result.hasErrors ? "errors" : result.findings.length > 0 ? "warnings" : "pass"}`,
+        `Report: ${result.reportPath}`,
+        `Project map: ${result.projectMapPath}`,
+        `Findings: ${result.findings.length}`,
+        `Quality policy: ${result.quality.policy.status}`,
+        "",
+    ].join("\n");
+}

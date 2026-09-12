@@ -54,6 +54,14 @@ jobs:
       - name: Build package
         run: pnpm build
 
+      - name: Verify committed dist is current
+        run: |
+          if [ -n "$(git status --porcelain --untracked-files=all -- dist)" ]; then
+            echo "::error::committed dist/ is stale or missing; run pnpm build and commit dist/"
+            git status --porcelain --untracked-files=all -- dist
+            exit 1
+          fi
+
       - name: Run release quality checks
         run: pnpm release:check
 

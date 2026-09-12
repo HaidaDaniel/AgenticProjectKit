@@ -786,3 +786,19 @@ Medium risk previously produced `independentReview: true` with `reviewLevel: lig
 Implementation and invariant:
 
 `src/core/tasks/policy.ts` exposes `reviewProjection` and `assuranceFloorForRule`; `assuranceTriggers` reads `policyTags(task)`. Gate, `apk done`, `apk work`, `apk status`, and `apk attention` keep consuming `requirements.independentReview` as the single review requirement, so they now agree with canonical assurance. No provider SDK, model runtime, scheduler, daemon, PTY, SSH, remote executor, or Herdr integration is introduced.
+
+## ADR-0049 - Git tags ship a runnable dist and install-time build hooks are removed
+
+Status: accepted
+
+Decision:
+
+Agentic Project Kit distributes through Git tags, so each tag must contain a runnable package. The built `dist/` is committed, `dist/` is removed from `.gitignore`, and the `prepare` script is removed. No `prepare`, `postinstall`, or `install` build hook remains; Husky is developer tooling installed with `pnpm setup:dev`. CI builds the source and fails when the committed `dist/` is stale or missing.
+
+Reason:
+
+v0.4.1 was installable only after configuring `onlyBuiltDependencies`/`allowBuilds`: pnpm 10 refuses to run a git dependency's `prepare` build script, so `pnpm add -D git+ssh://...#v0.4.1` failed in a clean repository. Coupling install correctness to package-manager lifecycle differences and consumer allowlists is fragile. A Git tag that already contains the executable is simpler and portable, and mirrors the `files`/`bin` packaging already used for npm packs.
+
+Implementation and invariant:
+
+`.gitignore` no longer ignores `dist/`; `package.json` exposes `build` and `setup:dev` but no install lifecycle build hook; `.github/workflows/quality.yml` runs `pnpm build` and rejects any working-tree or untracked drift under `dist/`. The fresh-store install acceptance test proves a brand-new pnpm store installs `#v0.4.2` with no allowlist and starts the built CLI. No provider SDK, model runtime, scheduler, daemon, PTY, SSH, remote executor, or Herdr integration is introduced.

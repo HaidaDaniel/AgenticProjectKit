@@ -1,6 +1,6 @@
 # Task 0109 - Prepare v0.4.1 downstream Codex/OpenCode dogfood release
 
-State: blocked
+State: canceled
 Owner: none
 Mode: production
 Lane: release
@@ -106,3 +106,4 @@ Publish a stable patch release v0.4.1 containing the Task 0106/0107 adoption fix
 
 - Treat evidence capture as the final mutation boundary.
 - block: Await exact-SHA clean-checkout CI for v0.4.1 release commit; reopen after green run.
+- cancel: Superseded by v0.4.2: v0.4.1 Git-tag install was not runnable because pnpm blocks the git dependency prepare build script. v0.4.1 tag is preserved and will not 

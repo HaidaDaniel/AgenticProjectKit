@@ -1,0 +1,48 @@
+import { relative, resolve } from "node:path";
+import { readAgenticConfigFile } from "../../core/config/index.js";
+import { listArchivedTaskFiles, listTaskFiles, renderNextTask, selectNextTask, } from "../../core/tasks/index.js";
+const NEXT_TASK_HELP_TEXT = [
+    "Agentic Project Kit",
+    "",
+    "Usage:",
+    "  apk next-task",
+    "",
+    "Prints the lowest-numbered todo task and its context command.",
+].join("\n");
+function hasHelpFlag(argv) {
+    return argv.includes("--help") || argv.includes("-h");
+}
+function withRelativePath(rootDirectory, selection) {
+    if (!selection) {
+        return undefined;
+    }
+    return {
+        ...selection,
+        path: relative(rootDirectory, selection.path).replace(/\\/g, "/"),
+    };
+}
+export async function runNextTaskCommand(argv) {
+    if (hasHelpFlag(argv)) {
+        console.log(NEXT_TASK_HELP_TEXT);
+        return 0;
+    }
+    if (argv.length > 0) {
+        console.error("Usage: apk next-task");
+        return 1;
+    }
+    try {
+        const rootDirectory = resolve(process.cwd());
+        const config = await readAgenticConfigFile(rootDirectory);
+        const [files, archived] = await Promise.all([
+            listTaskFiles(rootDirectory, config.taskDirectory),
+            listArchivedTaskFiles(rootDirectory, config.taskDirectory),
+        ]);
+        const selection = selectNextTask(files, archived);
+        console.log(renderNextTask(withRelativePath(rootDirectory, selection)));
+        return 0;
+    }
+    catch (error) {
+        console.error(error instanceof Error ? error.message : String(error));
+        return 1;
+    }
+}
