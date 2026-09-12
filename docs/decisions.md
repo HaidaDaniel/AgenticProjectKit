@@ -882,3 +882,19 @@ Ignored runtime state could become a context candidate and large ignored directo
 Implementation and invariant:
 
 `src/core/docs/context.ts` adds `listRepositoryFiles` (Git-native with filesystem fallback), `matchesConfiguredExcludes`, and configured-exclusion resolution through `readAgenticConfigFile`; `src/core/config/types.ts`/`schema.ts` add and validate `contextExcludes`. Selection order, unit accounting, repository immutability, and the rule that required/explicit context wins are preserved. No custom `.gitignore` parser, glob engine, indexing subsystem, persistent context database, cache architecture, or network service is introduced.
+
+## ADR-0055 - Clean-checkout lint does not fail unverifiable task owners
+
+Status: accepted
+
+Decision:
+
+`apk lint` only treats an unregistered `doing`/`review` task owner as a hard error when a local agent registry is present. Agent registry state lives in untracked `.agentic/agents/`; a clean checkout (for example the CI runner) legitimately has no local registry, so an active task's owner cannot be verified there. In that case the linter emits a bounded `owner-unverified` warning instead of `owner-unregistered`. When any local agents are registered, an unknown owner remains an error and `state-owner-mismatch` is unchanged.
+
+Reason:
+
+The exact-SHA hosted CI failed at `node dist/cli/index.js lint --json` for the v0.4.3 release candidate: the committed `chore(release)` task was `doing` with a registered owner, but the clean checkout had no untracked `.agentic/agents` records, producing a false `owner-unregistered` error. Committing runtime agent state would violate the canonical operational-ignore contract.
+
+Implementation and invariant:
+
+`src/core/audit/lint.ts` passes `registeredAgents.size > 0` into `lintTaskStateOwner` and downgrades only the missing-registry case. Repositories with a real local registry still fail closed on a genuinely unregistered owner.

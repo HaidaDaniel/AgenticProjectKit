@@ -343,6 +343,7 @@ function lintTaskPolicy(
 function lintTaskStateOwner(
   task: ProjectTask,
   registeredAgents: ReadonlySet<string>,
+  agentRegistryAvailable: boolean,
   findings: TaskLintFinding[],
   path: string,
 ): void {
@@ -357,11 +358,16 @@ function lintTaskStateOwner(
     });
   }
   if (["doing", "review"].includes(task.state) && !registeredAgents.has(task.owner)) {
+    // Agent registry state is intentionally untracked runtime state. A clean
+    // checkout has no local registry, so ownership cannot be verified there;
+    // only treat a missing owner as a hard error when a local registry exists.
     addFinding(findings, {
-      level: "error",
-      code: "owner-unregistered",
+      level: agentRegistryAvailable ? "error" : "warning",
+      code: agentRegistryAvailable ? "owner-unregistered" : "owner-unverified",
       area: "workflow",
-      message: `Owner ${task.owner} is not registered for ${task.state} task.`,
+      message: agentRegistryAvailable
+        ? `Owner ${task.owner} is not registered for ${task.state} task.`
+        : `Owner ${task.owner} cannot be verified locally because no agent registry is present for ${task.state} task.`,
       path,
       taskId: task.id,
     });
@@ -432,7 +438,7 @@ export async function lintRepositoryContracts(rootDirectory: string): Promise<Ta
     }
     lintPathContracts(file.task, findings, path);
     lintTaskPolicy(file.task, findings, path);
-    lintTaskStateOwner(file.task, registeredAgents, findings, path);
+    lintTaskStateOwner(file.task, registeredAgents, registeredAgents.size > 0, findings, path);
   }
 
   let sync: TaskLintSyncSummary = { checked: [], current: [], missing: [], stale: [] };

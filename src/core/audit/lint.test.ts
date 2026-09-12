@@ -6,6 +6,7 @@ import test from "node:test";
 
 import { initProject } from "../init/index.js";
 import { writeAllAgentExports } from "../exporters/index.js";
+import { registerAgent } from "../agents/index.js";
 import {
   renderTaskMarkdown,
   type ProjectTask,
@@ -73,10 +74,29 @@ test("contract lint is clean for an initialized repository with current exports"
   });
 });
 
+test("contract lint does not fail a clean checkout without a local agent registry", async () => {
+  await withTempDirectory(async (directory) => {
+    await initProject(directory);
+    await writeAllAgentExports(directory, undefined, { force: true });
+    await writeTask(directory, "0020-doing.md", task("0020", {
+      state: "doing",
+      owner: "opencode-ds-v41",
+    }));
+
+    const result = await lintRepositoryContracts(directory);
+    const finding = result.findings.find((entry) => entry.code === "owner-unverified");
+
+    assert.equal(result.hasErrors, false);
+    assert.ok(finding);
+    assert.equal(finding.level, "warning");
+  });
+});
+
 test("contract lint reports graph path metadata and policy violations", async () => {
   await withTempDirectory(async (directory) => {
     await initProject(directory);
     await writeAllAgentExports(directory, undefined, { force: true });
+    await registerAgent(directory, { id: "known-agent", developer: "dev", platform: "opencode", model: "m" });
 
     await writeTask(directory, "0002-first.md", task("0002", {
       allowedFiles: ["docs/**"],
