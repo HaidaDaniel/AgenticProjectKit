@@ -9,7 +9,8 @@ import test from "node:test";
 import ts from "typescript";
 
 import { startWork } from "../core/work/index.js";
-import { resolveExecutionRoute, resolveAssurancePlan } from "../core/execution/index.js";
+import { WORKER_ROLES } from "../core/work/contract.js";
+import { resolveExecutionRoute, resolveAssurancePlan, EXECUTION_ROLES } from "../core/execution/index.js";
 import { resolveTaskPolicy } from "../core/tasks/policy.js";
 import {
   assessWorkspaceRun,
@@ -4379,4 +4380,73 @@ test("CLI task archive --all refuses archive path collisions", async () => {
       "Source task should not be moved",
     );
   });
+});
+
+const CANONICAL_CLI_DOCS = ["docs/task-system.md", "docs/cli-commands.md", "README.md"] as const;
+
+interface RoleExample {
+  command: "execution" | "work";
+  roles: string[];
+}
+
+function roleExamples(line: string): RoleExample | undefined {
+  const isExecution = /apk execution explain\b/.test(line);
+  const isWork = /apk work\b/.test(line);
+  if (!isExecution && !isWork) return undefined;
+  const match = /--role\s+<?([A-Za-z|-]+)>?/.exec(line);
+  if (!match) return undefined;
+  const roles = match[1]
+    .split("|")
+    .map((role) => role.replace(/[<>`]/g, "").trim())
+    .filter((role) => role.length > 0);
+  if (roles.length === 1 && roles[0] === "role") return undefined;
+  return { command: isExecution ? "execution" : "work", roles };
+}
+
+test("canonical CLI examples stay aligned with review and role parser contracts", async () => {
+  let reviewExamples = 0;
+  let reviewRunMentions = 0;
+  let executionExamples = 0;
+  let workExamples = 0;
+
+  for (const relativePath of CANONICAL_CLI_DOCS) {
+    const text = await readFile(join(process.cwd(), relativePath), "utf8");
+
+    for (const line of text.split("\n")) {
+      if (/apk review\b/.test(line) && /--result\b/.test(line)) {
+        reviewExamples += 1;
+        assert.match(line, /--review-run\b/, `${relativePath}: review-recording example must include --review-run: ${line}`);
+      }
+      if (/apk review\b/.test(line) && /reviewRunId/.test(line)) {
+        reviewRunMentions += 1;
+      }
+
+      const example = roleExamples(line);
+      if (!example) continue;
+      if (example.command === "execution") {
+        executionExamples += 1;
+        for (const role of example.roles) {
+          assert.ok(
+            (EXECUTION_ROLES as readonly string[]).includes(role),
+            `${relativePath}: invalid execution explain role ${role}`,
+          );
+        }
+      } else {
+        workExamples += 1;
+        for (const role of example.roles) {
+          assert.ok(
+            (WORKER_ROLES as readonly string[]).includes(role),
+            `${relativePath}: invalid apk work role ${role}`,
+          );
+        }
+      }
+    }
+  }
+
+  assert.ok(reviewExamples > 0, "expected at least one canonical review-recording example");
+  assert.ok(reviewRunMentions > 0, "expected canonical docs to explain the reviewRunId");
+  assert.ok(executionExamples > 0, "expected canonical execution explain role examples");
+  assert.ok(workExamples > 0, "expected canonical apk work role examples");
+  assert.ok(!(EXECUTION_ROLES as readonly string[]).includes("implement"));
+  assert.ok(!(WORKER_ROLES as readonly string[]).includes("implementation"));
 });

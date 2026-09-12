@@ -387,8 +387,10 @@ For independent review, prepare an inspection prompt and record a separately ide
 
 ```bash
 pnpm exec apk review 0001 --reviewer codex-reviewer --prompt
-pnpm exec apk review 0001 --reviewer codex-reviewer --result pass --implementation-run verify-123
+pnpm exec apk review 0001 --reviewer codex-reviewer --review-run <review-run-id> --result pass --implementation-run verify-123
 ```
+
+`--prompt` prepares and persists a revision-bound review session and prints the `reviewRunId` (`Review run: <review-run-id>`) that must be supplied as `--review-run` when recording the result.
 
 Review evidence keeps findings and revision-bound freshness; the implementation owner cannot self-certify an independent review.
 

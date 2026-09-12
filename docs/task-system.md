@@ -278,9 +278,11 @@ The existing `apk review <task-id> --owner <agent-id>` transition moves an imple
 
 ```bash
 pnpm exec apk review 0063 --reviewer codex-reviewer --prompt
-pnpm exec apk review 0063 --reviewer codex-reviewer --result pass --implementation-run verify-123
-pnpm exec apk review 0063 --reviewer codex-reviewer --result changes_requested --finding "Cover the rollback path."
+pnpm exec apk review 0063 --reviewer codex-reviewer --review-run <review-run-id> --result pass --implementation-run verify-123
+pnpm exec apk review 0063 --reviewer codex-reviewer --review-run <review-run-id> --result changes_requested --finding "Cover the rollback path."
 ```
+
+`apk review --prompt` prepares and persists a revision-bound review session and prints its `reviewRunId` as `Review run: <review-run-id>`. Recording a result requires that exact `--review-run <review-run-id>`; a missing or stale preparation is rejected.
 
 Reviewers must be registered and cannot equal the implementation owner. Review records use a distinct `review-...` run ID, retain reviewer identity, optional implementation-run linkage, findings, and the same baseline/candidate/worktree subject used by verification. `listTaskReviews` and `assessTaskReviews` expose history and `current`/`stale`/`unknown` freshness; changing dirty implementation content makes earlier review PASS evidence stale. Review prompts name the evaluated HEAD and baseline-to-current changed paths and require inspection of acceptance criteria, assumptions, failure paths, scope, and counterexamples. They explicitly reject green tests alone as correctness proof.
 

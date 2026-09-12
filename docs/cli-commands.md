@@ -38,8 +38,8 @@ When Agentic Project Kit is installed as a repository dev dependency, run comman
 - `apk release <task-id> --owner <agent-id>` - release a task back to todo.
 - `apk block <task-id> --owner <agent-id> --reason <text>` - block a task.
 - `apk review <task-id> --owner <agent-id>` - move a task to review.
-- `apk review <task-id> --reviewer <reviewer-id> --result <pass|changes_requested|fail> [--finding <text>] [--implementation-run <run-id>]` - append independent review evidence without changing task state.
-- `apk review <task-id> --reviewer <reviewer-id> --prompt` - render the revision-bound inspection prompt for an independent reviewer.
+- `apk review <task-id> --reviewer <reviewer-id> --review-run <review-run-id> --result <pass|changes_requested|fail> [--finding <text>] [--implementation-run <run-id>]` - append independent review evidence without changing task state; `--review-run` is required and comes from the prior `apk review --prompt`.
+- `apk review <task-id> --reviewer <reviewer-id> --prompt` - render the revision-bound inspection prompt for an independent reviewer; prints the `reviewRunId` (`Review run: <review-run-id>`) required when recording the result.
 - `apk done <task-id> --owner <agent-id>` - mark a task done.
 - `apk cancel <task-id> --owner <agent-id> --reason <text>` - cancel a task.
 - `apk context <task-id>` - output the context files needed for a task.
