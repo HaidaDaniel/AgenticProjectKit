@@ -50,6 +50,9 @@ export async function runAdoptCommand(argv: string[]): Promise<number> {
       for (const change of plan.changes) {
         console.log(`- ${change.action} ${change.path}: ${change.reason}`);
       }
+      for (const diagnostic of plan.diagnostics) {
+        console.error(`Warning: ${diagnostic}`);
+      }
       console.log("No files were written.");
       return 0;
     }
@@ -64,6 +67,10 @@ export async function runAdoptCommand(argv: string[]): Promise<number> {
 
     if (result.skipped.length > 0) {
       console.log(`Skipped ${result.skipped.length} existing file(s).`);
+    }
+
+    for (const diagnostic of result.diagnostics) {
+      console.error(`Warning: ${diagnostic}`);
     }
 
     return 0;

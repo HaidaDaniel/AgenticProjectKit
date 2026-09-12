@@ -587,6 +587,8 @@ pnpm exec apk adopt --preview
 
 Apply the compatibility marker and missing kit files explicitly with `pnpm exec apk adopt --apply`. Legacy task Markdown remains readable and is not rewritten; customized instructions and unknown config keys are preserved. Repeating `--apply` is idempotent. Use `--dry-run` as an alias for `--preview`.
 
+Both `init` and `adopt` additively add the canonical APK operational ignore rules to `.gitignore` without reformatting existing content, and warn when APK runtime state is already tracked in Git (ignore rules cannot untrack it; APK never runs `git rm --cached`).
+
 After adoption:
 
 ```bash

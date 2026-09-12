@@ -1,17 +1,22 @@
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { execFile } from "node:child_process";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { promisify } from "node:util";
 
 import { listAgentExporters } from "../exporters/index.js";
 import {
   renderContextSuggestion,
   suggestContext,
 } from "../context-suggestions/index.js";
+import { APK_OPERATIONAL_IGNORE_ENTRIES } from "../init/index.js";
 import { adoptRepository, planAdoption } from "./adopt.js";
 import { syncAgentExports } from "../sync/index.js";
 import type { ProjectTask } from "../tasks/index.js";
+
+const execFileAsync = promisify(execFile);
 
 async function withTempRepository(
   run: (directory: string) => Promise<void>,
@@ -262,5 +267,51 @@ test("suggestContext ranks dependencies and related tests with reasons", async (
     assert.equal(result.allowedFiles.includes("src/forbidden.ts"), false);
     assert.equal(result.suggestions.find((entry) => entry.path === "src/forbidden.ts")?.role, "context");
     assert.match(renderContextSuggestion(result), /src\/dependency\.ts .*changed file dependency/);
+  });
+});
+
+test("adoptRepository adds the canonical APK ignore block additively and idempotently", async () => {
+  await withTempRepository(async (directory) => {
+    await createExistingRepository(directory);
+    const custom = "# user rules\nnode_modules/\n";
+    await writeFile(join(directory, ".gitignore"), custom, "utf8");
+
+    const result = await adoptRepository(directory);
+    assert.ok(result.created.includes(".gitignore") || result.updated.includes(".gitignore"));
+
+    const gitignore = await readFile(join(directory, ".gitignore"), "utf8");
+    assert.ok(gitignore.startsWith(custom));
+    for (const entry of APK_OPERATIONAL_IGNORE_ENTRIES) {
+      assert.ok(gitignore.split("\n").includes(entry), `missing ${entry}`);
+    }
+    assert.equal(gitignore.includes(".apk-worktrees/"), false);
+
+    const repeated = await adoptRepository(directory);
+    assert.equal(repeated.created.includes(".gitignore"), false);
+    assert.equal(repeated.updated.includes(".gitignore"), false);
+    assert.equal(await readFile(join(directory, ".gitignore"), "utf8"), gitignore);
+  });
+});
+
+test("adoptRepository surfaces tracked APK operational state without deleting or untracking it", async () => {
+  await withTempRepository(async (directory) => {
+    await createExistingRepository(directory);
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".agentic", "runs"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "runs", "foo.jsonl"), "{}\n", "utf8");
+    await git("add", ".agentic/runs/foo.jsonl");
+    await git("commit", "--quiet", "-m", "track runtime state");
+
+    const result = await adoptRepository(directory);
+    assert.ok(result.diagnostics.some((diagnostic) => diagnostic.includes(".agentic/runs/foo.jsonl")));
+
+    const { stdout } = await execFileAsync("git", ["ls-files", ".agentic/runs/foo.jsonl"], { cwd: directory });
+    assert.equal(stdout.trim(), ".agentic/runs/foo.jsonl");
+    assert.equal(await readFile(join(directory, ".agentic", "runs", "foo.jsonl"), "utf8"), "{}\n");
   });
 });

@@ -1814,6 +1814,26 @@ test("CLI adopt previews legacy migration without writes and applies it idempote
   });
 });
 
+test("CLI init surfaces tracked APK operational state as a warning", async () => {
+  await withTempDirectory(async (directory) => {
+    await execFileAsync("git", ["init", "-q"], { cwd: directory });
+    await execFileAsync("git", ["config", "user.email", "codex@example.test"], { cwd: directory });
+    await execFileAsync("git", ["config", "user.name", "Codex"], { cwd: directory });
+    await mkdir(join(directory, ".agentic", "runs"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "runs", "foo.jsonl"), "{}\n", "utf8");
+    await execFileAsync("git", ["add", ".agentic/runs/foo.jsonl"], { cwd: directory });
+    await execFileAsync("git", ["commit", "-q", "-m", "track runtime state"], { cwd: directory });
+
+    const init = await runCli(["init"], directory);
+    assert.equal(init.exitCode, 0, `${init.stdout}${init.stderr}`);
+    assert.match(init.stderr, /Tracked APK operational state/);
+    assert.match(init.stderr, /\.agentic\/runs\/foo\.jsonl/);
+
+    const tracked = await execFileAsync("git", ["ls-files", ".agentic/runs/foo.jsonl"], { cwd: directory });
+    assert.equal(tracked.stdout.trim(), ".agentic/runs/foo.jsonl");
+  });
+});
+
 function buildTaskMarkdown(id: string, title: string, state: string, owner = "none"): string {
   return [
     `# Task ${id} - ${title}`,

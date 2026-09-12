@@ -33,8 +33,16 @@ export async function runInitCommand(argv: string[]): Promise<number> {
     console.log(`Initialized Agentic Project Kit in ${rootDirectory}`);
     console.log(`Created ${result.created.length} file(s).`);
 
+    if (result.updated.length > 0) {
+      console.log(`Updated ${result.updated.length} file(s).`);
+    }
+
     if (result.skipped.length > 0) {
       console.log(`Skipped ${result.skipped.length} existing file(s).`);
+    }
+
+    for (const diagnostic of result.diagnostics) {
+      console.error(`Warning: ${diagnostic}`);
     }
 
     return 0;

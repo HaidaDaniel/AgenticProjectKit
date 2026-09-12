@@ -1,7 +1,7 @@
 # Task 0111 - Generate canonical APK operational ignores during init and adoption
 
-State: todo
-Owner: none
+State: doing
+Owner: opencode-ds-v41
 Mode: maintenance
 Lane: workflow
 Type: bugfix
@@ -64,6 +64,8 @@ Do not blindly copy unrelated APK-repository development ignores such as its own
 - src/core/docs/adopt.ts
 - src/core/docs/adopt.test.ts
 - src/cli/cli.test.ts
+- src/cli/commands/init.ts
+- src/cli/commands/adopt.ts
 - docs/task-system.md
 - docs/decisions.md
 - docs/progress.md
@@ -165,3 +167,4 @@ Do not blindly copy unrelated APK-repository development ignores such as its own
 
 - Keep the fix narrow and limited to APK-owned operational/generated ignore state.
 - Prefer a bounded block that is appended once and matched idempotently; do not reformat the rest of the file.
+- Scope expanded to `src/cli/commands/init.ts` and `src/cli/commands/adopt.ts` so the tracked-operational-state diagnostic is actually surfaced to the user running `apk init`/`apk adopt`; the canonical ignore logic stays in core.

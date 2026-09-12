@@ -14,6 +14,11 @@ import {
   DEFAULT_AGENT_POLICY,
   renderAgentExportFiles,
 } from "../exporters/index.js";
+import {
+  GITIGNORE_PATH,
+  planApkGitignore,
+  type ApkGitignoreResult,
+} from "../init/index.js";
 import { scanRepository, type RepositoryScan } from "../scanners/index.js";
 import { renderTaskMarkdown, type ProjectTask } from "../tasks/index.js";
 
@@ -23,6 +28,8 @@ export interface AdoptResult {
   skipped: string[];
   updated: string[];
   compatibility: CompatibilityReport;
+  gitignore: ApkGitignoreResult;
+  diagnostics: string[];
 }
 
 export interface AdoptionChange {
@@ -36,6 +43,8 @@ export interface AdoptionPlan {
   compatibility: CompatibilityReport;
   changes: AdoptionChange[];
   skipped: string[];
+  gitignore: ApkGitignoreResult;
+  diagnostics: string[];
 }
 
 interface AdoptFile {
@@ -498,12 +507,24 @@ async function buildAdoptionPlan(
 
   if (migrationOperation) operations.push(migrationOperation);
 
+  const gitignorePlan = await planApkGitignore(rootDirectory);
+  if (gitignorePlan.content !== undefined) {
+    operations.push({
+      action: gitignorePlan.result.action === "created" ? "create" : "update",
+      path: GITIGNORE_PATH,
+      reason: "canonical APK operational/generated ignore rules",
+      content: gitignorePlan.content,
+    });
+  }
+
   return {
     plan: {
       scan,
       compatibility,
       changes: operations.map(({ action, path, reason }) => ({ action, path, reason })),
       skipped,
+      gitignore: gitignorePlan.result,
+      diagnostics: gitignorePlan.result.diagnostics,
     },
     operations,
   };
@@ -543,5 +564,7 @@ export async function adoptRepository(
     skipped,
     updated,
     compatibility: built.plan.compatibility,
+    gitignore: built.plan.gitignore,
+    diagnostics: built.plan.diagnostics,
   };
 }

@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { CURRENT_CONFIG_SCHEMA_VERSION, DEFAULT_CONFIG, detectCompatibility, parseAgenticConfigJson, serializeAgenticConfig, } from "../config/index.js";
 import { CONFIG_PATH } from "../config/file.js";
 import { DEFAULT_AGENT_POLICY, renderAgentExportFiles, } from "../exporters/index.js";
+import { GITIGNORE_PATH, planApkGitignore, } from "../init/index.js";
 import { scanRepository } from "../scanners/index.js";
 import { renderTaskMarkdown } from "../tasks/index.js";
 async function fileExists(path) {
@@ -432,12 +433,23 @@ async function buildAdoptionPlan(rootDirectory, includeMigration) {
     }
     if (migrationOperation)
         operations.push(migrationOperation);
+    const gitignorePlan = await planApkGitignore(rootDirectory);
+    if (gitignorePlan.content !== undefined) {
+        operations.push({
+            action: gitignorePlan.result.action === "created" ? "create" : "update",
+            path: GITIGNORE_PATH,
+            reason: "canonical APK operational/generated ignore rules",
+            content: gitignorePlan.content,
+        });
+    }
     return {
         plan: {
             scan,
             compatibility,
             changes: operations.map(({ action, path, reason }) => ({ action, path, reason })),
             skipped,
+            gitignore: gitignorePlan.result,
+            diagnostics: gitignorePlan.result.diagnostics,
         },
         operations,
     };
@@ -469,5 +481,7 @@ export async function adoptRepository(rootDirectory, options = {}) {
         skipped,
         updated,
         compatibility: built.plan.compatibility,
+        gitignore: built.plan.gitignore,
+        diagnostics: built.plan.diagnostics,
     };
 }

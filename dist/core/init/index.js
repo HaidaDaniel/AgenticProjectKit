@@ -1,6 +1,148 @@
+import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { promisify } from "node:util";
 import { CURRENT_CONFIG_SCHEMA_VERSION, DEFAULT_CONFIG, serializeAgenticConfig, } from "../config/index.js";
+const execFileAsync = promisify(execFile);
+export const GITIGNORE_PATH = ".gitignore";
+/**
+ * Canonical APK-owned operational/generated ignore entries. This is an additive
+ * contract: it covers only APK runtime state and generated reports, never the
+ * host repository's own build output or environment files.
+ */
+export const APK_OPERATIONAL_IGNORE_ENTRIES = [
+    ".tasks/.apk.lock",
+    ".agentic/agents.jsonl",
+    ".agentic/runs.jsonl",
+    ".agentic/agents/*",
+    "!.agentic/agents/.gitkeep",
+    ".agentic/runs/*",
+    "!.agentic/runs/.gitkeep",
+    ".agentic/evidence.jsonl",
+    ".agentic/task-baselines.jsonl",
+    ".agentic/evidence.append.lock",
+    ".agentic/reviews/*",
+    ".agentic/sessions/*",
+    ".agentic/workspaces/*",
+    ".apk-workspaces/",
+    "docs/audit-report.md",
+    "docs/project-map.md",
+];
+const TRACKED_OPERATIONAL_SPECS = [
+    ".tasks/.apk.lock",
+    ".agentic/agents.jsonl",
+    ".agentic/runs.jsonl",
+    ".agentic/agents",
+    ".agentic/runs",
+    ".agentic/evidence.jsonl",
+    ".agentic/task-baselines.jsonl",
+    ".agentic/evidence.append.lock",
+    ".agentic/reviews",
+    ".agentic/sessions",
+    ".agentic/workspaces",
+    ".apk-workspaces",
+    "docs/audit-report.md",
+    "docs/project-map.md",
+];
+function normalizeIgnoreLine(line) {
+    return line.replace(/\r$/, "");
+}
+/**
+ * Additively add missing canonical APK ignore entries to existing `.gitignore`
+ * content without reformatting, reordering, or removing anything else.
+ */
+export function renderApkGitignoreUpdate(existing) {
+    const entries = [...APK_OPERATIONAL_IGNORE_ENTRIES];
+    if (existing === undefined) {
+        return {
+            content: `${entries.join("\n")}\n`,
+            changed: true,
+            added: entries,
+            skippedEntries: [],
+        };
+    }
+    const existingLines = new Set(existing.split("\n").map(normalizeIgnoreLine));
+    const added = entries.filter((entry) => !existingLines.has(entry));
+    const skippedEntries = entries.filter((entry) => existingLines.has(entry));
+    if (added.length === 0) {
+        return { content: existing, changed: false, added: [], skippedEntries };
+    }
+    const eol = existing.includes("\r\n") ? "\r\n" : "\n";
+    let content = existing;
+    if (content.length > 0 && !content.endsWith("\n")) {
+        content += eol;
+    }
+    content += `${added.join(eol)}${eol}`;
+    return { content, changed: true, added, skippedEntries };
+}
+async function readOptionalText(path) {
+    try {
+        return await readFile(path, "utf8");
+    }
+    catch (error) {
+        if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+            return undefined;
+        }
+        throw error;
+    }
+}
+/**
+ * Read-only detection of APK-owned operational/generated paths that Git already
+ * tracks. Ignore rules cannot untrack them, so this surfaces a bounded
+ * diagnostic instead of silently reporting the repository as clean. APK never
+ * mutates the index.
+ */
+export async function detectTrackedApkOperationalPaths(rootDirectory) {
+    try {
+        const { stdout } = await execFileAsync("git", ["ls-files", "--", ...TRACKED_OPERATIONAL_SPECS], { cwd: rootDirectory, maxBuffer: 4 * 1024 * 1024 });
+        return [...new Set(stdout
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .filter((line) => line.length > 0)
+                .filter((line) => !line.endsWith(".gitkeep")))].sort();
+    }
+    catch {
+        return [];
+    }
+}
+function trackedOperationalDiagnostic(paths) {
+    if (paths.length === 0) {
+        return [];
+    }
+    const sample = paths.slice(0, 8).join(", ");
+    const extra = paths.length > 8 ? ` (+${paths.length - 8} more)` : "";
+    return [
+        `Tracked APK operational state remains in Git and ignore rules do not untrack it: ${sample}${extra}. Decide manually whether to untrack with 'git rm --cached'; APK never mutates the index or deletes files.`,
+    ];
+}
+export async function ensureApkGitignore(rootDirectory) {
+    const { result, content } = await planApkGitignore(rootDirectory);
+    if (content !== undefined) {
+        await writeFile(join(rootDirectory, GITIGNORE_PATH), content, "utf8");
+    }
+    return result;
+}
+/** Read-only preview of the canonical APK ignore state and tracked-state warning. */
+export async function inspectApkGitignore(rootDirectory) {
+    return (await planApkGitignore(rootDirectory)).result;
+}
+export async function planApkGitignore(rootDirectory) {
+    const existing = await readOptionalText(join(rootDirectory, GITIGNORE_PATH));
+    const update = renderApkGitignoreUpdate(existing);
+    const action = existing === undefined ? "created" : update.changed ? "updated" : "unchanged";
+    const trackedOperationalPaths = await detectTrackedApkOperationalPaths(rootDirectory);
+    return {
+        result: {
+            path: GITIGNORE_PATH,
+            action,
+            added: update.added,
+            skippedEntries: update.skippedEntries,
+            trackedOperationalPaths,
+            diagnostics: trackedOperationalDiagnostic(trackedOperationalPaths),
+        },
+        ...(update.changed ? { content: update.content } : {}),
+    };
+}
 const STARTER_FILES = [
     {
         path: ".agentic/config.json",
@@ -293,6 +435,7 @@ export function getInitStarterFiles() {
 export async function initProject(rootDirectory) {
     const created = [];
     const skipped = [];
+    const updated = [];
     for (const file of STARTER_FILES) {
         const absolutePath = join(rootDirectory, file.path);
         if (await fileExists(absolutePath)) {
@@ -303,5 +446,18 @@ export async function initProject(rootDirectory) {
         await writeFile(absolutePath, file.content, "utf8");
         created.push(file.path);
     }
-    return { created, skipped };
+    const gitignore = await ensureApkGitignore(rootDirectory);
+    if (gitignore.action === "created") {
+        created.push(gitignore.path);
+    }
+    else if (gitignore.action === "updated") {
+        updated.push(gitignore.path);
+    }
+    return {
+        created,
+        skipped,
+        updated,
+        gitignore,
+        diagnostics: gitignore.diagnostics,
+    };
 }
