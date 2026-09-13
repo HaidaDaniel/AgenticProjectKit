@@ -27,6 +27,16 @@ Review-budget extension: if a decision allows further semantic review, model it 
 
 `accept-current` means the human accepts the current candidate despite an exhausted or non-passing semantic-review path. It does NOT mean ignoring tests, scope, CI, evidence freshness, or dependencies. The gate should clearly surface which review blocker was resolved by the human decision. `changes-required` records that a human requires further changes, must not make the gate pass, and must remain visible in provenance/status. If existing task cancellation is already the canonical transition, route `cancel` into it rather than duplicating cancellation logic, as long as provenance is preserved.
 
+### Operator trust boundary
+
+Canonical semantics: a human/operator decision is explicit out-of-band authorization. The implementation agent may REQUEST a human decision, and may RECORD a decision only after the user/operator has explicitly communicated exactly that decision. The agent MUST NOT choose `accept-current` on its own, grant itself additional review passes, assume the user's answer, synthesize human consent, or impersonate a human/operator. Absence of a human response keeps the task blocked. Review-budget exhaustion MUST NEVER automatically turn into `accept-current`, `grant-review-passes`, or any other permissive decision.
+
+APK does NOT claim cryptographic or biometric human authentication in this task. Provenance must honestly label the trust model, for example `operator-asserted` or an equivalent explicit representation. Do not use wording that creates a false impression of a stronger guarantee than APK provides, such as `cryptographically verified human` or `authenticated human identity`, when no such mechanism actually exists.
+
+### Structured gate requirement
+
+Gate integration MUST use structured review/budget/decision state, not rendered blocker text. A human decision resolves a specific structured condition (semantic review budget exhausted) while hard blockers remain separate typed/structured conditions. It is forbidden to remove blockers via string or error-message matching, for example `blockers.filter((b) => !b.includes("review budget exhausted"))` or any equivalent substring matching. Changing a diagnostic or blocker text must not change the correctness semantics of a human decision.
+
 ## Context files
 
 - AGENTS.md
@@ -79,13 +89,14 @@ Review-budget extension: if a decision allows further semantic review, model it 
 
 1. Inspect the current review, gate, evidence, provenance, status, and lifecycle-transition code paths before choosing the representation and command surface.
 2. Decide the bounded decision vocabulary and the first-class append-only record shape, preserving actor, candidate subject, reason, and timestamp.
-3. Implement the human-decision record and the candidate-binding/freshness semantics using the existing evidence-freshness primitive.
-4. Integrate the gate so a current human decision resolves only semantic-review exhaustion while every unrelated hard blocker still fails closed.
+3. Implement the human-decision record and the candidate-binding/freshness semantics using the existing evidence-freshness primitive, recording the decision as an honest operator-asserted assertion rather than an authenticated identity.
+4. Compute structured review/budget/decision state (required, budget, passes used, exhausted, current outcome, current decision) and integrate the gate so a current human decision resolves only the structured semantic-review-exhaustion condition while every unrelated hard blocker still fails closed.
 5. Implement bounded review-budget extension without resetting review history or enabling unlimited loops.
-6. Expose the decision, actor, candidate, blocker it resolves, and current/stale freshness through status, gate, and provenance, and document the command in the CLI help surface.
-7. Add regression coverage for the counterexamples in Acceptance criteria.
-8. Update canonical docs and regenerate `dist/` through the normal build.
-9. Run verification.
+6. Encode the operator trust boundary so automation cannot self-authorize a decision, and keep the task blocked while no explicit operator decision exists.
+7. Expose the decision, actor, candidate, blocker it resolves, and current/stale freshness through status, gate, and provenance, and document the command in the CLI help surface.
+8. Add regression coverage for the counterexamples in Acceptance criteria, including structured-state wording independence and no-self-authorization behavior.
+9. Update canonical docs and regenerate `dist/` through the normal build.
+10. Run verification.
 
 ## Acceptance criteria
 
@@ -99,6 +110,13 @@ Review-budget extension: if a decision allows further semantic review, model it 
 - Once the granted pass is consumed, the budget is exhausted again.
 - `changes-required` cannot satisfy the gate.
 - The decision, actor, candidate, reason, blocker it resolves, and freshness appear in status, gate, and provenance.
+- An agent cannot legitimately resolve an exhausted-review state merely by choosing `accept-current` on its own.
+- Generated canonical agent policy explicitly forbids self-authorized human/operator decisions.
+- With no explicit operator decision, the task remains blocked.
+- No automatic fallback generates a human decision.
+- Decision provenance does not assert a stronger identity or authentication guarantee than APK actually provides.
+- Gate integration uses structured review/budget/decision state; changing a diagnostic or blocker message does not change the correctness semantics of a human decision.
+- A human decision does not depend on substring matching of error or blocker text.
 - No `--force-done`, `--ignore-gate`, `--skip-verification`, or equivalent generic bypass is introduced.
 - Review history is never reset.
 
@@ -106,13 +124,16 @@ Review-budget extension: if a decision allows further semantic review, model it 
 
 - The completion gate is the single authoritative completion decision and already consumes candidate-bound evidence freshness.
 - Review evidence and candidate identity are derivable from the existing evidence subject and append-only store.
-- Session-scoped human decisions can be modeled without a user-account or authentication system.
+- Operator decisions can be modeled as operator-asserted append-only records without a user-account, authentication, or authorization system.
 
 ## Invariants
 
 - A human decision only resolves the semantic-review exhaustion blocker and never an unrelated hard correctness blocker.
 - A decision is bound to one candidate subject and becomes stale when the candidate changes.
 - Review-budget extension is bounded and additive; review history and used-pass accounting are preserved.
+- Agent-generated execution alone cannot constitute human/operator authorization.
+- Decision provenance states an operator-asserted trust level and never overclaims authentication.
+- Gate correctness derives from structured review/budget/decision state, not from rendered blocker text.
 - APK does not introduce a generic force-completion path.
 - Existing evidence append-lock and freshness semantics remain authoritative.
 
@@ -128,6 +149,7 @@ Review-budget extension: if a decision allows further semantic review, model it 
 - Can review-budget extension become an unlimited reset?
 - Is the actor and reason preserved in append-only provenance?
 - Can the gate explain exactly which blocker the decision resolves?
+- Could an autonomous implementation agent turn review exhaustion into self-approved completion without an actual operator decision?
 
 ## Counterexample searches
 
@@ -137,6 +159,9 @@ Review-budget extension: if a decision allows further semantic review, model it 
 - Repeated grants attempting to create an unlimited review loop.
 - Malformed or ambiguous candidate identity at decision time.
 - `changes-required` recorded while an otherwise passing candidate exists.
+- Review budget exhausted -> an agent invokes the decision command itself without explicit user authorization -> this is not a legitimate human escalation resolution.
+- An autonomous fallback synthesizes `accept-current` when no operator response exists.
+- A blocker or diagnostic message is reworded while the structured review state is unchanged.
 
 ## Verification
 
