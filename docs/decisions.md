@@ -898,3 +898,19 @@ The exact-SHA hosted CI failed at `node dist/cli/index.js lint --json` for the v
 Implementation and invariant:
 
 `src/core/audit/lint.ts` passes `registeredAgents.size > 0` into `lintTaskStateOwner` and downgrades only the missing-registry case. Repositories with a real local registry still fail closed on a genuinely unregistered owner.
+
+## ADR-0056 - Bounded lifecycle reason storage is separate from presentation width
+
+Status: accepted
+
+Decision:
+
+Authoritative lifecycle transition reasons are stored with an explicit 2048-character bound, while compact displays stay at 160 characters and append `…` when truncated. Both task Notes and the run-log `reason` field keep the bounded full reason; normalization stays a single whitespace-collapsed line, and truncation never splits a UTF-16 surrogate pair. Storage is bounded, not unlimited, and presentation truncation never replaces the stored value.
+
+Reason:
+
+The previous code truncated transition reasons to 160 characters at storage time in both `src/core/tasks/workflow.ts` and `src/core/agents/index.ts`, so an actionable blocker such as a review-budget exhaustion message was permanently lost from task Markdown and the runtime run log. That is data loss, not a display choice.
+
+Implementation and invariant:
+
+`src/core/agents/index.ts` exports `REASON_STORAGE_LIMIT` (2048), `REASON_DISPLAY_LIMIT` (160), `normalizeReasonText`, and `summarizeReasonText`; `appendRunLog` and `appendReason` store the bounded full reason, and `src/core/status/index.ts` bounds only the rendered summary. No new storage subsystem, byte slicing, external persistence, or multiline blocker document is introduced.

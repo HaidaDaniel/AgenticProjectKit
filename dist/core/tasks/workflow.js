@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
-import { appendRunLog, durationSinceLastClaim, requireAgent, } from "../agents/index.js";
+import { appendRunLog, durationSinceLastClaim, normalizeReasonText, REASON_STORAGE_LIMIT, requireAgent, } from "../agents/index.js";
 import { appendTaskEvidence } from "./evidence.js";
 import { captureTaskCompletionCandidate, evaluateTaskCompletionGate, TaskCompletionGateError, } from "./gate.js";
 import { findTaskFile, ensureTaskBaseline, loadTaskFile, recordTaskHandoff, writeTaskFile, } from "./index.js";
@@ -30,7 +30,7 @@ function appendReason(task, event, reason) {
     }
     return {
         ...task,
-        notes: [...task.notes, `${event}: ${reason.replace(/\s+/g, " ").trim().slice(0, 160)}`],
+        notes: [...task.notes, `${event}: ${normalizeReasonText(reason, REASON_STORAGE_LIMIT)}`],
     };
 }
 async function transition(options, event, update) {

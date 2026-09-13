@@ -1,7 +1,7 @@
 # Task 0120 - Preserve actionable task transition reasons and truncate only presentation
 
-State: todo
-Owner: none
+State: doing
+Owner: opencode-ds-v41
 Mode: maintenance
 Lane: workflow
 Type: bugfix

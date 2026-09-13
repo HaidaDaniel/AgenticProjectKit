@@ -91,11 +91,43 @@ async function detectDeveloperId(rootDirectory, override) {
     validateCompactValue("Developer", developer);
     return developer;
 }
-function truncateReason(reason) {
+/**
+ * Authoritative lifecycle reason storage is bounded but must stay actionable.
+ * Presentation summaries are deliberately smaller than storage so a compact
+ * view never becomes the reason the full blocker text was lost.
+ */
+export const REASON_STORAGE_LIMIT = 2048;
+export const REASON_DISPLAY_LIMIT = 160;
+function truncateCodeUnitsSafely(value, maxLength) {
+    if (maxLength <= 0) {
+        return "";
+    }
+    if (value.length <= maxLength) {
+        return value;
+    }
+    let end = maxLength;
+    const last = value.charCodeAt(end - 1);
+    // Never split a surrogate pair; a lone surrogate serializes to a broken character.
+    if (last >= 0xd800 && last <= 0xdbff) {
+        end -= 1;
+    }
+    return value.slice(0, end);
+}
+export function normalizeReasonText(value, maxLength = REASON_STORAGE_LIMIT) {
+    return truncateCodeUnitsSafely(value.replace(/\s+/g, " ").trim(), maxLength);
+}
+export function summarizeReasonText(value, maxLength = REASON_DISPLAY_LIMIT) {
+    const collapsed = value.replace(/\s+/g, " ").trim();
+    if (collapsed.length <= maxLength) {
+        return collapsed;
+    }
+    return `${truncateCodeUnitsSafely(collapsed, maxLength - 1)}…`;
+}
+function storeReason(reason) {
     if (!reason) {
         return undefined;
     }
-    return reason.replace(/\s+/g, " ").trim().slice(0, 160);
+    return normalizeReasonText(reason, REASON_STORAGE_LIMIT);
 }
 function canonicalAgent(raw) {
     return {
@@ -271,7 +303,7 @@ export async function appendRunLog(rootDirectory, input) {
         state: input.state,
         durationSec: input.durationSec,
         outcome: input.outcome,
-        reason: truncateReason(input.reason),
+        reason: storeReason(input.reason),
     };
     await writeRunEvent(rootDirectory, event, false);
     return event;

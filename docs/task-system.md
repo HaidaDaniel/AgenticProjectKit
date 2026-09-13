@@ -92,6 +92,8 @@ Run log path:
 
 Run logs are compact JSONL events for later developer/platform/model analysis. They do not store prompts, stdout, stderr, diffs, absolute paths, or context lists.
 
+Lifecycle transition reasons (`claim`, `release`, `block`, `cancel`, `done`, `review`) are stored as a single whitespace-normalized line. Authoritative storage (task Notes and the run-log `reason` field) is bounded to 2048 characters so an actionable blocker is preserved instead of being cut at the UI width. Compact status summaries remain bounded to 160 characters and append `…` when truncated; presentation truncation never replaces authoritative storage.
+
 Legacy `.agentic/agents.jsonl` and `.agentic/runs.jsonl` are migration inputs only and should not be committed.
 
 ## Task rules

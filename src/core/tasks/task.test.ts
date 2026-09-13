@@ -10,7 +10,11 @@ import {
   registerAgent,
   listAgents,
   migrateAgentLogs,
+  normalizeReasonText,
   readRunLog,
+  REASON_DISPLAY_LIMIT,
+  REASON_STORAGE_LIMIT,
+  summarizeReasonText,
 } from "../agents/index.js";
 import {
   renderTaskContext,
@@ -81,6 +85,7 @@ import {
 import {
   claimTask,
   blockTask,
+  cancelTask,
   createStaleTaskLock,
   doneTask,
   releaseTask,
@@ -4424,4 +4429,108 @@ test("validateTaskDependencies accepts active task depending on archived done ta
   const issues = validateTaskDependencies(activeFiles, archivedFiles);
 
   assert.equal(issues.length, 0, "Should have no issues for active task depending on archived done task");
+});
+
+test("bounded lifecycle reason normalization separates storage from display", () => {
+  const short = "short reason";
+  assert.equal(normalizeReasonText(short), short);
+  assert.equal(summarizeReasonText(short), short);
+
+  const exactly160 = "a".repeat(160);
+  assert.equal(normalizeReasonText(exactly160).length, 160);
+  assert.equal(summarizeReasonText(exactly160), exactly160);
+
+  const d161 = "b".repeat(161);
+  assert.equal(normalizeReasonText(d161).length, 161);
+  const summary = summarizeReasonText(d161);
+  assert.equal(summary.length, 160);
+  assert.ok(summary.endsWith("…"), "compact summary must indicate truncation");
+
+  const nearMax = "c".repeat(REASON_STORAGE_LIMIT - 1);
+  assert.equal(normalizeReasonText(nearMax).length, REASON_STORAGE_LIMIT - 1);
+
+  const overMax = "d".repeat(REASON_STORAGE_LIMIT + 500);
+  assert.equal(normalizeReasonText(overMax).length, REASON_STORAGE_LIMIT);
+
+  const multiline = "line one\n\n  line two\t line three  ";
+  assert.equal(normalizeReasonText(multiline), "line one line two line three");
+
+  const emoji = "🙂".repeat(4);
+  assert.equal(normalizeReasonText(emoji, 5), "🙂🙂");
+  assert.equal(Buffer.from(normalizeReasonText(emoji, 5), "utf8").toString("utf8"), "🙂🙂");
+});
+
+test("block stores the full bounded transition reason in task notes", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const reason = "R".repeat(400);
+    await blockTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a", reason });
+
+    const { task } = await loadTaskFile(join(directory, ".tasks", "0007-scoped-task.md"));
+    assert.equal(task.state, "blocked");
+    assert.equal(task.notes.at(-1), `block: ${reason}`);
+    assert.ok(task.notes.at(-1)!.length > 160);
+    assert.equal(task.notes[0], TASK.notes[0]);
+
+    const huge = "H".repeat(REASON_STORAGE_LIMIT + 1000);
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await blockTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a", reason: huge });
+    const bounded = await loadTaskFile(join(directory, ".tasks", "0007-scoped-task.md"));
+    const stored = bounded.task.notes.at(-1)!;
+    assert.equal(stored, `block: ${"H".repeat(REASON_STORAGE_LIMIT)}`);
+  });
+});
+
+test("cancel stores the full bounded transition reason in task notes", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const reason = "cancel ".repeat(60).trim();
+    await cancelTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a", reason });
+
+    const { task } = await loadTaskFile(join(directory, ".tasks", "0007-scoped-task.md"));
+    assert.equal(task.state, "canceled");
+    assert.equal(task.notes.at(-1), `cancel: ${reason}`);
+    assert.ok(task.notes.at(-1)!.length > 160);
+  });
+});
+
+test("release and block keep bounded full reasons in the runtime run log", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const releaseReason = "release " + "x".repeat(400);
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a", reason: releaseReason });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const blockReason = "block " + "y".repeat(400);
+    await blockTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a", reason: blockReason });
+
+    const runs = (await readRunLog(directory)).filter((event) => event.task === "0007");
+    const release = runs.find((event) => event.event === "release");
+    const block = runs.find((event) => event.event === "block");
+    assert.equal(release?.reason, releaseReason);
+    assert.equal(block?.reason, blockReason);
+    assert.ok((release?.reason ?? "").length > 160);
+    assert.ok((block?.reason ?? "").length > 160);
+
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const huge = "Z".repeat(REASON_STORAGE_LIMIT + 1000);
+    await blockTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a", reason: huge });
+    const boundedRuns = (await readRunLog(directory)).filter((event) => event.task === "0007" && event.event === "block");
+    assert.equal(boundedRuns.at(-1)?.reason, "Z".repeat(REASON_STORAGE_LIMIT));
+  });
+});
+
+test("legacy short lifecycle reasons remain unchanged and readable", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await blockTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a", reason: "waiting on dependency" });
+    const { task } = await loadTaskFile(join(directory, ".tasks", "0007-scoped-task.md"));
+    assert.equal(task.notes.at(-1), "block: waiting on dependency");
+    assert.ok(REASON_DISPLAY_LIMIT < REASON_STORAGE_LIMIT);
+  });
 });

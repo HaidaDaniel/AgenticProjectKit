@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { CONFIG_PATH, readAgenticConfigFile } from "../config/index.js";
-import { readRunLog, type RunLogEvent } from "../agents/index.js";
+import { readRunLog, REASON_DISPLAY_LIMIT, summarizeReasonText, type RunLogEvent } from "../agents/index.js";
 import { syncAgentExports } from "../sync/index.js";
 import {
   buildTaskProvenance,
@@ -145,8 +145,8 @@ async function localLockWarnings(rootDirectory: string, taskDirectory: string): 
     .map(([label, inspection]) => `${label} lock: ${renderLocalLockInspection(inspection)}`);
 }
 
-function capStatusText(value: string, maxLength = 180): string {
-  return value.replace(/\s+/g, " ").trim().slice(0, maxLength);
+function capStatusText(value: string, maxLength = REASON_DISPLAY_LIMIT): string {
+  return summarizeReasonText(value, maxLength);
 }
 
 function taskDependencies(

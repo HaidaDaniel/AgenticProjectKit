@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { CONFIG_PATH, readAgenticConfigFile } from "../config/index.js";
-import { readRunLog } from "../agents/index.js";
+import { readRunLog, REASON_DISPLAY_LIMIT, summarizeReasonText } from "../agents/index.js";
 import { syncAgentExports } from "../sync/index.js";
 import { buildTaskProvenance, evaluateTaskCompletionGate, listArchivedTaskFiles, listTaskFiles, selectNextTask, TASK_STATES, } from "../tasks/index.js";
 import { TASK_EVIDENCE_LOCK_PATH } from "../tasks/evidence.js";
@@ -45,8 +45,8 @@ async function localLockWarnings(rootDirectory, taskDirectory) {
         .filter(([, inspection]) => inspection.state !== "absent")
         .map(([label, inspection]) => `${label} lock: ${renderLocalLockInspection(inspection)}`);
 }
-function capStatusText(value, maxLength = 180) {
-    return value.replace(/\s+/g, " ").trim().slice(0, maxLength);
+function capStatusText(value, maxLength = REASON_DISPLAY_LIMIT) {
+    return summarizeReasonText(value, maxLength);
 }
 function taskDependencies(task, ready) {
     const readySet = new Set(ready);

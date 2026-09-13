@@ -4,6 +4,8 @@ import { dirname, join, relative } from "node:path";
 import {
   appendRunLog,
   durationSinceLastClaim,
+  normalizeReasonText,
+  REASON_STORAGE_LIMIT,
   requireAgent,
   type RegisteredAgent,
   type RunEventType,
@@ -68,7 +70,7 @@ function appendReason(task: ProjectTask, event: RunEventType, reason: string | u
 
   return {
     ...task,
-    notes: [...task.notes, `${event}: ${reason.replace(/\s+/g, " ").trim().slice(0, 160)}`],
+    notes: [...task.notes, `${event}: ${normalizeReasonText(reason, REASON_STORAGE_LIMIT)}`],
   };
 }
 
