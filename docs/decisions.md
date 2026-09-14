@@ -914,3 +914,39 @@ The previous code truncated transition reasons to 160 characters at storage time
 Implementation and invariant:
 
 `src/core/agents/index.ts` exports `REASON_STORAGE_LIMIT` (2048), `REASON_DISPLAY_LIMIT` (160), `normalizeReasonText`, and `summarizeReasonText`; `appendRunLog` and `appendReason` store the bounded full reason, and `src/core/status/index.ts` bounds only the rendered summary. No new storage subsystem, byte slicing, external persistence, or multiline blocker document is introduced.
+
+## ADR-0057 - Non-Node repositories keep repository-local APK pinning; tooling semantics stay distinct
+
+Status: accepted
+
+Decision:
+
+Keep the current repository-local root `package.json` + pnpm model as the supported/default APK installation path for non-Node application repositories. APK-owned Node tooling must never, by itself, imply that the application stack is Node.js. Scanner/project-map/audit semantics should distinguish application/runtime evidence from development/control-plane tooling evidence while preserving legitimate mixed repositories.
+
+Do not introduce an isolated tooling layout, global APK binary, custom launcher/cache/updater, standalone binary matrix, container default, or per-language wrapper ecosystem without new measured evidence that the current installation mechanism itself is materially harmful.
+
+Reason:
+
+`translator-agent` is a Python application whose root Node manifest explicitly exists for APK tooling and pins v0.4.2; ResLedger is a Go application whose root manifest pins APK v0.4.3 and composes repository-development commands. Tasks 0112 and 0122 show that the observed failures are semantic/readiness inference defects, while Tasks 0056, 0110 and 0118 establish useful project-local versioning and self-contained Git-tag installation guarantees. Alternative distribution models add launcher, version-drift, platform-artifact, signing, cache, migration, or multi-ecosystem maintenance cost without solving a demonstrated install failure.
+
+Reference:
+
+Task 0125 and `docs/research/non-node-apk-installation-and-distribution.md`.
+
+## ADR-0058 - APK upgrades are agent-driven compositions of deterministic primitives
+
+Status: accepted
+
+Decision:
+
+Repository-specific APK upgrades are performed by an external agent/operator using existing deterministic APK primitives plus the host repository's package manager. Do not add a monolithic imperative `apk upgrade` command. The preferred first follow-up is a reusable manually invoked upgrade instruction/skill that performs inspect -> bounded plan -> reproducible pin/lock migration -> applicable adopt/compatibility -> canonical sync/ownership handling -> doctor/lint/audit -> host quality -> final diff/provenance review.
+
+A new APK CLI surface is justified only by a concrete repeated dogfood information gap. The strongest permissible candidate is a read-only declared/locked/installed/release/config compatibility report; it must not mutate dependencies, rewrite customized policy, reset task baselines, rebind evidence, auto-commit, or own provider/runtime execution.
+
+Reason:
+
+ResLedger Task 0032 proves that a bounded v0.4.2 -> v0.4.3 tooling migration can use repository pin/lock changes plus existing APK and host-project checks while preserving product code and task history. It also demonstrates that a tooling commit can affect active-task attribution, which a universal upgrade command cannot safely erase. Existing adopt, sync/export ownership, doctor/lint/audit, evidence/provenance and release primitives already cover the deterministic facts APK should own; repository-specific customization, package mutation, active work and host validation remain reasoning boundaries for the agent/operator.
+
+Reference:
+
+Task 0126 and `docs/engineering/apk-upgrade-workflow.md`.
