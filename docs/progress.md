@@ -139,6 +139,9 @@ After the gated-workflow release foundation, Resource-Aware Execution proceeds t
 
 ## Remaining task plan
 
+- Task 0125: todo/unowned; optional manually invoked milestone semantic integrity audit of completed task sets, using bounded canonical context and provenance. Findings/proposed corrective backlog precede explicit approval; historical done contracts/evidence stay intact. Separate from 0123 pre-implementation task-grill. Depends on completed 0064/0067/0068/0070/0092/0114.
+- Task 0126: todo/unowned; research/design of agent-driven APK upgrades, comparing existing instructions/primitives, justified small additions, deterministic upgrade, and migration reports. Uses bounded ResLedger 0032 and translator-agent evidence; no upgrade implementation or live migration. Depends on completed 0074/0092/0110/0111/0115/0116/0117/0118.
+
 - Tasks 0001 through 0073 are complete.
 - Task 0062: Meaningful Done; review capability now precedes completion enforcement.
 - Task 0074: done; safe gated-workflow adoption, now explicitly dependent on 0073. The unblock pass made renderer assertions line-ending independent and uses the direct repository CLI entrypoint for self-repository verification.
