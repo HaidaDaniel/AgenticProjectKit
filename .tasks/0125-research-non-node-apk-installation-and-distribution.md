@@ -1,7 +1,7 @@
 # Task 0125 - Research APK installation and distribution for non-Node repositories
 
 State: done
-Owner: none
+Owner: user
 Mode: discovery
 Lane: architecture
 Type: research

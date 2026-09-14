@@ -1,7 +1,7 @@
 # Task 0126 - Research agent-driven APK upgrade workflow
 
 State: done
-Owner: none
+Owner: user
 Mode: discovery
 Lane: research
 Type: docs
