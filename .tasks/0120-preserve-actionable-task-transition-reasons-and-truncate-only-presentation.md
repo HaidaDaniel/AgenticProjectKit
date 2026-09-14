@@ -1,7 +1,7 @@
 # Task 0120 - Preserve actionable task transition reasons and truncate only presentation
 
-State: doing
-Owner: opencode-ds-v41
+State: blocked
+Owner: none
 Mode: maintenance
 Lane: workflow
 Type: bugfix
@@ -127,3 +127,4 @@ Preserve the full bounded reason in the authoritative records (task note/state r
 
 - Non-goals: do not turn task Notes into arbitrary blobs, add external storage, add database persistence, redesign run logging, or make blocker reasons multiline documents.
 - If provenance/evidence already has a better canonical location for the full reason, use the smallest coherent design rather than duplicating storage.
+- block: Implementation commit 129cf82 and ADR-0056 verification are already recorded; authoritative earliest claim baseline now fails closed because later unrelated backlog commits (task contracts 0123-0130) are attributed as out-of-scope changed files and release/reclaim cannot rebase the baseline without laundering attribution. Needs operator guidance on rebaseline before verification can be candidate-bound.
