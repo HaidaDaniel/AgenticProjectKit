@@ -1,6 +1,6 @@
 # Task 0125 - Research APK installation and distribution for non-Node repositories
 
-State: todo
+State: done
 Owner: none
 Mode: discovery
 Lane: architecture
@@ -255,3 +255,4 @@ The research must finish with exactly one recommendation category:
 - Do not re-review APK generally. Reuse existing architecture, release, scanner, and dogfood evidence and investigate only installation/distribution semantics for non-Node downstream repositories.
 - Task 0112 fixed missing Python/Go runtime evidence but intentionally preserved Node/pnpm detection. Task 0122 is related open corrective work about readiness semantics and should be considered, not duplicated or made a dependency of this research.
 - Do not create follow-up implementation tasks before this research reaches a recommendation. The artifact may list proposed task titles/scopes so a human can create them after accepting the decision.
+- Research outcome (2026-09-14): `docs/research/non-node-apk-installation-and-distribution.md` records the accepted `KEEP CURRENT MODEL` conclusion. Repository-local exact pinning remains the default; APK should separate application/runtime semantics from APK/dev-tooling semantics instead of introducing a second installer/distribution model. No runtime/package/downstream implementation change was made by this research closure.
