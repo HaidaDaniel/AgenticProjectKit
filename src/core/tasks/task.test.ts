@@ -41,6 +41,8 @@ import {
   listArchivedTaskFiles,
   listTaskFiles,
   listTaskReviews,
+  listTaskHumanDecisions,
+  recordTaskHumanDecision,
   loadTaskFile,
   nextTaskId,
   normalizeVerificationCommands,
@@ -4534,3 +4536,341 @@ test("legacy short lifecycle reasons remain unchanged and readable", async () =>
     assert.ok(REASON_DISPLAY_LIMIT < REASON_STORAGE_LIMIT);
   });
 });
+
+interface DecisionHarness {
+  directory: string;
+  changedFile: string;
+}
+
+async function setupDecisionRepo(directory: string): Promise<DecisionHarness> {
+  const git = async (...args: string[]) => {
+    await execFileAsync("git", args, { cwd: directory });
+  };
+  await git("init", "--quiet");
+  await git("config", "user.email", "codex@example.test");
+  await git("config", "user.name", "Codex");
+  await mkdir(join(directory, ".tasks"), { recursive: true });
+  await mkdir(join(directory, "src", "core", "tasks"), { recursive: true });
+  await writeTaskFile(join(directory, ".tasks", "0007-decision-task.md"), {
+    ...TASK,
+    state: "todo",
+    owner: "none",
+    tags: [...TASK.tags, "large"],
+    dependsOn: [],
+    allowedFiles: ["src/core/tasks/**"],
+    forbiddenFiles: [],
+    verificationCommands: ["pass"],
+  });
+  await git("add", ".");
+  await git("commit", "--quiet", "-m", "initial");
+  await registerAgent(directory, { id: "codex-owner", developer: "alice", platform: "codex", model: "gpt-5" });
+  await registerAgent(directory, { id: "codex-reviewer", developer: "bob", platform: "codex", model: "gpt-5" });
+  await registerAgent(directory, { id: "codex-recorder", developer: "carol", platform: "codex", model: "gpt-5" });
+  await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-owner" });
+  const changedFile = join(directory, "src", "core", "tasks", "changed.ts");
+  await writeFile(changedFile, "export const version = 1;\n", "utf8");
+  return { directory, changedFile };
+}
+
+test("accept-current resolves only review-budget exhaustion for the bound candidate", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = await setupDecisionRepo(directory);
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-owner",
+      runCommand: async () => 0,
+    });
+    assert.equal(verification.passed, true);
+    for (let index = 1; index <= 2; index += 1) {
+      await recordTaskReview({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        reviewer: "codex-reviewer",
+        outcome: "changes_requested",
+        findings: [`Finding ${index}.`],
+        implementationRunId: verification.runId,
+      });
+    }
+    const blocked = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(blocked.passed, false);
+    assert.ok(blocked.review.budget?.exhausted);
+    assert.ok(blocked.blockers.some((blocker) => blocker.includes("Review budget exhausted")));
+    assert.equal(blocked.review.decision, undefined);
+
+    const decision = await recordTaskHumanDecision({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      recorder: "codex-recorder",
+      actor: "repo-operator",
+      decision: "accept-current",
+      reason: "Operator accepts the reviewed candidate after exhausted review budget.",
+    });
+    assert.equal(decision.evidence.decision, "accept-current");
+    assert.equal(decision.evidence.actor, "repo-operator");
+    assert.equal(decision.evidence.trustModel, "operator-asserted");
+    assert.equal(decision.evidence.resolvedBlocker, "review-budget-exhausted");
+    assert.ok(decision.gateEligible);
+
+    const resolved = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(resolved.passed, true);
+    assert.ok(resolved.review.decision);
+    assert.equal(resolved.review.decision?.decision, "accept-current");
+    assert.equal(resolved.review.decision?.actor, "repo-operator");
+    assert.equal(resolved.review.decision?.freshness, "current");
+    assert.match(resolved.review.reason, /resolved by human decision/);
+    assert.ok((await listTaskHumanDecisions(directory, "0007")).length === 1);
+
+    // Candidate mutation makes the decision stale and non-resolving.
+    await writeFile(repo.changedFile, "export const version = 2;\n", "utf8");
+    const staleDecisionGate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(staleDecisionGate.passed, false);
+    assert.ok(staleDecisionGate.blockers.some((blocker) => blocker.includes("Review budget exhausted")));
+    assert.equal(staleDecisionGate.review.decision?.freshness, "stale");
+    assert.match(staleDecisionGate.review.decision?.reason ?? "", /subject differs|belongs/);
+  });
+});
+
+test("accept-current cannot bypass failed deterministic verification", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupDecisionRepo(directory);
+    const failing = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-owner",
+      runCommand: async () => 1,
+    });
+    assert.equal(failing.passed, false);
+    await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      outcome: "changes_requested",
+      findings: ["Boundary not covered."],
+      implementationRunId: failing.runId,
+    });
+    await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      outcome: "changes_requested",
+      findings: ["Boundary still not covered."],
+      implementationRunId: failing.runId,
+    });
+    await recordTaskHumanDecision({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      recorder: "codex-recorder",
+      actor: "repo-operator",
+      decision: "accept-current",
+      reason: "Operator attempted acceptance.",
+    });
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(gate.passed, false);
+    assert.ok(gate.blockers.some((blocker) => blocker.includes("Required verification check check-1 is fail")));
+    assert.ok(!gate.passed);
+    assert.ok(gate.blockers.every((blocker) => !blocker.includes("Review budget exhausted")));
+  });
+});
+
+test("accept-current on a scope-violated candidate records no gate-eligible resolution", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupDecisionRepo(directory);
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-owner",
+      runCommand: async () => 0,
+    });
+    await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      outcome: "changes_requested",
+      implementationRunId: verification.runId,
+    });
+    await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      outcome: "changes_requested",
+      implementationRunId: verification.runId,
+    });
+    const before = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.ok(before.blockers.some((blocker) => blocker.includes("Review budget exhausted")));
+    await writeFile(join(directory, "out-of-scope.md"), "outside\n", "utf8");
+    const decision = await recordTaskHumanDecision({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      recorder: "codex-recorder",
+      actor: "repo-operator",
+      decision: "accept-current",
+      reason: "Operator accepts despite the violation.",
+    });
+    assert.equal(decision.gateEligible, false);
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(gate.passed, false);
+    assert.ok(gate.blockers.some((blocker) => blocker.includes("Review budget exhausted")));
+    assert.ok(gate.blockers.some((blocker) => blocker.startsWith("Scope violation:")));
+    assert.equal(gate.review.decision, undefined);
+  });
+});
+
+test("grant-review-passes extends the budget once and exhausts again after one more pass", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupDecisionRepo(directory);
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-owner",
+      runCommand: async () => 0,
+    });
+    await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      outcome: "changes_requested",
+      implementationRunId: verification.runId,
+    });
+    await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      outcome: "changes_requested",
+      implementationRunId: verification.runId,
+    });
+    const exhausted = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.ok(exhausted.review.budget?.exhausted);
+
+    await recordTaskHumanDecision({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      recorder: "codex-recorder",
+      actor: "repo-operator",
+      decision: "grant-review-passes",
+      reason: "Operator grants one more review pass.",
+      reviewBudgetGrant: 1,
+    });
+    const granted = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(granted.review.budget?.exhausted, false);
+    assert.equal(granted.review.budget?.grantedPasses, 1);
+    assert.equal(granted.review.budget?.effectiveMaxReviewPasses, 3);
+    assert.ok(granted.blockers.some((blocker) => blocker.includes("Independent review is changes_requested")));
+    assert.ok(granted.blockers.every((blocker) => !blocker.includes("Review budget exhausted")));
+
+    await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      outcome: "changes_requested",
+      implementationRunId: verification.runId,
+    });
+    const consumed = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(consumed.review.budget?.exhausted, true);
+    assert.equal(consumed.review.budget?.grantedPasses, 1);
+    assert.ok(consumed.blockers.some((blocker) => blocker.includes("Review budget exhausted")));
+  });
+});
+
+test("changes-required decisions never satisfy the gate", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupDecisionRepo(directory);
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-owner",
+      runCommand: async () => 0,
+    });
+    await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      outcome: "changes_requested",
+      implementationRunId: verification.runId,
+    });
+    await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      outcome: "changes_requested",
+      implementationRunId: verification.runId,
+    });
+    await recordTaskHumanDecision({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      recorder: "codex-recorder",
+      actor: "repo-operator",
+      decision: "changes-required",
+      reason: "Operator requires the boundary fix first.",
+    });
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(gate.passed, false);
+    assert.ok(gate.blockers.some((blocker) => blocker.includes("Independent review is changes_requested")));
+    assert.ok(gate.blockers.some((blocker) => blocker.includes("Human decision changes-required")));
+    assert.ok(gate.blockers.some((blocker) => blocker.includes("Review budget exhausted")));
+    assert.equal(gate.review.decision?.decision, "changes-required");
+  });
+});
+
+test("human decision recording enforces the operator trust boundary and cancel routes to cancellation", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupDecisionRepo(directory);
+    const decisionOptions = {
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      recorder: "codex-recorder",
+      actor: "codex-recorder",
+      decision: "accept-current" as const,
+      reason: "Agent self-authorizing attempt.",
+    };
+    await assert.rejects(
+      () => recordTaskHumanDecision(decisionOptions),
+      /cannot authorize itself/,
+    );
+    await assert.rejects(
+      () => recordTaskHumanDecision({
+        ...decisionOptions,
+        actor: "repo-operator",
+        reason: "",
+      }),
+      /non-empty decision reason/,
+    );
+    await assert.rejects(
+      () => recordTaskHumanDecision({
+        ...decisionOptions,
+        actor: "repo-operator",
+        reason: "no explicit operator decision exists",
+        reviewBudgetGrant: 1,
+      }),
+      /only valid for grant-review-passes/,
+    );
+
+    // Agenda gate never synthesizes a decision when the operator has not communicated one.
+    const noDecision = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(noDecision.review.decision, undefined);
+    assert.ok((await listTaskHumanDecisions(directory, "0007")).length === 0);
+  });
+});
+
+

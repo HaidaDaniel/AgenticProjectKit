@@ -63,6 +63,7 @@ const HELP_TEXT = [
   "  apk task evidence <task-id>",
   "  apk task verify <task-id> [--profile <profile|all>] [--check-files-only] [--owner <agent-id>]",
   "  apk task gate <task-id>",
+  "  apk task decision <task-id> --actor <human-id> --result <accept-current|grant-review-passes|changes-required|cancel> --reason <text> [--passes <n>] [--owner <agent-id>]",
   "  apk task create --title <title> --mode <mode> --lane <lane> --scope <csv> --risk <risk> --context <csv> --allowed <csv> --verification <csv>|--verification-json <json>",
   "  apk tasks [--all] [--state <state>] [--owner <agent-id>]",
   "  apk work <task-id> --owner <agent-id> --target <agent> [--resource <worker-id>] [--level 1|2|3|auto] [--write-session]",

@@ -235,7 +235,7 @@ Execution policy supports bounded resource controls such as:
 
 The constrained baseline uses `maxFrontierReviewPasses = 1`. A further frontier review requires an explicit policy reason, such as high/critical risk, substantial reviewer-requested changes, or a materially changed candidate. Deterministic re-verification still precedes it.
 
-Budget exhaustion terminates the automatic loop with a clear next action. It never converts missing assurance into PASS. Review -> fix -> review remains available when justified, but orchestration capability alone cannot create an unbounded loop.
+Budget exhaustion terminates the automatic loop with a clear next action. It never converts missing assurance into PASS. Review -> fix -> review remains available when justified, but orchestration capability alone cannot create an unbounded loop. Only an explicit, operator-asserted human decision recorded with `apk task decision` (Task 0119, ADR-0059) can resolve the structured `review-budget-exhausted` condition for the current candidate (`accept-current`) or extend the budget additively and boundedly (`grant-review-passes`); `changes-required` never satisfies the gate, and no orchestration path synthesizes a decision.
 
 ## Configuration and precedence
 

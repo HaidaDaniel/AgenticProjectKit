@@ -1,6 +1,7 @@
 import { join, relative, resolve } from "node:path";
 import { readAgenticConfigFile } from "../../core/config/index.js";
 import { getTaskTemplate, resolveTaskTemplateType, TASK_TEMPLATE_TYPES, } from "../../core/templates/task-templates.js";
+import { TASK_HUMAN_DECISIONS, MAX_HUMAN_REVIEW_GRANT_PASSES, recordTaskHumanDecision, renderTaskHumanDecisionResult, cancelTask, } from "../../core/tasks/index.js";
 import { archiveAllTasks, archiveTask, buildTaskProvenance, buildTaskDeps, createTask, evaluateTaskCompletionGate, findTaskFile, listArchivedTaskFiles, listTaskFiles, loadTaskFile, readTaskEvidence, renderTaskPolicy, renderTaskDeps, renderTaskEvidence, renderTaskCompletionGate, renderTaskProvenance, renderTaskVerifyResult, renderRecordManualVerificationResult, recordManualVerification, renderDogfoodResult, renderDogfoodSession, recordDogfoodResult, resolveTaskPolicy, startDogfoodSession, TASK_MODES, TASK_RISKS, TASK_VERIFICATION_PROFILES, normalizeVerificationCommands, verifyTask, } from "../../core/tasks/index.js";
 import { TASK_EVIDENCE_LOCK_PATH } from "../../core/tasks/evidence.js";
 import { inspectLocalMutationLock, recoverLocalLock, renderLocalLockInspection, } from "../../core/tasks/lock.js";
@@ -15,6 +16,7 @@ const TASK_HELP_TEXT = [
     "  apk task lock recover --kind <task|evidence> [--force]",
     "  apk task policy <task-id>",
     "  apk task gate <task-id>",
+    "  apk task decision <task-id> --actor <human-id> --result <decision> --reason <text> [--passes <1-2>] [--owner <agent-id>]",
     "  apk task provenance <task-id> [--json]",
     "  apk task dogfood start <task-id> --owner <agent-id> --tool <tool> --scenario <text>",
     "  apk task dogfood result <task-id> --owner <agent-id> --session <session-id> --outcome <pass|fail>",
@@ -29,6 +31,7 @@ const TASK_HELP_TEXT = [
     "  lock    Inspect or explicitly recover local mutation locks.",
     "  policy  Resolve deterministic risk and tag requirements.",
     "  gate    Preview completion blockers for the current candidate.",
+    "  decision Record an operator-asserted human decision for review-budget exhaustion.",
     "  provenance Show bounded task/run/evidence provenance.",
     "  dogfood Start a bounded agent usability session or record its result.",
     "  verify  Check files, resolve profiles, and record per-check evidence.",
@@ -718,6 +721,106 @@ async function runVerifySubcommand(argv) {
     console.log(renderTaskVerifyResult(result));
     return result.passed ? 0 : 1;
 }
+const TASK_DECISION_HELP_TEXT = [
+    "Agentic Project Kit",
+    "",
+    "Usage:",
+    "  apk task decision <task-id> --actor <human-id> --result <accept-current|grant-review-passes|changes-required> --reason <text> [--passes <1-2>] [--owner <agent-id>]",
+    "",
+    "Record a bounded, operator-asserted human decision bound to the current task candidate.",
+    "accept-current resolves only the review-budget-exhausted condition; verification, scope, dependency, and evidence blockers stay separate.",
+    "grant-review-passes adds a bounded (1-2) extension to the review budget without resetting review history.",
+    "changes-required records a human requirement for further changes and never satisfies the gate.",
+    "No generic bypass exists; --force-done, --ignore-gate, and --skip-verification are not supported.",
+].join("\n");
+function readDecisionFlag(argv, flag) {
+    const value = parseFlag(argv, flag);
+    return value;
+}
+async function runDecisionSubcommand(argv) {
+    if (hasHelpFlag(argv)) {
+        console.log(TASK_DECISION_HELP_TEXT);
+        return 0;
+    }
+    const allowedFlags = ["--actor", "--result", "--reason", "--passes", "--owner"];
+    for (const arg of argv) {
+        if (arg.startsWith("-") && arg !== "--help" && arg !== "-h" && !allowedFlags.includes(arg)) {
+            throw new Error(`Unknown option: ${arg}`);
+        }
+    }
+    const positional = [];
+    const valueFlags = new Set(allowedFlags);
+    for (let index = 0; index < argv.length; index += 1) {
+        const arg = argv[index];
+        if (valueFlags.has(arg)) {
+            index += 1;
+            continue;
+        }
+        if (!arg.startsWith("-")) {
+            positional.push(arg);
+        }
+    }
+    if (positional.length !== 1) {
+        throw new Error("Usage: apk task decision <task-id> --actor <human-id> --result <decision> --reason <text> [--owner <agent-id>]");
+    }
+    const actor = readDecisionFlag(argv, "--actor");
+    const decision = readDecisionFlag(argv, "--result");
+    const reason = readDecisionFlag(argv, "--reason");
+    const owner = readDecisionFlag(argv, "--owner");
+    const passesValue = readDecisionFlag(argv, "--passes");
+    if (decision === "cancel") {
+        if (!owner) {
+            throw new Error("Cancel is routed to the canonical transition; retry with --owner <agent-id>.");
+        }
+        const rootDirectory = resolve(process.cwd());
+        const config = await readAgenticConfigFile(rootDirectory);
+        const task = await cancelTask({
+            rootDirectory,
+            taskDirectory: config.taskDirectory,
+            taskId: positional[0],
+            owner,
+            reason: reason ? `human decision cancel actor=${actor ?? "unspecified"}: ${reason}` : undefined,
+        });
+        console.log([
+            `Task: ${task.id}`,
+            `State: ${task.state}`,
+            `Owner: ${task.owner}`,
+        ].join("\n"));
+        return 0;
+    }
+    if (!actor) {
+        throw new Error("--actor is required: the explicit human/operator identity making the decision.");
+    }
+    if (!decision || !TASK_HUMAN_DECISIONS.includes(decision) && decision !== "cancel") {
+        throw new Error(`--result must be one of: accept-current, grant-review-passes, changes-required, cancel.`);
+    }
+    if (!reason) {
+        throw new Error("--reason is required so the decision stays explainable.");
+    }
+    if (!owner) {
+        throw new Error("--owner <agent-id> (registered recording agent) is required.");
+    }
+    const passes = passesValue === undefined
+        ? undefined
+        : Number.parseInt(passesValue, 10);
+    if (passesValue !== undefined && (!Number.isInteger(passes) || passes < 1 || passes > MAX_HUMAN_REVIEW_GRANT_PASSES)) {
+        throw new Error(`--passes must be an integer between 1 and ${MAX_HUMAN_REVIEW_GRANT_PASSES}.`);
+    }
+    const rootDirectory = resolve(process.cwd());
+    const config = await readAgenticConfigFile(rootDirectory);
+    const result = await recordTaskHumanDecision({
+        rootDirectory,
+        taskDirectory: config.taskDirectory,
+        taskId: positional[0],
+        recorder: owner,
+        actor,
+        decision: decision,
+        reason,
+        ...(passes !== undefined ? { reviewBudgetGrant: passes } : {}),
+    });
+    console.log(renderTaskHumanDecisionResult(result.evidence));
+    return 0;
+}
 export async function runTaskCommand(argv) {
     try {
         if (argv.length === 0) {
@@ -755,6 +858,9 @@ export async function runTaskCommand(argv) {
         }
         if (subcommand === "gate") {
             return await runGateSubcommand(subArgs);
+        }
+        if (subcommand === "decision") {
+            return await runDecisionSubcommand(subArgs);
         }
         if (subcommand === "create") {
             return await runCreateSubcommand(subArgs);

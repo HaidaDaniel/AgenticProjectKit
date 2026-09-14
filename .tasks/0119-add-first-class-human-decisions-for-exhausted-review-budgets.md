@@ -1,7 +1,7 @@
 # Task 0119 - Add first-class human decisions for exhausted review budgets
 
-State: todo
-Owner: none
+State: doing
+Owner: apk-backlog-hygiene
 Mode: maintenance
 Lane: workflow
 Type: feature
@@ -68,6 +68,7 @@ Gate integration MUST use structured review/budget/decision state, not rendered 
 - src/cli/index.ts
 - src/cli/commands/task.ts
 - src/cli/commands/task-state.ts
+- src/core/exporters/index.ts
 - src/core/tasks/task.test.ts
 - src/cli/cli.test.ts
 - docs/task-system.md
@@ -185,3 +186,7 @@ Gate integration MUST use structured review/budget/decision state, not rendered 
 
 - Non-goals: do not add generic force completion, make every task require human approval, reset review history, build a user-account/auth system, couple to GitHub approvals, couple to one agent vendor, add a UI, or redesign all evidence types.
 - Keep the human-decision record dedicated and explicit; do not overload `manual` in a way that erases the decision semantics.
+
+### Scope expansion note (2026-09-14)
+
+- Added `src/core/exporters/index.ts` to allowed files: acceptance criterion "Generated canonical agent policy explicitly forbids self-authorized human/operator decisions" requires a task rule in `DEFAULT_AGENT_POLICY.taskRules` that renders into `AGENTS.md`; no neutral-policy config file exists.

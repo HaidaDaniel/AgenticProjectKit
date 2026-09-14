@@ -217,6 +217,16 @@ async function summarizeActiveTask(rootDirectory, taskDirectory, file, warnings)
             ...(gate.review.reviewer ? { reviewer: gate.review.reviewer } : {}),
             ...(gate.review.outcome ? { outcome: gate.review.outcome } : {}),
             reason: gate.review.reason,
+            ...(gate.review.budget ? { budget: gate.review.budget } : {}),
+            ...(gate.review.decision ? {
+                decision: {
+                    decision: gate.review.decision.decision,
+                    actor: gate.review.decision.actor,
+                    freshness: gate.review.decision.freshness,
+                    evidenceId: gate.review.decision.evidenceId,
+                    ...(gate.review.decision.resolvedBlocker ? { resolvedBlocker: gate.review.decision.resolvedBlocker } : {}),
+                },
+            } : {}),
         },
         evidence: evidenceStatus(provenance),
         gate: {
@@ -328,6 +338,8 @@ function renderActiveTaskDetail(task) {
         `  Verification: required=${task.verification.required}; passed=${task.verification.passed}; failed=${task.verification.failed}; pending=${task.verification.pending}; missing=${task.verification.missing}; stale=${task.verification.stale}; unknown=${task.verification.unknown}`,
         `  Scope: ${task.scope.status}; changed=${task.scope.changed}; out-of-scope=${task.scope.outOfScope}; forbidden=${task.scope.forbidden}`,
         `  Review: ${task.review.status}${task.review.reviewer ? ` reviewer=${task.review.reviewer}` : ""}${task.review.outcome ? ` outcome=${task.review.outcome}` : ""}; ${task.review.reason}`,
+        ...(task.review.budget ? [`  Review budget: max=${task.review.budget.maxReviewPasses}; used=${task.review.budget.passesUsed}; granted=${task.review.budget.grantedPasses}; effective=${task.review.budget.effectiveMaxReviewPasses}; exhausted=${task.review.budget.exhausted}`] : []),
+        ...(task.review.decision ? [`  Human decision: ${task.review.decision.decision}; actor=${task.review.decision.actor}; freshness=${task.review.decision.freshness}; evidence=${task.review.decision.evidenceId}${task.review.decision.resolvedBlocker ? `; resolves=${task.review.decision.resolvedBlocker}` : ""}`] : []),
         `  Evidence: total=${task.evidence.total}; current=${task.evidence.current}; stale=${task.evidence.stale}; unknown=${task.evidence.unknown}`,
         `  Gate: ${task.gate.status}`,
         ...(task.gate.blockers.length > 0 ? ["  Blockers:", ...task.gate.blockers.map((blocker) => `    - ${blocker}`)] : []),

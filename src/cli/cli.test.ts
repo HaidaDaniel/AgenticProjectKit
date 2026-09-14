@@ -3405,6 +3405,69 @@ test("CLI task gate --help shows usage", async () => {
   assert.match(result.stdout, /read-only/);
 });
 
+test("CLI task decision --help exposes the operator decision surface", async () => {
+  const result = await runCli(["task", "decision", "--help"]);
+
+  assert.equal(result.exitCode, 0);
+  assert.match(result.stdout, /apk task decision <task-id> --actor <human-id>/);
+  assert.match(result.stdout, /operator-asserted/);
+});
+
+test("CLI task decision records a candidate-bound operator decision and reject self-authorization", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    const tasksDir = join(directory, ".tasks");
+    await mkdir(tasksDir, { recursive: true });
+    await writeFile(join(tasksDir, "0001-decision-task.md"), buildTaskMarkdown("0001", "Decision Task", "todo", "none").replace("Risk: low", "Risk: high").replace(/- pnpm test/, "- pnpm test\n- type: manual\n  id: escalation-report\n  required: true\n  environment: local\n  profile: report\n  instruction: Summarize the escalation outcome.\n  evidence: report artifact"), "utf8");
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await runCli(["agent", "register", "--id", "codex-owner", "--platform", "codex", "--model", "gpt-5"], directory);
+    await runCli(["agent", "register", "--id", "codex-recorder", "--platform", "codex", "--model", "gpt-5"], directory);
+    await runCli(["claim", "0001", "--owner", "codex-owner"], directory);
+
+    const selfAuth = await runCli([
+      "task", "decision", "0001",
+      "--actor", "codex-recorder",
+      "--result", "accept-current",
+      "--reason", "agent self-authorization attempt",
+      "--owner", "codex-recorder",
+    ], directory);
+    assert.equal(selfAuth.exitCode, 1);
+    assert.match(selfAuth.stderr, /cannot authorize itself/);
+
+    const missingActor = await runCli([
+      "task", "decision", "0001",
+      "--result", "accept-current",
+      "--reason", "operator accepts current candidate",
+      "--owner", "codex-recorder",
+    ], directory);
+    assert.equal(missingActor.exitCode, 1);
+    assert.match(missingActor.stderr, /--actor/);
+
+    const recorded = await runCli([
+      "task", "decision", "0001",
+      "--actor", "repo-operator",
+      "--result", "accept-current",
+      "--reason", "Operator accepts the candidate after escalation.",
+      "--owner", "codex-recorder",
+    ], directory);
+    assert.equal(recorded.exitCode, 0);
+    assert.match(recorded.stdout, /Decision: accept-current/);
+    assert.match(recorded.stdout, /Actor: repo-operator/);
+    assert.match(recorded.stdout, /Trust model: operator-asserted/);
+    assert.match(recorded.stdout, /Resolved blocker: review-budget-exhausted/);
+
+    const gate = await runCli(["task", "gate", "0001"], directory);
+    assert.ok(gate.stdout.includes("Human decision: accept-current; actor=repo-operator"));
+    assert.ok(gate.stdout.includes("resolves=review-budget-exhausted"));
+  });
+});
+
 test("CLI review supports a separate reviewer prompt and review evidence", async () => {
   await withTempDirectory(async (directory) => {
     const git = async (...args: string[]) => {

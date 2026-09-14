@@ -2,11 +2,15 @@ import { appendRunLog, requireAgent } from "../agents/index.js";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { captureTaskEvidenceSubject, findTaskFile, loadTaskFile, readTaskBaseline, captureTaskScope, } from "./index.js";
-import { appendTaskEvidence, compareTaskEvidenceFreshness, readTaskEvidence, } from "./evidence.js";
+import { TASK_DECISION_TRUST_MODEL, TASK_HUMAN_DECISIONS, TASK_REVIEW_EXHAUSTION_BLOCKER, appendTaskEvidence, compareTaskEvidenceFreshness, readTaskEvidence, } from "./evidence.js";
 import { isSafeRunId } from "../work/contract.js";
 import { resolveTaskPolicy } from "./policy.js";
 import { readActiveWorkerSession, withWorkerReviewLifecycleLock, } from "../work/session.js";
 export const TASK_REVIEW_OUTCOMES = ["pass", "changes_requested", "fail"];
+/** Structured blocker condition id resolved by a human accept-current decision. */
+export const TASK_DECISION_RESOLVED_BLOCKER = TASK_REVIEW_EXHAUSTION_BLOCKER;
+/** Bounded cap on additive per-candidate review-budget extension. */
+export const MAX_HUMAN_REVIEW_GRANT_PASSES = 2;
 function reviewRunId() {
     return `review-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -440,6 +444,131 @@ export function renderTaskReviewResult(result) {
         `Evidence: ${result.evidence.id}`,
         "Findings:",
         ...(result.findings.length > 0 ? result.findings.map((finding) => `  - ${finding}`) : ["  - none"]),
+        "",
+    ].join("\n");
+}
+export async function recordTaskHumanDecision(options) {
+    const recorderAgent = await requireAgent(options.rootDirectory, options.recorder);
+    const taskPath = await findTaskFile(options.rootDirectory, options.taskId, options.taskDirectory);
+    const { task } = await loadTaskFile(taskPath);
+    if (task.state !== "doing" && task.state !== "review") {
+        throw new Error(`Task ${task.id} is ${task.state}; human decisions apply while doing or review.`);
+    }
+    const actor = options.actor.replace(/\s+/g, " ").trim();
+    if (actor.length === 0) {
+        throw new Error("An explicit --actor human/operator identity is required.");
+    }
+    if (actor.length > 120) {
+        throw new Error("Actor must be at most 120 characters.");
+    }
+    if (actor === recorderAgent.id) {
+        throw new Error("Operator actor must be distinct from the recording agent; an agent cannot authorize itself.");
+    }
+    const reason = options.reason.replace(/\s+/g, " ").trim();
+    if (reason.length === 0) {
+        throw new Error("A non-empty decision reason is required.");
+    }
+    if (reason.length > 320) {
+        throw new Error("Decision reason must be at most 320 characters.");
+    }
+    let grant;
+    if (options.decision === "grant-review-passes") {
+        const value = options.reviewBudgetGrant ?? 1;
+        if (value < 1 || value > MAX_HUMAN_REVIEW_GRANT_PASSES) {
+            throw new Error(`--passes must be between 1 and ${MAX_HUMAN_REVIEW_GRANT_PASSES}.`);
+        }
+        grant = value;
+    }
+    else if (options.reviewBudgetGrant !== undefined) {
+        throw new Error("--passes is only valid for grant-review-passes decisions.");
+    }
+    const baseline = await readTaskBaseline(options.rootDirectory, task.id);
+    const snapshot = await captureTaskScope({
+        rootDirectory: options.rootDirectory,
+        task,
+        taskPath,
+        baseline,
+    });
+    const captured = await captureTaskEvidenceSubject(options.rootDirectory, task, snapshot.changedFiles);
+    const subject = baseline ? { ...captured, baselineId: baseline.baselineId } : captured;
+    const gateEligible = snapshot.comparisonKnown
+        && snapshot.outOfScopeFiles.length === 0
+        && snapshot.forbiddenTouchedFiles.length === 0;
+    const runId = `decision-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const appended = await appendTaskEvidence(options.rootDirectory, {
+        taskId: task.id,
+        runId,
+        agent: recorderAgent.id,
+        gateEligible,
+        type: "human-decision",
+        result: options.decision === "changes-required" ? "changes_requested" : "pass",
+        subject,
+        decision: options.decision,
+        actor,
+        ...(options.decision === "accept-current"
+            ? { resolvedBlocker: TASK_REVIEW_EXHAUSTION_BLOCKER }
+            : {}),
+        ...(grant !== undefined ? { reviewBudgetGrant: grant } : {}),
+        trustModel: TASK_DECISION_TRUST_MODEL,
+        summary: reason,
+    });
+    await appendRunLog(options.rootDirectory, {
+        event: "review",
+        agent: recorderAgent,
+        task: task.id,
+        runId,
+        state: task.state,
+        outcome: "ok",
+        reason: `human decision ${options.decision} actor=${actor} (operator-asserted)`,
+    });
+    return {
+        taskId: task.id,
+        runId,
+        recorder: recorderAgent.id,
+        actor,
+        decision: options.decision,
+        reason,
+        gateEligible,
+        subject,
+        evidence: appended,
+    };
+}
+function asTaskHumanDecisionRecord(record) {
+    if (record.type !== "human-decision" || !TASK_HUMAN_DECISIONS.includes(record.decision)) {
+        return undefined;
+    }
+    return record;
+}
+export async function listTaskHumanDecisions(rootDirectory, taskId) {
+    const records = await readTaskEvidence(rootDirectory, taskId);
+    return records
+        .map(asTaskHumanDecisionRecord)
+        .filter((record) => record !== undefined);
+}
+export function assessTaskHumanDecision(record, currentSubject) {
+    const freshness = compareTaskEvidenceFreshness(record, currentSubject);
+    return {
+        record,
+        freshness: freshness.freshness,
+        reason: freshness.reason,
+        grantPasses: record.decision === "grant-review-passes"
+            ? Math.min(MAX_HUMAN_REVIEW_GRANT_PASSES, record.reviewBudgetGrant ?? 0)
+            : 0,
+    };
+}
+export function assessTaskHumanDecisions(records, currentSubject) {
+    return records.map((record) => assessTaskHumanDecision(record, currentSubject));
+}
+export function renderTaskHumanDecisionResult(record) {
+    return [
+        `Task: ${record.taskId}`,
+        `Decision: ${record.decision}`,
+        `Actor: ${record.actor}`,
+        `Trust model: ${record.trustModel}`,
+        `Resolved blocker: ${record.resolvedBlocker ?? "none"}`,
+        `Review budget grant: ${record.reviewBudgetGrant ?? 0}`,
+        `Candidate: ${record.subject.candidateId}`,
+        `Evidence: ${record.id}`,
         "",
     ].join("\n");
 }

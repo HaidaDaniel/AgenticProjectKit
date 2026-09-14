@@ -288,6 +288,30 @@ pnpm exec apk review 0063 --reviewer codex-reviewer --review-run <review-run-id>
 
 Reviewers must be registered and cannot equal the implementation owner. Review records use a distinct `review-...` run ID, retain reviewer identity, optional implementation-run linkage, findings, and the same baseline/candidate/worktree subject used by verification. `listTaskReviews` and `assessTaskReviews` expose history and `current`/`stale`/`unknown` freshness; changing dirty implementation content makes earlier review PASS evidence stale. Review prompts name the evaluated HEAD and baseline-to-current changed paths and require inspection of acceptance criteria, assumptions, failure paths, scope, and counterexamples. They explicitly reject green tests alone as correctness proof.
 
+## Human decisions for review-budget exhaustion
+
+When the bounded semantic-review budget (`maxReviewPasses`) is exhausted without a passing independent review, the completion gate emits a structured `review-budget-exhausted` condition and asks for an explicit human decision. APK supports a first-class, operator-asserted decision record:
+
+```bash
+pnpm exec apk task decision <task-id> --actor <human-id> --result accept-current --reason "<why>" --owner <recording-agent-id>
+pnpm exec apk task decision <task-id> --actor <human-id> --result grant-review-passes --passes 1 --reason "<why one more pass>" --owner <recording-agent-id>
+pnpm exec apk task decision <task-id> --actor <human-id> --result changes-required --reason "<what must change>"
+pnpm exec apk task decision <task-id> --actor <human-id> --result cancel --reason "<why>" --owner <task-owner>
+```
+
+Semantics and boundaries:
+
+- every decision is an append-only `human-decision` evidence record bound to the exact task candidate (`baseline`/`candidate`/`worktree`/`HEAD`); a decision recorded for candidate A becomes stale and non-resolving after a candidate mutation;
+- `accept-current` resolves only the structured `review-budget-exhausted` condition. Failed deterministic verification, scope or forbidden-file violations, missing dependencies, missing required evidence or hosted-CI/live evidence, diverse-assurance gaps, and owner-as-reviewer blockers remain hard blockers;
+- `grant-review-passes` extends the effective review budget additively by 1-2 passes without resetting review history; per-candidate total extension is bounded at +2 passes and an `accept-current` decision supersedes an earlier grant;
+- `changes-required` records a human demand for more changes, never satisfies the gate, and is surfaced in status, gate, and provenance;
+- `cancel` is routed into the canonical `apk cancel` transition rather than duplicating cancellation logic;
+- provenance honestly labels the trust model as `operator-asserted`. APK does not authenticate humans; the implementation agent may only relay a decision the operator explicitly communicated. An agent cannot record itself as the actor, no automatic fallback generates a decision, and absent an operator decision the task stays blocked;
+- gate correctness is driven by structured review/budget/decision state (required, budget, passes used, granted passes, exhaustion, current outcome, current decision), never by matching blocker text; rewording a diagnostic cannot change decision semantics;
+- there is no `--force-done`, `--ignore-gate`, or `--skip-verification` and no generic force-completion path.
+
+`apk task gate`, `apk status --detail`, and `apk task provenance` expose the decision, actor, the structured blocker it resolves, and whether it is current or stale.
+
 ## Completion gate
 
 `pnpm exec apk task gate <task-id>` previews the evaluator used by `done`. It is read-only and reports the exact candidate subject, dependency status, required verification evidence, scope violations, policy blockers, and independent review status. `apk done` runs this evaluator under the task mutation lock and has no force bypass.

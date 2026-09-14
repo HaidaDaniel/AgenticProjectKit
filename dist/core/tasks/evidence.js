@@ -12,8 +12,18 @@ export const TASK_EVIDENCE_TYPES = [
     "dogfood",
     "report",
     "review",
+    "human-decision",
     "completion",
 ];
+export const TASK_HUMAN_DECISIONS = [
+    "accept-current",
+    "grant-review-passes",
+    "changes-required",
+];
+/** Every human/operator decision is an explicit out-of-band operator assertion. */
+export const TASK_DECISION_TRUST_MODEL = "operator-asserted";
+/** Structured blocker condition id resolved by a human accept-current decision. */
+export const TASK_REVIEW_EXHAUSTION_BLOCKER = "review-budget-exhausted";
 export const TASK_EVIDENCE_RESULTS = [
     "pass",
     "changes_requested",
@@ -180,12 +190,49 @@ function normalizeEvidenceRecord(value, lineNumber) {
         assuranceLevel: optionalText(value.assuranceLevel, `${prefix}.assuranceLevel`, issues, 40),
         resourceId: optionalText(value.resourceId, `${prefix}.resourceId`, issues, 160),
         resourceFamily: optionalText(value.resourceFamily, `${prefix}.resourceFamily`, issues, 160),
+        decision: value.decision === undefined
+            ? undefined
+            : oneOf(value.decision, TASK_HUMAN_DECISIONS, `${prefix}.decision`, issues),
+        actor: optionalText(value.actor, `${prefix}.actor`, issues, 120),
+        resolvedBlocker: optionalText(value.resolvedBlocker, `${prefix}.resolvedBlocker`, issues, 120),
+        reviewBudgetGrant: optionalNonNegativeInteger(value.reviewBudgetGrant, `${prefix}.reviewBudgetGrant`, issues, 2),
+        trustModel: optionalText(value.trustModel, `${prefix}.trustModel`, issues, 60),
         workerCommitIds: optionalTextList(value.workerCommitIds, `${prefix}.workerCommitIds`, issues, 64, 160),
         workerDiffId: optionalText(value.workerDiffId, `${prefix}.workerDiffId`, issues, 160),
         workerEvidence: optionalTextList(value.workerEvidence, `${prefix}.workerEvidence`, issues, 64, 160),
         findings: optionalTextList(value.findings, `${prefix}.findings`, issues),
         evidenceSet: optionalTextList(value.evidenceSet, `${prefix}.evidenceSet`, issues),
     };
+    if (record.type === "human-decision") {
+        if (!record.decision) {
+            issues.push(`${prefix}.decision is required for human-decision evidence.`);
+        }
+        if (!record.actor) {
+            issues.push(`${prefix}.actor is required for human-decision evidence.`);
+        }
+        if (record.trustModel !== TASK_DECISION_TRUST_MODEL) {
+            issues.push(`${prefix}.trustModel must be ${TASK_DECISION_TRUST_MODEL} for human-decision evidence.`);
+        }
+        if (record.decision === "accept-current") {
+            if (record.result !== "pass") {
+                issues.push(`${prefix}.result must be pass for accept-current decisions.`);
+            }
+            if (record.resolvedBlocker !== TASK_REVIEW_EXHAUSTION_BLOCKER) {
+                issues.push(`${prefix}.resolvedBlocker must be ${TASK_REVIEW_EXHAUSTION_BLOCKER} for accept-current decisions.`);
+            }
+        }
+        if (record.decision === "grant-review-passes") {
+            if (record.result !== "pass") {
+                issues.push(`${prefix}.result must be pass for grant-review-passes decisions.`);
+            }
+            if ((record.reviewBudgetGrant ?? 0) < 1) {
+                issues.push(`${prefix}.reviewBudgetGrant must be at least 1 for grant-review-passes decisions.`);
+            }
+        }
+        if (record.decision === "changes-required" && record.result !== "changes_requested") {
+            issues.push(`${prefix}.result must be changes_requested for changes-required decisions.`);
+        }
+    }
     if (record.type === "dogfood") {
         record.scenario = textValue(value.scenario, `${prefix}.scenario`, issues, 240);
         record.tool = textValue(value.tool, `${prefix}.tool`, issues, 120);
@@ -349,6 +396,9 @@ export function renderTaskEvidence(records, taskId) {
         }
         if (record.findings && record.findings.length > 0) {
             lines.push(`    Findings: ${record.findings.join("; ")}`);
+        }
+        if (record.type === "human-decision") {
+            lines.push(`    Decision: ${record.decision}; actor=${record.actor}; resolves=${record.resolvedBlocker ?? "none"}; grant=${record.reviewBudgetGrant ?? 0}; trust-model=${record.trustModel}`);
         }
         if (record.type === "dogfood") {
             lines.push(`    Scenario: ${record.scenario}`);

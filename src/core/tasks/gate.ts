@@ -21,8 +21,12 @@ import {
   type TaskEvidenceRecord,
 } from "./evidence.js";
 import {
+  assessTaskHumanDecisions,
   assessTaskReviews,
+  listTaskHumanDecisions,
   listTaskReviews,
+  MAX_HUMAN_REVIEW_GRANT_PASSES,
+  TASK_DECISION_RESOLVED_BLOCKER,
   type TaskReviewAssessment,
 } from "./review.js";
 import {
@@ -56,6 +60,27 @@ export interface TaskGateReview {
   freshness: TaskEvidenceFreshness | "missing";
   evidenceId?: string;
   reason: string;
+  decision?: TaskGateReviewDecision;
+  budget?: TaskGateReviewBudget;
+}
+
+/** Structured human-decision state for the semantic-review exhaustion condition. */
+export interface TaskGateReviewDecision {
+  decision: string;
+  actor: string;
+  freshness: TaskEvidenceFreshness;
+  evidenceId: string;
+  resolvedBlocker?: string;
+  reason: string;
+}
+
+/** Structured review/budget state used by gate correctness instead of blocker text. */
+export interface TaskGateReviewBudget {
+  maxReviewPasses: number;
+  passesUsed: number;
+  grantedPasses: number;
+  effectiveMaxReviewPasses: number;
+  exhausted: boolean;
 }
 
 export interface TaskCompletionGateResult {
@@ -327,14 +352,67 @@ export async function evaluateTaskCompletionGate(options: {
   if (policy.requirements.independentReview) {
     const reviewRecords = (await listTaskReviews(options.rootDirectory, task.id))
       .filter((record) => isGateEligibleEvidence(record, registeredAgents));
+    const decisionAssessments = assessTaskHumanDecisions(
+      (await listTaskHumanDecisions(options.rootDirectory, task.id))
+        .filter((record) => isGateEligibleEvidence(record, registeredAgents)),
+      subject,
+    );
+    const decisionAssessmentsOrdered = [...decisionAssessments]
+      .sort((left, right) => (
+        (left.freshness === "current" ? 0 : 1) - (right.freshness === "current" ? 0 : 1)
+        || left.record.time.localeCompare(right.record.time)
+        || left.record.id.localeCompare(right.record.id)
+      ));
+    const decisionAssessmentsCurrent = decisionAssessmentsOrdered
+      .filter((assessment) => assessment.freshness === "current");
+    const latestDecision = decisionAssessmentsOrdered.at(-1);
+    if (latestDecision) {
+      review.decision = {
+        decision: latestDecision.record.decision,
+        actor: latestDecision.record.actor,
+        freshness: latestDecision.freshness,
+        evidenceId: latestDecision.record.id,
+        ...(latestDecision.record.resolvedBlocker ? { resolvedBlocker: latestDecision.record.resolvedBlocker } : {}),
+        reason: latestDecision.reason,
+      };
+    }
+    const grantedPasses = Math.min(
+      Math.max(0, decisionAssessmentsCurrent
+        .filter((assessment) => assessment.record.decision === "grant-review-passes"
+          && !(latestDecision && latestDecision.record.decision === "accept-current" && latestDecision.record.id === assessment.record.id))
+        .reduce((sum, assessment) => sum + assessment.grantPasses, 0)),
+      MAX_HUMAN_REVIEW_GRANT_PASSES,
+    );
+    // accept-current supersedes an earlier grant on the same exhausted candidate.
+    const supersedesGrants = latestDecision?.record.decision === "accept-current";
+    const effectiveGrantPasses = supersedesGrants ? 0 : grantedPasses;
+    const reviewBudget = policy.requirements.reviewBudget;
+    const effectiveMaxReviewPasses = reviewBudget !== undefined
+      ? reviewBudget.maxReviewPasses + effectiveGrantPasses
+      : undefined;
+    const passesUsed = reviewRecords.length;
+    const budgetExhausted = effectiveMaxReviewPasses !== undefined
+      && passesUsed >= effectiveMaxReviewPasses;
+    review.budget = {
+      maxReviewPasses: reviewBudget?.maxReviewPasses ?? 0,
+      passesUsed,
+      grantedPasses: effectiveGrantPasses,
+      effectiveMaxReviewPasses: effectiveMaxReviewPasses ?? passesUsed,
+      exhausted: budgetExhausted,
+    };
     const assessments = assessTaskReviews(reviewRecords, subject);
     const selected = reviewAssessment(assessments, subject);
-    const reviewBudget = policy.requirements.reviewBudget;
-    const budgetExhausted = reviewBudget !== undefined && reviewRecords.length >= reviewBudget.maxReviewPasses;
+    // Blockers that belong to the structured review-budget-exhaustion condition; only a
+    // current accept-current decision resolving that condition may remove them.
+    const exhaustionBlockers: string[] = [];
     if (!selected) {
       review.freshness = "missing";
       review.reason = budgetExhausted ? "review budget exhausted" : "missing independent review evidence";
-      blockers.push(budgetExhausted ? "Review budget exhausted; request an explicit human decision." : "Missing independent review evidence.");
+      const blocker = budgetExhausted
+        ? "Review budget exhausted; request an explicit human decision."
+        : "Missing independent review evidence.";
+      if (budgetExhausted) exhaustionBlockers.push(blocker);
+      blockers.push(blocker);
     } else if (selected.freshness !== "current") {
       review.freshness = "stale";
       review.evidenceId = selected.record.id;
@@ -344,6 +422,11 @@ export async function evaluateTaskCompletionGate(options: {
         ? "review evidence belongs to another candidate revision"
         : "review evidence stale";
       blockers.push(`${review.reason}.`);
+      if (budgetExhausted) {
+        const exhaustedMessage = "Review budget exhausted; request an explicit human decision.";
+        exhaustionBlockers.push(`${review.reason}.`, exhaustedMessage);
+        blockers.push(exhaustedMessage);
+      }
     } else {
       review.freshness = "current";
       review.evidenceId = selected.record.id;
@@ -357,7 +440,19 @@ export async function evaluateTaskCompletionGate(options: {
         blockers.push("Implementation owner cannot satisfy independent review.");
       }
       if (selected.record.result !== "pass") {
-        blockers.push(`Independent review is ${selected.record.result}; pass review evidence is required.`);
+        const message = `Independent review is ${selected.record.result}; pass review evidence is required.`;
+        if (budgetExhausted) {
+          // A non-passing review while the budget is exhausted is part of the structured exhaustion condition.
+          exhaustionBlockers.push(message);
+          blockers.push(message);
+          const exhaustedMessage = selected.record.result === "changes_requested"
+            ? "Review budget exhausted on a non-passing review; request an explicit human decision."
+            : "Review budget exhausted; request an explicit human decision.";
+          exhaustionBlockers.push(exhaustedMessage);
+          blockers.push(exhaustedMessage);
+        } else {
+          blockers.push(message);
+        }
       }
       if (selected.record.result === "pass" && policy.requirements.assurance === "diverse") {
         const families = new Set(reviewRecords
@@ -365,9 +460,28 @@ export async function evaluateTaskCompletionGate(options: {
           .map((record) => record.resourceFamily));
         if (families.size < 2) blockers.push("Diverse assurance requires current passing review evidence from two model/resource families.");
       }
-      if (budgetExhausted && selected.record.result !== "pass") {
-        blockers.push("Review budget exhausted; request an explicit human decision.");
+    }
+
+    const decisionResolvesExhaustion = Boolean(
+      latestDecision
+      && latestDecision.record.decision === "accept-current"
+      && latestDecision.record.resolvedBlocker === TASK_DECISION_RESOLVED_BLOCKER
+      && latestDecision.freshness === "current",
+    );
+    if (decisionResolvesExhaustion) {
+      // Remove only the structured exhaustion-condition blockers; hard blockers are untouched.
+      const resolved = new Set(exhaustionBlockers.filter((blocker) => blockers.includes(blocker)));
+      for (let index = blockers.length - 1; index >= 0; index -= 1) {
+        if (resolved.has(blockers[index])) {
+          blockers.splice(index, 1);
+        }
       }
+      review.reason = `${review.reason} resolved by human decision (actor=${latestDecision!.record.actor}; blocker=${TASK_DECISION_RESOLVED_BLOCKER}; trust-model=operator-asserted)`;
+    }
+    if (latestDecision?.record.decision === "changes-required") {
+      blockers.push(
+        `Human decision changes-required (actor=${latestDecision.record.actor}) requires further changes; the gate needs an independent review pass.`,
+      );
     }
   }
 
@@ -403,6 +517,8 @@ export function renderTaskCompletionGate(result: TaskCompletionGateResult): stri
       ? result.verification.map((check) => `  - ${check.checkId}: ${check.result} (${check.freshness})${check.evidenceId ? ` evidence=${check.evidenceId}` : ""}`)
       : ["  - none"]),
     `Review: ${result.review.reason}${result.review.evidenceId ? ` evidence=${result.review.evidenceId}` : ""}`,
+    ...(result.review.budget ? [`Review budget: max=${result.review.budget.maxReviewPasses}; used=${result.review.budget.passesUsed}; granted=${result.review.budget.grantedPasses}; effective=${result.review.budget.effectiveMaxReviewPasses}; exhausted=${result.review.budget.exhausted}`] : []),
+    ...(result.review.decision ? [`Human decision: ${result.review.decision.decision}; actor=${result.review.decision.actor}; freshness=${result.review.decision.freshness}; evidence=${result.review.decision.evidenceId}${result.review.decision.resolvedBlocker ? `; resolves=${result.review.decision.resolvedBlocker}` : ""}`] : []),
     `Evidence set: ${result.evidenceIds.length > 0 ? result.evidenceIds.join(",") : "none"}`,
   ];
   if (result.blockers.length > 0) {

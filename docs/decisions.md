@@ -950,3 +950,15 @@ ResLedger Task 0032 proves that a bounded v0.4.2 -> v0.4.3 tooling migration can
 Reference:
 
 Task 0126 and `docs/engineering/apk-upgrade-workflow.md`.
+
+## ADR-0059 - Human decisions are first-class, operator-asserted, candidate-bound records for review-budget exhaustion
+
+Exhausting the bounded semantic-review budget blocked downstream tasks with no canonical way to record an operator outcome. Add a first-class append-only `human-decision` evidence type with a bounded decision vocabulary (`accept-current`, `grant-review-passes`, `changes-required`; routed `cancel`), an explicit `actor` distinct from the recording agent, and an honest `operator-asserted` trust model.
+
+Decisions are candidate-bound through the existing evidence subject/freshness primitive; a decision for one candidate is stale for another. Gate correctness consumes structured review/budget/decision state (not blocker text) and `accept-current` removes only the `review-budget-exhausted` condition; deterministic verification, scope, dependency, evidence, diverse-assurance, and owner-as-reviewer blockers remain typed hard blockers. Review-budget extension is additive (1-2 passes per grant, +2 per candidate cap) without resetting history; `accept-current` supersedes an earlier grant. Scope expansion: `src/core/exporters/index.ts` was added to the task's allowed files so the generated canonical agent policy explicitly forbids agent self-authorization of human decisions.
+
+Non-goals: no generic force completion, no user-account/authentication system, no cryptographic human verification claims, no coupling to platform approvals, no automatic fallback decisions.
+
+Reference:
+
+Task 0119.

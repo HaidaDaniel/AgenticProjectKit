@@ -406,7 +406,7 @@ export async function buildTaskProvenance(
     .filter((record) => !runIds.has(record.runId))
     .map((record): TaskProvenanceRun => ({
       time: record.time,
-      event: record.type === "review" ? "review" : record.type === "completion" ? "done" : record.type === "dogfood" ? "work" : "verify",
+      event: record.type === "review" || record.type === "human-decision" ? "review" : record.type === "completion" ? "done" : record.type === "dogfood" ? "work" : "verify",
       runId: record.runId,
       task: record.taskId,
       agent: record.agent,
@@ -414,7 +414,9 @@ export async function buildTaskProvenance(
       platform: "unknown",
       model: "unknown",
       outcome: record.result === "pass" ? "ok" : "error",
-      reason: `evidence ${record.type}`,
+      reason: record.type === "human-decision"
+        ? `human decision ${record.decision} actor=${record.actor} (${record.trustModel})`
+        : `evidence ${record.type}`,
     }));
   const allRuns = [...runs, ...syntheticRuns]
     .sort((left, right) => left.time.localeCompare(right.time) || left.runId?.localeCompare(right.runId ?? "") || 0)
@@ -531,6 +533,12 @@ export function renderTaskProvenance(provenance: TaskProvenance): string {
     "Runs:",
     ...(provenance.runs.length > 0
       ? provenance.runs.map((run) => `  - ${run.time} ${run.event}${run.runId ? ` ${run.runId}` : ""} agent=${run.agent} ${run.platform}/${run.model} outcome=${run.outcome}`)
+      : ["  - none"]),
+    "Human decisions:",
+    ...(provenance.evidence.filter((record) => record.type === "human-decision").length > 0
+      ? provenance.evidence
+        .filter((record) => record.type === "human-decision")
+        .map((record) => `  - ${record.id} ${record.decision} actor=${record.actor} freshness=${record.freshness} run=${record.runId}${record.resolvedBlocker ? ` resolves=${record.resolvedBlocker}` : ""}${record.reviewBudgetGrant ? ` grant-passes=${record.reviewBudgetGrant}` : ""} trust=${record.trustModel}`)
       : ["  - none"]),
     "Worker runs:",
     ...(provenance.workerRuns.length > 0
