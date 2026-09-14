@@ -1,4 +1,6 @@
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -10,6 +12,8 @@ import { initProject } from "../init/index.js";
 import { runDoctor } from "../doctor/index.js";
 import { scanRepository } from "../scanners/index.js";
 import { auditRepository } from "./index.js";
+
+const execFileAsync = promisify(execFile);
 
 async function withTempDirectory(
   run: (directory: string) => Promise<void>,
@@ -380,5 +384,69 @@ test("auditRepository reports Python and Go stacks from canonical markers", asyn
 
     const projectMap = await readFile(join(directory, "docs/project-map.md"), "utf8");
     assert.match(projectMap, /## Detected Stack\n\n- Go\n- Python/);
+  });
+});
+
+
+function projectMapInventory(map: string): boolean {
+  return /## Repository Readiness/.test(map);
+}
+
+test("audits keep tests readiness findings consistent with detected test capability", async () => {
+  await withTempDirectory(async (directory) => {
+    // Node repository with conventional tests/: no contradictory findings.
+    await mkdir(join(directory, "tests"), { recursive: true });
+    await writeFile(join(directory, "package.json"), JSON.stringify({ scripts: { test: "node --test" } }), "utf8");
+    const nodeResult = await auditRepository(directory);
+    assert.ok(!nodeResult.findings.some((finding) => finding.message === "Top-level test directory not detected."));
+
+    // Node with a test script but no tests/ directory: capability is still detected via the
+    // test script, so the layout note alone stays an inventory fact (absence of a contradiction).
+    await withTempDirectory(async (nested) => {
+      await writeFile(join(nested, "package.json"), JSON.stringify({ scripts: { test: "vitest" } }), "utf8");
+      const result = await auditRepository(nested);
+      assert.ok(!result.findings.some((finding) => finding.message === "Top-level test directory not detected."));
+      assert.ok(projectMapInventory(await readFile(join(nested, "docs/project-map.md"), "utf8")));
+    });
+
+    // Mixed Go plus APK tooling: tracked package-local Go tests are detected, package.json
+    // exists without test scripts, and there no misleading readiness finding is emitted.
+    await withTempDirectory(async (mixed) => {
+      await writeFile(join(mixed, "go.mod"), "module example.com/app\n\ngo 1.22\n", "utf8");
+      await writeFile(join(mixed, "package.json"), JSON.stringify({ devDependencies: { "agentic-project-kit": "0.4.3" } }), "utf8");
+      await writeFile(join(mixed, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n", "utf8");
+      await mkdir(join(mixed, "internal", "db"), { recursive: true });
+      await writeFile(join(mixed, "internal", "db", "db_test.go"), "package db\n", "utf8");
+      const git = async (...args: string[]) => {
+        for (const arg of args) {
+          await execFileAsync("git", arg.split(" "), { cwd: mixed });
+        }
+      };
+      await git("init --quiet", "config user.email codex@example.test", "config user.name Codex", "add .", "commit --quiet -m initial");
+      const result = await auditRepository(mixed);
+      assert.equal(result.hasErrors, false);
+      assert.ok(result.quality.capabilities.find((capability) => capability.id === "tests")?.status === "detected");
+      assert.ok(!result.findings.some((finding) => finding.message === "Top-level test directory not detected."));
+    });
+
+    // Repository with package.json but no credible tests evidence still reports the readiness info.
+    await withTempDirectory(async (empty) => {
+      await writeFile(join(empty, "package.json"), JSON.stringify({ devDependencies: { typescript: "5.0.0" } }), "utf8");
+      const result = await auditRepository(empty);
+      assert.ok(result.findings.some((finding) => finding.message === "Top-level test directory not detected."));
+    });
+  });
+});
+
+test("audits and quality detection never contradict each other about tests", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".github", "workflows"), { recursive: true });
+    await writeFile(join(directory, "makefile"), "test:\n\tpython -m pytest tests/\n", "utf8");
+    const result = await auditRepository(directory);
+    const tests = result.quality.capabilities.find((capability) => capability.id === "tests");
+    const readinessConflict = result.findings.some((finding) => (
+      finding.message === "Top-level test directory not detected." && tests?.status === "detected"
+    ));
+    assert.ok(!readinessConflict);
   });
 });

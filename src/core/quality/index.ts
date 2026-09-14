@@ -1,5 +1,9 @@
+import { execFile } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 export const QUALITY_CAPABILITY_IDS = [
   "typecheck",
@@ -194,6 +198,69 @@ async function hasAny(rootDirectory: string, paths: readonly string[]): Promise<
   return undefined;
 }
 
+const GO_TEST_DISCOVERY_SKIP = new Set([
+  ".git",
+  "vendor",
+  "node_modules",
+  "dist",
+  "build",
+  "out",
+  "bin",
+  "coverage",
+  "tmp",
+]);
+
+const MAX_GO_TEST_DISCOVERY_DIRS = 512;
+
+/**
+ * Bounded package-local Go test discovery. Prefer Git-tracked file listing; otherwise
+ * walk at most two directory levels with generation/vendor/build/ignore-adjacent trees
+ * skipped and a hard directory cap so audit stays cheap and deterministic.
+ */
+async function findGoTestFiles(rootDirectory: string): Promise<string[]> {
+  try {
+    const { stdout } = await execFileAsync("git", ["ls-files", "*_test.go"], { cwd: rootDirectory, windowsHide: true });
+    const tracked = stdout;
+    const files = tracked
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.endsWith("_test.go"));
+    if (files.length > 0) return files.slice(0, 16);
+  } catch {
+    // Non-Git or unavailable discovery falls through to the bounded filesystem walk.
+  }
+
+  const results: string[] = [];
+  let visited = 0;
+  const walk = async (relative: string, depth: number): Promise<void> => {
+    visited += 1;
+    if (visited > MAX_GO_TEST_DISCOVERY_DIRS) return;
+    let entries: string[];
+    try {
+      entries = await readdir(join(rootDirectory, relative));
+    } catch {
+      return;
+    }
+    for (const entry of entries.sort()) {
+      const child = relative ? `${relative}/${entry}` : entry;
+      if (entry.endsWith("_test.go")) {
+        results.push(child);
+      }
+      if (depth + 1 <= 2 && !GO_TEST_DISCOVERY_SKIP.has(entry) && !entry.includes(".go")) {
+        try {
+          if ((await stat(join(rootDirectory, child))).isDirectory()) {
+            await walk(child, depth + 1);
+          }
+        } catch {
+          // skip unreadable entries
+        }
+      }
+    }
+  };
+  await walk("", 0);
+  return results.slice(0, 16);
+}
+
 async function matchingFiles(rootDirectory: string, paths: readonly string[]): Promise<string[]> {
   const matches: string[] = [];
   for (const path of paths) {
@@ -299,6 +366,22 @@ async function detectMarkers(rootDirectory: string, states: Map<QualityCapabilit
     "build.gradle.kts",
   ]);
   if (buildMarker) addMarkerEvidence(states, "build", buildMarker, "build or package configuration detected");
+
+  // Bounded native Go test evidence: tracked package-local `*_test.go` files are strong test
+  // evidence for Git-backed Go modules; a shallow (depth <= 2) bounded fallback handles
+  // non-Git directories. Discovery never walks .git, vendored, or generated trees.
+  if (await exists(join(rootDirectory, "go.mod"))) {
+    const goTestFiles = await findGoTestFiles(rootDirectory);
+    if (goTestFiles.length > 0) {
+      addMarkerEvidence(
+        states,
+        "tests",
+        `${goTestFiles.length} *_test.go file(s)`,
+        `Go package-local test files detected: ${goTestFiles.slice(0, 3).join(", ")}`,
+        "high",
+      );
+    }
+  }
 
   const pyproject = await readText(join(rootDirectory, "pyproject.toml"));
   if (pyproject !== undefined) {

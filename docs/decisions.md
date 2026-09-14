@@ -970,3 +970,11 @@ Task 0119.
 Reference:
 
 Task 0121.
+
+## ADR-0061 - Test readiness findings follow detected test capability, not test-directory layout
+
+The audit reported `tests: detected` and `Top-level test directory not detected.` simultaneously, because readiness used `package.json exists + tests/ absent` while detection used scripts/config markers. Reconcile at the audit layer (the generic invariant, no Go-only suppression): audit runs quality detection first, and the top-level-directory readiness info is emitted only when no test capability is detected. Go modules gain bounded native test evidence: tracked `*_test.go` files via `git ls-files` with a bounded (two-level, 512-directory, vendor/`.git`/generated-skipping) filesystem fallback. `package.json` alone stays non-proving for Node application semantics (ADR-0057): tooling-only repositories without any credible test evidence still report the readiness info. The Project Map keeps truthful `Test directories: none` inventory; inventory alone never counts as missing readiness.
+
+Reference:
+
+Task 0122.

@@ -1,7 +1,7 @@
 # Task 0122 - Align repository-readiness test findings with detected test capability
 
-State: todo
-Owner: none
+State: doing
+Owner: code-owner-0122
 Mode: maintenance
 Lane: adoption
 Type: bugfix

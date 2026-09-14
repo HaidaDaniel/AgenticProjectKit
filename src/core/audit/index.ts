@@ -227,7 +227,7 @@ async function auditTasks(
   return scan.taskFiles.length;
 }
 
-function auditRepoReadiness(scan: RepositoryScan, findings: AuditFinding[]): void {
+function auditRepoReadiness(scan: RepositoryScan, findings: AuditFinding[], testsCapabilityDetected: boolean): void {
   if (scan.topLevelFiles.includes("package.json")) {
     for (const script of ["test", "lint", "typecheck", "build"]) {
       if (!scan.readiness.packageScripts.includes(script)) {
@@ -256,7 +256,11 @@ function auditRepoReadiness(scan: RepositoryScan, findings: AuditFinding[]): voi
     });
   }
 
-  if (scan.topLevelFiles.includes("package.json") && scan.readiness.testDirectories.length === 0) {
+  if (
+    scan.topLevelFiles.includes("package.json")
+    && scan.readiness.testDirectories.length === 0
+    && !testsCapabilityDetected
+  ) {
     findings.push({
       level: "info",
       area: "repo-readiness",
@@ -295,9 +299,18 @@ export async function auditRepository(rootDirectory: string): Promise<AuditResul
 
   addMissingFindings(findings, "docs", scan.kitDocs.missing);
   addMissingFindings(findings, "exports", scan.agentExports.missing);
-  auditRepoReadiness(scan, findings);
+  // Quality detection runs first so readiness findings cannot contradict detected capability: when
+  // tests are detected through another supported mechanism, the absence of a top-level tests/
+  // directory is inventory, not a readiness deficiency.
   const qualityPolicy = await auditConfig(rootDirectory, findings);
   const quality = await detectQualityCapabilities(rootDirectory, qualityPolicy);
+  // Readiness findings run after quality detection so they cannot contradict detected capability:
+  // when tests are detected through another supported mechanism, the absence of a top-level
+  // tests/ directory is inventory, not a readiness deficiency.
+  const testsCapabilityDetected = quality.capabilities.some(
+    (capability) => capability.id === "tests" && capability.status === "detected",
+  );
+  auditRepoReadiness(scan, findings, testsCapabilityDetected);
   if (quality.policy.status === "fail") {
     findings.push({
       level: "error",
