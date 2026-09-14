@@ -1,7 +1,7 @@
 # Task 0121 - Document candidate and completion bookkeeping commit lifecycle
 
-State: todo
-Owner: none
+State: doing
+Owner: docs-owner-0121
 Mode: maintenance
 Lane: docs
 Type: documentation

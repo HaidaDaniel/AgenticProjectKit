@@ -184,6 +184,9 @@ test("canonical agent policy requires safe commit hygiene for successful tasks",
   assert.match(rules, /surface the blocker and do not report a clean successful handoff/);
   assert.match(rules, /Blocked, released unfinished, canceled, or failed tasks do not require a completion commit/);
   assert.match(rules, /APK never runs git commit, add, push, or rm itself/);
+  assert.match(rules, /A task is not one commit/);
+  assert.match(rules, /lifecycle-only bookkeeping change separately/);
+  assert.match(rules, /Never amend, rebase, or squash the candidate commit/);
   assert.doesNotMatch(rules, /apk (done|task done)[^\n]*git commit/i);
 
   const exports = await renderAgentExportFiles();
@@ -195,6 +198,8 @@ test("canonical agent policy requires safe commit hygiene for successful tasks",
   assert.match(agents.content, /do not create an empty commit/);
   assert.match(agents.content, /Report the resulting commit SHA\(s\)/);
   assert.match(agents.content, /pre-existing dirty changes untouched/);
+  assert.match(agents.content, /A task is not one commit/);
+  assert.match(agents.content, /Never amend, rebase, or squash the candidate commit/);
 });
 
 test("Claude and Gemini adapters are thin AGENTS.md imports with no duplicated policy", async () => {

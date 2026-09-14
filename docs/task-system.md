@@ -324,6 +324,10 @@ APK does not run Git itself: no `git commit`, `git add`, `git push`, or `git rm`
 
 A successfully completed task must not be handed back with uncommitted task-owned implementation or fix changes. Commit task-owned changes before final verify/review/gate so candidate-bound evidence refers to the committed candidate; because APK candidate identity is content-derived, committing does not by itself invalidate a candidate unless the committed content differs. Terminal `apk done` bookkeeping (task state, run, and completion evidence) is excluded workflow state and may follow as an intentional follow-up commit; the reviewed implementation candidate, terminal APK bookkeeping, and final repository cleanliness are distinct.
 
+### Candidate and completion bookkeeping commits
+
+The canonical lifecycle is: implementation/fix work -> candidate commit -> `apk task verify` -> independent review -> gate -> `apk done` -> completion/bookkeeping commit (only when tracked content changed). APK does not promise one task equals one Git commit: the tracked task Markdown represents task state on disk, so `apk done` may leave a lifecycle-only dirty state. Commit that lifecycle-only bookkeeping change in its own commit; it is not another implementation commit and must never amend, rebase, or squash the candidate commit, because amend changes the candidate SHA and invalidates candidate-bound evidence. Report both the implementation candidate SHA and the bookkeeping commit SHA when both exist; if a task has no task-owned changes, no commit is required. Unrelated and pre-existing dirty state stays untouched and excluded from both commits. A future design possibility (not implemented here) is an immutable tracked task contract plus runtime/untracked task-lifecycle state, which could remove the second commit; do not treat the two-commit pattern as a defect of either commit.
+
 Commit safety rules:
 
 - stage only files attributable to the current task; never run `git add -A` or `git add .` to absorb unrelated or pre-existing dirty state;

@@ -35,6 +35,8 @@ test("syncAgentExports passes when generated files are current", async () => {
     assert.match(agents, /must not leave task-owned changes uncommitted/);
     assert.match(agents, /Never run `git add -A` or `git add \.`/);
     assert.match(agents, /APK never runs git commit, add, push, or rm itself/);
+    assert.match(agents, /A task is not one commit/);
+    assert.match(agents, /lifecycle-only bookkeeping change separately/);
   });
 });
 

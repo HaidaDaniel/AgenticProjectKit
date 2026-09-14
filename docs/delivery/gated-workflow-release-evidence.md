@@ -7,7 +7,7 @@ Task 0075 validates one frozen AgenticProjectKit candidate. This file defines th
 - Candidate inputs: every tracked file at frozen `HEAD`; worktree must have no candidate-controlled changes.
 - Candidate identity: package version, `HEAD`, Git tree, APK baseline/candidate/worktree IDs.
 - Non-candidate outputs: ignored `dist/**`, `coverage/**`, and `.agentic/**` runtime evidence/session records.
-- This report and `docs/analytics/gated-workflow-dogfood.md` receive their final result blocks after `done`. That evidence-only commit is not the validated release candidate and must name the earlier frozen SHA explicitly.
+- This report and `docs/analytics/gated-workflow-dogfood.md` receive their final result blocks after `done`. That evidence-only commit is not the validated release candidate and must name the earlier frozen SHA explicitly. The release lifecycle follows the canonical two-commit pattern: a frozen candidate commit that carries the implementation, then this bookkeeping commit; nothing is amended afterward.
 - Any pre-gate tracked or unexpected untracked mutation invalidates the freeze and requires a new baseline plus affected verification/review/CI.
 
 ## Required proof

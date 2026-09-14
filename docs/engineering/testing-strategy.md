@@ -37,7 +37,7 @@ AgenticProjectKit itself uses separate `pnpm typecheck` and `pnpm lint` commands
 
 `pnpm test:coverage` uses c8 with text and `coverage/coverage-summary.json` reporters. The measured pre-guardrail baseline was 91.72% lines/statements, 96.50% functions, and 80.00% branches across 267 tests. Thresholds are 90% lines, 90% statements, 95% functions, and 78% branches: each leaves small measured headroom while preventing regression without demanding arbitrary 100% coverage.
 
-`pnpm release:check` remains the stronger local release validation: fast quality, coverage, build, and APK-specific sync/audit checks. Pre-commit runs lint-staged source lint; pre-push runs fast quality, coverage, and build. Hooks provide developer feedback only and cannot replace candidate-bound `apk task verify`, independent review, or the completion gate.
+`pnpm release:check` remains the stronger local release validation: fast quality, coverage, build, and APK-specific sync/audit checks. Pre-commit runs lint-staged source lint; pre-push runs fast quality, coverage, and build. Hooks provide developer feedback only and cannot replace candidate-bound `apk task verify`, independent review, or the completion gate. The canonical task commit lifecycle is a reviewed candidate commit followed, when `apk done` leaves tracked lifecycle changes, by a separate completion/bookkeeping commit; it is not one commit per task, and the candidate commit is never amended once evidence binds to its SHA.
 
 Hooks can be intentionally bypassed for an exceptional commit with `git commit --no-verify`; Husky's supported disable path is `HUSKY=0` for the command (PowerShell sessions can set `$env:HUSKY=0`).
 

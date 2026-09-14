@@ -962,3 +962,11 @@ Non-goals: no generic force completion, no user-account/authentication system, n
 Reference:
 
 Task 0119.
+
+## ADR-0060 - Candidate and completion bookkeeping commits are two normal commits; amend is forbidden after evidence binding
+
+`apk done` writes tracked task Markdown, so a completed task legitimately leaves a lifecycle-only dirty tracked file after the reviewed candidate commit. Document the canonical lifecycle as implementation/fix work -> candidate commit -> verify -> review -> gate -> `apk done` -> completion/bookkeeping commit when tracked content changed. The bookkeeping commit is lifecycle-only, never another implementation commit, and the candidate commit must never be amended, rebased, or squashed after candidate-bound evidence or provenance references its SHA. APK promises neither one-task-one-commit nor auto-commit; both SHAs are reportable, unrelated dirty state stays excluded, and an immutable tracked-task-contract plus runtime lifecycle state remains a documented future design possibility only (ADR-0057/0060, Task 0121).
+
+Reference:
+
+Task 0121.
