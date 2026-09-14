@@ -139,7 +139,19 @@ After the gated-workflow release foundation, Resource-Aware Execution proceeds t
 
 ## Remaining task plan
 
-- Task 0125: todo/unowned; optional manually invoked milestone semantic integrity audit of completed task sets, using bounded canonical context and provenance. Findings/proposed corrective backlog precede explicit approval; historical done contracts/evidence stay intact. Separate from 0123 pre-implementation task-grill. Depends on completed 0064/0067/0068/0070/0092/0114.
+- Lightweight workflow milestone (planning only): skills supply reasoning, APK supplies deterministic control/enforcement, external agents/harnesses execute. Existing 0123 manual task-grill is reused unchanged; 0124 explicit caveman opt-in is a release prerequisite. All newly created contracts remain todo/unowned.
+- Task 0128: repro-first delta to existing bugfix typed guidance; best-effort flaky/UI/provider reproduction stays valid, with no debugging subsystem or hard repro gate. Depends on completed 0064/0065.
+- Task 0129: optional manual apk-task-split portable asset; preview observable vertical slices, real DAG/parallelism/shared prerequisites/merge candidates, then explicit approval before canonical task writes. Depends on completed 0044/0067/0068/0092.
+- Task 0130: Spec correctness and Engineering quality in one prepared review/run/prompt and canonical outcome; preserve evidence schema, reviewer separation, budgets and freshness. Depends on completed 0063/0064/0072/0085.
+- Task 0131: deterministic read-only advisory context hygiene and canonical-unit estimates in existing lint; no semantic LLM judge, universal size gate or policy duplication. Depends on completed 0066/0067/0092/0114.
+- Task 0132: P2 optional manual apk-prototype asset; bounded throwaway experiments, observation/unknowns, ownership-safe cleanup and approval before durable structural changes. Depends on completed 0067/0092.
+- Task 0133: final release/adoption task; first validate and publish v0.4.4, then run the actual released consumer against the APK root for canonical adoption/sync/audit/lint/doctor and bounded self-dogfood. Depends on 0118/0123/0124/0128/0129/0130/0131/0132; phase 1 alone is incomplete.
+- Milestone ordering: 0128 || 0129 || 0130 || 0131 || 0132 (semantic independence; shared docs/tests/dist require separate worktrees), with existing 0123/0124 and completed 0118 -> 0133 release -> post-release APK-root adoption. No artificial feature-to-feature edges.
+- Release history checked on 2026-09-14: local/origin latest stable v0.4.3 peels to 0d56d074e01163a5b184fb247a254e4ee719a625; v0.4.4 is free. Task 0133 rechecks tags at execution. No release or feature implementation is performed by this planning pass.
+- Non-goals: no Wayfinder, generic Handoff, mandatory grill/spec/tickets lifecycle, LLM/provider runtime or second task state machine. Research 0125/0126 and semantic-audit 0127 remain outside this release.
+- Task 0125: existing todo/unowned non-Node installation/distribution research remains unchanged. A merged duplicate 0125 was resolved by renumbering only the unclaimed semantic-audit contract to 0127 and updating its planning references; no historical evidence was rewritten.
+
+- Task 0127: todo/unowned; optional manually invoked milestone semantic integrity audit of completed task sets, using bounded canonical context and provenance. Findings/proposed corrective backlog precede explicit approval; historical done contracts/evidence stay intact. Separate from 0123 pre-implementation task-grill. Depends on completed 0064/0067/0068/0070/0092/0114.
 - Task 0126: todo/unowned; research/design of agent-driven APK upgrades, comparing existing instructions/primitives, justified small additions, deterministic upgrade, and migration reports. Uses bounded ResLedger 0032 and translator-agent evidence; no upgrade implementation or live migration. Depends on completed 0074/0092/0110/0111/0115/0116/0117/0118.
 
 - Tasks 0001 through 0073 are complete.
