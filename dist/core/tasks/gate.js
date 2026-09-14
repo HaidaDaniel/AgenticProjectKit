@@ -209,11 +209,13 @@ export async function evaluateTaskCompletionGate(options) {
             .filter((record) => isGateEligibleEvidence(record, registeredAgents));
         const decisionAssessments = assessTaskHumanDecisions((await listTaskHumanDecisions(options.rootDirectory, task.id))
             .filter((record) => isGateEligibleEvidence(record, registeredAgents)), subject);
-        const decisionAssessmentsCurrent = decisionAssessments
-            .filter((assessment) => assessment.freshness === "current")
-            .sort((left, right) => left.record.time.localeCompare(right.record.time)
-            || left.record.id.localeCompare(right.record.id));
-        const latestDecision = decisionAssessmentsCurrent.at(-1);
+        const decisionAssessmentsOrdered = [...decisionAssessments]
+            .sort((left, right) => ((left.freshness === "current" ? 0 : 1) - (right.freshness === "current" ? 0 : 1)
+            || left.record.time.localeCompare(right.record.time)
+            || left.record.id.localeCompare(right.record.id)));
+        const decisionAssessmentsCurrent = decisionAssessmentsOrdered
+            .filter((assessment) => assessment.freshness === "current");
+        const latestDecision = decisionAssessmentsOrdered.at(-1);
         if (latestDecision) {
             review.decision = {
                 decision: latestDecision.record.decision,
@@ -269,6 +271,11 @@ export async function evaluateTaskCompletionGate(options) {
                 ? "review evidence belongs to another candidate revision"
                 : "review evidence stale";
             blockers.push(`${review.reason}.`);
+            if (budgetExhausted) {
+                const exhaustedMessage = "Review budget exhausted; request an explicit human decision.";
+                exhaustionBlockers.push(`${review.reason}.`, exhaustedMessage);
+                blockers.push(exhaustedMessage);
+            }
         }
         else {
             review.freshness = "current";
@@ -287,6 +294,7 @@ export async function evaluateTaskCompletionGate(options) {
                 if (budgetExhausted) {
                     // A non-passing review while the budget is exhausted is part of the structured exhaustion condition.
                     exhaustionBlockers.push(message);
+                    blockers.push(message);
                     const exhaustedMessage = selected.record.result === "changes_requested"
                         ? "Review budget exhausted on a non-passing review; request an explicit human decision."
                         : "Review budget exhausted; request an explicit human decision.";
