@@ -1,6 +1,6 @@
 # Task 0126 - Research agent-driven APK upgrade workflow
 
-State: todo
+State: done
 Owner: none
 Mode: discovery
 Lane: research
@@ -203,3 +203,4 @@ No upgrade command, migration engine, automatic dependency rewrite, executable u
 - 0074 implemented bounded legacy-to-gated adoption; 0092 owns canonical exports/legacy classification; 0110/0118 delivered installable releases and 0111/0115-0117 preserve operational/evidence/baseline/commit boundaries. This task designs a cross-release repository workflow using them, not another adoption or release implementation.
 - 0119 owns review-budget decisions, 0120 transition reasons, 0121 commit-lifecycle docs, 0122 readiness consistency, 0123 task-grill, 0124 style opt-in, 0125 non-Node distribution research, and 0127 completed-milestone semantic audit. Mention their boundaries/possible future migration implications without extending or implementing those contracts; none is a prerequisite for this research.
 - No new CLI or dependency is pre-authorized. Follow-up contract creation remains a post-conclusion planning step; no task/evidence schema or second persistent source of truth is designed merely to orchestrate upgrades.
+- Research outcome (2026-09-14): `docs/engineering/apk-upgrade-workflow.md` records the accepted architecture: repository-specific upgrades are agent-driven workflows composed from existing deterministic APK primitives. A reusable manual upgrade instruction/skill is the preferred first follow-up; no monolithic `apk upgrade` command is justified. A small read-only version/compatibility report is allowed only if further dogfood proves a concrete repeated information gap. No package/runtime/downstream implementation change was made by this research closure.
