@@ -5,10 +5,10 @@ Owner: none
 Mode: production
 Lane: release
 Type: release
-Scope: release,versioning,packaging,self-adoption,dogfood,docs
+Scope: release,versioning,packaging,skills,self-adoption,dogfood,docs
 Risk: high
 Parallel: false
-Depends on: 0118,0123,0124,0128,0129,0130,0131,0132
+Depends on: 0118,0123,0127,0134,0135,0136,0128,0129,0130,0131,0132
 Tags: release,dogfood
 
 ## Goal
@@ -19,11 +19,11 @@ Finish the lightweight workflow milestone in two ordered phases: (1) validate an
 
 Planning on 2026-09-14 verified local and origin tags: latest stable v0.4.3 peels to 0d56d074e01163a5b184fb247a254e4ee719a625; v0.4.4 is free. Target v0.4.4. Recheck real SemVer/tag history at execution; if the target is taken or version rules changed, update the task title/goal/exact release/evidence paths before edits. Never move/rewrite an existing tag.
 
-Include existing 0123 manual task-grill, existing 0124 normal-default/explicit caveman opt-in, and 0128-0132 repro-first, manual task-split, one-review/two-axis presentation, advisory context hygiene and P2 prototype. Their independent correctness/review/gates precede release. 0124 is required to remove obsolete automatic default-style behavior without rewriting downstream preferences. Non-Node distribution research 0125, agent-driven upgrade research 0126 and completed-milestone audit 0127 remain outside this release. No Wayfinder, generic Handoff, mandatory grill/spec/tickets lifecycle or orchestration framework.
+Include existing 0123 manual task-grill, completed 0127 optional manual milestone semantic audit, completed 0134 generated normal-default artifacts, and 0128-0132 repro-first, manual task-split, one-review/two-axis presentation, advisory context hygiene and P2 prototype. The normal-default/explicit-caveman behavior originally tracked by canceled 0124 is validated and superseded by completed 0136 (canceled 0124 is not a dependency). Corrective 0135 (canonical Git ignore semantics for Go test discovery) is included for release safety. Their independent correctness/review/gates precede release. Non-Node distribution research 0125 and agent-driven upgrade research 0126 remain outside this release. 0127 is included as a completed, optional/manual-only, non-gating shipped asset. No Wayfinder, generic Handoff, mandatory grill/spec/tickets lifecycle or orchestration framework.
 
 ### Phase 1 - Released artifact
 
-Prepare version/lock/README/release docs and current committed dist through existing commands. Freeze a clean release candidate SHA/tree. Full deterministic quality/coverage/build/release checks, exact-SHA hosted CI, package/bin payload and cold installability, canonical generated instructions, legacy-task compatibility and at least one representative disposable downstream flow must pass before annotated tag publication. Check all included portable assets and that skills remain optional. Reuse 0105/0110/0118 evidence discipline; local command success is never hosted CI proof. A candidate install may establish pre-tag package feasibility; after publication also cold-install from the actual immutable tag in an empty consumer directory with a fresh pnpm store and no build-script allowlist.
+Prepare version/lock/README/release docs and current committed dist through existing commands. Freeze a clean release candidate SHA/tree. Full deterministic quality/coverage/build/release checks, exact-SHA hosted CI, package/bin payload and cold installability, canonical generated instructions, legacy-task compatibility and at least one representative disposable downstream flow must pass before annotated tag publication. Check all included portable assets, including the packaged `apk-task-grill` and `apk-milestone-semantic-audit` `.hbs` assets, and confirm skills remain optional and non-gating. Reuse 0105/0110/0118 evidence discipline; local command success is never hosted CI proof. A candidate install may establish pre-tag package feasibility; after publication also cold-install from the actual immutable tag in an empty consumer directory with a fresh pnpm store and no build-script allowlist.
 
 ### Phase 2 - Actual self-adoption after release
 
@@ -74,6 +74,10 @@ If tag publication, actual-tag install or self-adoption fails, retain the valida
 - .tasks/0110-make-git-tag-distribution-self-contained-and-prepare-v042.md
 - .tasks/0118-release-v043-corrective-dogfood-fixes.md
 - .tasks/0123-add-optional-manually-invoked-apk-task-grill-skill.md
+- .tasks/0127-add-optional-manually-invoked-milestone-semantic-integrity-audit.md
+- .tasks/0134-regenerate-agentsmd-and-committed-dist-for-the-normal-default-style.md
+- .tasks/0135-make-go-test-discovery-honor-canonical-git-ignore-semantics.md
+- .tasks/0136-validate-and-supersede-canceled-0124-normal-default-behavior.md
 - .tasks/0124-make-caveman-explicitly-user-opt-in-instead-of-an-automatic-default.md
 - .tasks/0128-add-repro-first-guidance-to-bugfix-task-contracts.md
 - .tasks/0129-add-optional-tracer-bullet-task-decomposition-skill.md
@@ -150,7 +154,7 @@ If tag publication, actual-tag install or self-adoption fails, retain the valida
 
 ## Required evidence
 
-- docs/releases/v0.4.4.md with frozen SHA/tree, exact-SHA hosted CI, tag peel, package/bin/assets, compatibility and cold-install/downstream results.
+- docs/releases/v0.4.4.md with frozen SHA/tree, exact-SHA hosted CI, tag peel, package/bin/assets (including the packaged `apk-task-grill` and `apk-milestone-semantic-audit` `.hbs` assets), compatibility and cold-install/downstream results.
 - docs/delivery/workflow-v0.4.4-self-dogfood.md with actual-tag consumer identity, real root post-release commands/diff, migrated root/fixture provenance and bounded workflow outcomes.
 - Current final-candidate verification/review/gate and reported release/adoption/completion commit SHAs; preserve separate immutable phase identities.
 
@@ -198,7 +202,7 @@ If tag publication, actual-tag install or self-adoption fails, retain the valida
 - Milestone boundary: portable skills supply reasoning; APK core supplies deterministic lifecycle/scope/evidence/enforcement; external agents/harnesses execute. No LLM/provider runtime, chat engine, second workflow state machine, hidden planner, workflow DSL, Wayfinder, or generic Handoff.
 - Keep instructions compact for local/small models and do not inflate always-loaded AGENTS.md. Existing correctness/Notes/evidence/context/template primitives stay canonical; no new schema, command, state, or mandatory skill registry without a separately justified contract.
 - Parallel denotes semantic independence; shared tests/docs/dist require separate worktrees and coordinated integration, never concurrent mutable tasks in one worktree.
-- Last task of the milestone. Existing 0123 and 0124 are reused dependencies, not duplicates; research 0125/0126 and semantic-audit 0127 are not release prerequisites.
+- Last task of the milestone. Existing 0123 is a reused completed dependency; canceled 0124 is not a dependency and its already-landed behavior is validated/superseded by completed 0136; 0127 is an included completed optional/manual asset; 0134 and corrective 0135 are completed release-safety prerequisites; research 0125/0126 stay out of scope.
 - Final verification commands apply after both phases. Pre-tag criteria can execute directly and be retained in immutable release evidence without claiming the whole task gate/done has passed before tag-dependent checks exist.
 - dist/config/AGENTS/adapters/gitignore edits are limited to normal build/version/canonical adoption/generation; no source feature fixes or custom policy deletion. New safety issues need a separate bounded correction and fresh validation.
 - Use actual released help; APK has no --version CLI at planning. Detect installed version from package metadata and prove executable/tag ownership rather than inventing syntax. If target advances, update exact release/evidence paths before implementation.
