@@ -93,6 +93,7 @@ import {
   releaseTask,
   reviewTask,
 } from "./workflow.js";
+import { getTaskTemplate, resolveTaskTemplateType } from "../templates/task-templates.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -312,6 +313,29 @@ test("typed task metadata survives round trip and maps to policy tags", () => {
   assert.deepEqual(policy.classifications, ["async", "worker"]);
   assert.equal(policy.requirements.independentReview, true);
   assert.deepEqual(policy.requirements.evidenceCategories, ["report"]);
+});
+
+test("bugfix template defaults enforce repro-first sequencing and honest limits", () => {
+  const template = getTaskTemplate("bugfix");
+  const steps = template.steps.join("\n");
+
+  assert.match(steps, /Capture a failing signal first/);
+  assert.ok(
+    steps.indexOf("Capture a failing signal") < steps.lastIndexOf("Implement the smallest safe fix"),
+    "failing-signal attempt must precede the fix",
+  );
+  assert.match(steps, /Minimize the reproducer/);
+  assert.match(steps, /competing hypotheses/i);
+  assert.match(steps, /bounded instrumentation/);
+  assert.match(steps, /regression protection/);
+  assert.match(template.acceptanceCriteria.join("\n"), /reproduction limits/);
+  assert.match(template.correctnessAssumptions?.join("\n") ?? "", /do not establish root cause/);
+  assert.match(template.invariants?.join("\n") ?? "", /No forced red test/);
+  assert.match(template.requiredEvidence?.join("\n") ?? "", /best-effort observation/);
+  assert.match(template.reviewQuestions?.join("\n") ?? "", /hypotheses distinguished from proven root cause/);
+  assert.match(template.notes.join("\n"), /not a forced completion gate/);
+  assert.equal(template.risk, "medium");
+  assert.equal(resolveTaskTemplateType("bugfix"), "bugfix");
 });
 
 test("task policy applies deterministic risk defaults", () => {

@@ -1047,3 +1047,11 @@ is now part of the executed `pnpm test` suite so these regressions run in qualit
 Reference:
 
 Task 0135.
+
+## ADR-0066 - Bugfix task contracts use repro-first guidance with honest best-effort limits
+
+The `bugfix` typed template's declarative defaults now order a failing-signal attempt before implementation changes, economical minimization, competing hypotheses kept distinct from proven root cause, bounded instrumentation, the smallest safe fix, and practical regression protection. For flaky, UI-only, provider-dependent, or locally impractical defects, a captured observation with environment, attempts, and explicit limits may replace a red automated test. This is template guidance only: it adds no debugging subsystem, evidence schema, assurance or lifecycle gate, mandatory instrumentation, or forced automated red test, and it preserves explicit template overrides and historical task contracts.
+
+Reference:
+
+Task 0128.

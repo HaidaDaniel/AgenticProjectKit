@@ -31,6 +31,12 @@ The implementation should use tests to protect the CLI and repository generation
 - keep dogfooding evidence separate from automated tests and benchmark fixtures; never treat a failed session as a pass.
 - assert that typecheck-only lint scripts are not source-lint evidence and that quality JSON is deterministic and mutation-free.
 
+## Repro-first debugging
+
+Bugfix task contracts (the `bugfix` typed template) default to a repro-first sequence: attempt a failing signal before changing implementation, minimize the reproducer when economical, keep competing hypotheses distinct from proven root cause, add bounded instrumentation only where it distinguishes hypotheses, apply the smallest safe fix, then show the failing signal no longer occurs and add practical regression coverage.
+
+Reproduction is best-effort, not a universal gate. For flaky, UI-only, provider-dependent, or otherwise locally impractical defects, a captured observation with environment, attempts, and explicit unknowns may stand in for a red automated test. A plausible hypothesis plus a successful patch does not by itself establish root cause, and an unreproduced defect is not reported as fact.
+
 ## APK-local quality guardrails
 
 AgenticProjectKit itself uses separate `pnpm typecheck` and `pnpm lint` commands. `typecheck` runs `tsc --noEmit`; `lint` runs the TypeScript-aware ESLint configuration against `src/`. The fast `pnpm quality` command composes typecheck, source lint, and deterministic tests only.

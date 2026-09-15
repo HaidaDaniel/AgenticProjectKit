@@ -175,6 +175,8 @@ Supported templates:
 
 Domain templates populate structured verification and, where useful, the optional correctness contract. Their guardrails cover the relevant failure and review surfaces: migrations include compatibility, integrity, rollback/recovery, and idempotency; async workers include retries, cancellation, bounded concurrency, shutdown, and partial commits; provider integrations include timeout, fallback, malformed responses, and capability mismatch; deployments and releases include live candidate checks; benchmarks include comparability and leakage; security includes fail-closed and secret-boundary checks. Generated Markdown remains editable after creation.
 
+The `bugfix` template defaults to repro-first debugging: attempt a failing signal before changing implementation, minimize the reproducer when economical, keep competing hypotheses distinct from proven root cause, add bounded instrumentation only when it distinguishes hypotheses, apply the smallest fix, and protect the result with regression coverage where practical. For flaky, UI-only, provider-dependent, or otherwise locally impractical cases, a captured observation with environment, attempts, and limits may replace a red automated test; reproduction is best-effort, not a forced completion gate.
+
 Templates provide default mode, lane, risk, tags, context, verification, steps, acceptance criteria, documentation updates, and notes. Explicit flags override template defaults. `--title`, `--scope`, and `--allowed` remain required.
 
 ## Verification contract

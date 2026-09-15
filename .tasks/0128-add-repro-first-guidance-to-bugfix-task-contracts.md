@@ -1,7 +1,7 @@
 # Task 0128 - Add repro-first guidance to bugfix task contracts
 
-State: todo
-Owner: none
+State: doing
+Owner: code-owner-0128
 Mode: maintenance
 Lane: task-authoring
 Type: feature
