@@ -1,6 +1,6 @@
 # Task 0139 - Release v0.4.5 with project-level grill
 
-State: review
+State: done
 Owner: code-owner-0139
 Mode: production
 Lane: release
