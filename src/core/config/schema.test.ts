@@ -20,6 +20,7 @@ import {
 } from "../execution/calibrate.js";
 import { parseTaskMarkdown, type ProjectTask } from "../tasks/index.js";
 import { resolveTaskPolicy } from "../tasks/policy.js";
+import { DEFAULT_AGENT_POLICY } from "../exporters/index.js";
 
 async function withTempDirectory(run: (directory: string) => Promise<void>): Promise<void> {
   const directory = await mkdtemp(join(tmpdir(), "apk-calibrate-"));
@@ -63,6 +64,13 @@ test("parseAgenticConfig returns defaults for empty config", () => {
 
   assert.deepEqual(config, DEFAULT_CONFIG);
   assert.notStrictEqual(config, DEFAULT_CONFIG);
+});
+
+test("default agent style is normal and consistent across config and neutral policy", () => {
+  assert.equal(DEFAULT_CONFIG.agentStyle, "normal");
+  assert.equal(DEFAULT_AGENT_POLICY.defaultStyle, "normal");
+  assert.equal(DEFAULT_CONFIG.agentStyle, DEFAULT_AGENT_POLICY.defaultStyle);
+  assert.equal(parseAgenticConfig({}).agentStyle, "normal");
 });
 
 test("parseAgenticConfig accepts explicit overrides", () => {

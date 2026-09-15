@@ -150,6 +150,40 @@ test("adoptRepository skips existing files instead of overwriting them", async (
   });
 });
 
+test("adoptRepository defaults to normal style and preserves an existing caveman preference", async () => {
+  await withTempRepository(async (directory) => {
+    await createExistingRepository(directory);
+
+    await adoptRepository(directory);
+
+    const config = JSON.parse(await readFile(join(directory, ".agentic/config.json"), "utf8"));
+    assert.equal(config.agentStyle, "normal");
+    const agents = await readFile(join(directory, "AGENTS.md"), "utf8");
+    assert.match(agents, /Communicate in concise, readable sentences/);
+    assert.doesNotMatch(agents, /persisted repository preference \(agentStyle: caveman\)/);
+  });
+
+  await withTempRepository(async (directory) => {
+    await createExistingRepository(directory);
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), `${JSON.stringify({
+      schemaVersion: 2,
+      projectName: "legacy-caveman",
+      defaultMode: "mvp",
+      documentationProfile: "minimal",
+      agentStyle: "caveman",
+      taskDirectory: ".tasks",
+      docsDirectory: "docs",
+    }, null, 2)}\n`, "utf8");
+
+    const result = await adoptRepository(directory);
+
+    assert.ok(result.skipped.includes(".agentic/config.json"));
+    const config = JSON.parse(await readFile(join(directory, ".agentic/config.json"), "utf8"));
+    assert.equal(config.agentStyle, "caveman");
+  });
+});
+
 test("adoption preview and explicit migration preserve legacy projects and are idempotent", async () => {
   await withTempRepository(async (directory) => {
     await cp(

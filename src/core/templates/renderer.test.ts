@@ -372,11 +372,14 @@ test("canonical style rules default to concise normal prose and gate caveman beh
   assert.match(rules, /concise, readable sentences/);
   assert.match(rules, /explicit named human request|persisted agentStyle configuration/);
   assert.match(rules, /not that authorization|not.*authorization/);
+  assert.match(rules, /generic request to be brief or save tokens is not that authorization/);
   assert.doesNotMatch(rules, /Use `caveman` when supported/);
 
   const cavemanRules = styleRulesFor("caveman").join("\n");
   assert.match(cavemanRules, /persisted repository preference/);
   assert.match(cavemanRules, /never sufficient on their own/);
+  assert.match(cavemanRules, /installed skill are never sufficient on their own/);
+  assert.match(cavemanRules, /availability and installation are separate/);
   assert.match(cavemanRules, /material reason, limitation, and uncertainty/);
   assert.doesNotMatch(cavemanRules, /guaranteed|65-75%|universal token savings across coding tasks/);
 

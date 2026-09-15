@@ -4513,3 +4513,25 @@ test("canonical CLI examples stay aligned with review and role parser contracts"
   assert.ok(!(EXECUTION_ROLES as readonly string[]).includes("implement"));
   assert.ok(!(WORKER_ROLES as readonly string[]).includes("implementation"));
 });
+
+test("CLI export renders a persisted caveman preference config-aware", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), `${JSON.stringify({
+      schemaVersion: 2,
+      projectName: "style-cli",
+      defaultMode: "mvp",
+      documentationProfile: "minimal",
+      agentStyle: "caveman",
+      taskDirectory: ".tasks",
+      docsDirectory: "docs",
+    }, null, 2)}\n`, "utf8");
+
+    const result = await runCli(["export", "agents", "--force"], directory);
+    assert.equal(result.exitCode, 0);
+
+    const agents = await readFile(join(directory, "AGENTS.md"), "utf8");
+    assert.match(agents, /persisted repository preference \(agentStyle: caveman\)/);
+    assert.doesNotMatch(agents, /Communicate in concise, readable sentences/);
+  });
+});
