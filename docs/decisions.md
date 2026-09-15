@@ -1030,3 +1030,20 @@ product/runtime code. This reuses the packaged-skill convention established by A
 Reference:
 
 Task 0127.
+
+## ADR-0065 - Go test discovery uses canonical Git inventory and never falls back to an ignore-unaware walk in Git repositories
+
+Go test evidence (entry condition `go.mod`) is detected from canonical Git inventory
+(`git ls-files --cached --others --exclude-standard`) filtered to `*_test.go` and excluding
+`.git`, `vendor`, `node_modules`, and generated/heavy directories. This honors `.gitignore`
+(root and nested rules, negation) and rediscoveries genuine non-ignored untracked tests as
+repository content. A successful Git result is authoritative even when empty, so a Git
+repository never falls through to the bounded filesystem walk. The bounded depth <= 2,
+512-directory, skip-aware fallback is used only when Git discovery fails (a non-Git directory).
+This corrects Task 0122's behavior, where an empty tracked listing triggered an ignore-unaware
+fallback that could count gitignored tests as test capability. `src/core/quality/quality.test.ts`
+is now part of the executed `pnpm test` suite so these regressions run in quality/CI.
+
+Reference:
+
+Task 0135.

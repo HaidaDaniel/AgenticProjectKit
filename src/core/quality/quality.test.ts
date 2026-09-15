@@ -24,6 +24,14 @@ function statusOf(result: Awaited<ReturnType<typeof detectQualityCapabilities>>,
   return result.capabilities.find((capability) => capability.id === id);
 }
 
+async function gitInit(directory: string): Promise<(...args: string[]) => Promise<unknown>> {
+  const git = async (...args: string[]) => execFileAsync("git", args, { cwd: directory });
+  await git("init", "--quiet");
+  await git("config", "user.email", "codex@example.test");
+  await git("config", "user.name", "Codex");
+  return git;
+}
+
 test("quality detection classifies TypeScript and pnpm evidence without executing commands", async () => {
   await withTempDirectory(async (directory) => {
     await writeFile(join(directory, "package.json"), JSON.stringify({
@@ -208,24 +216,82 @@ test("quality detection does not falsely detect tests for a Go module without *_
   });
 });
 
-test("quality detection ignores gitignored Go test files and keeps tracked evidence", async () => {
+test("quality detection does not detect tests when only gitignored Go tests exist", async () => {
   await withTempDirectory(async (directory) => {
     await writeFile(join(directory, "go.mod"), "module example.com/db\n\ngo 1.22\n", "utf8");
     await mkdir(join(directory, "internal", "db"), { recursive: true });
     await writeFile(join(directory, "internal", "db", "db_test.go"), "package db\n", "utf8");
     await writeFile(join(directory, ".gitignore"), "internal/db/db_test.go\n", "utf8");
-    const git = async (...args: string[]) => execFileAsync("git", args, { cwd: directory });
-    await git("init", "--quiet");
-    await git("config", "user.email", "codex@example.test");
-    await git("config", "user.name", "Codex");
+    const git = await gitInit(directory);
     await git("add", ".");
     await git("commit", "--quiet", "-m", "initial");
-    // Untracked extra test remains listed only through the bounded fallback? No: tracked list returns
-    // an empty result and the fallback walk includes it, which is still bounded and visible.
-    await writeFile(join(directory, "pending_test.go"), "package main\n", "utf8");
+
+    const result = await detectQualityCapabilities(directory);
+    assert.equal(statusOf(result, "tests")?.status, "missing");
+  });
+});
+
+test("quality detection keeps tracked Go tests and excludes gitignored ones", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeFile(join(directory, "go.mod"), "module example.com/db\n\ngo 1.22\n", "utf8");
+    await mkdir(join(directory, "internal", "db"), { recursive: true });
+    await writeFile(join(directory, "internal", "db", "db_test.go"), "package db\n", "utf8");
+    await mkdir(join(directory, "internal", "secret"), { recursive: true });
+    await writeFile(join(directory, "internal", "secret", "secret_test.go"), "package secret\n", "utf8");
+    await writeFile(join(directory, ".gitignore"), "internal/secret/\n", "utf8");
+    const git = await gitInit(directory);
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
 
     const result = await detectQualityCapabilities(directory);
     const tests = statusOf(result, "tests");
     assert.equal(tests?.status, "detected");
+    assert.ok(tests?.evidence.some((entry) => entry.detail.includes("internal/db/db_test.go")));
+    assert.ok(tests?.evidence.every((entry) => !entry.detail.includes("secret_test.go")));
+  });
+});
+
+test("quality detection counts nonignored untracked Go tests as repository content", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeFile(join(directory, "go.mod"), "module example.com/db\n\ngo 1.22\n", "utf8");
+    await mkdir(join(directory, "internal", "db"), { recursive: true });
+    await writeFile(join(directory, "internal", "db", "db_test.go"), "package db\n", "utf8");
+    // Initialized but never staged/committed: canonical inventory lists it via --others --exclude-standard.
+    await gitInit(directory);
+
+    const result = await detectQualityCapabilities(directory);
+    assert.equal(statusOf(result, "tests")?.status, "detected");
+  });
+});
+
+test("quality detection ignores vendored Go test files", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeFile(join(directory, "go.mod"), "module example.com/db\n\ngo 1.22\n", "utf8");
+    await mkdir(join(directory, "vendor", "lib"), { recursive: true });
+    await writeFile(join(directory, "vendor", "lib", "lib_test.go"), "package lib\n", "utf8");
+    const git = await gitInit(directory);
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+
+    const result = await detectQualityCapabilities(directory);
+    assert.equal(statusOf(result, "tests")?.status, "missing");
+  });
+});
+
+test("quality detection detects Go tests alongside APK tooling package.json", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeFile(join(directory, "go.mod"), "module example.com/db\n\ngo 1.22\n", "utf8");
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      name: "go-app-with-apk-tooling",
+      devDependencies: { "agentic-project-kit": "git+https://example.invalid/AgenticProjectKit.git#v0.4.3" },
+    }), "utf8");
+    await mkdir(join(directory, "internal", "db"), { recursive: true });
+    await writeFile(join(directory, "internal", "db", "db_test.go"), "package db\n", "utf8");
+    const git = await gitInit(directory);
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+
+    const result = await detectQualityCapabilities(directory);
+    assert.equal(statusOf(result, "tests")?.status, "detected");
   });
 });

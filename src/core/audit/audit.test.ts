@@ -450,3 +450,22 @@ test("audits and quality detection never contradict each other about tests", asy
     assert.ok(!readinessConflict);
   });
 });
+
+test("audit does not detect tests from gitignored Go test files", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeFile(join(directory, "go.mod"), "module example.com/app\n\ngo 1.22\n", "utf8");
+    await mkdir(join(directory, "internal", "db"), { recursive: true });
+    await writeFile(join(directory, "internal", "db", "db_test.go"), "package db\n", "utf8");
+    await writeFile(join(directory, ".gitignore"), "internal/db/db_test.go\n", "utf8");
+    const git = async (...args: string[]) => {
+      for (const arg of args) {
+        await execFileAsync("git", arg.split(" "), { cwd: directory });
+      }
+    };
+    await git("init --quiet", "config user.email codex@example.test", "config user.name Codex", "add .", "commit --quiet -m initial");
+
+    const result = await auditRepository(directory);
+    const tests = result.quality.capabilities.find((capability) => capability.id === "tests");
+    assert.notEqual(tests?.status, "detected");
+  });
+});

@@ -138,25 +138,40 @@ const GO_TEST_DISCOVERY_SKIP = new Set([
     "tmp",
 ]);
 const MAX_GO_TEST_DISCOVERY_DIRS = 512;
+function isSkippedGoTestPath(path) {
+    return path.split("/").some((segment) => GO_TEST_DISCOVERY_SKIP.has(segment));
+}
 /**
- * Bounded package-local Go test discovery. Prefer Git-tracked file listing; otherwise
- * walk at most two directory levels with generation/vendor/build/ignore-adjacent trees
- * skipped and a hard directory cap so audit stays cheap and deterministic.
+ * Canonical Git-aware repository inventory for Go tests: tracked plus untracked
+ * non-ignored files (`--cached --others --exclude-standard`), filtered to
+ * `*_test.go` outside vendored/generated/heavy directories. Returns `undefined`
+ * when Git is unavailable so the caller can use the bounded filesystem fallback.
+ * A successful Git result (even empty) is authoritative for a Git repository.
  */
-async function findGoTestFiles(rootDirectory) {
+async function gitInventoryGoTestFiles(rootDirectory) {
     try {
-        const { stdout } = await execFileAsync("git", ["ls-files", "*_test.go"], { cwd: rootDirectory, windowsHide: true });
-        const tracked = stdout;
-        const files = tracked
+        const { stdout } = await execFileAsync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { cwd: rootDirectory, windowsHide: true, maxBuffer: 8 * 1024 * 1024 });
+        return stdout
             .split(/\r?\n/)
             .map((line) => line.trim())
-            .filter((line) => line.endsWith("_test.go"));
-        if (files.length > 0)
-            return files.slice(0, 16);
+            .filter((line) => line.endsWith("_test.go") && !isSkippedGoTestPath(line))
+            .sort();
     }
     catch {
-        // Non-Git or unavailable discovery falls through to the bounded filesystem walk.
+        return undefined;
     }
+}
+/**
+ * Bounded package-local Go test discovery. Canonical Git inventory is
+ * authoritative when Git is available, so `.gitignore` semantics are honored
+ * and a Git repository never falls through to the ignore-unaware walk. The
+ * bounded walk (at most two directory levels, 512-directory cap, skip-aware)
+ * is used only for non-Git directories.
+ */
+async function findGoTestFiles(rootDirectory) {
+    const gitFiles = await gitInventoryGoTestFiles(rootDirectory);
+    if (gitFiles !== undefined)
+        return gitFiles.slice(0, 16);
     const results = [];
     let visited = 0;
     const walk = async (relative, depth) => {
@@ -284,9 +299,10 @@ async function detectMarkers(rootDirectory, states) {
     ]);
     if (buildMarker)
         addMarkerEvidence(states, "build", buildMarker, "build or package configuration detected");
-    // Bounded native Go test evidence: tracked package-local `*_test.go` files are strong test
-    // evidence for Git-backed Go modules; a shallow (depth <= 2) bounded fallback handles
-    // non-Git directories. Discovery never walks .git, vendored, or generated trees.
+    // Bounded native Go test evidence: for Git repositories, canonical inventory
+    // (`git ls-files --cached --others --exclude-standard`) filtered to `*_test.go` outside
+    // vendored/generated trees is strong test evidence and honors `.gitignore`. The shallow
+    // (depth <= 2, 512-dir) bounded walk handles non-Git directories only.
     if (await exists(join(rootDirectory, "go.mod"))) {
         const goTestFiles = await findGoTestFiles(rootDirectory);
         if (goTestFiles.length > 0) {
