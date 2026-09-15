@@ -1,6 +1,6 @@
 # Task 0123 - Add optional manually invoked APK task-grill skill
 
-State: doing
+State: done
 Owner: code-owner-0123
 Mode: product
 Lane: instructions
