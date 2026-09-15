@@ -1,6 +1,6 @@
 # Task 0136 - Validate and supersede canceled 0124 normal-default behavior
 
-State: doing
+State: done
 Owner: code-owner-0136
 Mode: maintenance
 Lane: instructions
