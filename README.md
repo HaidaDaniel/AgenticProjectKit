@@ -536,13 +536,14 @@ Use them before implementation to record product scope, expected load, data grow
 
 ## Optional packaged skills
 
-APK ships three optional, explicitly invoked instruction assets as plain Markdown in the installed package. There is no CLI command for any of them.
+APK ships four optional, explicitly invoked instruction assets as plain Markdown in the installed package. There is no CLI command for any of them.
 
 - `apk-task-grill` (`dist/core/templates/skills/apk-task-grill/SKILL.md.hbs`) clarifies a single existing task before implementation. Invoke it deliberately, for example: "Use the APK task-grill skill on task 0026."
 - `apk-task-split` (`dist/core/templates/skills/apk-task-split/SKILL.md.hbs`) decomposes an explicit planning target into proposed small vertical-slice tasks. Invoke it deliberately, for example: "Use apk-task-split on this spec."
+- `apk-prototype` (`dist/core/templates/skills/apk-prototype/SKILL.md.hbs`) runs one bounded throwaway feasibility experiment. Invoke it deliberately, for example: "Use apk-prototype to check whether library X parses format Y."
 - `apk-milestone-semantic-audit` (`dist/core/templates/skills/apk-milestone-semantic-audit/SKILL.md.hbs`) audits cross-contract semantic consistency across a finite set of completed tasks. Invoke it deliberately, for example: "Run APK milestone semantic audit for tasks 0033-0042."
 
-None auto-activates, and an ordinary task proceeds through the normal claim/work/verify/review/gate/done flow without them. See `docs/agent-exporters.md` and `docs/task-system.md` for manual discovery and the planning/task-grill/task-split/milestone-audit/work/review distinction.
+None auto-activates, and an ordinary task proceeds through the normal claim/work/verify/review/gate/done flow without them. See `docs/agent-exporters.md` and `docs/task-system.md` for manual discovery and the planning/task-grill/task-split/prototype/milestone-audit/work/review distinction.
 
 ## Usage scenarios
 

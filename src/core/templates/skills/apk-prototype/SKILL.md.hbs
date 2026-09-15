@@ -1,0 +1,88 @@
+---
+name: apk-prototype
+description: >
+  Optional, manually invoked bounded throwaway experiment for one feasibility question
+  (library, API, protocol, integration, performance, migration, or runtime behavior). Use only
+  when a human explicitly authorizes a small time-boxed spike. It reports observations and
+  conclusions, distinguishes them from production design, and never promotes prototype code.
+---
+
+# APK Prototype (optional, manual only)
+
+A prototype is a small throwaway experiment that answers one bounded feasibility question
+cheaply, before an expensive durable decision. It is not production implementation, not a
+completion gate, and not proof of production behavior.
+
+## When to use it
+
+- Only on an explicit human request that authorizes a bounded experiment, for example:
+  "Use apk-prototype to check whether library X can parse format Y."
+- Never activate automatically. No heuristic, scanner, work loop, or review hook may invoke it,
+  and no task may require a spike.
+- A normal task proceeds through the ordinary work, verify, review (if required), gate, and done
+  flow without any prototype.
+
+## Inspect repository truth first
+
+Before spending experiment effort, read what the repository already answers:
+
+- `apk context <task-id> --budget <units>` and the task `## Context files`;
+- `apk task deps <task-id>` for dependencies and downstream consumers;
+- canonical docs and existing decisions for prior conclusions.
+
+Do not re-run an experiment the repository already settles, and do not read the whole repository
+or history.
+
+## State the bounded experiment
+
+Write down the experiment before running it:
+
+- the question and the hypothesis it tests;
+- the concrete observation that would support or refute it;
+- finite time/cost/context limits and temporary-path boundaries;
+- explicit stop conditions;
+- the isolated scratch space or disposable fixture that will hold the experiment.
+
+Use owned scratch space or an appropriate disposable fixture. Keep the experiment throwaway and
+outside the durable source tree unless the task explicitly allows a temporary path.
+
+## Authorized boundaries
+
+- No root dependency, config, or product change; no live migrations or workers by default.
+- Respect external effects, real data, secrets, and existing project permissions.
+- Do not silently run anything destructive; a manual invocation is not blanket authority for
+  external effects or destructive cleanup.
+- Never promote prototype code to production. Production work requires its own ordinary task and
+  verification.
+
+## Report observations and conclusions
+
+Return a concise report:
+
+- tested conditions and observed results;
+- hypotheses that are supported, refuted, or still undetermined;
+- production-relevant conclusions, clearly separated from the raw observation;
+- limitations, unknowns, and any unverified performance or generalization claims;
+- exact temporary artifacts to discard or leave uncommitted.
+
+A successful prototype is not production verification and cannot be used as gate evidence.
+
+## Cleanup and ownership
+
+Cleanup touches only proven experiment-owned artifacts. Never discard user, pre-existing, or
+foreign files, and never widen a cleanup path beyond the experiment's own scratch space. If
+ownership is unclear, leave the artifact in place and report it instead of deleting it.
+
+## Durable changes need approval
+
+If the conclusions imply architecture, documentation, or task changes, propose a bounded
+canonical delta with paths and ask for explicit human approval before any structural write.
+Silence or refusal writes nothing. No auto-task creation, auto-commit, second decision store,
+new runtime/database/state platform, or mandatory spike is introduced.
+
+## Invocation note for harnesses
+
+This asset is plain Markdown shipped inside the installed package under
+`dist/core/templates/skills/apk-prototype/SKILL.md.hbs`. A harness without native skill discovery
+must read that installed asset explicitly when a human invokes a prototype. It works with local
+models and compatible harnesses; APK adds no installer, model routing, or provider integration.

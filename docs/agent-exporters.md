@@ -76,13 +76,21 @@ then requires explicit human approval before creating tasks through canonical ta
 graph validation. It never auto-decomposes, mutates a parent's lifecycle, or implements product
 code.
 
+`apk-prototype` runs one small, explicitly authorized, bounded throwaway experiment for a
+feasibility question. It inspects repository truth first, states the question, observation, and
+finite time/cost/context and temporary-path bounds, keeps the experiment isolated, reports
+observations and supported/refuted hypotheses separately from production design, and never
+promotes prototype code. Cleanup touches only experiment-owned artifacts, and durable
+architecture/docs/task changes require an explicit human-approved proposal.
+
 Discovery is manual:
 
 - A harness with native skill support can reference the installed asset or a user-installed copy
   of the same canonical content.
 - A harness without native discovery must read the installed asset explicitly, for example
   `<package>/dist/core/templates/skills/apk-task-grill/SKILL.md.hbs`,
-  `<package>/dist/core/templates/skills/apk-task-split/SKILL.md.hbs`, or
+  `<package>/dist/core/templates/skills/apk-task-split/SKILL.md.hbs`,
+  `<package>/dist/core/templates/skills/apk-prototype/SKILL.md.hbs`, or
   `<package>/dist/core/templates/skills/apk-milestone-semantic-audit/SKILL.md.hbs`.
 - The canonical sources are `src/core/templates/skills/<skill>/SKILL.md.hbs`.
 

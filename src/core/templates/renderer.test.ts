@@ -481,3 +481,31 @@ test("apk-task-split ships as a portable manual-only instruction asset", async (
   assert.ok(agents);
   assert.doesNotMatch(agents.content, /apk-task-split/);
 });
+
+test("apk-prototype ships as a portable manual-only instruction asset", async () => {
+  const content = normalizeLineEndings(
+    await readFile(
+      join(process.cwd(), "src/core/templates/skills/apk-prototype/SKILL.md.hbs"),
+      "utf8",
+    ),
+  );
+
+  assert.match(content, /^---\nname: apk-prototype\n/);
+  assert.match(content, /explicit human request/i);
+  assert.match(content, /Never activate automatically/i);
+  assert.match(content, /throwaway experiment/i);
+  assert.match(content, /stop conditions/i);
+  assert.match(content, /temporary-path boundaries/i);
+  assert.match(content, /No root dependency/i);
+  assert.match(content, /Never promote prototype code to production/i);
+  assert.match(content, /explicit human approval/i);
+  assert.match(content, /Cleanup touches only proven experiment-owned artifacts/i);
+  assert.match(content, /No auto-task creation/i);
+  assert.doesNotMatch(content, /\{\{/);
+
+  const exports = await renderAgentExportFiles();
+  const agents = exports.find((file) => file.outputPath === "AGENTS.md");
+
+  assert.ok(agents);
+  assert.doesNotMatch(agents.content, /apk-prototype/);
+});

@@ -1106,3 +1106,21 @@ auto-cleanup is introduced.
 Reference:
 
 Task 0131.
+
+## ADR-0070 - The prototype instruction is an optional bounded throwaway experiment asset
+
+APK ships `apk-prototype` as plain Markdown at `src/core/templates/skills/apk-prototype/SKILL.md.hbs`,
+copied into the package payload by the existing recursive `.hbs` asset copier. It runs one small,
+explicitly human-authorized, bounded throwaway experiment for a feasibility question: it inspects
+repository truth first, states the question, observation, finite time/cost/context and
+temporary-path bounds and stop conditions, keeps the experiment isolated, and reports observations
+and supported/refuted hypotheses separately from production design and unknowns. It never promotes
+prototype code, changes root dependencies/config, runs live migrations/workers, or becomes
+production verification or gate evidence; cleanup touches only proven experiment-owned artifacts.
+Durable architecture/docs/task changes require an explicit human-approved proposal, and future
+production work follows its own ordinary task/verification. No CLI, runtime, state store, or
+mandatory spike is added.
+
+Reference:
+
+Task 0132.

@@ -1,7 +1,7 @@
 # Task 0132 - Add optional bounded throwaway prototype skill
 
-State: todo
-Owner: none
+State: doing
+Owner: code-owner-0132
 Mode: product
 Lane: instructions
 Type: feature
@@ -134,7 +134,8 @@ If conclusions imply architecture/docs/task changes, propose a bounded canonical
 - `{"id":"build","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}`
 - `{"id":"contract-lint","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node dist/cli/index.js lint --json"}`
 - `{"id":"sync-current","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node dist/cli/index.js sync"}`
-- `{"id":"packaged-skill","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node --input-type=module -e \"import { access } from 'node:fs/promises'; import { execFileSync } from 'node:child_process'; const p='dist/core/templates/skills/apk-prototype/SKILL.md.hbs'; await access(p); const [pack]=JSON.parse(execFileSync('npm',['pack','--dry-run','--json'],{encoding:'utf8'})); if(!pack.files.some(f=>f.path===p)) throw new Error('Skill missing from package payload');\""}`
+- `{"id":"packaged-skill","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node -e \"require('fs').existsSync('dist/core/templates/skills/apk-prototype/SKILL.md.hbs')||process.exit(1)\""}`
+- `{"id":"packaged-payload","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"npm pack --dry-run --json | grep -q \"apk-prototype/SKILL.md.hbs\""}`
 
 ## Documentation updates
 

@@ -455,6 +455,21 @@ no CLI, orchestration runtime, state machine, or automatic decomposition, and st
 implementation. It is distinct from task grill (clarifies one task) and from the milestone
 semantic audit (analyses completed contracts).
 
+## Optional prototype experiments
+
+APK ships `apk-prototype`, an optional, manually invoked instruction asset packaged at
+`dist/core/templates/skills/apk-prototype/SKILL.md.hbs`. It runs one small, explicitly authorized,
+bounded throwaway experiment for a feasibility question. It checks repository truth first, states
+the question, observation, finite time/cost/context and temporary-path bounds and stop conditions,
+keeps the experiment isolated, and reports observations and supported/refuted hypotheses separately
+from production design and unknowns.
+
+It never promotes prototype code, changes root dependencies/config, runs live migrations/workers,
+or becomes production verification or gate evidence. Cleanup touches only proven experiment-owned
+artifacts and preserves foreign/pre-existing work. Durable architecture/docs/task changes require
+an explicit human-approved canonical proposal; production work follows its own ordinary
+task/verification. It adds no CLI, runtime, state store, or mandatory spike.
+
 ## Optional milestone semantic audit
 
 APK also ships `apk-milestone-semantic-audit`, an optional, manually invoked instruction asset
