@@ -1,6 +1,6 @@
 # Task 0127 - Add optional manually invoked milestone semantic integrity audit
 
-State: doing
+State: done
 Owner: code-owner-0127
 Mode: product
 Lane: instructions
@@ -176,7 +176,8 @@ No automatic after-task or continuous audit, heuristic auto-trigger, full-reposi
 - `{"id":"build","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}`
 - `{"id":"contract-lint","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node dist/cli/index.js lint --json"}`
 - `{"id":"sync-current","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node dist/cli/index.js sync"}`
-- `{"id":"packaged-audit","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node --input-type=module -e \"import { access } from 'node:fs/promises'; import { execFileSync } from 'node:child_process'; const p='dist/core/templates/skills/apk-milestone-semantic-audit/SKILL.md.hbs'; await access(p); const [pack]=JSON.parse(execFileSync('npm',['pack','--dry-run','--json'],{encoding:'utf8'})); if(!pack.files.some(f=>f.path===p)) throw new Error('Audit asset missing from package payload');\""}`
+- `{"id":"packaged-audit","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node -e \"require('fs').existsSync('dist/core/templates/skills/apk-milestone-semantic-audit/SKILL.md.hbs')||process.exit(1)\""}`
+- `{"id":"packaged-payload","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"npm pack --dry-run --json | grep -q \"apk-milestone-semantic-audit/SKILL.md.hbs\""}`
 
 ## Documentation updates
 
