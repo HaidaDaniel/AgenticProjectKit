@@ -1,7 +1,7 @@
 # Task 0133 - Release v0.4.4 and adopt released workflow rules in APK itself
 
-State: doing
-Owner: code-owner-0133
+State: blocked
+Owner: none
 Mode: production
 Lane: release
 Type: release
@@ -206,3 +206,4 @@ If tag publication, actual-tag install or self-adoption fails, retain the valida
 - Final verification commands apply after both phases. Pre-tag criteria can execute directly and be retained in immutable release evidence without claiming the whole task gate/done has passed before tag-dependent checks exist.
 - dist/config/AGENTS/adapters/gitignore edits are limited to normal build/version/canonical adoption/generation; no source feature fixes or custom policy deletion. New safety issues need a separate bounded correction and fresh validation.
 - Use actual released help; APK has no --version CLI at planning. Detect installed version from package metadata and prove executable/tag ownership rather than inventing syntax. If target advances, update exact release/evidence paths before implementation.
+- block: v0.4.4 published (SHA 50a1f03, CI run 34959795566 success, tag v0.4.4) and functional, but the required independent review returned changes_requested on immutable-history items that cannot be fixed without moving tag v0.4.4 (forbidden): (1) pre-tag downstream/legacy smoke was executed post-publication; (2) docs/releases/v0.4.4.md inside the tag carries placeholder Validation while finalized evidence is main-only; (3) live-root adopt --apply is clone-proven because it creates a forbidden .tasks/** file under 0133 scope. Operator decision required: accept the documented deviation for v0.4.4, or approve a follow-up corrected release with finalized release notes inside the tagged commit. No tag was moved; no history rewritten.
