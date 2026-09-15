@@ -1153,3 +1153,27 @@ and milestone semantic audit distinct, optional, and independently invocable.
 Reference:
 
 Task 0137.
+
+## ADR-0072 - Release evidence is ordered: pre-tag evidence must precede the immutable tag and post-tag evidence is recorded separately
+
+Everything a release claims as PRE-TAG evidence must actually run against the exact frozen
+candidate SHA/tree before tag creation: local quality/coverage/build/release checks, committed
+`dist` currency, package/bin/portable-asset payload, any declared compatibility or downstream
+smoke, and exact-SHA hosted CI. Only after all pre-tag criteria pass is an annotated tag created,
+pointing to that exact validated SHA, with the peeled commit verified.
+
+POST-TAG checks are a distinct class: actual immutable-tag cold install with a fresh store,
+tag-peel verification, released package/bin identity, downstream install from the tag, and
+post-release self-adoption. They are recorded in a post-release artifact on `main` and are never
+backfilled into the release-note file committed inside the tag. A tagged release-note file
+contains only facts knowable before tagging and cannot contain its own commit SHA or the later
+tag/CI/install identity. A published tag is never moved or rewritten, and a changed candidate
+forces a new freeze, rerun, and CI. This encodes the lesson from the v0.4.4/0133 defect, where
+downstream/legacy smoke ran post-publication while the contract treated it as pre-tag and the
+tagged release notes carried placeholder validation. The `release` typed template and
+`docs/engineering/testing-strategy.md` carry this ordering as declarative guidance; no tag is
+mutated and no release runtime is added (Task 0138).
+
+Reference:
+
+Task 0138.

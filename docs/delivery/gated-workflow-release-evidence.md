@@ -10,6 +10,10 @@ Task 0075 validates one frozen AgenticProjectKit candidate. This file defines th
 - This report and `docs/analytics/gated-workflow-dogfood.md` receive their final result blocks after `done`. That evidence-only commit is not the validated release candidate and must name the earlier frozen SHA explicitly. The release lifecycle follows the canonical two-commit pattern: a frozen candidate commit that carries the implementation, then this bookkeeping commit; nothing is amended afterward.
 - Any pre-gate tracked or unexpected untracked mutation invalidates the freeze and requires a new baseline plus affected verification/review/CI.
 
+## Pre-tag and post-tag evidence ordering
+
+Everything claimed as pre-tag evidence in this report must run against the exact frozen candidate SHA/tree before tag publication, including exact-SHA hosted CI and any declared compatibility/downstream smoke. Post-tag checks (actual immutable-tag cold install, tag peel, released package/bin identity, downstream install, post-release self-adoption) are a separate class recorded after publication. The release-note file committed inside the tag contains only pre-tag-knowable facts and is never backfilled with post-tag identity or results; a published tag is never moved, and a changed candidate forces a new freeze/rerun/CI. See `docs/engineering/testing-strategy.md` and the `release` typed template (Tasks 0138, 0133).
+
 ## Required proof
 
 - dependency closure and clean freeze;

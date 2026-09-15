@@ -338,6 +338,35 @@ test("bugfix template defaults enforce repro-first sequencing and honest limits"
   assert.equal(resolveTaskTemplateType("bugfix"), "bugfix");
 });
 
+test("release template defaults order pre-tag evidence before the immutable tag and separate post-tag evidence", () => {
+  const template = getTaskTemplate("release");
+  const steps = template.steps.join("\n");
+  const acceptance = template.acceptanceCriteria.join("\n");
+  const invariants = template.invariants?.join("\n") ?? "";
+
+  assert.match(steps, /PRE-TAG criterion/i);
+  assert.match(steps, /exact candidate SHA\/tree/i);
+  assert.ok(
+    steps.search(/PRE-TAG criterion/i) < steps.search(/Create the annotated tag/i),
+    "pre-tag criteria must be observed before tag creation",
+  );
+  assert.ok(
+    steps.search(/exact-SHA hosted CI/i) < steps.search(/Create the annotated tag/i),
+    "exact-SHA hosted CI must be observed before tag creation",
+  );
+  assert.match(steps, /POST-TAG checks separately/i);
+  assert.match(steps, /never backfilled into the release-note file committed inside the tag/i);
+  assert.match(acceptance, /all existing tags remain untouched/i);
+  assert.match(acceptance, /exact-SHA hosted CI/i);
+  assert.match(acceptance, /never moved or rewritten/i);
+  assert.match(acceptance, /only pre-tag-knowable facts/i);
+  assert.match(invariants, /temporally distinct and never conflated/i);
+  assert.match(template.correctnessAssumptions?.join("\n") ?? "", /cannot contain its own commit SHA/i);
+  assert.match(template.reviewQuestions?.join("\n") ?? "", /actually run against the exact candidate SHA before tag publication/i);
+  assert.match(template.counterexampleSearches?.join("\n") ?? "", /claimed pre-tag/i);
+  assert.equal(template.tags.includes("release"), true);
+});
+
 test("task policy applies deterministic risk defaults", () => {
   const low = resolveTaskPolicy({
     ...TASK,

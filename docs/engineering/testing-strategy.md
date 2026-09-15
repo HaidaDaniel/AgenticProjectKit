@@ -67,3 +67,9 @@ The runner is disposable, so report-writing audit output cannot affect a develop
 ## Frozen release validation
 
 Task 0075 uses `prepare -> clean HEAD freeze -> non-mutating validation -> exact evidence -> independent review/gate`. Tracked inputs are frozen at HEAD; ignored build, coverage, and `.agentic` runtime records are non-candidate outputs. Final human-readable result blocks are appended after `done` and explicitly refer to the validated earlier SHA; their evidence-only commit is not a new release candidate. Any earlier tracked mutation forces a new freeze and rerun.
+
+## Release evidence ordering
+
+A release has two temporally distinct evidence classes. Everything claimed as **pre-tag** evidence must actually run against the exact frozen candidate SHA/tree *before* tag creation, including local quality/coverage/build/release checks, committed `dist` currency, package/bin/portable-asset payload, any declared compatibility or downstream smoke, and exact-SHA hosted CI. Only after all pre-tag criteria pass is the annotated tag created, pointing to that exact validated SHA, with the peeled commit verified.
+
+**Post-tag** checks are a separate class: actual immutable-tag cold install with a fresh store, tag-peel verification, released package/bin identity, downstream install from the tag, and post-release self-adoption. They are recorded in a post-release artifact on `main`, never backfilled into the release-note file committed inside the tag. A release-note file inside the tag contains only facts knowable before tagging and cannot contain its own commit SHA or the later tag/CI/install identity. A published tag is never moved or rewritten, and a changed candidate forces a new freeze, rerun, and CI. This is the declarative default of the `release` typed template and prevents the v0.4.4/0133 ordering defect (Task 0138).
