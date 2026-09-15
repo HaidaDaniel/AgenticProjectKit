@@ -1,7 +1,7 @@
 # Task 0137 - Add optional project-level grill skill
 
-State: todo
-Owner: none
+State: doing
+Owner: code-owner-0137
 Mode: production
 Lane: instructions
 Type: feature

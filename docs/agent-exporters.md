@@ -59,6 +59,15 @@ common policy. They are plain Markdown packaged under
 `dist/core/templates/skills/<skill>/SKILL.md.hbs` and are never embedded into `AGENTS.md`,
 `CLAUDE.md`, or `GEMINI.md`.
 
+`apk-project-grill` is a repository-grounded design checkpoint for a whole project, the current
+milestone, or one bounded subsystem/topic, and can be re-run as a periodic checkpoint after a
+milestone or material change. It resolves the requested scope, reads canonical project truth with
+bounded context, asks one high-value question at a time, challenges stale or inconsistent
+assumptions while labeling evidence/inference/hypothesis/human preference, and writes nothing
+before explicit human approval of a concrete proposal. Approved decisions go to discovered
+canonical owners, never a parallel grill document, and backlog changes use fresh task IDs without
+rewriting completed history. It never implements product code, auto-activates, or becomes a gate.
+
 `apk-task-grill` clarifies one existing task before implementation. It runs only on an explicit
 human request such as "Use the APK task-grill skill on task 0026"; it never auto-activates, adds
 no CLI command, and does not change the normal work/review/gate flow.
@@ -88,6 +97,7 @@ Discovery is manual:
 - A harness with native skill support can reference the installed asset or a user-installed copy
   of the same canonical content.
 - A harness without native discovery must read the installed asset explicitly, for example
+  `<package>/dist/core/templates/skills/apk-project-grill/SKILL.md.hbs`,
   `<package>/dist/core/templates/skills/apk-task-grill/SKILL.md.hbs`,
   `<package>/dist/core/templates/skills/apk-task-split/SKILL.md.hbs`,
   `<package>/dist/core/templates/skills/apk-prototype/SKILL.md.hbs`, or

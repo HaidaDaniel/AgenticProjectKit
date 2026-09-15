@@ -509,3 +509,66 @@ test("apk-prototype ships as a portable manual-only instruction asset", async ()
   assert.ok(agents);
   assert.doesNotMatch(agents.content, /apk-prototype/);
 });
+
+test("apk-project-grill ships as a portable manual-only project/milestone/subsystem asset", async () => {
+  const content = normalizeLineEndings(
+    await readFile(
+      join(process.cwd(), "src/core/templates/skills/apk-project-grill/SKILL.md.hbs"),
+      "utf8",
+    ),
+  );
+
+  assert.match(content, /^---\nname: apk-project-grill\n/);
+  assert.match(content, /explicit human request/i);
+  assert.match(content, /Never activate automatically/i);
+  assert.match(content, /no task may require it/i);
+
+  assert.match(content, /whole project/i);
+  assert.match(content, /milestone/i);
+  assert.match(content, /bounded subsystem/i);
+
+  assert.match(content, /Initial project grill/i);
+  assert.match(content, /Checkpoint \/ re-grill/i);
+  assert.match(content, /treat any difference from the original plan as an error/i);
+  assert.match(content, /intentional evolution/i);
+  assert.match(content, /validated learning/i);
+  assert.match(content, /accidental drift/i);
+  assert.match(content, /stale assumption/i);
+  assert.match(content, /acceptable tradeoff/i);
+
+  assert.match(content, /apk status/);
+  assert.match(content, /apk task deps/);
+  assert.match(content, /apk context/);
+  assert.match(content, /apk suggest-context/);
+  assert.match(content, /selection interface/i);
+  assert.match(content, /Do not dump the whole repository/i);
+
+  assert.match(content, /one\*\* question|Ask the human \*\*one\*\* question/i);
+  assert.match(content, /investigate|re-prioritize/i);
+  assert.match(content, /evidence\*\* \(repository fact\)/i);
+  assert.match(content, /inference/i);
+  assert.match(content, /hypothesis/i);
+  assert.match(content, /human preference/i);
+
+  assert.match(content, /No writes before explicit human approval/i);
+  assert.match(content, /Silence is not\s+approval/i);
+  assert.match(content, /model-generated answer is not approval/i);
+  assert.match(content, /Require explicit human approval/i);
+  assert.match(content, /canonical owner|canonical ownership/i);
+  assert.match(content, /never rewrite completed task history/i);
+  assert.match(content, /corrective task/i);
+
+  assert.match(content, /modify production source code/i);
+  assert.match(content, /add an LLM router/i);
+  assert.match(content, /vector database/i);
+  assert.match(content, /mandatory lifecycle state/i);
+  assert.match(content, /apk-task-grill/);
+  assert.match(content, /apk-milestone-semantic-audit/);
+  assert.doesNotMatch(content, /\{\{/);
+
+  const exports = await renderAgentExportFiles();
+  const agents = exports.find((file) => file.outputPath === "AGENTS.md");
+
+  assert.ok(agents);
+  assert.doesNotMatch(agents.content, /apk-project-grill/);
+});

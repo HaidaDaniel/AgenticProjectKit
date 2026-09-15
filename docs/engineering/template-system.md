@@ -35,6 +35,7 @@ through the neutral policy pipeline.
 Packaged skills are optional and manually invoked. They are never embedded into the
 always-active common policy (`AGENTS.md`) and add no CLI command, exporter, or native installer.
 
+- `apk-project-grill` - repository-grounded design grill of a whole project, milestone, or bounded subsystem, at start or as a repeated checkpoint; see `docs/agent-exporters.md`.
 - `apk-task-grill` - clarify one existing task before implementation; see `docs/agent-exporters.md`.
 - `apk-task-split` - decompose an explicit planning target into proposed vertical-slice tasks; see `docs/agent-exporters.md`.
 - `apk-prototype` - bounded throwaway experiment for one feasibility question; see `docs/agent-exporters.md`.

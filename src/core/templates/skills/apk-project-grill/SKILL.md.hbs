@@ -1,0 +1,246 @@
+---
+name: apk-project-grill
+description: >
+  Optional, manually invoked repository-grounded design grill for a whole project, the current
+  milestone, or one bounded subsystem/topic. Use only when a human explicitly asks to grill the
+  project direction, a milestone, or a subsystem, at project start or as a repeated checkpoint.
+  It asks iterative high-value questions, distinguishes evidence, inference, hypotheses and human
+  preference, writes nothing before explicit approval of a concrete proposal, and routes approved
+  decisions to canonical owners. It never implements product code, never auto-activates, and is
+  not a review, audit, or mandatory gate.
+---
+
+# APK Project Grill (optional, manual only)
+
+Project grill is a repository-grounded design checkpoint. A human uses it to re-examine whether
+the project is building the right thing: whether original goals and assumptions still hold,
+where scope or architecture drift has accumulated, which decisions are already well supported,
+and which gaps should become follow-up work.
+
+It is not code review, not task review, not a milestone semantic audit, not autonomous
+architecture refactor, and not an implementation step. It produces understanding and proposed
+decisions; implementation stays in the ordinary APK task workflow.
+
+## When to use it
+
+- Only on an explicit human request that names this skill and the target, for example:
+  "Use apk-project-grill on the whole project.",
+  "Project-grill the current MVP milestone.",
+  "Project-grill the storage and backup architecture."
+- Never activate automatically. No heuristic, scanner, complexity rule, work loop, review hook,
+  or "project changed" signal may invoke it, and no task may require it to proceed.
+- Ordinary work proceeds through the normal APK work, verification, review, gate, and done flow
+  with no grill state, metadata, or evidence.
+- A project grill may recommend a later checkpoint, but it never schedules or mandates one.
+
+## Supported scopes
+
+Resolve the requested scope before inspecting anything. One skill supports all three:
+
+- **Whole project** - product direction, scope, domain assumptions, architecture boundaries,
+  operational constraints, and roadmap coherence. "Whole project" means reasoning globally from
+  the canonical project model, not reading every source file. Read code/tests only to verify a
+  specific important claim.
+- **Milestone** - one bounded milestone or release direction and its relationship to overall
+  project goals.
+- **Bounded subsystem / topic** - for example storage/backup, a translation pipeline, or
+  authentication/permissions. Limit context to the requested subsystem or topic.
+
+If the request is ambiguous or wider than the human likely intends, state the scope you will use
+and confirm it before reasoning deeply. Do not silently widen into an unbounded repository scan.
+
+## Two use cases
+
+### A. Initial project grill
+
+Used at project start or a very early stage. Reasoning areas (aids, not a mandatory
+questionnaire; skip what the project does not touch):
+
+- Who is the user, and what real problem is being solved?
+- What does success look like, and what is the MVP?
+- What is explicitly out of the MVP, and which constraints are real?
+- Which assumptions are still hypotheses, and what is the source of truth?
+- Which domain entities and invariants exist?
+- Which destructive or external actions exist, and what is local versus remote?
+- What persistence model, security and trust boundaries, offline behavior, and failure semantics
+  apply?
+- What backup/recovery, deployment, observability, and testing are needed?
+- Which future-compatibility doors genuinely deserve to stay open, and which are deliberately
+  closed now?
+
+### B. Checkpoint / re-grill
+
+The key use case: repeat the grill after a series of tasks, a milestone, or a material project
+change. Compare **intended project** against **current repository truth** and help the human
+answer:
+
+- What did we originally intend to build, and what did we actually build?
+- What changed, and which assumptions are no longer true?
+- Which decisions now look unnecessarily complex?
+- Has architecture or scope drift occurred?
+- Did infrastructure get built for its own sake, or did duplicated responsibilities or a second
+  source of truth appear?
+- Are old abstractions obstructing the current work?
+- Which risks matter more now than before, and does the roadmap need to change?
+- Which old decisions should be preserved, and which now require explicit reconsideration?
+- Is there work worth canceling, deferring, or simplifying?
+
+A checkpoint grill must **not** treat any difference from the original plan as an error. Projects
+evolve correctly. Distinguish:
+
+- intentional evolution;
+- validated learning;
+- accidental drift;
+- unresolved contradiction;
+- stale assumption;
+- acceptable tradeoff.
+
+## Context strategy
+
+Start from canonical project truth, not from code. Priority order:
+
+1. AGENTS / canonical project policy;
+2. project, scope, and product docs;
+3. architecture, domain, security, and operational docs;
+4. decisions / ADR-equivalent canonical records;
+5. roadmap, current backlog, and current milestone;
+6. project map;
+7. selected recent or relevant tasks;
+8. dependency relationships;
+9. relevant code/tests only when needed to verify a specific claim.
+
+Use existing APK primitives where applicable: `apk status`, `apk tasks`, `apk task deps`,
+`apk context`, `apk suggest-context`, and the canonical docs. Do not invent a new runtime,
+scanner, or database. Treat context output as a file-selection interface, not as proof of
+contents; read the selected files before reasoning. Do not dump the whole repository.
+
+## Interactive question loop
+
+This is a real, iterative grill, not a questionnaire. Do not dump dozens of questions at once.
+
+1. Establish repository truth for the requested scope.
+2. Identify the highest-impact unresolved or under-supported decisions.
+3. Select the single most useful question.
+4. Before asking, briefly state what the repository already establishes, what remains ambiguous,
+   and why the decision matters.
+5. Ask the human **one** question.
+6. Incorporate the answer into the working understanding.
+7. Reassess and re-prioritize the next question.
+8. Continue until major uncertainty has materially reduced.
+
+Do not ask questions the repository already answers. Do not walk a checklist top to bottom;
+priority follows impact. Higher-impact areas include: wrong product goal, wrong ownership,
+incorrect persistence model, security boundary, destructive behavior, and irreversible
+architecture choices. Lower-impact areas include naming, file layout, and minor implementation
+preferences.
+
+## Challenge, do not just agree
+
+The grill must be willing to disagree with evidence:
+
+- "This decision conflicts with the current goal X."
+- "The repository already assumes Y, while this new answer assumes Z."
+- "This abstraction has no second consumer yet."
+- "This future-proofing cost is not justified by a real use case in the repository."
+- "We say we are solving problem A, but the roadmap is optimized for B."
+
+Do not argue for its own sake, do not invent requirements, and never replace a human product
+decision with your own. Clearly label every point as **evidence** (repository fact),
+**inference** (your reasoning), **hypothesis** (unvalidated), or **human preference**.
+
+## Classify conclusions and find documentation ownership
+
+Discover where each conclusion belongs using actual repository conventions:
+
+- project/scope docs;
+- architecture and domain docs;
+- security and operational docs;
+- decisions / ADR-equivalent records;
+- roadmap and planning;
+- task contracts.
+
+If canonical ownership is ambiguous, ask the human. Do not assume fixed filenames and do not
+create generic `CONTEXT.md`, `PROJECT_STATE.md`, a new ADR folder, a session transcript, or a
+hidden grill database. Raw transcripts are not durable project knowledge.
+
+## Propose, approve, then write
+
+**No writes before explicit human approval.** During the grill: read, reason, ask, and accumulate
+proposed decisions. Then present one bounded proposal containing:
+
+1. confirmed decisions;
+2. changed assumptions;
+3. unresolved questions;
+4. intentional tradeoffs;
+5. stale or contradictory project assumptions;
+6. proposed canonical documentation changes with paths;
+7. proposed backlog changes;
+8. proposed task creations, cancellations, or deferments;
+9. anything deliberately not changing.
+
+Require explicit human approval of that concrete proposal before any write. Silence is not
+approval. A model-generated answer is not approval. Invoking the skill is not blanket approval.
+On refusal or partial approval, write nothing or only what was explicitly accepted.
+
+## Backlog and task changes
+
+After approval, the grill may propose new tasks, corrective tasks, cancel or defer todo work,
+adjust unfinished task contracts, or adjust dependencies. It must respect APK lifecycle and
+provenance:
+
+- use canonical task creation with fresh IDs and dependency-graph validation;
+- never rewrite completed task history or immutable evidence;
+- never silently reopen done tasks or reset a claim baseline;
+- never absorb unrelated commits or fabricate human decisions;
+- for a problem in historically completed work, propose a new corrective task instead.
+
+## Hard boundaries
+
+Project grill MUST NOT:
+
+- modify production source code, implement features, or run autonomous refactors;
+- create migrations, change dependencies, or install provider runtimes;
+- add an LLM router, model-specific integration, embeddings, vector database, daemon, or
+  background scanner;
+- add a mandatory lifecycle state, become a release gate, or become required before task
+  creation;
+- require multiple paid LLM calls or a specific provider;
+- assume giant context or scan every source file;
+- claim exhaustive correctness;
+- write before explicit human approval.
+
+It must work as portable Markdown guidance with local models and generic harnesses.
+
+## Relation to other APK skills
+
+These are distinct, optional, and composable; none automatically requires another:
+
+- `apk-project-grill` - project/milestone/subsystem direction: goals, assumptions, architecture,
+  scope, human decisions, and proposed docs/backlog changes.
+- `apk-task-split` - an already-defined large body of work into vertical/tracer-bullet tasks.
+- `apk-task-grill` - one existing task contract before implementation.
+- `apk-milestone-semantic-audit` - cross-contract semantic consistency of a finite set of
+  completed tasks.
+- `apk-prototype` - a bounded throwaway feasibility experiment.
+
+An optional conceptual flow (not a mandatory lifecycle):
+
+```text
+raw idea / periodic checkpoint
+  -> apk-project-grill
+  -> canonical project decisions
+  -> apk-task-split (optional)
+  -> tasks
+  -> apk-task-grill (only where useful)
+  -> implementation / verify / review / gate
+  -> apk-milestone-semantic-audit (when useful)
+  -> later apk-project-grill checkpoint
+```
+
+## Invocation note for harnesses
+
+This asset is plain Markdown shipped inside the installed package under
+`dist/core/templates/skills/apk-project-grill/SKILL.md.hbs`. A harness without native skill
+discovery must read that installed asset explicitly when a human invokes project grill. It works
+with local models and compatible harnesses; APK adds no installer, model routing, provider
+integration, or user-global skill directory write.

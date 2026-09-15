@@ -1124,3 +1124,32 @@ mandatory spike is added.
 Reference:
 
 Task 0132.
+
+## ADR-0071 - The project grill is an optional, manually invoked packaged asset for project/milestone/subsystem direction
+
+APK ships `apk-project-grill` as plain Markdown at
+`src/core/templates/skills/apk-project-grill/SKILL.md.hbs`, copied into the package payload by the
+existing recursive `.hbs` asset copier. It is a repository-grounded design checkpoint for a whole
+project, the current milestone, or one bounded subsystem/topic, usable both at project start and
+as a repeated checkpoint/re-grill. It resolves the requested scope, reads canonical project truth
+with bounded context through existing APK primitives (`apk status`, `apk tasks`, `apk task deps`,
+`apk context`, `apk suggest-context`) rather than a new scanner, asks one high-impact question at
+a time, and challenges stale or inconsistent assumptions while labeling every point as evidence,
+inference, hypothesis, or human preference. A re-grill distinguishes intentional evolution,
+validated learning, accidental drift, unresolved contradiction, stale assumption, and acceptable
+tradeoff instead of treating any plan difference as an error.
+
+It writes nothing before explicit human approval of a concrete bounded proposal; silence and
+model-generated answers are not approval. Approved decisions go to discovered canonical owners
+(project/scope, architecture, domain, security, decisions, roadmap/planning, task contracts),
+never a parallel `PROJECT_GRILL.md`, transcript, or grill database. Approved backlog changes use
+canonical task creation with fresh IDs and never rewrite, reopen, or reset completed history.
+It adds no CLI command, exporter, native installer, provider/model runtime, worker role,
+lifecycle state, evidence schema, mandatory release/completion gate, scanner, daemon, embeddings,
+or vector database, and it never modifies production code. This reuses the packaged-skill
+convention established by ADR-0063 and keeps project grill, task grill, task split, prototype,
+and milestone semantic audit distinct, optional, and independently invocable.
+
+Reference:
+
+Task 0137.

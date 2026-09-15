@@ -419,6 +419,26 @@ pnpm exec apk review 0072 --reviewer review-a --prompt
 
 Exporter templates add shared contract guidance to Codex and OpenCode outputs. Run identity and task provenance remain the APK workflow's responsibility, so implementation and independent review can use different harnesses without losing continuity.
 
+## Optional project grill
+
+APK ships `apk-project-grill`, an optional, manually invoked instruction asset packaged at
+`dist/core/templates/skills/apk-project-grill/SKILL.md.hbs`. It is a repository-grounded design
+checkpoint for a whole project, the current milestone, or one bounded subsystem/topic, usable at
+project start and re-runnable as a periodic checkpoint after a milestone or material change.
+
+It resolves the requested scope, reads canonical project truth with bounded context (using
+existing `apk status`, `apk tasks`, `apk task deps`, `apk context`, and `apk suggest-context`
+rather than a new scanner), and asks one high-value question at a time instead of dumping a
+questionnaire. It challenges stale or inconsistent assumptions while labeling every point as
+evidence, inference, hypothesis, or human preference, and it distinguishes intentional evolution
+and validated learning from accidental drift. It writes nothing before explicit human approval of
+a concrete proposal; approved decisions go to discovered canonical owners, never a parallel
+`PROJECT_GRILL.md` or session store, and approved backlog changes use fresh task IDs without
+rewriting completed history. It never implements product code, auto-activates, or becomes a
+mandatory stage or gate. It is distinct from task grill (one task before implementation),
+task-split (decomposition), prototype (a bounded experiment), and the milestone semantic audit
+(cross-contract consistency of completed tasks); none requires another.
+
 ## Optional task-grill clarification
 
 APK ships one optional, manually invoked instruction asset, `apk-task-grill`, for clarifying a
