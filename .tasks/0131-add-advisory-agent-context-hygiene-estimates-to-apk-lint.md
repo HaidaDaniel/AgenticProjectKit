@@ -1,7 +1,7 @@
 # Task 0131 - Add advisory agent context hygiene estimates to APK lint
 
-State: todo
-Owner: none
+State: doing
+Owner: code-owner-0131
 Mode: maintenance
 Lane: quality
 Type: feature

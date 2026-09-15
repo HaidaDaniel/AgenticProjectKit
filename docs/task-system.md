@@ -113,6 +113,8 @@ Legacy `.agentic/agents.jsonl` and `.agentic/runs.jsonl` are migration inputs on
 
 `pnpm exec apk lint` is a read-only aggregate check for task graph, metadata, path/policy, ownership, and generated-instruction drift. It reports malformed task files, duplicate or invalid dependencies, path contradictions, policy conflicts, state/owner violations, and missing or stale generated files through check-only sync. Exact planned output paths remain valid, and free-form steps are not interpreted with NLP guesses. Human output is concise; `--json` emits stable machine-readable findings. The command does not write reports, task files, or generated instructions; structural and sync errors return exit code 1.
 
+Human and JSON output also include bounded **advisory context-hygiene estimates** using canonical APK units (`ceil(UTF-8 bytes / 4)`): canonical always-loaded instructions, task-contract files, unique required context, and selected relevant/optional context. Initial-load totals count each normalized selected file once and expose overlap, missing, and unavailable sizes without claiming real model/harness token use. Deterministic hygiene findings flag exact repeated command lines, repeated normalized context references, generated legacy full-policy copies, and decidable missing references with paths, and are intentionally conservative and labelled as potentially intentional. These findings are always `info`/warning-only: they never set `hasErrors`, fail `done`, lower assurance, or add evidence requirements, and no universal size limit or threshold config is introduced.
+
 ## Dependency graph rules
 
 - Every `Depends on` id must reference an existing task file.

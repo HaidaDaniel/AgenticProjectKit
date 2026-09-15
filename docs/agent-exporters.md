@@ -34,6 +34,8 @@ affected harnesses now consume `AGENTS.md` directly:
 - `apk export --cleanup-legacy` removes only files whose normalized content exactly matches the known legacy rendering; customized files are preserved and reported.
 - A filename alone is never proof. Any file that differs from the known legacy rendering is treated as customized and left untouched.
 
+`apk lint` reuses this exact-content classification to report generated legacy full-policy copies as advisory context-hygiene `info`; it never deletes, rewrites, or untracks them, and customized files are not misclassified.
+
 ## Export rules
 
 - Export from neutral policy content, not hand-maintained duplicates.

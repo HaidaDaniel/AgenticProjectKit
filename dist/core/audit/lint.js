@@ -1,7 +1,9 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 import { listAgents } from "../agents/index.js";
 import { readAgenticConfigFile } from "../config/index.js";
+import { selectTaskContext } from "../docs/context.js";
+import { classifyLegacyAgentExports } from "../exporters/index.js";
 import { syncAgentExports } from "../sync/index.js";
 import { parseTaskMarkdown, resolveTaskPolicy, validateTaskDependencies, TaskFormatError, } from "../tasks/index.js";
 function normalizeRepoPath(value) {
@@ -309,6 +311,185 @@ function sortFindings(findings) {
         || (left.path ?? "").localeCompare(right.path ?? "")
         || left.message.localeCompare(right.message)));
 }
+const ALWAYS_LOADED_INSTRUCTION_FILES = ["AGENTS.md", "CLAUDE.md", "GEMINI.md"];
+/** A command-like line a reviewer could repeat across instructions/contracts. Intentionally conservative. */
+const COMMAND_LINE = /^(?:[-*]\s+|\d+\.\s+)?`?(?:pnpm|npm|npx|node|git|apk|apkit)\b/;
+async function fileExists(rootDirectory, path) {
+    try {
+        await stat(join(rootDirectory, path));
+        return true;
+    }
+    catch (error) {
+        if (isMissingFileError(error))
+            return false;
+        throw error;
+    }
+}
+async function estimateFileUnits(rootDirectory, path, unavailable) {
+    try {
+        const content = await readFile(join(rootDirectory, path), "utf8");
+        return Math.max(1, Math.ceil(Buffer.byteLength(content, "utf8") / 4));
+    }
+    catch (error) {
+        if (!isMissingFileError(error))
+            unavailable.add(path);
+        return 0;
+    }
+}
+function normalizedCommandLine(line) {
+    const trimmed = line.replace(/\s+$/, "").trim();
+    if (trimmed.length === 0 || !COMMAND_LINE.test(trimmed))
+        return undefined;
+    return trimmed.replace(/\s+/g, " ");
+}
+/**
+ * Advisory, read-only context-hygiene estimates and exact-repetition findings.
+ * Uses canonical APK units (ceil(UTF-8 bytes / 4)), counts each selected source
+ * once for the initial-load total, and never emits error-level findings or
+ * mutates files. Missing explicit references stay advisory because a path may be
+ * a planned output.
+ */
+async function evaluateContextHygiene(rootDirectory, taskDirectory, documents, findings) {
+    const unavailable = new Set();
+    const sizes = new Map();
+    const sizeOf = async (path) => {
+        if (!sizes.has(path))
+            sizes.set(path, await estimateFileUnits(rootDirectory, path, unavailable));
+        return sizes.get(path) ?? 0;
+    };
+    const instructionSet = new Set();
+    for (const path of ALWAYS_LOADED_INSTRUCTION_FILES) {
+        if (await fileExists(rootDirectory, path))
+            instructionSet.add(path);
+    }
+    const taskContractSet = new Set(documents.active.map((file) => normalizeRepoPath(relative(rootDirectory, file.path))));
+    const required = new Set();
+    const missing = new Set();
+    for (const file of documents.active) {
+        for (const reference of file.task.contextFiles) {
+            const path = normalizeRepoPath(reference);
+            if (path.includes("*"))
+                continue;
+            if (await fileExists(rootDirectory, path))
+                required.add(path);
+            else
+                missing.add(path);
+        }
+    }
+    const selectedExtra = new Set();
+    for (const file of documents.active) {
+        const selection = selectTaskContext(file.task, 3, {
+            taskDirectory,
+            taskFile: normalizeRepoPath(relative(rootDirectory, file.path)),
+        });
+        for (const reference of selection.files) {
+            const path = normalizeRepoPath(reference);
+            if (!required.has(path)
+                && !instructionSet.has(path)
+                && !taskContractSet.has(path)
+                && await fileExists(rootDirectory, path)) {
+                selectedExtra.add(path);
+            }
+        }
+    }
+    const categories = [
+        { category: "canonical-instructions", files: [...instructionSet].sort() },
+        { category: "task-contract", files: [...taskContractSet].sort() },
+        { category: "required-context", files: [...required].sort() },
+        { category: "selected-context", files: [...selectedExtra].sort() },
+    ];
+    const estimates = [];
+    const union = new Set();
+    for (const { category, files } of categories) {
+        let units = 0;
+        for (const file of files) {
+            units += await sizeOf(file);
+            union.add(file);
+        }
+        estimates.push({ category, files, units });
+    }
+    const initialLoadUnits = [...union].reduce((sum, file) => sum + (sizes.get(file) ?? 0), 0);
+    const overlap = [...union]
+        .filter((file) => categories.filter((category) => category.files.includes(file)).length > 1)
+        .sort();
+    for (const file of documents.active) {
+        const references = new Map();
+        for (const reference of file.task.contextFiles) {
+            const path = normalizeRepoPath(reference);
+            references.set(path, (references.get(path) ?? 0) + 1);
+        }
+        for (const [path, count] of [...references].filter(([, count]) => count > 1).sort()) {
+            addFinding(findings, {
+                level: "info",
+                code: "context-reference-repeated",
+                area: "context-hygiene",
+                message: `Task ${file.task.id} lists context ${path} ${count} times; remove the duplicate reference.`,
+                path,
+                taskId: file.task.id,
+            });
+        }
+    }
+    for (const path of [...instructionSet].sort()) {
+        let content;
+        try {
+            content = await readFile(join(rootDirectory, path), "utf8");
+        }
+        catch {
+            continue;
+        }
+        const locations = new Map();
+        content.split(/\r?\n/).forEach((line, index) => {
+            const normalized = normalizedCommandLine(line);
+            if (!normalized)
+                return;
+            const lines = locations.get(normalized) ?? [];
+            lines.push(index + 1);
+            locations.set(normalized, lines);
+        });
+        for (const [, lines] of [...locations].filter(([, lines]) => lines.length > 1).sort()) {
+            addFinding(findings, {
+                level: "info",
+                code: "context-duplicate-command",
+                area: "context-hygiene",
+                message: `Command line repeated ${lines.length} times at ${path}:${lines.join(", ")}; deliberate repetition may be valid.`,
+                path,
+            });
+        }
+    }
+    try {
+        for (const legacy of await classifyLegacyAgentExports(rootDirectory)) {
+            if (legacy.status !== "generated")
+                continue;
+            addFinding(findings, {
+                level: "info",
+                code: "context-legacy-duplicate",
+                area: "context-hygiene",
+                message: `Legacy generated policy copy ${legacy.outputPath} is present; prefer the canonical AGENTS.md import.`,
+                path: legacy.outputPath,
+            });
+        }
+    }
+    catch {
+        // Legacy classification is advisory; a failure must not fail lint.
+    }
+    for (const path of [...missing].sort()) {
+        addFinding(findings, {
+            level: "info",
+            code: "context-reference-missing",
+            area: "context-hygiene",
+            message: `Context reference ${path} is not present; verify it is not a planned output.`,
+            path,
+        });
+    }
+    return {
+        estimates,
+        uniqueFiles: union.size,
+        initialLoadUnits,
+        overlap,
+        missing: [...missing].sort(),
+        unavailable: [...unavailable].sort(),
+    };
+}
 export async function lintRepositoryContracts(rootDirectory) {
     const findings = [];
     let taskDirectory = ".tasks";
@@ -397,12 +578,14 @@ export async function lintRepositoryContracts(rootDirectory) {
             message: error instanceof Error ? error.message : String(error),
         });
     }
+    const contextHygiene = await evaluateContextHygiene(rootDirectory, taskDirectory, documents, findings);
     const sortedFindings = sortFindings(findings);
     return {
         taskCount: documents.paths.length,
         checkedTaskFiles: documents.paths,
         findings: sortedFindings,
         sync,
+        contextHygiene,
         hasErrors: sortedFindings.some((finding) => finding.level === "error"),
     };
 }
@@ -421,6 +604,17 @@ export function renderTaskLintResult(result, json = false) {
                 finding.path ? `  path: ${finding.path}` : undefined,
             ].filter((line) => line !== undefined).join("\n"))
             : ["- none"]),
+        `Context estimate (advisory): ${result.contextHygiene.initialLoadUnits} units across ${result.contextHygiene.uniqueFiles} unique file(s)`,
+        ...result.contextHygiene.estimates.map((estimate) => `  - ${estimate.category}: ${estimate.units} units / ${estimate.files.length} file(s)`),
+        ...(result.contextHygiene.overlap.length > 0
+            ? [`  overlap: ${result.contextHygiene.overlap.join(", ")}`]
+            : []),
+        ...(result.contextHygiene.missing.length > 0
+            ? [`  missing: ${result.contextHygiene.missing.join(", ")}`]
+            : []),
+        ...(result.contextHygiene.unavailable.length > 0
+            ? [`  unavailable: ${result.contextHygiene.unavailable.join(", ")}`]
+            : []),
         "",
     ].join("\n");
 }

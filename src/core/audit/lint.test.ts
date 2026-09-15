@@ -5,13 +5,13 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { initProject } from "../init/index.js";
-import { writeAllAgentExports } from "../exporters/index.js";
+import { renderLegacyAgentExportFile, writeAllAgentExports } from "../exporters/index.js";
 import { registerAgent } from "../agents/index.js";
 import {
   renderTaskMarkdown,
   type ProjectTask,
 } from "../tasks/index.js";
-import { lintRepositoryContracts } from "./lint.js";
+import { lintRepositoryContracts, renderTaskLintResult } from "./lint.js";
 
 async function withTempDirectory(
   run: (directory: string) => Promise<void>,
@@ -191,5 +191,90 @@ test("contract lint proves glob overlaps instead of using shared prefixes", asyn
     assert.deepEqual(contradictions, ["0010", "0011", "0014"]);
     assert.equal(contradictions.includes("0012"), false);
     assert.equal(contradictions.includes("0013"), false);
+  });
+});
+
+test("contract lint exposes advisory context-hygiene estimates and keeps repeats non-fatal", async () => {
+  await withTempDirectory(async (directory) => {
+    await initProject(directory);
+    await writeAllAgentExports(directory, undefined, { force: true });
+    let expectedInstructions = 0;
+    for (const file of ["AGENTS.md", "CLAUDE.md", "GEMINI.md"]) {
+      expectedInstructions += Math.max(
+        1,
+        Math.ceil(Buffer.byteLength(await readFile(join(directory, file), "utf8"), "utf8") / 4),
+      );
+    }
+
+    const clean = await lintRepositoryContracts(directory);
+    const instructionEstimate = clean.contextHygiene.estimates.find(
+      (estimate) => estimate.category === "canonical-instructions",
+    );
+    assert.ok(instructionEstimate);
+    assert.equal(instructionEstimate.units, expectedInstructions);
+    assert.ok(instructionEstimate.files.includes("AGENTS.md"));
+    assert.ok(clean.contextHygiene.initialLoadUnits > 0);
+    assert.ok(clean.contextHygiene.uniqueFiles > 0);
+    assert.equal(clean.hasErrors, false);
+    assert.match(renderTaskLintResult(clean, true), /"contextHygiene"/);
+    assert.match(renderTaskLintResult(clean), /Context estimate \(advisory\)/);
+
+    await writeTask(directory, "0021-a.md", task("0021", { contextFiles: ["AGENTS.md", "./AGENTS.md", "docs/planned-output.md"] }));
+    await writeTask(directory, "0022-b.md", task("0022", { contextFiles: ["AGENTS.md"] }));
+
+    const second = await lintRepositoryContracts(directory);
+    assert.equal(second.hasErrors, false);
+    assert.ok(second.findings.some(
+      (finding) => finding.code === "context-reference-repeated" && finding.level === "info",
+    ));
+    assert.ok(second.findings.some(
+      (finding) => finding.code === "context-reference-missing"
+        && finding.path === "docs/planned-output.md"
+        && finding.level === "info",
+    ));
+    assert.ok(second.contextHygiene.missing.includes("docs/planned-output.md"));
+  });
+});
+
+test("contract lint flags exact repeated command lines as advisory info", async () => {
+  await withTempDirectory(async (directory) => {
+    await initProject(directory);
+    await writeAllAgentExports(directory, undefined, { force: true });
+    await writeFile(join(directory, "AGENTS.md"), [
+      "# AGENTS",
+      "",
+      "- `pnpm test`",
+      "- `pnpm test`",
+      "",
+    ].join("\n"), "utf8");
+
+    const result = await lintRepositoryContracts(directory);
+    assert.ok(result.findings.some(
+      (finding) => finding.code === "context-duplicate-command" && finding.level === "info",
+    ));
+    // Generated-file drift remains a hard error; the hygiene finding is not one.
+    assert.equal(result.hasErrors, true);
+    assert.ok(result.findings.some((finding) => finding.code === "generated-file-stale" && finding.level === "error"));
+  });
+});
+
+test("contract lint flags generated legacy policy copies as advisory info without failing", async () => {
+  await withTempDirectory(async (directory) => {
+    await initProject(directory);
+    await writeAllAgentExports(directory, undefined, { force: true });
+    await mkdir(join(directory, ".codex"), { recursive: true });
+    await writeFile(
+      join(directory, ".codex", "instructions.md"),
+      await renderLegacyAgentExportFile("codex"),
+      "utf8",
+    );
+
+    const result = await lintRepositoryContracts(directory);
+    assert.ok(result.findings.some(
+      (finding) => finding.code === "context-legacy-duplicate"
+        && finding.path === ".codex/instructions.md"
+        && finding.level === "info",
+    ));
+    assert.equal(result.hasErrors, false);
   });
 });

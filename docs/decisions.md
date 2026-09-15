@@ -1088,3 +1088,21 @@ freshness, and existing assurance/budgets.
 Reference:
 
 Task 0130.
+
+## ADR-0069 - APK lint exposes advisory context-hygiene estimates and never gates on instruction size
+
+`apk lint` (human and JSON) additionally reports bounded, read-only advisory context estimates
+using the canonical unit `ceil(UTF-8 bytes / 4)`: canonical always-loaded instructions,
+task-contract files, unique required context, and selected relevant/optional context. Each
+normalized selected source is counted once for the initial-load total, with explicit overlap,
+missing, and unavailable values. It also emits deliberately conservative deterministic hygiene
+findings (exact repeated command lines, repeated normalized context references, generated legacy
+full-policy copies, and decidable missing references) that are always `info`/warning-only. They
+never set `hasErrors`, fail `done`, lower assurance, add evidence, mutate files, or impose a
+universal size limit; structural/generated-drift errors keep their severity, and totals never
+claim real model/harness token use. No LLM, fuzzy semantic similarity, config threshold, or
+auto-cleanup is introduced.
+
+Reference:
+
+Task 0131.

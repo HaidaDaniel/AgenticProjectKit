@@ -2,7 +2,7 @@
 
 The context system tells an agent exactly which files to read before working on a task.
 
-Default context output should be `caveman`-short unless the task needs detail.
+Default context output stays concise and readable; expand it only when the task needs detail.
 
 ## Budgeted packs
 
@@ -15,6 +15,12 @@ Budgeted packs select tiers in order:
 - `optional`: remaining available files, admitted only when budget remains.
 
 Required files are never evicted. If their estimated units exceed budget, the result keeps them all and returns `required-over-budget` with exit code 1. Otherwise selected files stay within budget. Ordering, tier, reason, and units are exposed in the context selection; prompt rendering consumes the same representation. Operational lock, registry, run, evidence, baseline, and archived-task paths remain excluded. Legacy `--level` calls without `--budget` keep the existing selection and output.
+
+## Advisory hygiene estimates
+
+`apk lint` also exposes bounded, read-only advisory estimates built from the same canonical unit (`ceil(UTF-8 bytes / 4)`) and context selection: canonical always-loaded instructions, task-contract files, unique required context, and selected relevant/optional context. Each normalized selected source is counted once in the initial-load total, with overlap, missing, and unavailable sizes exposed explicitly; totals estimate selected text, not real model/harness tokens or total repository reasoning cost.
+
+Deterministic hygiene findings (always advisory) flag exact repeated command lines, repeated normalized context references, generated legacy full-policy copies, and decidable missing references with paths and conservative wording. They never set lint `hasErrors`, fail `done`, lower assurance, add evidence, or impose a universal size limit; deliberate repetition may be legitimate and an unreferenced/planned output is never treated as a hard failure.
 
 ## Context levels
 
