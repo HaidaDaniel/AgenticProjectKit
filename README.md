@@ -99,26 +99,26 @@ Use SSH when the machine already has GitHub credentials:
 
 ```bash
 cd path/to/your-project
-pnpm add -D git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.4
+pnpm add -D git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.5
 pnpm exec apk init
 ```
 
 For an existing repository:
 
 ```bash
-pnpm add -D git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.4
+pnpm add -D git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.5
 pnpm exec apk adopt
 ```
 
 HTTPS equivalent when GitHub auth is configured for HTTPS:
 
 ```bash
-pnpm add -D git+https://github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.4
+pnpm add -D git+https://github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.5
 ```
 
 `#main` tracks unreleased development and is for development/testing only. Do not use `#main` as the stable installation path; pin a tag for repeatable installs.
 
-`v0.4.2` and newer ship a runnable `dist/` inside the tag, so no build-script allowlist is needed. `v0.4.1` and earlier build from source on install and may require `onlyBuiltDependencies`/`allowBuilds`; prefer `v0.4.4` or newer.
+`v0.4.2` and newer ship a runnable `dist/` inside the tag, so no build-script allowlist is needed. `v0.4.1` and earlier build from source on install and may require `onlyBuiltDependencies`/`allowBuilds`; prefer `v0.4.5` or newer.
 
 This is usually better than a global install because every repository pins the exact CLI version it expects.
 
@@ -135,14 +135,14 @@ pnpm exec apk doctor
 Best for personal use across many local repositories. Repository-local pinning is still preferred for reproducibility.
 
 ```bash
-npm install -g git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.4
+npm install -g git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.5
 apk --help
 ```
 
 or:
 
 ```bash
-pnpm add -g git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.4
+pnpm add -g git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.5
 apk --help
 ```
 
@@ -780,4 +780,4 @@ Default agent style for this repository: concise, readable `normal` prose. `agen
 
 Tasks 0072 and 0073 provide the model-agnostic worker boundary and corrective lifecycle safeguards. Task 0074 adds the explicit compatibility preview/apply path for adopting the gated workflow; Task 0075 performs the final frozen-candidate validation.
 
-v0.4.4 is the current stable release. It adds the optional manual packaged skills `apk-task-grill`, `apk-task-split`, `apk-prototype`, and `apk-milestone-semantic-audit`; explicit Spec-correctness/Engineering-quality axes in one prepared review; repro-first `bugfix` template guidance; advisory read-only context-hygiene estimates in `apk lint`; corrected canonical Git-ignore semantics for Go `*_test.go` discovery; and regenerated normal-default instructions and committed `dist`. See `docs/releases/v0.4.4.md`.
+v0.4.5 is the current stable release. It adds the optional manual packaged skill `apk-project-grill` for whole-project/milestone/subsystem design checkpoints, retains the earlier optional skills `apk-task-grill`, `apk-task-split`, `apk-prototype`, and `apk-milestone-semantic-audit`, and encodes a pre-tag/post-tag release-evidence ordering contract in the release template and docs. See `docs/releases/v0.4.5.md`.
