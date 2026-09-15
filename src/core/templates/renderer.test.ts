@@ -383,3 +383,39 @@ test("canonical style rules default to concise normal prose and gate caveman beh
   assert.equal(DEFAULT_AGENT_POLICY.defaultStyle, "normal");
   assert.deepEqual(DEFAULT_AGENT_POLICY.styleRules, styleRulesFor("normal"));
 });
+
+test("apk-task-grill ships as a portable manual-only instruction asset", async () => {
+  const content = normalizeLineEndings(
+    await readFile(
+      join(process.cwd(), "src/core/templates/skills/apk-task-grill/SKILL.md.hbs"),
+      "utf8",
+    ),
+  );
+
+  assert.match(content, /^---\nname: apk-task-grill\n/);
+  assert.match(content, /explicit human request/i);
+  assert.match(content, /Never activate automatically/i);
+  assert.match(content, /apk context <task-id>/);
+  assert.match(content, /apk task deps <task-id>/);
+  assert.match(content, /apk suggest-context/);
+  assert.match(content, /Require explicit human approval/i);
+  assert.match(content, /No runtime or product code changes/i);
+  assert.match(content, /Stop before implementation/i);
+  assert.match(content, /documentation ownership/i);
+  assert.doesNotMatch(content, /\{\{/);
+});
+
+test("task grill stays out of always-active common policy", async () => {
+  const policyText = [
+    ...DEFAULT_AGENT_POLICY.coreRules,
+    ...DEFAULT_AGENT_POLICY.taskRules,
+    ...DEFAULT_AGENT_POLICY.styleRules,
+  ].join("\n");
+  assert.doesNotMatch(policyText, /task-grill|grilling/i);
+
+  const exports = await renderAgentExportFiles();
+  const agents = exports.find((file) => file.outputPath === "AGENTS.md");
+
+  assert.ok(agents);
+  assert.doesNotMatch(agents.content, /apk-task-grill/);
+});

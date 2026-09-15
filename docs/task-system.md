@@ -413,6 +413,25 @@ pnpm exec apk review 0072 --reviewer review-a --prompt
 
 Exporter templates add shared contract guidance to Codex and OpenCode outputs. Run identity and task provenance remain the APK workflow's responsibility, so implementation and independent review can use different harnesses without losing continuity.
 
+## Optional task-grill clarification
+
+APK ships one optional, manually invoked instruction asset, `apk-task-grill`, for clarifying a
+single existing task before implementation. It is plain Markdown packaged at
+`dist/core/templates/skills/apk-task-grill/SKILL.md.hbs`; there is no `apk task grill` command.
+
+- Planning creates, splits, and orders work.
+- Task grill resolves material uncertainty in one bounded task contract before implementation.
+- The work loop (`apk work`) implements that contract.
+- Review verifies the implementation against that contract.
+
+Task grill runs only on an explicit human request naming a task. It uses existing context
+interfaces (`apk context`, the task Context files, `apk task deps`, and optional
+`apk suggest-context`), asks only materially unresolved questions, and writes nothing until it
+presents a bounded proposal and the human explicitly approves it. It never edits runtime/product
+code, never produces a worker role, review result, verification evidence, or completion
+certificate, and introduces no lifecycle state or completion requirement. An ordinary task
+proceeds through claim/work/verify/review/gate/done without it.
+
 ## Task archiving
 
 Completed tasks can be archived to reduce noise in the active task list.

@@ -50,6 +50,28 @@ affected harnesses now consume `AGENTS.md` directly:
 - Claude Code should use `CLAUDE.md` as a thin adapter that imports `AGENTS.md` with `@AGENTS.md`.
 - Gemini CLI should use `GEMINI.md` as a thin adapter that imports `AGENTS.md` with `@./AGENTS.md`.
 
+## Optional packaged skills
+
+APK also ships optional, manually invoked instruction assets that are not part of the neutral
+common policy. They are plain Markdown packaged under
+`dist/core/templates/skills/<skill>/SKILL.md.hbs` and are never embedded into `AGENTS.md`,
+`CLAUDE.md`, or `GEMINI.md`.
+
+`apk-task-grill` clarifies one existing task before implementation. It runs only on an explicit
+human request such as "Use the APK task-grill skill on task 0026"; it never auto-activates, adds
+no CLI command, and does not change the normal work/review/gate flow.
+
+Discovery is manual:
+
+- A harness with native skill support can reference the installed asset or a user-installed copy
+  of the same canonical content.
+- A harness without native discovery must read the installed asset explicitly, for example
+  `<package>/dist/core/templates/skills/apk-task-grill/SKILL.md.hbs`.
+- The canonical source is `src/core/templates/skills/apk-task-grill/SKILL.md.hbs`.
+
+APK does not install skills into user-global directories, route models, or run providers. See
+`docs/task-system.md` for the planning/task-grill/work/review distinction.
+
 ## Worker handoff contract
 
 The work loop exposes a vendor-neutral `apk-worker-v1` package and result contract. A package carries task identity, selected context, allowed and forbidden paths, acceptance criteria, verification requirements, output/evidence expectations, role, and issued/input provenance. Supported roles are `implement`, `review`, `fix`, and `verify`; the role is independent from the target exporter or harness. APK persists the exact package and immutable issuance metadata under `.agentic/sessions/work/<task-id>/<run-id>/` using a temporary-directory plus atomic-rename handoff, then writes an activation marker last; harnesses should consume that serialized package rather than reconstructing it.

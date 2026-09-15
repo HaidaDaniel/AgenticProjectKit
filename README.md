@@ -534,6 +534,12 @@ Discovery mode now has lightweight planning documents:
 
 Use them before implementation to record product scope, expected load, data growth, stack choices, rejected alternatives, and future risks.
 
+## Optional task-grill skill
+
+APK ships one optional, explicitly invoked instruction asset, `apk-task-grill`, for clarifying a single existing task before implementation. It is plain Markdown in the installed package at `dist/core/templates/skills/apk-task-grill/SKILL.md.hbs`; there is no CLI command.
+
+Invoke it deliberately, for example: "Use the APK task-grill skill on task 0026." It never auto-activates, and an ordinary task proceeds through the normal claim/work/verify/review/gate/done flow without it. See `docs/agent-exporters.md` and `docs/task-system.md` for manual discovery and the planning/task-grill/work/review distinction.
+
 ## Usage scenarios
 
 The scenario commands below assume Agentic Project Kit is installed as a project dev dependency and run through `pnpm exec apk`. If you intentionally use a global install or shell alias, the command body is the same.

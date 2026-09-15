@@ -986,3 +986,25 @@ APK no longer defaults to the caveman style. `DEFAULT_CONFIG.agentStyle` and `DE
 Reference:
 
 Task 0124.
+
+## ADR-0063 - The task-grill instruction is an optional, manually invoked packaged asset outside common policy
+
+APK ships `apk-task-grill` as a plain Markdown instruction asset at
+`src/core/templates/skills/apk-task-grill/SKILL.md.hbs`. The existing recursive `.hbs` asset copier
+(`scripts/copy-template-assets.mjs`) preserves the nested path into
+`dist/core/templates/skills/apk-task-grill/SKILL.md.hbs`, and the package `files: [dist, README.md]`
+rule ships it. The asset is copied as-is for explicit loading, not rendered through the neutral
+policy pipeline. It clarifies one existing task contract before implementation using existing
+context/task interfaces (`apk context`, task Context files, `apk task deps`, optional
+`apk suggest-context`) and stops before implementation.
+
+It is invoked only by an explicit human request naming a task; it never auto-activates, adds no CLI
+command, exporter, native installer, provider/model runtime, worker role, lifecycle state, evidence
+schema, or completion gate, and is never embedded into the always-active common policy. Task or
+documentation writes require an explicit, bounded, human-approved proposal. This establishes the
+packaged-skill convention (asset plus documented manual discovery) that later optional skills can
+reuse without a skill registry.
+
+Reference:
+
+Task 0123.

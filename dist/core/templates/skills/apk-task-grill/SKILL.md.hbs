@@ -1,0 +1,119 @@
+---
+name: apk-task-grill
+description: >
+  Optional, manually invoked design-clarification interview for one existing APK task.
+  Use only when a human explicitly asks to "grill" or clarify a task before implementation.
+  It resolves material contract uncertainty from repository truth, proposes approved
+  task/documentation refinements, and stops before any implementation.
+---
+
+# APK Task Grill (optional, manual only)
+
+Task grill is a pre-implementation clarification pass for **one existing APK task**.
+It interviews a human to remove material uncertainty in that task contract before an
+implementation agent starts. It does not implement, does not review, and does not
+certify completion.
+
+## When to use it
+
+- Only on an explicit human request that names this skill and a target task, for example:
+  "Use the APK task-grill skill on task 0026" or "grill task 0140".
+- Never activate automatically. No heuristic, scanner, complexity rule, task scan,
+  work loop, or review hook may invoke it, and no task may require it to proceed.
+- An ordinary task stays fully implementable through the normal APK work, verification,
+  review, gate, and done flow without any grill metadata, state, or evidence.
+- If the human did not ask for it, stop and do the ordinary task.
+
+## Load and bounded inspection
+
+1. Read the target task file and its declared context. Use existing repository interfaces
+   rather than inventing new ones:
+   - `apk context <task-id> --budget <units>` for a deterministic required/relevant/optional pack
+   - the task `## Context files` list
+   - `apk task deps <task-id>` for direct prerequisites and dependents
+   - `apk suggest-context "<task description>"` for optional candidates only
+2. Treat context output as a file-selection interface, not as proof of contents. Read the
+   selected files before reasoning about them.
+3. Never silently drop required context. If a required tier is over budget, narrow optional
+   context or surface the constraint to the human.
+4. Inspect only what the task plausibly needs: direct dependencies, obviously related
+   completed tasks, likely downstream consumers, code/tests explicitly named by the task, and
+   canonical project, domain, security, testing, and decision docs. Do not dump the whole
+   repository. Do not read archived tasks unless their relevance is established explicitly.
+
+## Repository-grounded uncertainty assessment
+
+Establish what the repository already answers before asking anything. Re-ask a question only
+when the repository genuinely does not settle it. Reason about material decisions such as:
+ownership, identity and lifecycle, timestamps and occurrence-versus-recording time,
+transaction boundaries, migrations and compatibility, security boundaries, external effects,
+failure semantics, interface contracts, test and evidence expectations, and scope.
+
+These are reasoning aids, not a mandatory questionnaire. Skip categories the task does not
+touch.
+
+## Iterative question loop
+
+Ask one high-value question at a time and incorporate each answer before reassessing:
+
+1. Pick the highest-value unresolved decision.
+2. State what the repository already establishes for it.
+3. State the remaining choice and how the answer changes the contract.
+4. Ask the human, then fold the answer into the working understanding.
+5. Reassess and continue, or stop.
+
+Stop when the contract is "ready enough"; local implementation details belong to the
+implementation agent. Explicitly list any remaining material questions instead of hiding them.
+
+## Classify conclusions and find documentation ownership
+
+Classify each conclusion as task-local, domain-wide, architecture-wide, or temporary
+exploration. Discover the canonical owner in this priority order:
+
+1. explicit project or APK configuration;
+2. `AGENTS.md`;
+3. project maps and task context files;
+4. the existing documentation structure;
+5. established repository conventions.
+
+If canonical ownership is still ambiguous, ask the human. Do not assume fixed filenames and do
+not create generic `CONTEXT.md` or ad-hoc ADR files. Normally do not persist temporary
+exploration.
+
+## Propose, approve, then write
+
+Accumulate proposed decisions without writing after each answer. Present a single proposal
+containing:
+
+- resolved decisions;
+- proposed task edits;
+- proposed canonical documentation edits with their paths;
+- deferred questions and remaining material questions;
+- discovered scope expansion or follow-up work.
+
+Require explicit human approval of that concrete proposal before any write. Elapsed time,
+silence, and agent-generated decisions are never approval. On approval, apply only the accepted
+task/documentation refinements, preserve metadata, dependencies, verification, correctness
+sections, and unrelated content, record shared decisions once in their canonical docs, and add
+only the necessary task implications or references. On refusal or partial approval, write
+nothing or only what was explicitly accepted.
+
+## Hard boundaries
+
+- No runtime or product code changes, migrations, dependency upgrades, opportunistic
+  refactors, or implementation commits. Code and tests may only be read.
+- No writes to task or documentation files before explicit human approval.
+- No blind creation of task files, context files, or ADR files.
+- No fixed documentation filenames, duplicated sources of truth, session databases, raw
+  transcripts, or chain-of-thought storage.
+- No generation of an `apk work` package, worker role, review result, verification evidence, or
+  completion certificate.
+- No new task lifecycle state such as needs-grill/grilled/design-ready, and no completion gate.
+- Stop before implementation. Hand the clarified contract back to the normal APK workflow.
+
+## Invocation note for harnesses
+
+This asset is plain Markdown shipped inside the installed package under
+`dist/core/templates/skills/apk-task-grill/SKILL.md.hbs`. A harness without native skill
+discovery must read that installed asset explicitly when a human invokes task grill; APK adds
+no installer, model routing, or provider integration.
