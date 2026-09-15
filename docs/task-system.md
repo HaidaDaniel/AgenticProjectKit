@@ -432,6 +432,22 @@ code, never produces a worker role, review result, verification evidence, or com
 certificate, and introduces no lifecycle state or completion requirement. An ordinary task
 proceeds through claim/work/verify/review/gate/done without it.
 
+## Optional milestone semantic audit
+
+APK also ships `apk-milestone-semantic-audit`, an optional, manually invoked instruction asset
+packaged at `dist/core/templates/skills/apk-milestone-semantic-audit/SKILL.md.hbs`. It audits
+cross-contract semantic consistency across a finite set of completed tasks or a completed
+milestone portion, after or during a milestone.
+
+It resolves a visible completed-task selection (explicit IDs/range or a Git-ref-bounded
+milestone), inspects only bounded context, and returns bounded findings with references,
+concrete counterexamples, confidence, coverage, and proposed corrective contracts. It writes
+nothing until a concrete proposal is explicitly approved; approval creates fresh tasks through
+the normal graph/ownership rules. It never rewrites historical contracts or evidence, reopens
+completed work, fixes product code, or adds a mandatory gate, worker role, lifecycle state, or
+evidence schema. It is distinct from task grill (which clarifies one task before implementation)
+and from per-task review (which remains authoritative for its own contract).
+
 ## Task archiving
 
 Completed tasks can be archived to reduce noise in the active task list.

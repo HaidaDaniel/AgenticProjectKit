@@ -61,13 +61,21 @@ common policy. They are plain Markdown packaged under
 human request such as "Use the APK task-grill skill on task 0026"; it never auto-activates, adds
 no CLI command, and does not change the normal work/review/gate flow.
 
+`apk-milestone-semantic-audit` analyses semantic consistency across a finite set of completed
+tasks or a completed milestone portion. It runs only on an explicit human request, resolves a
+visible completed-task selection, returns bounded findings and proposed corrective tasks, and
+requires explicit human approval before any write. It never rewrites historical contracts or
+evidence, reopens completed work, fixes product code, or becomes a mandatory gate.
+
 Discovery is manual:
 
 - A harness with native skill support can reference the installed asset or a user-installed copy
   of the same canonical content.
 - A harness without native discovery must read the installed asset explicitly, for example
-  `<package>/dist/core/templates/skills/apk-task-grill/SKILL.md.hbs`.
-- The canonical source is `src/core/templates/skills/apk-task-grill/SKILL.md.hbs`.
+  `<package>/dist/core/templates/skills/apk-task-grill/SKILL.md.hbs` or
+  `<package>/dist/core/templates/skills/apk-milestone-semantic-audit/SKILL.md.hbs`.
+- The canonical sources are `src/core/templates/skills/apk-task-grill/SKILL.md.hbs` and
+  `src/core/templates/skills/apk-milestone-semantic-audit/SKILL.md.hbs`.
 
 APK does not install skills into user-global directories, route models, or run providers. See
 `docs/task-system.md` for the planning/task-grill/work/review distinction.

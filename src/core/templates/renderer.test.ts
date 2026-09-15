@@ -419,3 +419,33 @@ test("task grill stays out of always-active common policy", async () => {
   assert.ok(agents);
   assert.doesNotMatch(agents.content, /apk-task-grill/);
 });
+
+test("apk-milestone-semantic-audit ships as a portable manual-only instruction asset", async () => {
+  const content = normalizeLineEndings(
+    await readFile(
+      join(process.cwd(), "src/core/templates/skills/apk-milestone-semantic-audit/SKILL.md.hbs"),
+      "utf8",
+    ),
+  );
+
+  assert.match(content, /^---\nname: apk-milestone-semantic-audit\n/);
+  assert.match(content, /explicit human request/i);
+  assert.match(content, /Never activate automatically/i);
+  assert.match(content, /completed tasks/i);
+  assert.match(content, /mid-milestone/i);
+  assert.match(content, /apk context <task-id>/);
+  assert.match(content, /apk task deps <task-id>/);
+  assert.match(content, /apk suggest-context/);
+  assert.match(content, /Require explicit human approval/i);
+  assert.match(content, /Never\s+rewrite or mutate historical/i);
+  assert.match(content, /never fix product\/runtime code/i);
+  assert.match(content, /coverage and omissions/i);
+  assert.match(content, /Task grill clarifies one task/i);
+  assert.doesNotMatch(content, /\{\{/);
+
+  const exports = await renderAgentExportFiles();
+  const agents = exports.find((file) => file.outputPath === "AGENTS.md");
+
+  assert.ok(agents);
+  assert.doesNotMatch(agents.content, /apk-milestone-semantic-audit/);
+});

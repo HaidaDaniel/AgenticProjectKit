@@ -534,11 +534,14 @@ Discovery mode now has lightweight planning documents:
 
 Use them before implementation to record product scope, expected load, data growth, stack choices, rejected alternatives, and future risks.
 
-## Optional task-grill skill
+## Optional packaged skills
 
-APK ships one optional, explicitly invoked instruction asset, `apk-task-grill`, for clarifying a single existing task before implementation. It is plain Markdown in the installed package at `dist/core/templates/skills/apk-task-grill/SKILL.md.hbs`; there is no CLI command.
+APK ships two optional, explicitly invoked instruction assets as plain Markdown in the installed package. There is no CLI command for either.
 
-Invoke it deliberately, for example: "Use the APK task-grill skill on task 0026." It never auto-activates, and an ordinary task proceeds through the normal claim/work/verify/review/gate/done flow without it. See `docs/agent-exporters.md` and `docs/task-system.md` for manual discovery and the planning/task-grill/work/review distinction.
+- `apk-task-grill` (`dist/core/templates/skills/apk-task-grill/SKILL.md.hbs`) clarifies a single existing task before implementation. Invoke it deliberately, for example: "Use the APK task-grill skill on task 0026."
+- `apk-milestone-semantic-audit` (`dist/core/templates/skills/apk-milestone-semantic-audit/SKILL.md.hbs`) audits cross-contract semantic consistency across a finite set of completed tasks. Invoke it deliberately, for example: "Run APK milestone semantic audit for tasks 0033-0042."
+
+Neither auto-activates, and an ordinary task proceeds through the normal claim/work/verify/review/gate/done flow without them. See `docs/agent-exporters.md` and `docs/task-system.md` for manual discovery and the planning/task-grill/milestone-audit/work/review distinction.
 
 ## Usage scenarios
 

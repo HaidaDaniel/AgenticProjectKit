@@ -1,7 +1,7 @@
 # Task 0127 - Add optional manually invoked milestone semantic integrity audit
 
-State: todo
-Owner: none
+State: doing
+Owner: code-owner-0127
 Mode: product
 Lane: instructions
 Type: feature

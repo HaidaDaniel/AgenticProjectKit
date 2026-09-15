@@ -1,0 +1,126 @@
+---
+name: apk-milestone-semantic-audit
+description: >
+  Optional, manually invoked semantic integrity audit of a finite set of completed APK tasks or
+  a completed portion of a milestone. Use only when a human explicitly asks to audit completed
+  work for cross-contract semantic gaps. It returns bounded findings and proposed corrective
+  tasks; it never rewrites history, reopens completed work, or changes product code.
+---
+
+# APK Milestone Semantic Audit (optional, manual only)
+
+This audit asks whether a set of completed APK tasks agrees with the current canonical
+architecture, domain, and interface contracts, and whether those task contracts leave semantic
+gaps between them. Task-local verification, review, and gate can each be valid while integration
+exposes an assumption no single task owned.
+
+It is a cross-contract analysis of already-completed work. It is not a generic code reviewer, a
+task-local recertification, or a new completion certificate.
+
+## When to use it
+
+- Only on an explicit human request, for example "Run APK milestone semantic audit for tasks
+  0033-0042" or "Audit the completed milestone since <ref> against the current canonical
+  architecture/domain contracts".
+- Never activate automatically. No after-task trigger, scanner, work/review hook, mandatory
+  release or completion gate, or heuristic may invoke it, and no task may require it.
+- Ordinary work continues to complete through the normal APK work, verification, review, gate,
+  and done flow without any audit state or evidence.
+
+## Resolve a visible, finite selection
+
+Before inspecting anything, turn the request into a visible finite set of completed tasks:
+
+- an explicit task-ID list or range;
+- a Git-ref-bounded milestone, resolved to its completed task membership;
+- for a mid-milestone request, only the completed portion, with relevant unfinished
+  dependencies/consumers read as declared boundary context only.
+
+Missing, ambiguous, or over-broad refs/membership/dependencies require clarification or an
+explicitly limited result. Never silently widen into an unbounded repository scan, never certify
+unfinished implementation, and never present Git activity alone as task membership.
+
+## Bounded inspection
+
+Use existing APK primitives rather than inventing new ones:
+
+- `apk task deps <task-id>` for dependencies and dependents;
+- `apk context <task-id> --budget <units>` for a deterministic required/relevant/optional pack;
+- `apk suggest-context "<description>"` for optional candidates only;
+- canonical docs, task contracts, bounded provenance/evidence/gate summaries, relevant
+  interfaces, and integration tests.
+
+Context output is a selection interface; read the selected files before reasoning. Required
+context is never silently evicted on overflow. Read a specifically relevant completed/archived
+contract by its established reference; do not globally enable history or dump ignored runtime
+stores. Distinguish immutable completion-time evidence from current freshness, and
+task-attributed changes from broad Git activity. Unavailable history stays explicitly unknown.
+
+## Cross-contract reasoning targets
+
+Look for integration-level contradictions and missing invariants, for example:
+
+- contradictory assumptions between two locally valid tasks;
+- multiple sources of truth or ownership/reference identity mismatch;
+- occurrence-versus-recording time and persistence ordering disagreements;
+- transaction boundaries and lifecycle correction ownership;
+- migration compatibility and exhaustive schema evolution;
+- shared units, value representations, and overflow behavior;
+- error semantics, concurrency, and security boundaries;
+- one task relying on a guarantee its peer never supplies.
+
+## Bounded findings
+
+Return findings that are traceable and falsifiable. Each finding should name:
+
+- the involved task IDs;
+- canonical contract and code/test references;
+- the contradictory assumption or missing invariant;
+- an observable counterexample and its impact;
+- confidence and any unresolved evidence;
+- a proposed narrowly scoped corrective/follow-up contract with acceptance boundaries,
+  dependencies, and overlap checks.
+
+Separate supported defects from hypotheses, documentation drift, and accepted tradeoffs. State
+coverage and omissions explicitly. A clean result never claims exhaustive semantic correctness,
+and deterministic instruction tests never prove arbitrary model reasoning.
+
+## Proposal, approval, and historical integrity
+
+Present the bounded findings and the concrete proposed backlog, with intended paths, scope,
+acceptance boundaries, dependencies, and overlap checks, before any write. A skill invocation or
+an individual answer is not approval to write. Require explicit human approval of the concrete
+proposal; silence or refusal means no writes, and partial approval authorizes only the accepted
+new contracts and necessary canonical planning references.
+
+New work receives fresh task IDs through canonical task creation and graph validation. Never
+rewrite or mutate historical done contracts or evidence, never automatically reopen completed
+work, and never fix product/runtime code during an audit.
+
+## Hard boundaries
+
+- No automatic, continuous, or heuristic-triggered audit.
+- No full-repository LLM scan.
+- No mandatory release/completion gate, extra mandatory review pass, new worker role, task
+  lifecycle state, persistent database, ontology, issue tracker, evidence schema, provider/model
+  runtime, or daemon.
+- No new CLI merely to name the feature.
+- No historical contract/evidence mutation, automatic reopen, or product implementation.
+- No claim of arbitrary-LLM reasoning-quality guarantees or exhaustive system correctness.
+
+## Relation to task grill and task review
+
+- Task grill clarifies one task before implementation.
+- Milestone semantic audit analyses semantic consistency across multiple completed contracts
+  after or during a milestone.
+- Per-task review remains authoritative for its own contract.
+
+They are distinct, optional, and independently invoked; neither mandates the other.
+
+## Invocation note for harnesses
+
+This asset is plain Markdown shipped inside the installed package under
+`dist/core/templates/skills/apk-milestone-semantic-audit/SKILL.md.hbs`. A harness without native
+skill discovery must read that installed asset explicitly when a human invokes milestone audit.
+It works with local models and compatible harnesses; APK adds no installer, model routing,
+provider integration, or user-global skill directory write.

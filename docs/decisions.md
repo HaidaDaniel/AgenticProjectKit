@@ -1008,3 +1008,25 @@ reuse without a skill registry.
 Reference:
 
 Task 0123.
+
+## ADR-0064 - The milestone semantic audit is an optional, manually invoked packaged asset that never rewrites history
+
+APK ships `apk-milestone-semantic-audit` as a plain Markdown instruction asset at
+`src/core/templates/skills/apk-milestone-semantic-audit/SKILL.md.hbs`, copied by the existing
+recursive `.hbs` asset copier into `dist/core/templates/skills/apk-milestone-semantic-audit/SKILL.md.hbs`
+and shipped by the package `files` rule. It is an optional, explicitly invoked cross-contract
+analysis of a finite set of completed tasks or a completed milestone portion, distinct from task
+grill (one task before implementation) and per-task review (authoritative for its own contract).
+
+It resolves a visible completed-task selection, inspects only bounded context, and returns
+bounded findings with references, concrete counterexamples, confidence, coverage, and proposed
+corrective contracts. It never auto-activates and adds no CLI command, exporter, native
+installer, provider/model runtime, worker role, lifecycle state, evidence schema, or mandatory
+release/completion gate. It writes nothing before explicit human approval of a concrete
+proposal; approved follow-ups use fresh IDs under normal graph/ownership rules. It never rewrites
+or mutates historical done contracts or evidence, reopens completed work, or fixes
+product/runtime code. This reuses the packaged-skill convention established by ADR-0063.
+
+Reference:
+
+Task 0127.
