@@ -1,6 +1,6 @@
 # Task 0135 - Make Go test discovery honor canonical Git ignore semantics
 
-State: doing
+State: done
 Owner: code-owner-0135
 Mode: maintenance
 Lane: quality
