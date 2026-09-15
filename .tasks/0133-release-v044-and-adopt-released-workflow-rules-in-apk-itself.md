@@ -179,7 +179,7 @@ If tag publication, actual-tag install or self-adoption fails, retain the valida
 - `{"id":"coverage","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test:coverage","artifact":"coverage/coverage-summary.json"}`
 - `{"id":"build","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}`
 - `{"id":"release-check","type":"automated","required":true,"environment":"local","profile":"report","command":"pnpm release:check","artifact":"docs/releases/v0.4.4.md"}`
-- `{"id":"dist-current","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node --input-type=module -e \"import { execFileSync } from 'node:child_process'; if(execFileSync('git',['status','--porcelain','--untracked-files=all','--','dist'],{encoding:'utf8'}).trim()) throw new Error('Committed dist differs from current build');\""}`
+- `{"id":"dist-current","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"test -z \"$(git status --porcelain --untracked-files=all -- dist)\""}`
 - `{"id":"built-lint","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node dist/cli/index.js lint --json"}`
 - `{"id":"built-sync","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node dist/cli/index.js sync"}`
 - `{"id":"built-audit","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node dist/cli/index.js audit"}`
