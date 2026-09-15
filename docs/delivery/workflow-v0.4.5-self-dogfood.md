@@ -1,9 +1,23 @@
 # v0.4.5 post-release tag validation
 
-This document records POST-TAG evidence for the v0.4.5 release. It was committed on `main`
-after the immutable tag was published and is deliberately not part of the tagged commit. The
-release-note file `docs/releases/v0.4.5.md` inside the tag contains only pre-tag-knowable facts
-and points here for the post-publication identities.
+This document records the v0.4.5 release evidence on current `main`. It was committed after the
+immutable tag was published and is deliberately not part of the tagged commit. The
+"Temporal clarification" section below states which evidence is pre-tag, tag-publication, and
+post-tag.
+
+## Temporal clarification
+
+This clarification is recorded on current `main`; it does not change the published release.
+
+1. Frozen candidate: `f574ef252342185bc623346461dca8f545adf6a3` (tree `8f0bf45c139d0f9f3639febab185e8aa6ce92279`), committed `2026-09-15T14:08:38Z`.
+2. Hosted Quality run: `34980158536`, <https://github.com/HaidaDaniel/AgenticProjectKit/actions/runs/34980158536>.
+3. That exact-SHA CI started `2026-09-15T14:13:18Z` and completed `success` at `2026-09-15T14:18:25Z`, before annotated tag `v0.4.5` was created at `2026-09-15T14:21:22Z`.
+4. The exact-SHA hosted CI is therefore PRE-TAG evidence, not an observation made after publication.
+5. The annotated tag object `18d20157e1ccb7bcd5d63b9046bc50f729d1f70e` and its peel to `f574ef252342185bc623346461dca8f545adf6a3` are TAG PUBLICATION identity, created only after that CI passed.
+6. The actual-tag cold install and released-consumer checks in this document were performed after tag publication and are POST-TAG evidence.
+7. The immutable `docs/releases/v0.4.5.md` inside `v0.4.5` groups the exact-SHA CI run together with the tag identity and the cold install as "observed after publication". That grouping is temporally inaccurate for the exact-SHA CI, which completed before the tag existed.
+8. The `v0.4.5` tag is intentionally not rewritten and the published release history is not changed.
+9. This is a current-`main` historical correction only; it is not a change to the tagged release artifact. The v0.4.5 release was performed correctly and is not broken.
 
 ## Immutable release identity
 
