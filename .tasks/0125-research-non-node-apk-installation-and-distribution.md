@@ -4,9 +4,9 @@ State: done
 Owner: user
 Mode: discovery
 Lane: architecture
-Type: research
-Scope: installation,distribution,packaging,scanners,adoption,agents,cross-platform,security,dogfood
-Risk: high
+Type: docs
+Scope: installation,distribution,packaging,scanners,adoption,dogfood
+Risk: medium
 Parallel: false
 Depends on: 0056,0110,0112,0118
 Tags: research,design,distribution,non-node,dogfood

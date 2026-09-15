@@ -6,8 +6,8 @@ Mode: discovery
 Lane: research
 Type: docs
 Scope: upgrade-design,compatibility,adoption,docs
-Risk: low
-Parallel: true
+Risk: medium
+Parallel: false
 Depends on: 0074,0092,0110,0111,0115,0116,0117,0118
 Tags: docs,research,design
 

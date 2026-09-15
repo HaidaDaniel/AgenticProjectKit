@@ -80,7 +80,7 @@ No automatic after-task or continuous audit, heuristic auto-trigger, full-reposi
 - docs/engineering/template-system.md
 - docs/decisions.md
 - docs/progress.md
-- dist/**
+- dist/core/templates/skills/apk-milestone-semantic-audit/SKILL.md.hbs
 
 ## Files forbidden to edit
 
@@ -105,7 +105,7 @@ No automatic after-task or continuous audit, heuristic auto-trigger, full-reposi
 ## Steps
 
 1. Confirm canonical instruction packaging, task/dependency/context interfaces, Git/evidence/provenance semantics, and the separate task-grill/review purposes from listed context; use the recorded downstream summaries as motivation without a new general audit.
-2. Add one portable manual-only instruction asset and explicit installed-asset loading documentation. Resolve final name/location within this contract before edits; change the task allowed path and packaging verification first if the proposed location is unsuitable.
+2. Add one portable manual-only instruction asset at the fixed canonical source path `src/core/templates/skills/apk-milestone-semantic-audit/SKILL.md.hbs` and explicit installed-asset loading documentation. The existing recursive `.hbs` asset copier already handles nested skill directories, so this location is confirmed viable. If it nevertheless proves infeasible, do not self-amend this contract: block the task and request a separate contract amendment first.
 3. Define intent -> visible completed-task selection -> canonical documentation ownership -> budgeted boundary/context selection -> inspection. Include relevant dependencies, shared interfaces, implementation boundaries, integration tests, and bounded completion evidence; expose missing/ambiguous/over-budget context.
 4. Define cross-contract reasoning targets and a bounded findings format with traceable assertions, concrete counterexamples, confidence, coverage limits, and proposed corrective backlog. Avoid generic whole-code review and task-local completion recertification.
 5. Define findings/proposal -> explicit human approval -> only approved fresh corrective tasks and necessary canonical planning references. Enforce no-write/no-reopen/no-historical-evidence-mutation/no-product-fix boundaries and existing task creation/dependency/owner rules.
