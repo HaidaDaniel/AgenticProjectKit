@@ -529,7 +529,7 @@ test("apk-project-grill ships as a portable manual-only project/milestone/subsys
 
   assert.match(content, /Initial project grill/i);
   assert.match(content, /Checkpoint \/ re-grill/i);
-  assert.match(content, /treat any difference from the original plan as an error/i);
+  assert.match(content, /\*\*not\*\* treat any difference from the original plan as an error/i);
   assert.match(content, /intentional evolution/i);
   assert.match(content, /validated learning/i);
   assert.match(content, /accidental drift/i);
