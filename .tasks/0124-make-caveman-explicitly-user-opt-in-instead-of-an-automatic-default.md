@@ -1,7 +1,7 @@
 # Task 0124 - Make caveman explicitly user opt-in instead of an automatic default
 
-State: doing
-Owner: code-owner-0124
+State: canceled
+Owner: none
 Mode: maintenance
 Lane: instructions
 Type: feature
@@ -181,3 +181,4 @@ No feature implementation during creation of this backlog task. The future task 
 - Supersedes automatic default-style guidance, not the availability of caveman for users who explicitly prefer it. Keep the implementation small: defaults, neutral policy, accurate docs, and relevant tests.
 - Do not infer consent from APK installation, an installed external skill, task complexity, or generic requests to save tokens. Independent user/global instructions are outside APK control and should be documented honestly.
 - Task 0123 concerns a separate optional design-clarification skill; no new skill packaging or dependency on that task is necessary here.
+- cancel: Superseded: contract defect plus stale scope baseline. 1858d34 touched forbidden src/cli/commands/export.ts and omitted AGENTS.md/dist regeneration; later unrelated commits (c0c46c2) and a premature claim polluted the earliest-claim baseline, so release/reclaim fails closed (0116/0120 pattern). Remaining generated-artifact work moves to a clean successor task.
