@@ -1,6 +1,6 @@
 # Task 0140 - Clarify v0.4.5 release-evidence chronology without rewriting the tag
 
-State: doing
+State: done
 Owner: docs-owner-0140
 Mode: maintenance
 Lane: docs
