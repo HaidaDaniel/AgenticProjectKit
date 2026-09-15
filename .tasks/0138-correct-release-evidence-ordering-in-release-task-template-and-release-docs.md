@@ -1,6 +1,6 @@
 # Task 0138 - Correct release evidence ordering in release task template and release docs
 
-State: doing
+State: done
 Owner: code-owner-0138
 Mode: maintenance
 Lane: task-authoring
