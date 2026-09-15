@@ -1055,3 +1055,20 @@ The `bugfix` typed template's declarative defaults now order a failing-signal at
 Reference:
 
 Task 0128.
+
+## ADR-0067 - Task-split decomposition is an optional packaged asset that previews vertical slices before approved canonical creation
+
+APK ships `apk-task-split` as plain Markdown at `src/core/templates/skills/apk-task-split/SKILL.md.hbs`,
+copied into the package payload by the existing recursive `.hbs` asset copier. It turns an
+explicitly named large task, spec/design input, approved grill output, or planning target into a
+proposal of small tracer-bullet vertical slices with observable outcomes, narrow paths, bounded
+context, acceptance/verification/evidence, and a dependency DAG. It inspects existing
+task/dependency/context truth first, writes nothing before explicit human approval, and only then creates
+only accepted contracts through canonical task creation and graph validation with real IDs. It
+never auto-decomposes, mutates a parent's lifecycle, rewrites history, or implements product
+code, and it adds no CLI, orchestration runtime, state machine, or model requirement. Grill
+(clarify one task) and split (decompose a target) remain separate optional tools.
+
+Reference:
+
+Task 0129.

@@ -434,6 +434,23 @@ code, never produces a worker role, review result, verification evidence, or com
 certificate, and introduces no lifecycle state or completion requirement. An ordinary task
 proceeds through claim/work/verify/review/gate/done without it.
 
+## Optional task-split decomposition
+
+APK ships `apk-task-split`, an optional, manually invoked instruction asset packaged at
+`dist/core/templates/skills/apk-task-split/SKILL.md.hbs`. It turns an explicitly named large
+task, spec/design input, approved grill output, or planning target into a proposed set of small
+executable tasks, preferring tracer-bullet vertical slices with observable outcomes over
+horizontal DB/API/tests fragments.
+
+It inspects existing task/dependency/context truth first, previews each slice's outcome, paths,
+bounded context, acceptance/verification/evidence and a dependency DAG, and writes nothing before
+explicit human approval of the structural proposal. Approved creation uses canonical task ID
+allocation and graph validation; symbolic preview edges resolve to real IDs, parent ownership and
+historical evidence are preserved, and no parent is auto-canceled, reopened, or claimed. It adds
+no CLI, orchestration runtime, state machine, or automatic decomposition, and stops before
+implementation. It is distinct from task grill (clarifies one task) and from the milestone
+semantic audit (analyses completed contracts).
+
 ## Optional milestone semantic audit
 
 APK also ships `apk-milestone-semantic-audit`, an optional, manually invoked instruction asset

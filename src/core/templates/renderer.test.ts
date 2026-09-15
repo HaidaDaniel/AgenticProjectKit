@@ -452,3 +452,32 @@ test("apk-milestone-semantic-audit ships as a portable manual-only instruction a
   assert.ok(agents);
   assert.doesNotMatch(agents.content, /apk-milestone-semantic-audit/);
 });
+
+test("apk-task-split ships as a portable manual-only instruction asset", async () => {
+  const content = normalizeLineEndings(
+    await readFile(
+      join(process.cwd(), "src/core/templates/skills/apk-task-split/SKILL.md.hbs"),
+      "utf8",
+    ),
+  );
+
+  assert.match(content, /^---\nname: apk-task-split\n/);
+  assert.match(content, /explicit human request/i);
+  assert.match(content, /Never activate automatically/i);
+  assert.match(content, /tracer-bullet vertical slices/i);
+  assert.match(content, /observable outcome/i);
+  assert.match(content, /apk context <task-id>/);
+  assert.match(content, /apk task deps <task-id>/);
+  assert.match(content, /apk suggest-context/);
+  assert.match(content, /Require explicit human\s+approval/i);
+  assert.match(content, /dependency DAG/i);
+  assert.match(content, /do not automatically cancel, reopen, or claim the parent/i);
+  assert.match(content, /No new CLI/);
+  assert.doesNotMatch(content, /\{\{/);
+
+  const exports = await renderAgentExportFiles();
+  const agents = exports.find((file) => file.outputPath === "AGENTS.md");
+
+  assert.ok(agents);
+  assert.doesNotMatch(agents.content, /apk-task-split/);
+});

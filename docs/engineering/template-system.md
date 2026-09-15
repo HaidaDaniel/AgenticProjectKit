@@ -36,5 +36,6 @@ Packaged skills are optional and manually invoked. They are never embedded into 
 always-active common policy (`AGENTS.md`) and add no CLI command, exporter, or native installer.
 
 - `apk-task-grill` - clarify one existing task before implementation; see `docs/agent-exporters.md`.
+- `apk-task-split` - decompose an explicit planning target into proposed vertical-slice tasks; see `docs/agent-exporters.md`.
 - `apk-milestone-semantic-audit` - cross-contract semantic audit of a finite completed-task set; see `docs/agent-exporters.md`.
 

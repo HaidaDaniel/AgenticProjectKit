@@ -1,0 +1,106 @@
+---
+name: apk-task-split
+description: >
+  Optional, manually invoked decomposition of an explicitly named large task, spec/design input,
+  approved grill output, or planning target into a proposed set of small executable APK tasks.
+  Use only when a human explicitly asks to split or decompose work. It previews tracer-bullet
+  vertical slices and dependency edges, requires explicit approval before any task write, and
+  stops before implementation.
+---
+
+# APK Task Split (optional, manual only)
+
+Task split turns an explicitly named planning target into a proposed set of small, executable APK
+tasks. It prefers tracer-bullet vertical slices that each produce an independently observable
+outcome over DB/API/frontend/tests fragments that cannot deliver a meaningful result alone.
+
+It is optional and manual. It does not implement product code, does not claim or gate work, and
+does not replace planning, task grill, or per-task review.
+
+## When to use it
+
+- Only on an explicit human request naming a target, for example: "Use apk-task-split on task
+  0140", "Split this spec into APK tasks", or "Decompose the approved grill output".
+- Never activate automatically. No heuristic, scanner, complexity rule, work loop, or review hook
+  may invoke it, and no task may require it.
+- A small task needs no split metadata, state, or gate and proceeds directly through the normal
+  work, verify, review (if required), gate, and done flow.
+
+## Inspect repository truth first
+
+Before proposing anything, read the target and the surrounding repository state using existing
+interfaces:
+
+- `apk context <task-id> --budget <units>` and the task `## Context files` list;
+- `apk task deps <task-id>` for prerequisites and dependents;
+- `apk suggest-context "<description>"` for optional candidates only;
+- canonical docs and existing task contracts, including obvious overlap with already-planned or
+  done work.
+
+Context output is a selection interface; read the selected files before reasoning. Required
+context is never silently dropped; surface an overflow instead of hiding it. Do not dump the
+whole repository or history.
+
+## Propose a finite preview
+
+Produce a preview of individually observable and reviewable slices. For each slice state:
+
+- goal and observable outcome;
+- narrow allowed/forbidden paths;
+- bounded context files;
+- acceptance criteria, verification, and required evidence;
+- a reviewable boundary (what a reviewer can inspect independently);
+- explicit dependency edges to other slices or existing tasks.
+
+Then show the dependency DAG, actual parallelism, blocking edges, necessary shared
+migration/schema prerequisites, and merge candidates where slicing is too fine. A technical
+prerequisite is valid only when concretely necessary; do not disguise artificial horizontal
+fragmentation as independent capability. Label preview edges symbolically until canonical ID
+allocation returns real IDs.
+
+## Approval before writes
+
+Present the complete proposed structural delta, including any new task contracts, symbolic
+edges, and any disposition for an unfinished parent task, with paths. Require explicit human
+approval of that proposal before any write.
+
+- No response, silence, or refusal produces no writes.
+- Partial approval may be applied only when the accepted set still forms a coherent dependency
+  graph; otherwise clarify the remaining choices first.
+- An invocation authorizes inspection and proposals, never unapproved structural writes or
+  lifecycle changes.
+
+## Create through canonical facilities
+
+After approval, create only the accepted contracts with existing APK facilities:
+
+- use canonical task creation and dependency-graph validation;
+- report the actual auto-assigned IDs and resolve the symbolic preview edges to them;
+- respect the target's owner, state, and scope; for an unfinished parent, state its lifecycle and
+  dependency disposition explicitly and honor existing-owner constraints;
+- do not automatically cancel, reopen, or claim the parent, and do not silently change its
+  contract;
+- preserve historical done tasks and evidence; never rewrite history.
+
+Stop before product implementation and hand the created contracts back to the normal workflow.
+
+## Hard boundaries
+
+- No new CLI, orchestration/runtime, task store, second state machine, or daemon.
+- No automatic decomposition, backlog scanner, or recommendation engine.
+- No writes before explicit approval; no lifecycle changes by implication.
+- No provider/model requirement; the plain asset works with local models and compatible harnesses.
+- No duplication of the task-grill or per-task review workflows.
+
+## Relation to task grill
+
+Task grill clarifies one task before implementation. Task split decomposes a larger target into
+multiple tasks. They are separate optional tools: approved grill output is one possible input to a
+split, not a prerequisite, and neither mandates the other.
+
+## Invocation note for harnesses
+
+This asset is plain Markdown shipped inside the installed package under
+`dist/core/templates/skills/apk-task-split/SKILL.md.hbs`. A harness without native skill discovery
+must read that installed asset explicitly when a human invokes task split. APK adds no installer,
+model routing, provider integration, or user-global skill directory write.
