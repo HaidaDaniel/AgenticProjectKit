@@ -1,7 +1,7 @@
 # Task 0133 - Release v0.4.4 and adopt released workflow rules in APK itself
 
-State: todo
-Owner: none
+State: doing
+Owner: code-owner-0133
 Mode: production
 Lane: release
 Type: release
