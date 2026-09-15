@@ -12,6 +12,8 @@ The product rule is:
 
 Capability does not imply mandatory execution. Supporting independent or diverse review does not require every medium-risk task to consume it.
 
+The two review axes (Spec correctness and Engineering quality) are presentation guidance inside one prepared review. They add no assurance floor, second reviewer, selector, or automatic second run; richer independent/diverse review remains an existing higher-assurance, resource-rich option chosen by policy/resources, not by the axes.
+
 ## Three independent axes
 
 APK must not overload one setting with three meanings.

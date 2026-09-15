@@ -1072,3 +1072,19 @@ code, and it adds no CLI, orchestration runtime, state machine, or model require
 Reference:
 
 Task 0129.
+
+## ADR-0068 - One prepared review presents Spec correctness and Engineering quality axes with a conservative Overall outcome
+
+The canonical independent-review prompt presents two explicit axes inside one prepared run: Spec
+correctness and Engineering quality. Reviewers label findings with the axis they concern, disclose
+coverage limits, and submit one conservative Overall outcome: if either axis requires changes or
+fails, the Overall outcome cannot be pass. This is prompt/result presentation guidance only. There
+is no per-axis evidence field, second review store or gate, new selector, assurance minimum, or
+automatic second model call, and finding text is never parsed to decide gate semantics. Legacy
+unlabelled findings and valid empty passing findings remain readable, and standalone and
+worker-origin reviews share the same prepared candidate, registered-reviewer separation,
+freshness, and existing assurance/budgets.
+
+Reference:
+
+Task 0130.

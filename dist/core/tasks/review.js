@@ -156,6 +156,12 @@ export function renderTaskReviewPrompt(input) {
         "",
         "Review instructions:",
         "- Inspect the implementation and task diff; do not continue implementation work.",
+        "- Review two explicit axes and label each finding with the axis it concerns (for example \"Spec: ...\" or \"Engineering: ...\").",
+        "  - Spec correctness: goal and acceptance criteria, external and missing behavior, declared scope, scope creep, invariants, and required claims/evidence.",
+        "  - Engineering quality: repository conventions, unnecessary complexity or duplication, poor abstraction, speculative generality, primitive obsession, leaky boundaries, coupling/module ownership, avoidable smells or dependencies, and maintainability.",
+        "- Keep findings concrete and proportional; a matter of taste is not an invented blocker and does not authorize unrelated refactoring.",
+        "- Disclose coverage explicitly: state what was not inspected rather than implying exhaustive completeness.",
+        "- Report one Overall outcome, and keep it conservative: if either axis requires changes or fails, the Overall outcome cannot be pass.",
         "- Check every acceptance criterion and the declared scope.",
         "- Challenge hidden assumptions, failure paths, and counterexamples.",
         "- Green tests alone are not correctness proof; inspect behavior and risk explicitly.",
@@ -171,7 +177,7 @@ export function renderTaskReviewPrompt(input) {
         "Forbidden files:",
         ...input.task.forbiddenFiles.map((path) => `- ${path}`),
         "",
-        "Submit one outcome: pass, changes_requested, or fail.",
+        "Submit one Overall outcome: pass, changes_requested, or fail.",
         "",
     ].join("\n");
 }

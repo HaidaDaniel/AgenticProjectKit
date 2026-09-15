@@ -4897,4 +4897,30 @@ test("human decision recording enforces the operator trust boundary and cancel r
   });
 });
 
+test("review prompt presents spec and engineering axes with a conservative overall rule", () => {
+  const prompt = renderTaskReviewPrompt({
+    task: TASK,
+    reviewer: "codex-reviewer",
+    subject: {
+      taskId: TASK.id,
+      repository: "git",
+      baselineId: "baseline:test",
+      candidateId: "candidate:test",
+      worktreeId: "worktree:test",
+    },
+    changedFiles: ["src/core/tasks/changed.ts"],
+  });
+
+  assert.match(prompt, /Spec correctness:/);
+  assert.match(prompt, /Engineering quality:/);
+  assert.match(prompt, /label each finding with the axis/);
+  assert.match(prompt, /Disclose coverage explicitly/i);
+  assert.match(prompt, /Report one Overall outcome, and keep it conservative/i);
+  assert.match(prompt, /if either axis requires changes or fails, the Overall outcome cannot be pass/i);
+  assert.match(prompt, /a matter of taste is not an invented blocker/i);
+  assert.match(prompt, /Submit one Overall outcome: pass, changes_requested, or fail\./);
+  assert.match(prompt, /do not continue implementation work/);
+  assert.match(prompt, /Green tests alone are not correctness proof/);
+});
+
 

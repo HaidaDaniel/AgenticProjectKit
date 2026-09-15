@@ -1,7 +1,7 @@
 # Task 0130 - Present spec correctness and engineering quality in one task review
 
-State: todo
-Owner: none
+State: doing
+Owner: code-owner-0130
 Mode: maintenance
 Lane: review
 Type: feature
