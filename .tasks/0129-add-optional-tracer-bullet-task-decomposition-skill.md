@@ -1,6 +1,6 @@
 # Task 0129 - Add optional tracer-bullet task decomposition skill
 
-State: doing
+State: done
 Owner: code-owner-0129
 Mode: product
 Lane: instructions
