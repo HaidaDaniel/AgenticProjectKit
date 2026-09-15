@@ -1,6 +1,6 @@
 # Task 0132 - Add optional bounded throwaway prototype skill
 
-State: doing
+State: done
 Owner: code-owner-0132
 Mode: product
 Lane: instructions
