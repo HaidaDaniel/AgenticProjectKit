@@ -345,6 +345,7 @@ test("release template defaults order pre-tag evidence before the immutable tag 
   const invariants = template.invariants?.join("\n") ?? "";
 
   assert.match(steps, /PRE-TAG criterion/i);
+  assert.match(steps, /exact-SHA hosted CI/i);
   assert.match(steps, /exact candidate SHA\/tree/i);
   assert.ok(
     steps.search(/PRE-TAG criterion/i) < steps.search(/Create the annotated tag/i),
