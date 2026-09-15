@@ -30,7 +30,18 @@ Live-root `adopt --apply` was intentionally not executed: it would create a `.ta
   - prepared review `review-1789469958279-e8zx5v` by `dogfood-reviewer` (distinct from owner `dogfood-owner`), outcome `pass`, with axis-labelled `Spec:`/`Engineering:` findings;
   - gate `pass`; `done`; bookkeeping commit `8092f42`.
 
+## Root config migration
+
+The released CLI `adopt --preview` reported the live root config as legacy v1 and proposed marking it gated `schemaVersion: 2` while preserving all keys. That canonical migration was applied to `.agentic/config.json` directly, because the full `adopt --apply` would also create a `.tasks/**` file outside Task 0133's allowed scope.
+
+## Downstream and legacy compatibility
+
+- Legacy-task compatibility: the live root mixes legacy and gated task contracts; the released CLI parsed the mixed set (`adopt --preview`: `legacy=65, gated=71`) and `apk lint` returned exit 0.
+- Representative downstream flow: a disposable brownfield Go + Node repository (`go.mod`, package-local `*_test.go`, and an APK-tooling `package.json`) was adopted with the released CLI `adopt --apply`, creating 17 files. `apk lint` returned `hasErrors: false`, `apk sync` reported all generated files in sync, and `apk doctor` returned `pass`.
+- Bin aliases: the fresh-store install exposes `apkit`, `apk`, and `agentic-project-kit`; all three start the released CLI.
+
 ## Limitations
 
 - The human-readable `apk lint` context-hygiene `overlap` line can be long in a large backlog; JSON remains the machine interface. Recommended follow-up: cap the human `overlap`/`missing`/`unavailable` lists.
-- Phase-2 evidence comes from a disposable clone and the separate released-CLI consumer, not from the live root's tracked files.
+- The representative downstream smoke and legacy-compatibility checks were executed after tag publication with the released CLI rather than strictly before it. The frozen candidate passed exact-SHA hosted CI and the full local `pnpm release:check` before the tag; the downstream/compat runs are recorded here as post-tag confirmations.
+- Phase-2 evidence comes from a disposable clone and the separate released-CLI consumer, not from the live root's tracked files. Live-root `adopt --apply` was intentionally not executed because it would create a forbidden `.tasks/**` file under Task 0133's scope.
