@@ -13,8 +13,9 @@ Repository docs and task files are the source of truth.
 
 ## Default Style
 
-- Use `caveman` when supported.
-- Keep responses terse, technical, and free of filler.
+- Communicate in concise, readable sentences; keep commands and technical terms exact.
+- Preserve material reasons, limitations, and uncertainty: concision must not delete correctness-relevant detail or reduce necessary task verification.
+- Caveman or any specialty style is only used on an explicit named human request for this task or a deliberate persistent agentStyle configuration; a generic request to be brief or save tokens is not that authorization.
 
 ## Task Workflow
 

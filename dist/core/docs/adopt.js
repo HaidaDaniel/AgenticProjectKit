@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { CURRENT_CONFIG_SCHEMA_VERSION, DEFAULT_CONFIG, detectCompatibility, parseAgenticConfigJson, serializeAgenticConfig, } from "../config/index.js";
 import { CONFIG_PATH } from "../config/file.js";
-import { DEFAULT_AGENT_POLICY, renderAgentExportFiles, } from "../exporters/index.js";
+import { styleRulesFor, DEFAULT_AGENT_POLICY, renderAgentExportFiles, } from "../exporters/index.js";
 import { GITIGNORE_PATH, planApkGitignore, } from "../init/index.js";
 import { scanRepository } from "../scanners/index.js";
 import { renderTaskMarkdown } from "../tasks/index.js";
@@ -182,6 +182,7 @@ async function buildAdoptionPlan(rootDirectory, includeMigration) {
         ...DEFAULT_AGENT_POLICY,
         projectName: scan.rootName,
         defaultStyle: DEFAULT_CONFIG.agentStyle,
+        styleRules: styleRulesFor(DEFAULT_CONFIG.agentStyle),
     });
     const files = [
         {

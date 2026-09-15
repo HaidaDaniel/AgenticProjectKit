@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { readAgenticConfigFile } from "../config/index.js";
-import { DEFAULT_AGENT_POLICY, renderAgentExportFiles, renderAgentExportTarget, } from "../exporters/index.js";
+import { styleRulesFor, DEFAULT_AGENT_POLICY, renderAgentExportFiles, renderAgentExportTarget, } from "../exporters/index.js";
 function normalizeLineEndings(value) {
     return value.replace(/\r\n/g, "\n");
 }
@@ -25,6 +25,7 @@ async function renderExpectedFiles(rootDirectory, target) {
         ...DEFAULT_AGENT_POLICY,
         projectName: config.projectName,
         defaultStyle: config.agentStyle,
+        styleRules: styleRulesFor(config.agentStyle),
     };
     return target
         ? renderAgentExportTarget(target, policy)

@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { readAgenticConfigFile } from "../../core/config/index.js";
-import { DEFAULT_AGENT_POLICY, classifyLegacyAgentExports, cleanupLegacyAgentExports, parseAgentExportTarget, writeAgentExportTarget, writeAllAgentExports, } from "../../core/exporters/index.js";
+import { styleRulesFor, DEFAULT_AGENT_POLICY, classifyLegacyAgentExports, cleanupLegacyAgentExports, parseAgentExportTarget, writeAgentExportTarget, writeAllAgentExports, } from "../../core/exporters/index.js";
 const EXPORT_HELP_TEXT = [
     "Agentic Project Kit",
     "",
@@ -50,6 +50,7 @@ export async function runExportCommand(argv) {
             ...DEFAULT_AGENT_POLICY,
             projectName: config.projectName,
             defaultStyle: config.agentStyle,
+            styleRules: styleRulesFor(config.agentStyle),
         };
         if (reportLegacy || cleanupLegacy) {
             if (cleanupLegacy) {

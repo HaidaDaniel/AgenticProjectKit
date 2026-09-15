@@ -193,7 +193,8 @@ test("fresh init requires no caveman skill setup and generates normal default st
     await initProject(directory);
     const config = parseAgenticConfigJson(await readFile(join(directory, ".agentic/config.json"), "utf8"));
     assert.equal(config.agentStyle, "normal");
-    const output = await renderMinimalDocs(directory);
-    assert.ok(output.every((doc) => !doc.content.includes("caveman")));
+    for (const doc of ["docs/project.md", "docs/scope.md", "docs/architecture.md"]) {
+      assert.doesNotMatch(await readFile(join(directory, doc), "utf8"), /caveman/i);
+    }
   });
 });
