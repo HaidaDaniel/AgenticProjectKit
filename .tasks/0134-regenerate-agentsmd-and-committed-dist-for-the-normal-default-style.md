@@ -1,6 +1,6 @@
 # Task 0134 - Regenerate AGENTS.md and committed dist for the normal default style
 
-State: doing
+State: done
 Owner: code-owner-0134
 Mode: maintenance
 Lane: docs
@@ -81,12 +81,6 @@ Make the committed generated artifacts consistent with the already-committed nor
 - `AGENTS.md` is generated, never hand-authored; `dist/` is generated, never hand-authored.
 - No runtime, config, package, or behavioral source change is introduced; only the broken test fixture is corrected.
 - Only derived artifacts, the corrected test fixture, and progress bookkeeping are committed.
-
-## Non-goals
-
-- Do not revisit the normal/caveman decision or its documentation.
-- Do not modify task 0124 or its canceled contract.
-- Do not add, remove, or reorder production source files or dependencies; do not change runtime behavior.
 
 ## Verification
 
