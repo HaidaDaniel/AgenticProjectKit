@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 
 import { readAgenticConfigFile } from "../config/index.js";
 import {
+  styleRulesFor,
   DEFAULT_AGENT_POLICY,
   renderAgentExportFiles,
   renderAgentExportTarget,
@@ -54,6 +55,7 @@ async function renderExpectedFiles(
     ...DEFAULT_AGENT_POLICY,
     projectName: config.projectName,
     defaultStyle: config.agentStyle,
+    styleRules: styleRulesFor(config.agentStyle),
   };
 
   return target

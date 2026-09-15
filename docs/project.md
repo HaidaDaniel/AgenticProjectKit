@@ -19,4 +19,4 @@ The key design principle is simple:
 
 > Project context must live in the repository, not in long chat history.
 
-Default agent style for this project is `caveman` when supported by the active tool.
+Default agent style for this project is concise `normal` prose; `agentStyle: caveman` is an explicit persisted user preference, not an automatic default.

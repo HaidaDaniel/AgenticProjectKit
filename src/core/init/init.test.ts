@@ -45,7 +45,7 @@ test("initProject creates starter kit files", async () => {
       "utf8",
     );
 
-    assert.equal(parseAgenticConfigJson(configText).agentStyle, "caveman");
+    assert.equal(parseAgenticConfigJson(configText).agentStyle, "normal");
     assert.equal(parseAgenticConfigJson(configText).schemaVersion, 2);
     assert.equal(
       await readFile(join(directory, "docs/project.md"), "utf8"),
@@ -185,5 +185,15 @@ test("detectTrackedApkOperationalPaths keeps intentional .gitkeep files out of t
     await git("commit", "--quiet", "-m", "keep");
 
     assert.deepEqual(await detectTrackedApkOperationalPaths(directory), []);
+  });
+});
+
+test("fresh init requires no caveman skill setup and generates normal default style", async () => {
+  await withTempDirectory(async (directory) => {
+    await initProject(directory);
+    const config = parseAgenticConfigJson(await readFile(join(directory, ".agentic/config.json"), "utf8"));
+    assert.equal(config.agentStyle, "normal");
+    const output = await renderMinimalDocs(directory);
+    assert.ok(output.every((doc) => !doc.content.includes("caveman")));
   });
 });

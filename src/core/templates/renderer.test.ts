@@ -5,7 +5,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  DEFAULT_AGENT_POLICY,
+  styleRulesFor,
+DEFAULT_AGENT_POLICY,
   classifyLegacyAgentExports,
   cleanupLegacyAgentExports,
   listAgentExporters,
@@ -364,4 +365,21 @@ test("parseAgentExportTarget rejects unsupported targets", () => {
     () => parseAgentExportTarget("legacy"),
     /Unsupported agent export target: legacy/,
   );
+});
+
+test("canonical style rules default to concise normal prose and gate caveman behind explicit opt-in", () => {
+  const rules = styleRulesFor("normal").join("\n");
+  assert.match(rules, /concise, readable sentences/);
+  assert.match(rules, /explicit named human request|persisted agentStyle configuration/);
+  assert.match(rules, /not that authorization|not.*authorization/);
+  assert.doesNotMatch(rules, /Use `caveman` when supported/);
+
+  const cavemanRules = styleRulesFor("caveman").join("\n");
+  assert.match(cavemanRules, /persisted repository preference/);
+  assert.match(cavemanRules, /never sufficient on their own/);
+  assert.match(cavemanRules, /material reason, limitation, and uncertainty/);
+  assert.doesNotMatch(cavemanRules, /guaranteed|65-75%|universal token savings across coding tasks/);
+
+  assert.equal(DEFAULT_AGENT_POLICY.defaultStyle, "normal");
+  assert.deepEqual(DEFAULT_AGENT_POLICY.styleRules, styleRulesFor("normal"));
 });

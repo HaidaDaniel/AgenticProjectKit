@@ -1,7 +1,7 @@
 # Task 0124 - Make caveman explicitly user opt-in instead of an automatic default
 
-State: todo
-Owner: none
+State: doing
+Owner: code-owner-0124
 Mode: maintenance
 Lane: instructions
 Type: feature

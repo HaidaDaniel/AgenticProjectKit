@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 
 import { readAgenticConfigFile } from "../../core/config/index.js";
 import {
+  styleRulesFor,
   DEFAULT_AGENT_POLICY,
   classifyLegacyAgentExports,
   cleanupLegacyAgentExports,
@@ -64,6 +65,7 @@ export async function runExportCommand(argv: string[]): Promise<number> {
       ...DEFAULT_AGENT_POLICY,
       projectName: config.projectName,
       defaultStyle: config.agentStyle,
+      styleRules: styleRulesFor(config.agentStyle),
     };
 
     if (reportLegacy || cleanupLegacy) {

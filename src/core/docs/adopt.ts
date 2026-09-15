@@ -11,6 +11,7 @@ import {
 } from "../config/index.js";
 import { CONFIG_PATH } from "../config/file.js";
 import {
+  styleRulesFor,
   DEFAULT_AGENT_POLICY,
   renderAgentExportFiles,
 } from "../exporters/index.js";
@@ -254,6 +255,7 @@ async function buildAdoptionPlan(
     ...DEFAULT_AGENT_POLICY,
     projectName: scan.rootName,
     defaultStyle: DEFAULT_CONFIG.agentStyle,
+    styleRules: styleRulesFor(DEFAULT_CONFIG.agentStyle),
   });
   const files: AdoptFile[] = [
     {

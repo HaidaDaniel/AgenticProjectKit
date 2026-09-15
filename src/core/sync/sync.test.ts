@@ -114,3 +114,41 @@ test("syncAgentExports supports every export target with canonical dependencies"
     assert.equal((await syncAgentExports(directory, { target: "cursor" })).checked.length, 1);
   });
 });
+
+test("syncAgentExports honors an explicit persisted caveman preference and regenerates normal after a reset", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic/config.json"), `${JSON.stringify({
+      schemaVersion: 2,
+      projectName: "style-test",
+      defaultMode: "mvp",
+      documentationProfile: "minimal",
+      agentStyle: "normal",
+      taskDirectory: ".tasks",
+      docsDirectory: "docs",
+    }, null, 2)}\n`, "utf8");
+    await writeAllAgentExports(directory);
+    const configPath = join(directory, ".agentic/config.json");
+    const persisted = JSON.parse(await readFile(configPath, "utf8"));
+    persisted.agentStyle = "caveman";
+    await writeFile(configPath, `${JSON.stringify(persisted, null, 2)}\n`, "utf8");
+
+    const cavemanSync = await syncAgentExports(directory);
+    assert.equal(cavemanSync.hasDrift, true);
+    assert.equal(cavemanSync.stale.length, 1);
+    const writtenCaveman = await syncAgentExports(directory, { write: true });
+    assert.deepEqual(writtenCaveman.written, ["AGENTS.md"]);
+    const cavemanAgents = await readFile(join(directory, "AGENTS.md"), "utf8");
+    assert.match(cavemanAgents, /persisted repository preference \(agentStyle: caveman\)/);
+    assert.doesNotMatch(cavemanAgents, /Communicate in concise, readable sentences/);
+
+    persisted.agentStyle = "normal";
+    await writeFile(configPath, `${JSON.stringify(persisted, null, 2)}\n`, "utf8");
+    const resetSync = await syncAgentExports(directory);
+    assert.deepEqual(resetSync.stale, ["AGENTS.md"]);
+    await syncAgentExports(directory, { write: true });
+    const normalAgents = await readFile(join(directory, "AGENTS.md"), "utf8");
+    assert.match(normalAgents, /Communicate in concise, readable sentences/);
+    assert.doesNotMatch(normalAgents, /persisted repository preference/);
+  });
+});

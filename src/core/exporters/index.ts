@@ -51,6 +51,7 @@ export interface NeutralAgentPolicy extends TemplateData {
   projectName: string;
   summary: string;
   defaultStyle: string;
+  styleRules: string[];
   contextFiles: string[];
   coreRules: string[];
   taskRules: string[];
@@ -144,10 +145,31 @@ const LEGACY_EXPORTERS: readonly LegacyAgentExporter[] = [
   },
 ];
 
-export const DEFAULT_AGENT_POLICY: NeutralAgentPolicy = {
-  projectName: "Agentic Project Kit",
+/**
+ * Communication style is a user preference, never an automatic default. Normal is concise,
+ * readable prose that preserves correctness-relevant detail. Caveman is an explicit,
+ * persisted opt-in; a transient request for brevity alone must not edit persistent config.
+ */
+export function styleRulesFor(defaultStyle: string): string[] {
+  if (defaultStyle === "caveman") {
+    return [
+      "Caveman communication is an explicit persisted repository preference (agentStyle: caveman) configured deliberately by this repository's maintainer.",
+      "Apply the caveman style for this repository's work when the harness supports the skill; skill availability and installation are separate, user-controlled concerns.",
+      "Only a named human request or this persisted preference authorizes caveman; brevity, token-saving requests, task complexity, or an installed skill are never sufficient on their own.",
+      "Compression changes presentation only: keep every material reason, limitation, and uncertainty, and never claim a universal token saving or that hidden reasoning is preserved.",
+    ];
+  }
+  return [
+    "Communicate in concise, readable sentences; keep commands and technical terms exact.",
+    "Preserve material reasons, limitations, and uncertainty: concision must not delete correctness-relevant detail or reduce necessary task verification.",
+    "Caveman or any specialty style is only used on an explicit named human request for this task or a deliberate persistent agentStyle configuration; a generic request to be brief or save tokens is not that authorization.",
+  ];
+}
+
+export const DEFAULT_AGENT_POLICY: NeutralAgentPolicy = {  projectName: "Agentic Project Kit",
   summary: "Repository docs and task files are the source of truth.",
-  defaultStyle: "caveman",
+  defaultStyle: "normal",
+  styleRules: styleRulesFor("normal"),
   contextFiles: [
     "AGENTS.md",
     "docs/project.md",
