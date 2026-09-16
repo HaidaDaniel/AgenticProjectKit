@@ -36,6 +36,21 @@ export {
   type OperatingMode,
 } from "./types.js";
 export {
+  DEFAULT_COMMUNICATION_LANGUAGE,
+  LOCAL_PREFERENCES_DIRECTORY,
+  LOCAL_PREFERENCES_FILE,
+  normalizeCommunicationLanguage,
+  readLocalPreferences,
+  resetLocalCommunicationLanguage,
+  resolveCommunicationLanguage,
+  resolveLocalPreferencesPath,
+  writeLocalCommunicationLanguage,
+  type CommunicationLanguageSource,
+  type LocalPreferences,
+  type LocalPreferencesEnvironment,
+  type ResolvedCommunicationLanguage,
+} from "./local-preferences.js";
+export {
   QUALITY_CAPABILITY_IDS,
   detectQualityCapabilities,
   renderQualityDetection,

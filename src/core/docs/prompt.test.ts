@@ -313,3 +313,21 @@ test("parsePromptAgent rejects unsupported agents", () => {
     },
   );
 });
+
+test("renderTaskPrompt carries the resolved human communication language without changing artifacts", () => {
+  const prompt = renderTaskPrompt({
+    ...buildTaskPromptInput("codex", TASK, 1),
+    communicationLanguage: "ru",
+  });
+
+  assert.match(prompt, /Human communication language:/);
+  assert.match(prompt, /Write human-facing prose .* in "ru"/);
+  assert.match(prompt, /never translate or localize them/);
+  assert.match(prompt, /does not change tracked repository artifacts/);
+  assert.match(prompt, /src\/cli\/commands\/prompt\.ts/);
+});
+
+test("renderTaskPrompt omits language guidance when no language is resolved", () => {
+  const prompt = renderTaskPrompt(buildTaskPromptInput("codex", TASK, 1));
+  assert.doesNotMatch(prompt, /Human communication language:/);
+});

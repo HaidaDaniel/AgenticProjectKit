@@ -34,10 +34,15 @@ interface CliResult {
   stderr: string;
 }
 
-async function runCli(args: readonly string[], cwd = process.cwd()): Promise<CliResult> {
+async function runCli(
+  args: readonly string[],
+  cwd = process.cwd(),
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<CliResult> {
   try {
     const result = await execFileAsync(process.execPath, ["--import", TSX_LOADER, CLI_PATH, ...args], {
       cwd,
+      env,
     });
 
     return {
@@ -4586,5 +4591,117 @@ test("CLI export renders a persisted caveman preference config-aware", async () 
     const agents = await readFile(join(directory, "AGENTS.md"), "utf8");
     assert.match(agents, /persisted repository preference \(agentStyle: caveman\)/);
     assert.doesNotMatch(agents, /Communicate in concise, readable sentences/);
+  });
+});
+
+test("CLI language inspect, set, and reset use developer-local storage", async () => {
+  await withTempDirectory(async (directory) => {
+    const env = { ...process.env, APK_LOCAL_CONFIG_HOME: join(directory, "local-config") };
+
+    const initial = await runCli(["language"], directory, env);
+    assert.equal(initial.exitCode, 0, initial.stderr);
+    assert.match(initial.stdout, /Communication language: en/);
+    assert.match(initial.stdout, /Source: default \(English fallback\)/);
+
+    const set = await runCli(["language", "set", "ru"], directory, env);
+    assert.equal(set.exitCode, 0, set.stderr);
+    assert.match(set.stdout, /Communication language set: ru/);
+
+    const shown = await runCli(["language"], directory, env);
+    assert.match(shown.stdout, /Communication language: ru/);
+    assert.match(shown.stdout, /Source: local preference/);
+
+    const overridden = await runCli(["language"], directory, {
+      ...env,
+      APK_COMMUNICATION_LANGUAGE: "uk",
+    });
+    assert.match(overridden.stdout, /Communication language: uk/);
+    assert.match(overridden.stdout, /Source: explicit session override/);
+
+    const persistedAfterOverride = await runCli(["language"], directory, env);
+    assert.match(persistedAfterOverride.stdout, /Communication language: ru/);
+
+    const invalid = await runCli(["language", "set", "not a tag"], directory, env);
+    assert.equal(invalid.exitCode, 1);
+
+    const reset = await runCli(["language", "reset"], directory, env);
+    assert.equal(reset.exitCode, 0, reset.stderr);
+    assert.match(reset.stdout, /reset to the English default/);
+
+    const final = await runCli(["language"], directory, env);
+    assert.match(final.stdout, /Communication language: en/);
+  });
+});
+
+test("CLI language never dirties a clean project checkout or project config", async () => {
+  await withTempDirectory(async (localDirectory) => {
+    await withTempDirectory(async (directory) => {
+      await execFileAsync("git", ["init", "-q"], { cwd: directory });
+      const agenticDir = join(directory, ".agentic");
+      await mkdir(agenticDir, { recursive: true });
+      const configPath = join(agenticDir, "config.json");
+      const config = `${JSON.stringify({
+        schemaVersion: 2,
+        projectName: "Downstream",
+        defaultMode: "mvp",
+        documentationProfile: "minimal",
+        agentStyle: "normal",
+        taskDirectory: ".tasks",
+        docsDirectory: "docs",
+      }, null, 2)}\n`;
+      await writeFile(configPath, config, "utf8");
+      await execFileAsync("git", ["add", "."], { cwd: directory });
+      await execFileAsync(
+        "git",
+        ["-c", "user.email=test@example.com", "-c", "user.name=Test", "commit", "-qm", "init"],
+        { cwd: directory },
+      );
+
+      const env = { ...process.env, APK_LOCAL_CONFIG_HOME: join(localDirectory, "config") };
+      const set = await runCli(["language", "set", "ru"], directory, env);
+      assert.equal(set.exitCode, 0, set.stderr);
+
+      const status = await execFileAsync("git", ["status", "--porcelain"], { cwd: directory });
+      assert.equal(status.stdout.trim(), "");
+      assert.equal(await readFile(configPath, "utf8"), config);
+    });
+  });
+});
+
+test("CLI prompt carries the resolved developer-local communication language", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), `${JSON.stringify({
+      schemaVersion: 2,
+      projectName: "Language Prompt",
+      defaultMode: "mvp",
+      documentationProfile: "minimal",
+      agentStyle: "normal",
+      taskDirectory: ".tasks",
+      docsDirectory: "docs",
+    }, null, 2)}\n`, "utf8");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(join(directory, ".tasks", "0001-task.md"), buildTaskMarkdown("0001", "Task", "todo"), "utf8");
+    await writeFile(join(directory, "AGENTS.md"), "# Agents\n", "utf8");
+    await mkdir(join(directory, "docs"), { recursive: true });
+    await writeFile(join(directory, "docs", "project.md"), "# Project\n", "utf8");
+    await writeFile(join(directory, "docs", "scope.md"), "# Scope\n", "utf8");
+    await writeFile(join(directory, "docs", "architecture.md"), "# Architecture\n", "utf8");
+
+    const env = { ...process.env, APK_LOCAL_CONFIG_HOME: join(directory, "local-config") };
+    await runCli(["language", "set", "ru"], directory, env);
+
+    const prompt = await runCli(["prompt", "codex", "--task", "0001", "--level", "1"], directory, env);
+    assert.equal(prompt.exitCode, 0, `${prompt.stdout}${prompt.stderr}`);
+    assert.match(prompt.stdout, /Human communication language:/);
+    assert.match(prompt.stdout, /in "ru"/);
+
+    const override = await runCli(
+      ["prompt", "codex", "--task", "0001", "--level", "1", "--language", "uk"],
+      directory,
+      env,
+    );
+    assert.equal(override.exitCode, 0, `${override.stdout}${override.stderr}`);
+    assert.match(override.stdout, /in "uk"/);
   });
 });

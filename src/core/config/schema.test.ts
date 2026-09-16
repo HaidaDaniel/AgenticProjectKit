@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -6,11 +6,18 @@ import test from "node:test";
 
 import {
   ConfigValidationError,
+  DEFAULT_COMMUNICATION_LANGUAGE,
   DEFAULT_CONFIG,
+  normalizeCommunicationLanguage,
   parseAgenticConfig,
   parseAgenticConfigJson,
   readAgenticConfigFile,
+  readLocalPreferences,
+  resetLocalCommunicationLanguage,
+  resolveCommunicationLanguage,
+  resolveLocalPreferencesPath,
   serializeAgenticConfig,
+  writeLocalCommunicationLanguage,
 } from "./index.js";
 import { detectResourceInventory } from "../resources/detect.js";
 import {
@@ -715,5 +722,103 @@ test("credential-like endpoints are rejected or omitted and never echoed", async
     }
     assert.match(message, /must not contain secret material/);
     assert.doesNotMatch(message, /TOPSECRETPW/);
+  });
+});
+
+test("local communication language path discovery is deterministic per platform", () => {
+  const home = join(tmpdir(), "apk-home");
+
+  assert.equal(
+    resolveLocalPreferencesPath({ platform: "linux", home, env: {} }),
+    join(home, ".config", "agentic-project-kit", "preferences.json"),
+  );
+  assert.equal(
+    resolveLocalPreferencesPath({ platform: "linux", home, env: { XDG_CONFIG_HOME: "/xdg" } }),
+    join("/xdg", "agentic-project-kit", "preferences.json"),
+  );
+  assert.equal(
+    resolveLocalPreferencesPath({ platform: "darwin", home, env: {} }),
+    join(home, "Library", "Application Support", "agentic-project-kit", "preferences.json"),
+  );
+  assert.equal(
+    resolveLocalPreferencesPath({
+      platform: "win32",
+      home,
+      env: { APPDATA: "C:/Users/dev/AppData/Roaming" },
+    }),
+    join("C:/Users/dev/AppData/Roaming", "agentic-project-kit", "preferences.json"),
+  );
+  assert.equal(
+    resolveLocalPreferencesPath({ platform: "win32", home, env: {} }),
+    join(home, "AppData", "Roaming", "agentic-project-kit", "preferences.json"),
+  );
+  assert.equal(
+    resolveLocalPreferencesPath({
+      platform: "linux",
+      home,
+      env: { APK_LOCAL_CONFIG_HOME: "/override" },
+    }),
+    join("/override", "agentic-project-kit", "preferences.json"),
+  );
+});
+
+test("communication language tags normalize and reject invalid values", () => {
+  assert.equal(DEFAULT_COMMUNICATION_LANGUAGE, "en");
+  assert.equal(normalizeCommunicationLanguage("RU"), "ru");
+  assert.equal(normalizeCommunicationLanguage(" uk "), "uk");
+  assert.equal(normalizeCommunicationLanguage("zh-CN"), "zh-cn");
+  assert.equal(normalizeCommunicationLanguage(""), undefined);
+  assert.equal(normalizeCommunicationLanguage("not a tag"), undefined);
+  assert.equal(normalizeCommunicationLanguage(42), undefined);
+});
+
+test("local communication language default, persistence, explicit override, and reset", async () => {
+  await withTempDirectory(async (directory) => {
+    const path = join(directory, "preferences.json");
+
+    assert.deepEqual(
+      await resolveCommunicationLanguage({ path }),
+      { language: "en", source: "default" },
+    );
+
+    await writeLocalCommunicationLanguage("ru", path);
+    assert.deepEqual(await readLocalPreferences(path), { communicationLanguage: "ru" });
+    assert.deepEqual(
+      await resolveCommunicationLanguage({ path }),
+      { language: "ru", source: "local" },
+    );
+
+    assert.deepEqual(
+      await resolveCommunicationLanguage({ explicit: "uk", path }),
+      { language: "uk", source: "explicit" },
+    );
+    assert.deepEqual(await readLocalPreferences(path), { communicationLanguage: "ru" });
+
+    assert.equal(await resetLocalCommunicationLanguage(path), true);
+    assert.deepEqual(await readLocalPreferences(path), {});
+    assert.deepEqual(
+      await resolveCommunicationLanguage({ path }),
+      { language: "en", source: "default" },
+    );
+    assert.equal(await resetLocalCommunicationLanguage(path), false);
+
+    await writeFile(path, "{not json", "utf8");
+    assert.deepEqual(await readLocalPreferences(path), {});
+  });
+});
+
+test("two developer-local preferences coexist against one project checkout with no project writes", async () => {
+  await withTempDirectory(async (directory) => {
+    const project = join(directory, "project");
+    await mkdir(project, { recursive: true });
+
+    const developerA = join(directory, "dev-a", "preferences.json");
+    const developerB = join(directory, "dev-b", "preferences.json");
+    await writeLocalCommunicationLanguage("ru", developerA);
+    await writeLocalCommunicationLanguage("uk", developerB);
+
+    assert.equal((await resolveCommunicationLanguage({ path: developerA })).language, "ru");
+    assert.equal((await resolveCommunicationLanguage({ path: developerB })).language, "uk");
+    assert.deepEqual(await readdir(project), []);
   });
 });

@@ -19,6 +19,11 @@ export interface TaskPromptInput {
   agent: PromptAgent;
   task: ProjectTask;
   context: TaskContextSelection;
+  /**
+   * Resolved developer-local human communication language. Absent preserves the
+   * legacy prompt shape used by compatible callers and tests.
+   */
+  communicationLanguage?: string;
 }
 
 export class PromptAgentError extends Error {
@@ -162,6 +167,13 @@ export function renderTaskPrompt(input: TaskPromptInput): string {
     "Verification commands:",
     ...renderList(task.verificationCommands),
     "",
+    ...(input.communicationLanguage ? [
+      "Human communication language:",
+      `- Write human-facing prose (questions, clarifications, explanations, summaries) in "${input.communicationLanguage}".`,
+      "- Keep code, identifiers, paths, commands, config keys, quoted repository facts, and machine-readable output exactly as written; never translate or localize them.",
+      "- This is a developer-local preference carried by APK guidance; it does not change tracked repository artifacts.",
+      "",
+    ] : []),
     "Rules:",
     ...(context.modeGuidance ? renderList(context.modeGuidance) : []),
     "- Read context files first.",

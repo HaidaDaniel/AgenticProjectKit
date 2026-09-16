@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { relative, resolve } from "node:path";
 
-import { readAgenticConfigFile } from "../../core/config/index.js";
+import { readAgenticConfigFile, normalizeCommunicationLanguage, resolveCommunicationLanguage } from "../../core/config/index.js";
 import {
   buildTaskPromptInputFromRepository,
   PROMPT_AGENTS,
@@ -14,12 +14,13 @@ const PROMPT_HELP_TEXT = [
   "Agentic Project Kit",
   "",
   "Usage:",
-  "  apk prompt <agent> --task <task-id> [--level 1|2|3] [--budget <units>]",
+  "  apk prompt <agent> --task <task-id> [--level 1|2|3] [--budget <units>] [--language <tag>]",
   "",
   "Agents:",
   ...PROMPT_AGENTS.map((agent) => `  ${agent}`),
   "",
   "Generates a concise task prompt with exact context files.",
+  "--language overrides the developer-local communication language for this invocation only.",
 ].join("\n");
 
 function hasHelpFlag(argv: string[]): boolean {
@@ -60,11 +61,13 @@ interface PromptArgs {
   taskId: string;
   level: ContextLevel;
   budget?: number;
+  language?: string;
 }
 
 function parsePromptArgs(argv: readonly string[]): PromptArgs {
   const positional: string[] = [];
   let taskId: string | undefined;
+  let language: string | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -81,6 +84,20 @@ function parsePromptArgs(argv: readonly string[]): PromptArgs {
     }
 
     if (arg === "--budget") {
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--language") {
+      language = argv[index + 1];
+      if (language === undefined || language.startsWith("-")) {
+        throw new Error("Usage: apk prompt <agent> --task <task-id> --language <tag>");
+      }
+      if (!normalizeCommunicationLanguage(language)) {
+        throw new Error(
+          `Unsupported communication language: ${language}. Use a short language tag such as en, ru, or uk.`,
+        );
+      }
       index += 1;
       continue;
     }
@@ -102,6 +119,7 @@ function parsePromptArgs(argv: readonly string[]): PromptArgs {
     taskId,
     level: readLevel(argv),
     ...(budget === undefined ? {} : { budget }),
+    ...(language === undefined ? {} : { language }),
   };
 }
 
@@ -124,6 +142,10 @@ export async function runPromptCommand(argv: string[]): Promise<number> {
       taskDirectory: config.taskDirectory,
       ...(args.budget === undefined ? {} : { budget: args.budget }),
     });
+    const resolvedLanguage = await resolveCommunicationLanguage({
+      explicit: args.language ?? process.env.APK_COMMUNICATION_LANGUAGE,
+    });
+    prompt.communicationLanguage = resolvedLanguage.language;
     console.log(renderTaskPrompt(prompt));
     return prompt.context.diagnostics && prompt.context.diagnostics.length > 0 ? 1 : 0;
   } catch (error: unknown) {

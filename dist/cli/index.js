@@ -9,6 +9,7 @@ import { runDoctorCommand } from "./commands/doctor.js";
 import { runExecutionCommand } from "./commands/execution.js";
 import { runExportCommand } from "./commands/export.js";
 import { runInitCommand } from "./commands/init.js";
+import { runLanguageCommand } from "./commands/language.js";
 import { runLintCommand } from "./commands/lint.js";
 import { runModeCommand } from "./commands/mode.js";
 import { runNextTaskCommand } from "./commands/next-task.js";
@@ -43,6 +44,7 @@ const HELP_TEXT = [
     "  apk doctor",
     "  apk execution explain <task-id> --role <role> [--profile <profile>] [--json]",
     "  apk init [directory]",
+    "  apk language [show|set <tag>|reset]",
     "  apk lint [--json]",
     "  apk context <task-id> [--level 1|2|3] [--budget <units>]",
     "  apk export [agent]",
@@ -83,6 +85,7 @@ const HELP_TEXT = [
     "  execution  Explain deterministic resource-aware execution routing.",
     "  export  Write generated agent instruction files.",
     "  init  Create starter kit files in a repository.",
+    "  language  Inspect, set, or reset the local communication language.",
     "  lint  Validate task and generated-file contracts without writing.",
     "  mode  Print or update the active operating mode.",
     "  next-task  Print the next actionable task.",
@@ -127,6 +130,9 @@ async function main() {
     }
     if (command === "init") {
         return runInitCommand(commandArgs);
+    }
+    if (command === "language") {
+        return runLanguageCommand(commandArgs);
     }
     if (command === "lint") {
         return runLintCommand(commandArgs);

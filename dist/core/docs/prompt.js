@@ -119,6 +119,13 @@ export function renderTaskPrompt(input) {
         "Verification commands:",
         ...renderList(task.verificationCommands),
         "",
+        ...(input.communicationLanguage ? [
+            "Human communication language:",
+            `- Write human-facing prose (questions, clarifications, explanations, summaries) in "${input.communicationLanguage}".`,
+            "- Keep code, identifiers, paths, commands, config keys, quoted repository facts, and machine-readable output exactly as written; never translate or localize them.",
+            "- This is a developer-local preference carried by APK guidance; it does not change tracked repository artifacts.",
+            "",
+        ] : []),
         "Rules:",
         ...(context.modeGuidance ? renderList(context.modeGuidance) : []),
         "- Read context files first.",

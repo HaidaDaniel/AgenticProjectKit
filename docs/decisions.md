@@ -1177,3 +1177,44 @@ mutated and no release runtime is added (Task 0138).
 Reference:
 
 Task 0138.
+
+## ADR-0073 - Human communication language is developer-local, not repository truth
+
+Status: accepted
+
+Decision:
+
+Add a per-developer human communication-language preference that lives outside the repository and
+controls only human-facing prose guidance. APK resolves it with deterministic precedence - explicit
+current-invocation/session override, then the persisted developer-local preference, then English -
+and exposes the resolved value through the instruction surfaces APK owns (`apk prompt` and the
+grill assets). Repository-owned artifacts and machine-facing output remain canonical English.
+
+Storage is a single local JSON preference file under the platform configuration directory
+(`$XDG_CONFIG_HOME`/`~/.config`, macOS Application Support, or Windows APPDATA/LOCALAPPDATA), with
+`APK_LOCAL_CONFIG_HOME` as an explicit override. The tracked `.agentic/config.json` gains no
+language key.
+
+Reason:
+
+Interaction language is a property of the human operator, not of the project or its source of
+truth. Putting it in tracked project config would force shared repositories to choose one language,
+create config churn, and make two developers using different languages mutate each other's
+checkout. APK does not own an external harness's conversation runtime, so it can only carry
+guidance, not force output language; promising more would be dishonest.
+
+Implementation and invariant:
+
+`src/core/config/local-preferences.ts` provides deterministic path discovery, read/write/reset, tag
+validation/normalization, and resolution. `apk language [show|set <tag>|reset]` is the minimal UX;
+`apk prompt --language <tag>` and `APK_COMMUNICATION_LANGUAGE` are non-persisting session overrides.
+`renderTaskPrompt` emits the resolved language plus an explicit instruction to keep identifiers,
+paths, commands, config keys, quoted facts, and machine-readable output untranslated, and the
+`apk-project-grill`/`apk-task-grill` assets tell a harness to read `apk language show`. Setting the
+preference never mutates `.agentic/config.json`, never creates a tracked file, and never dirties a
+clean downstream worktree; English remains the fallback and the canonical artifact language. This
+is not an i18n/localization system and adds no provider integration or mandatory model pass.
+
+Reference:
+
+Task 0141.

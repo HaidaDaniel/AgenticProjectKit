@@ -72,10 +72,11 @@ Implemented commands:
 - `apk done`
 - `apk doctor`
 - `apk cancel`
+- `apk language [show|set <tag>|reset]` - inspect, set, or reset the developer-local human communication language.
 - `apk context <task-id> [--level 1|2|3] [--budget <units>]`
 - `apk mode [mode]`
 - `apk next-task`
-- `apk prompt <agent> --task <task-id> [--level 1|2|3] [--budget <units>]`
+- `apk prompt <agent> --task <task-id> [--level 1|2|3] [--budget <units>] [--language <tag>]`
 - `apk export [agent]`
 - `apk sync [agent]`
 - `apk status [--detail]`
@@ -86,6 +87,48 @@ Implemented commands:
 - `apk task gate <task-id>`
 - `apk task provenance <task-id> [--json]`
 - `apk task create`
+
+## Developer-local communication language
+
+Human communication language is a **developer-local preference**, not repository truth. It controls
+only the language of human-facing prose that APK guidance asks an agent to produce (questions,
+clarifications, explanations, summaries). It never changes tracked repository artifacts: task
+files, `AGENTS.md`, generated instructions, durable docs, code, identifiers, paths, config keys,
+CLI commands, errors, and machine-readable output stay canonical English.
+
+Inspect, set, or reset it with:
+
+```bash
+apk language             # show the resolved language and its source
+apk language show        # same as above
+apk language set uk      # persist "uk" locally (any short language tag: en, ru, uk, ...)
+apk language reset       # remove the local preference -> English fallback
+```
+
+Storage is outside the repository and cross-platform:
+
+- Linux/other: `$XDG_CONFIG_HOME/agentic-project-kit/preferences.json`, falling back to
+  `~/.config/agentic-project-kit/preferences.json`.
+- macOS: `~/Library/Application Support/agentic-project-kit/preferences.json`.
+- Windows: `%APPDATA%\agentic-project-kit\preferences.json` (falling back to
+  `%LOCALAPPDATA%` or `%HOME%\AppData\Roaming`).
+- `APK_LOCAL_CONFIG_HOME` overrides the base directory for tests and unusual environments.
+
+Resolution precedence is deterministic:
+
+1. an explicit override for the current invocation or session (`apk prompt ... --language <tag>`
+   or `APK_COMMUNICATION_LANGUAGE`);
+2. the persisted developer-local preference;
+3. English fallback.
+
+An explicit override never persists itself. Because the preference is local, two developers can use
+different languages against the same checkout with no Git diff, and setting it never mutates
+`.agentic/config.json`.
+
+APK exposes the resolved language through the instruction surfaces it owns (`apk prompt`, the
+`apk-project-grill` and `apk-task-grill` assets). APK does not control an external harness's chat
+runtime: a compatible harness or skill must follow the APK-provided guidance for the preference to
+affect its conversational output.
 
 ## Using it in other repositories
 

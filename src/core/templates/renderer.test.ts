@@ -658,3 +658,22 @@ test("grill decision-context preservation stays skill-local and optional", async
   assert.doesNotMatch(normalRules, /grill/i);
   assert.doesNotMatch(cavemanRules, /grill/i);
 });
+
+test("grill skills expose the resolved local language without becoming developer-specific", async () => {
+  for (const skill of ["apk-project-grill", "apk-task-grill"]) {
+    const content = normalizeLineEndings(
+      await readFile(join(process.cwd(), `src/core/templates/skills/${skill}/SKILL.md.hbs`), "utf8"),
+    );
+
+    assert.match(content, /apk language show/);
+    assert.match(content, /developer-local human communication language/i);
+    assert.match(content, /canonical\s+English/i);
+    assert.doesNotMatch(content, /\{\{/);
+    assert.doesNotMatch(content, /Communication language: (ru|uk)\b/);
+  }
+
+  const exports = await renderAgentExportFiles();
+  const agents = exports.find((file) => file.outputPath === "AGENTS.md");
+  assert.ok(agents);
+  assert.doesNotMatch(agents.content, /apk language|agentic-project-kit\/preferences/i);
+});
