@@ -110,6 +110,14 @@ export async function runDoctor(rootDirectory: string): Promise<DoctorResult> {
     checks.push(configExists
       ? { level: "pass", label: "config", message: "ok" }
       : { level: "warn", label: "config", message: "missing; using defaults" });
+    if (config.agentStyle === "caveman") {
+      checks.push({
+        level: "warn",
+        label: "agent-style",
+        message:
+          "agentStyle: caveman is explicitly set in .agentic/config.json; APK defaults omitted/new agentStyle to normal and preserves an explicit value intentionally. Remove the setting or set agentStyle to normal to return to normal communication.",
+      });
+    }
   } catch (error: unknown) {
     checks.push({ level: "fail", label: "config", message: error instanceof Error ? error.message : String(error) });
   }

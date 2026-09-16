@@ -2116,6 +2116,59 @@ test("CLI doctor reports warnings without failing", async () => {
   });
 });
 
+function explicitConfig(agentStyle: string | undefined, projectName: string): string {
+  const record: Record<string, unknown> = {
+    schemaVersion: 2,
+    projectName,
+    defaultMode: "mvp",
+    documentationProfile: "minimal",
+    taskDirectory: ".tasks",
+    docsDirectory: "docs",
+  };
+  if (agentStyle !== undefined) {
+    record.agentStyle = agentStyle;
+  }
+  return `${JSON.stringify(record, null, 2)}\n`;
+}
+
+test("CLI doctor advises on explicit caveman style without mutating config or failing", async () => {
+  await withTempDirectory(async (directory) => {
+    const agenticDir = join(directory, ".agentic");
+    await mkdir(agenticDir, { recursive: true });
+    const configPath = join(agenticDir, "config.json");
+    const config = explicitConfig("caveman", "Caveman Project");
+    await writeFile(configPath, config, "utf8");
+
+    const result = await runCli(["doctor"], directory);
+
+    assert.equal(result.exitCode, 0, `${result.stdout}${result.stderr}`);
+    assert.match(result.stdout, /agent-style: agentStyle: caveman is explicitly set/);
+    assert.match(result.stdout, /defaults omitted\/new agentStyle to normal/);
+    assert.match(result.stdout, /preserves an explicit value intentionally/);
+    assert.match(result.stdout, /Remove the setting or set agentStyle to normal/);
+    assert.doesNotMatch(result.stdout, /legacy|deprecated|failed to migrate/i);
+    assert.equal(await readFile(configPath, "utf8"), config);
+  });
+});
+
+test("CLI doctor stays quiet for explicit normal and omitted agentStyle", async () => {
+  for (const agentStyle of ["normal", undefined] as const) {
+    await withTempDirectory(async (directory) => {
+      const agenticDir = join(directory, ".agentic");
+      await mkdir(agenticDir, { recursive: true });
+      const configPath = join(agenticDir, "config.json");
+      const config = explicitConfig(agentStyle, "Quiet Project");
+      await writeFile(configPath, config, "utf8");
+
+      const result = await runCli(["doctor"], directory);
+
+      assert.equal(result.exitCode, 0, `${result.stdout}${result.stderr}`);
+      assert.doesNotMatch(result.stdout, /agent-style/);
+      assert.equal(await readFile(configPath, "utf8"), config);
+    });
+  }
+});
+
 test("CLI quality detect exposes the shared capability result in JSON", async () => {
   await withTempDirectory(async (directory) => {
     await writeFile(join(directory, "package.json"), JSON.stringify({

@@ -317,6 +317,17 @@ A release is mechanically upgradable through the recommended workflow when:
 - no unresolved material customization conflict exists;
 - host-project validation can be run.
 
+### Preserved explicit configuration
+
+APK preserves explicit project configuration across updates. An explicit `agentStyle: caveman`
+stays schema-valid and functional after an upgrade; the `normal` default applies only when
+`agentStyle` is omitted or newly generated. `apk doctor` emits a non-failing advisory when explicit
+caveman is configured, so a maintainer can distinguish an intentional repository preference from
+the current APK default. The advisory is read-only: it never rewrites `.agentic/config.json`, and
+the maintainer removes the setting or sets it to `normal` to return to normal communication. This
+is observability, not migration; it does not label the value as legacy and does not create an
+`apk upgrade` command or migration engine.
+
 ### Requires proposal/operator decision
 
 - customized generated/policy files conflict with new canonical output;

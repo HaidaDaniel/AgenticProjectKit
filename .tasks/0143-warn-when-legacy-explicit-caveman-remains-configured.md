@@ -1,7 +1,7 @@
 # Task 0143 - Warn when explicit caveman style remains configured after normal became the default
 
-State: todo
-Owner: none
+State: doing
+Owner: code-owner-0143
 Mode: maintenance
 Lane: cli
 Type: corrective
