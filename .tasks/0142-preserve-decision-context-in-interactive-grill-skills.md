@@ -1,7 +1,7 @@
 # Task 0142 - Preserve sufficient decision context in interactive grill skills regardless of agentStyle
 
 State: todo
-Owner: unassigned
+Owner: none
 Mode: product
 Lane: skills
 Type: corrective
@@ -13,131 +13,111 @@ Tags: ux,grill,agent-style,corrective
 
 ## Goal
 
-Make APK interactive grill skills reliably provide enough context for a human to answer each decision question, even when the active communication style is terse.
+Make APK interactive grill skills reliably provide enough context for a human to answer each decision question even when the active communication style is terse.
 
-Preserve the intentional one-question-at-a-time interaction model. Do not turn grill into a questionnaire dump and do not globally disable concise styles. The correction is narrower: `agentStyle`, brevity guidance, or token-saving preferences must not remove the minimum decision context needed to understand why the current question is being asked.
+Preserve the intentional one-question-at-a-time interaction model. Do not turn grill into a questionnaire dump, do not globally disable concise styles, and do not change the global `agentStyle` policy. The correction is skill-local: presentation style may compress wording but must not remove decision-critical context.
 
 ## Context files
 
 - AGENTS.md
 - docs/task-system.md
+- src/core/exporters/index.ts
+- src/core/templates/renderer.test.ts
 - src/core/templates/skills/apk-project-grill/SKILL.md.hbs
 - src/core/templates/skills/apk-task-grill/SKILL.md.hbs
-- src/core/templates/**
-- src/core/config/**
-- tests covering skill rendering/generated instructions
 - .tasks/0136-validate-and-supersede-canceled-0124-normal-default-behavior.md
 - .tasks/0137-add-optional-project-level-grill-skill.md
 
-## Problem
+## Files allowed to edit
 
-Downstream dogfood in `translator-agent` exposed a poor interaction mode:
+- src/core/templates/skills/apk-project-grill/SKILL.md.hbs
+- src/core/templates/skills/apk-task-grill/SKILL.md.hbs
+- src/core/templates/renderer.test.ts
+- docs/**
+- dist/**
+- .tasks/0142-preserve-decision-context-in-interactive-grill-skills.md
 
-- project grill correctly asks one question at a time;
-- the project still had explicit legacy `agentStyle: caveman`;
-- the grill instruction says to briefly state what the repository establishes, what remains ambiguous, and why the decision matters;
-- the terse style compressed that framing too aggressively;
-- the user received a question with too little explanatory context to comfortably make the decision.
+## Files forbidden to edit
 
-The one-question loop itself is not the defect. The defect is that presentation style can erase decision-critical context.
+- src/core/exporters/index.ts
+- src/core/config/**
+- package.json
+- pnpm-lock.yaml
+- .agentic/**
+- .tasks/0141-add-local-human-communication-language-preference.md
+- .tasks/0143-warn-when-legacy-explicit-caveman-remains-configured.md
 
-## Required behavior
+## Steps
 
-For each interactive grill question, the agent must provide enough human-facing framing to make the question independently understandable.
-
-Before asking the single question, the response should communicate, in compact but normal prose:
-
-1. what repository/project/task evidence already establishes that is relevant to this decision;
-2. what ambiguity or unresolved branch remains;
-3. why the distinction matters or what downstream behavior changes based on the answer;
-4. then one clear question.
-
-The exact sentence count is not a hard product contract, but the skill guidance should make clear that this normally requires more than a fragment. As a practical target, 2-5 concise sentences or equivalent framing is appropriate when the decision is non-trivial.
-
-## Design constraints
-
-- Keep one-question-at-a-time grill behavior.
-- Do not dump a full questionnaire.
-- Do not add mandatory extra model/reviewer passes.
-- Do not globally remove `caveman` or other concise modes in this task.
-- Do not make every question verbose when the answer is obvious from one line of context.
-- Decision-critical context has priority over stylistic brevity.
-- `agentStyle` controls presentation, not whether required decision context exists.
-- Apply the same principle consistently to both project-level and task-level grill skills where applicable.
-- If a communication-language preference exists, framing and question may use that resolved human language, but technical identifiers and repository facts remain exact.
-
-## Implementation direction
-
-Update the source skill templates and their tests so the contract explicitly separates:
-
-- interaction cadence: one question at a time;
-- decision context: required before the question when the decision is non-trivial;
-- presentation style: may shorten wording but may not remove established fact + ambiguity + consequence framing.
-
-Do not hard-code downstream `translator-agent` specifics into the generic skill.
+1. Capture the current contract gap in focused tests: project grill says to state context only "briefly", task grill has similar framing, and existing renderer tests protect one-question cadence but not the minimum established-fact + ambiguity + consequence context.
+2. Strengthen both grill skill templates so each non-trivial question is preceded by compact framing of what repository evidence establishes, what material ambiguity remains, and why the answer changes the decision/contract.
+3. State explicitly that terse/caveman presentation may shorten wording but cannot suppress this required decision context. Keep 2-5 concise sentences or equivalent as practical guidance rather than a rigid sentence-count contract.
+4. Preserve one-question-at-a-time cadence, manual-only activation, no-write-before-approval semantics, and the existing bounded context strategy.
+5. Strengthen renderer tests to protect the new context-preservation semantics and to confirm both grill skills remain optional/manual and absent from always-active common policy.
+6. Rebuild committed `dist` and run the declared deterministic checks.
 
 ## Acceptance criteria
 
 - `apk-project-grill` still asks one question at a time.
-- `apk-task-grill` follows equivalent context-preservation semantics where it conducts interactive clarification.
-- Skill instructions explicitly state that terse/caveman style cannot suppress required decision context.
-- For a non-trivial decision, generated guidance requires framing of established facts, unresolved ambiguity, and why the answer matters before the question.
-- No requirement for a second model call, review pass, or separate summarizer is introduced.
-- Existing optional/manual activation semantics of grill skills remain unchanged.
-- Tests protect the new skill contract from regression.
-- Generated `dist` artifacts remain synchronized according to repository policy.
+- `apk-task-grill` follows equivalent context-preservation semantics when clarifying a task.
+- For a non-trivial decision, both skills require framing of relevant established facts, unresolved ambiguity, and why the answer matters before the question.
+- Skill instructions explicitly state that terse/caveman presentation cannot suppress required decision context.
+- Concise style remains allowed; the task does not globally change or disable `agentStyle: caveman`.
+- No second model call, reviewer pass, summarizer, provider requirement, or additional lifecycle state is introduced.
+- Existing optional/manual activation and explicit-approval-before-write semantics remain unchanged.
+- Tests protect the new contract and committed `dist` remains synchronized.
+- The correction works independently of Task 0141; if a communication-language preference later exists, it may affect wording language but not the required context structure.
 
 ## Correctness assumptions
 
-- The human can answer better when the decision boundary and consequence are explicit.
-- Conciseness is useful only after the minimum decision context has been preserved.
-- One question at a time reduces cognitive load and should remain the default interaction shape.
+- The current one-question-at-a-time cadence is intentional and is not the defect.
+- Concision is useful only after the minimum decision context has been preserved.
+- Global style rules already require material reasons/limitations to survive compression; the missing protection is the grill-specific contract and regression coverage.
 
 ## Invariants
 
-- Grill remains optional/manual and never auto-activates merely because uncertainty exists.
+- Grill remains optional/manual and never auto-activates.
 - One-question-at-a-time remains intact.
 - No mandatory multi-agent or multi-model workflow is added.
-- `agentStyle` cannot override correctness-critical skill requirements.
-- Technical evidence quoted from repository truth is not paraphrased into inaccurate claims for stylistic reasons.
+- Global `agentStyle` behavior is not redesigned in this task.
+- Decision-critical repository evidence is not removed merely to satisfy a terse presentation style.
 
 ## Required evidence
 
-- Updated source skill template(s).
-- Focused tests asserting the context-preservation contract exists in rendered skill output.
-- A manual or fixture-based example showing a non-trivial grill question under `agentStyle: caveman` still includes understandable decision framing before the question.
-- Confirmation that the skill asks only one question in that interaction step.
+- Updated project-grill and task-grill source templates with explicit context-preservation wording.
+- Focused renderer tests asserting established fact + ambiguity + consequence framing and one-question cadence.
+- A fixture/manual example showing a non-trivial question under terse/caveman style remains understandable without becoming a questionnaire dump.
+- Passing sync/build evidence for committed generated artifacts.
 
 ## Review questions
 
-- Does the change fix insufficient context without making grill a long questionnaire?
-- Can a terse style still shorten prose while preserving established fact, ambiguity, and consequence?
-- Is the correction generic rather than tailored only to `translator-agent`?
-- Are both project and task grill semantics consistent where relevant?
-- Does the solution avoid additional model-cost requirements?
+- Does the change fix insufficient context without making grill verbose by default?
+- Can terse/caveman style still shorten prose while preserving established fact, ambiguity, and consequence?
+- Are project and task grill semantics consistent where relevant?
+- Did the implementation stay skill-local instead of changing global style policy?
+- Did the solution avoid extra model cost and lifecycle ceremony?
 
 ## Counterexample searches
 
-- A grill response containing only a cryptic one-line question because `caveman` is active.
-- A change that disables caveman globally instead of fixing grill requirements.
+- A grill response contract that permits only a cryptic one-line question because caveman is active.
+- A change to `src/core/exporters/index.ts` or config semantics that globally disables caveman.
 - A change that asks many unresolved questions in one turn.
-- A new required review/model pass added merely to improve wording.
-- Skill templates and committed/generated artifacts drifting out of sync.
+- A new mandatory reviewer/model pass added merely to improve wording.
+- Grill templates and committed `dist` drifting out of sync.
 
 ## Verification
 
-- `git diff --check`
-- `pnpm test`
-- `pnpm build`
-- `node dist/cli/index.js lint --json`
-- focused skill-rendering tests for project-grill and task-grill
+- `{"id":"diff-check","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+- `{"id":"tests","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test"}`
+- `{"id":"build","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}`
+- `{"id":"contract-lint","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node dist/cli/index.js lint --json"}`
+- `{"id":"sync-check","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node dist/cli/index.js sync"}`
 
 ## Documentation updates
 
-Update only the skill/user-facing documentation needed to clarify that grill uses one-question cadence with sufficient decision framing. Avoid broad documentation churn.
+- Update only user-facing grill documentation if a separate document duplicates the interaction contract; otherwise the skill templates are the canonical behavioral documentation for this correction.
 
 ## Notes
 
-- This task is based on real downstream APK dogfood, not a speculative UX preference.
-- Task 0141 may later provide a resolved human communication language, but this task must remain correct even without it.
-- Backlog creation only; no requirement to alter project configs during planning.
+- Origin: real downstream `translator-agent` dogfood with explicit persisted caveman style.
+- Task 0136 already protects the global rule that compression must preserve material detail; this task adds the missing grill-specific contract and tests rather than reopening style policy.
