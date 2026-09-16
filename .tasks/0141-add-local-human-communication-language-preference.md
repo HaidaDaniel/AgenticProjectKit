@@ -1,6 +1,6 @@
 # Task 0141 - Add local human communication language preference without changing repository artifact language
 
-State: doing
+State: done
 Owner: code-owner-0141
 Mode: product
 Lane: core
