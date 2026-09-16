@@ -1,6 +1,6 @@
 # Task 0142 - Preserve sufficient decision context in interactive grill skills regardless of agentStyle
 
-State: doing
+State: done
 Owner: code-owner-0142
 Mode: product
 Lane: skills
