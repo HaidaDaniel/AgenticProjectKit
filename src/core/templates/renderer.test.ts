@@ -572,3 +572,89 @@ test("apk-project-grill ships as a portable manual-only project/milestone/subsys
   assert.ok(agents);
   assert.doesNotMatch(agents.content, /apk-project-grill/);
 });
+
+test("both grill skills preserve established fact, ambiguity, and consequence under terse styles", async () => {
+  const project = normalizeLineEndings(
+    await readFile(
+      join(process.cwd(), "src/core/templates/skills/apk-project-grill/SKILL.md.hbs"),
+      "utf8",
+    ),
+  );
+  const task = normalizeLineEndings(
+    await readFile(
+      join(process.cwd(), "src/core/templates/skills/apk-task-grill/SKILL.md.hbs"),
+      "utf8",
+    ),
+  );
+
+  for (const [name, content] of [
+    ["apk-project-grill", project],
+    ["apk-task-grill", task],
+  ] as const) {
+    assert.match(
+      content,
+      /repository evidence already establishes|repository already establishes/i,
+      `${name} must require stating established repository facts`,
+    );
+    assert.match(
+      content,
+      /material ambiguity|remains? (ambiguous|unresolved)|remaining (material )?ambiguity/i,
+      `${name} must require stating the remaining ambiguity`,
+    );
+    assert.match(
+      content,
+      /why the answer changes|answer changes the|changes the (decision|contract)/i,
+      `${name} must require stating why the answer matters downstream`,
+    );
+    assert.match(
+      content,
+      /terse and specialty styles|terse\/caveman|`caveman`/i,
+      `${name} must name terse/caveman presentation explicitly`,
+    );
+    assert.match(
+      content,
+      /must not suppress|cannot suppress|must not delete/i,
+      `${name} must forbid suppressing the required decision context`,
+    );
+    assert.match(
+      content,
+      /two to five concise sentences/i,
+      `${name} must give compact-length guidance instead of a rigid count`,
+    );
+  }
+
+  assert.match(project, /Ask the human \*\*one\*\* question/i);
+  assert.match(task, /one high-value question at a time/i);
+});
+
+test("grill decision-context preservation stays skill-local and optional", async () => {
+  const policyText = [
+    ...DEFAULT_AGENT_POLICY.coreRules,
+    ...DEFAULT_AGENT_POLICY.taskRules,
+    ...DEFAULT_AGENT_POLICY.styleRules,
+  ].join("\n");
+  assert.doesNotMatch(policyText, /decision context|established facts, remaining/i);
+
+  for (const skill of ["apk-project-grill", "apk-task-grill"]) {
+    const content = normalizeLineEndings(
+      await readFile(
+        join(process.cwd(), `src/core/templates/skills/${skill}/SKILL.md.hbs`),
+        "utf8",
+      ),
+    );
+    assert.match(content, /explicit human request/i);
+    assert.match(content, /Never activate automatically/i);
+    assert.doesNotMatch(content, /\{\{/);
+  }
+
+  const exports = await renderAgentExportFiles();
+  const agents = exports.find((file) => file.outputPath === "AGENTS.md");
+  assert.ok(agents);
+  assert.doesNotMatch(agents.content, /apk-project-grill|apk-task-grill/);
+
+  const normalRules = styleRulesFor("normal").join("\n");
+  const cavemanRules = styleRulesFor("caveman").join("\n");
+  assert.equal(DEFAULT_AGENT_POLICY.defaultStyle, "normal");
+  assert.doesNotMatch(normalRules, /grill/i);
+  assert.doesNotMatch(cavemanRules, /grill/i);
+});

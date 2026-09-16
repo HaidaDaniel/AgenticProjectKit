@@ -429,7 +429,10 @@ project start and re-runnable as a periodic checkpoint after a milestone or mate
 It resolves the requested scope, reads canonical project truth with bounded context (using
 existing `apk status`, `apk tasks`, `apk task deps`, `apk context`, and `apk suggest-context`
 rather than a new scanner), and asks one high-value question at a time instead of dumping a
-questionnaire. It challenges stale or inconsistent assumptions while labeling every point as
+questionnaire. Every non-trivial question carries compact decision context first: what repository
+evidence already establishes, what material ambiguity remains, and why the answer changes the
+decision or contract; a terse/caveman presentation may shorten that wording but must not suppress
+it. It challenges stale or inconsistent assumptions while labeling every point as
 evidence, inference, hypothesis, or human preference, and it distinguishes intentional evolution
 and validated learning from accidental drift. It writes nothing before explicit human approval of
 a concrete proposal; approved decisions go to discovered canonical owners, never a parallel
@@ -453,7 +456,10 @@ single existing task before implementation. It is plain Markdown packaged at
 Task grill runs only on an explicit human request naming a task. It uses existing context
 interfaces (`apk context`, the task Context files, `apk task deps`, and optional
 `apk suggest-context`), asks only materially unresolved questions, and writes nothing until it
-presents a bounded proposal and the human explicitly approves it. It never edits runtime/product
+presents a bounded proposal and the human explicitly approves it. Each non-trivial question states
+the established repository fact, the remaining ambiguity, and the downstream consequence before
+the single question, and terse/caveman presentation may compress wording but not remove that
+context. It never edits runtime/product
 code, never produces a worker role, review result, verification evidence, or completion
 certificate, and introduces no lifecycle state or completion requirement. An ordinary task
 proceeds through claim/work/verify/review/gate/done without it.

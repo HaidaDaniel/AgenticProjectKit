@@ -121,12 +121,28 @@ This is a real, iterative grill, not a questionnaire. Do not dump dozens of ques
 1. Establish repository truth for the requested scope.
 2. Identify the highest-impact unresolved or under-supported decisions.
 3. Select the single most useful question.
-4. Before asking, briefly state what the repository already establishes, what remains ambiguous,
-   and why the decision matters.
+4. Before asking, give compact decision context for that single question:
+   - what repository evidence already establishes for this decision;
+   - what material ambiguity or conflict remains unresolved;
+   - why the answer changes the decision, contract, or design downstream.
+   Two to five concise sentences is usually enough; treat that as practical guidance, not a
+   rigid sentence count.
 5. Ask the human **one** question.
 6. Incorporate the answer into the working understanding.
 7. Reassess and re-prioritize the next question.
 8. Continue until major uncertainty has materially reduced.
+
+Terse and specialty styles (`caveman` or any other compression mode) may shorten this wording,
+but they must not suppress the required context. A question without established facts, remaining
+ambiguity, and consequence is not answerable on its own and does not count as a valid grill
+question.
+
+### Example: a compressed question still carries context
+
+- Evidence: `docs/scope.md` keeps offline mode inside the MVP.
+- Ambiguity: no canonical owner is named for the local cache.
+- Consequence: the owner decides whether sync is a task concern or an infrastructure concern.
+- Question: which module should own the offline cache?
 
 Do not ask questions the repository already answers. Do not walk a checklist top to bottom;
 priority follows impact. Higher-impact areas include: wrong product goal, wrong ownership,
