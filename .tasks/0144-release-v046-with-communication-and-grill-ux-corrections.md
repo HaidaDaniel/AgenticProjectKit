@@ -1,6 +1,6 @@
 # Task 0144 - Release v0.4.6 with communication and grill UX corrections
 
-State: doing
+State: done
 Owner: release-owner-0144
 Mode: product
 Lane: core
