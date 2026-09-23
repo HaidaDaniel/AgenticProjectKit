@@ -65,10 +65,10 @@ Add an explicit Git-lineage and attribution path for legitimate unrelated commit
 
 ## Steps
 
-1. Reproduce the current residual case in a deterministic Git fixture: Task A claims X, remains active or is released, legitimate Task B commits X to Y, and A's verification currently fails closed without distinguishing B from A.
+1. Reproduce the current residual case in deterministic Git fixtures: an anonymous commit after A's baseline must fail closed, while a provenance-backed Task B commit from X to Y currently also fails closed without a safe attribution path.
 2. Map existing baseline, handoff, candidate, worktree, HEAD, run/evidence provenance, commit-boundary, completion-bookkeeping, and provenance records to identify evidence sufficient for attribution.
 3. Define a minimal explicit lineage/attribution model using Git history and existing provenance; do not introduce hidden ownership storage or choose a baseline solely because it makes verification pass.
-4. Implement safe attribution for provably unrelated intervening commits and bounded diagnostics or fail-closed behavior for ambiguous, nonlinear, dirty, merged, same-file, or otherwise unsupported history.
+4. Implement exclusion only for intervening commits proven by canonical APK provenance and Git lineage to belong to another bounded task candidate; retain bounded diagnostics or fail-closed behavior for anonymous, ambiguous, nonlinear, dirty, merged, same-file, or otherwise unsupported history.
 5. Ensure verification and completion gate consume the same attribution result and candidate/evidence freshness remains unchanged.
 6. Add a deterministic temporary-repository fixture suite for all required ownership, handoff, commit, merge, dirty-tree, and anti-laundering scenarios.
 7. Run focused and full verification, rebuild committed dist, and update canonical workflow, provenance, and decision documentation.
@@ -79,6 +79,9 @@ Add an explicit Git-lineage and attribution path for legitimate unrelated commit
 - Task A's out-of-scope change remains detected after any release, reclaim, or different-owner handoff.
 - A legitimate Task B commit from X to Y is not attributed to active Task A merely because A's authoritative baseline is X.
 - When Git lineage and existing provenance prove that an intervening commit belongs to B and is unrelated to A, A can verify without a false scope violation while B's files remain outside A's attribution.
+- An anonymous or otherwise unproven intervening commit continues to fail closed.
+- A commit or change-set is excluded from Task A attribution only when canonical APK provenance and Git lineage prove that it belongs to another bounded task candidate.
+- Commit author identity, message text, timestamps, branch names, task filenames, or naming conventions alone never prove ownership or unrelatedness.
 - A's own change remains attributable when followed by an unrelated B commit, including when the changes touch different files.
 - Same-file or overlapping-file work is treated as ambiguous unless ownership can be proven safely; it never silently passes or silently becomes pre-existing.
 - Release/reclaim laundering protections from Task 0116 remain intact for dirty and committed task-owned out-of-scope work.
@@ -93,6 +96,7 @@ Add an explicit Git-lineage and attribution path for legitimate unrelated commit
 - Task 0116 correctly preserves the earliest authoritative baseline and prevents release/reclaim from laundering task-owned work, but currently fails closed on any intervening HEAD advance rather than attributing provably unrelated commits.
 - Existing provenance records expose task participants, run/evidence identities, baseline HEAD, commit ranges, and repository activity but do not currently provide file-level ownership attribution for parallel commits.
 - Git commit boundaries and existing task/run/evidence provenance are the preferred evidence; a second hidden ownership database is not justified unless the implementation proves existing evidence insufficient.
+- The mere existence of a Git commit after A's baseline does not prove that the commit belongs to another task; anonymous or unproven commits remain fail-closed.
 - Human decisions are not a general scope bypass and cannot authorize uncertain attribution.
 - The repository may contain dirty unrelated edits, same-file overlap, merges, missing provenance, or unsupported history; those cases must not be overclaimed.
 
@@ -100,6 +104,7 @@ Add an explicit Git-lineage and attribution path for legitimate unrelated commit
 
 - A task-owned out-of-scope change cannot disappear by release, reclaim, handoff, baseline selection, or later unrelated commits.
 - An unrelated committed change cannot be silently attributed to an active task solely because it is after that task's baseline.
+- A Git commit is not considered unrelated merely because it has a different author, message, timestamp, branch position, task filename, or position after another task's baseline; exclusion requires deterministic canonical APK provenance or another explicitly defined repository proof linking the commit or change-set to another bounded task candidate.
 - Ambiguous ownership fails closed with a bounded actionable diagnostic.
 - Scope, candidate, evidence, review, and gate decisions use one coherent attribution result for the same evaluated state.
 - Pre-existing dirty files unchanged after the first claim remain pre-existing.
@@ -110,7 +115,12 @@ Add an explicit Git-lineage and attribution path for legitimate unrelated commit
 ## Required evidence
 
 - Current-main reproducer output for the legitimate X to Y intervening-commit case showing the existing false block and its missing attribution path.
-- Deterministic Git fixture results for A-only, A out-of-scope, B unrelated, A then B, same-file overlap, handoff, tooling upgrade, completion bookkeeping, dirty pre-existing, committed unrelated, and task-owned-then-unrelated scenarios.
+- Deterministic Git fixture result for an anonymous intervening commit that still fails closed.
+- Deterministic Git fixture result for an APK-proven B commit on a separate file that may be excluded from A attribution.
+- Deterministic Git fixture result showing an A-owned violation remains after a later proven B commit.
+- Deterministic Git fixture result for A and B same-file overlap that fails closed unless ownership is proven deterministically.
+- Deterministic Git fixture results for handoff, tooling upgrade, completion bookkeeping, dirty pre-existing, committed unrelated, and task-owned-then-unrelated scenarios.
+- Negative fixtures showing a fake commit message mentioning another task and a different Git author alone do not establish ownership.
 - Regression output proving Task 0116 dirty and committed release/reclaim laundering cases still fail scope closed.
 - Merge/nonlinear-history and ambiguous-provenance results showing supported attribution or explicit fail-closed diagnostics.
 - Verify, gate, and provenance output bound to the same baseline, candidate, worktree, and commit/file attribution.
@@ -119,6 +129,9 @@ Add an explicit Git-lineage and attribution path for legitimate unrelated commit
 ## Review questions
 
 - What exact evidence proves a commit belongs to Task B rather than Task A?
+- Does an anonymous intervening commit remain fail-closed rather than being guessed unrelated?
+- Are canonical APK provenance and Git lineage both required before excluding B's separate-file change from A attribution?
+- Are author, message, timestamp, branch, or task-name clues correctly rejected as ownership proof?
 - Can the implementation both preserve A's old task-owned violation and exclude B's unrelated commit?
 - What happens when A and B touch the same file, when B is a tooling upgrade, or when commit authors and registered agents differ?
 - Does release/reclaim still preserve the 0116 anti-laundering behavior for dirty and committed changes?
@@ -132,12 +145,16 @@ Add an explicit Git-lineage and attribution path for legitimate unrelated commit
 - A claims X, edits an out-of-scope file, releases, reclaims, and verifies with the file dirty.
 - A claims X, commits an out-of-scope file, releases, reclaims, and verifies after the commit.
 - A claims X, B commits an unrelated file X to Y while A is released, then A reclaims and verifies.
+- An anonymous intervening commit appears after A's baseline with no canonical APK task provenance; A must fail closed.
+- B has canonical APK provenance and commits a separate file; A may exclude B's change only when Git lineage also supports the link.
+- A has an out-of-scope violation and B later makes a proven separate-file commit; A's violation remains visible.
 - A changes an allowed file, B commits an unrelated file, and A verifies both changes together.
 - A and B touch the same file in separate commits, with and without a common registered provenance identity.
 - A remains active while a tooling or APK upgrade commit changes files outside and inside A's allowed scope.
 - The task file or completion bookkeeping changes after the implementation candidate is reviewed.
 - Pre-existing dirty unrelated files remain untouched while committed unrelated work is added.
 - A merge commit, branch fast-forward, detached HEAD, missing parent, or nonlinear history appears between baseline and candidate.
+- A fake commit message names another task, or a different Git author is the only ownership signal; neither establishes unrelatedness.
 - Ambiguous attribution is presented to gate, status, and provenance and must not silently pass.
 
 ## Verification

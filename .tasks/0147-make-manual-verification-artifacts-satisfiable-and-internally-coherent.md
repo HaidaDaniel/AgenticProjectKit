@@ -79,9 +79,9 @@ Ensure no accepted verification contract declares an artifact requirement that t
 
 ## Acceptance criteria
 
-- No valid verification contract declares an evidence category that the supported parser, verifier, recorder, policy, and gate paths cannot satisfy.
+- No valid verification contract declares an artifact requirement or other evidence category that the supported parser, verifier, recorder, policy, and gate paths cannot satisfy.
 - The implementation selects and documents one canonical artifact semantic; it does not leave artifact half-category and half-metadata behavior.
-- A manual check with an artifact reference is either fully supported through an explicit candidate-bound recording path or rejected early with an actionable validation error.
+- A manual check with an artifact reference is either fully supported through an explicit candidate-bound recording path or rejected early with an actionable validation error; the task does not predetermine which option is selected.
 - A successful external manual artifact result, when supported, has an unambiguous check identity, result, artifact/reference representation, and current candidate subject.
 - A manual fail, unavailable local placeholder, missing reference, stale subject, different candidate, or malformed contract never satisfies the artifact or verification gate.
 - Automated artifact behavior remains valid and does not regress.
@@ -100,7 +100,7 @@ Ensure no accepted verification contract declares an artifact requirement that t
 
 ## Invariants
 
-- A contract cannot pass parser or policy validation while its required artifact category has no supported recording path.
+- If artifact is treated as a gate category, a contract cannot pass parser or policy validation while that category has no supported recording path; if artifact is metadata/reference, it cannot create an unsatisfiable hidden category.
 - Gate eligibility remains candidate-bound and requires a current passing result; unavailable, failed, stale, and different-candidate records remain non-satisfying.
 - Artifact metadata cannot masquerade as an unrelated evidence category.
 - Automated artifact evidence does not lose its existing semantics.
