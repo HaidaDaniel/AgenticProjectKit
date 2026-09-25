@@ -39,19 +39,20 @@ Tags: feature
 
 ## Goal
 
-Resolve public confusion among `apkit`, `apk`, and `agentic-project-kit` by documenting one canonical user invocation and supported aliases.
+Document `apkit` as the canonical public CLI invocation while retaining `apk` and other existing aliases for compatibility. Keep end-user invocation examples distinct from contributor/source invocation; this task does not change the AgenticProjectKit product, repository, package, or application identity.
 
 ## Steps
 
 1. Inventory package bins, help, README, docs, scripts, tests, and generated examples for command names and invocation contexts.
-2. Select one canonical public invocation based on package metadata, behavior, ergonomics, and collision risk without removing aliases.
+2. Document `apkit` as the canonical public invocation without removing or renaming existing aliases.
 3. Separate package-local user commands, contributor-from-source commands, and any supported global invocation.
-4. Align help and CLI reference with the chosen public name and document retained aliases.
-5. If approved rebrand work is underway, coordinate the choice with Task 0150 instead of duplicating edits.
+4. Align help and CLI reference with `apkit` as the canonical documented name and document retained aliases.
+5. Keep this contract limited to CLI invocation consistency under the current AgenticProjectKit identity; any future product identity decision is independent optional work and is not assumed or coordinated here.
 
 ## Acceptance criteria
 
 - One canonical public command is consistent in user docs and CLI help.
+- `apkit` is the canonical documented public CLI invocation.
 - Existing aliases continue unless a separately approved change removes one.
 - User docs show package-local invocation; source TypeScript invocation is contributor-only.
 - Tests cover help text and alias compatibility.
@@ -73,7 +74,7 @@ Resolve public confusion among `apkit`, `apk`, and `agentic-project-kit` by docu
 ## Review questions
 
 - Can users identify one recommended command without losing existing aliases?
-- Does this duplicate rebrand edits?
+- Are product identity and CLI invocation consistency kept independent?
 
 ## Counterexample searches
 
@@ -91,4 +92,4 @@ Resolve public confusion among `apkit`, `apk`, and `agentic-project-kit` by docu
 
 ## Notes
 
-- Clarify public use and preserve compatibility. Rebrand remains blocked behind current research and explicit human choice.
+- Clarify public use and preserve compatibility aliases. This task does not rename the CLI or any product identity, and it does not depend on naming research or rebrand work.

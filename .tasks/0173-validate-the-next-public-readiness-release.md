@@ -62,7 +62,7 @@ Validate the next public-readiness release
 - The next SemVer target is free and all existing tags remain untouched.
 - Every criterion claimed as PRE-TAG evidence actually ran against the exact frozen candidate SHA from a clean checkout before tag creation, including exact-SHA hosted CI.
 - Package payload inspection confirms metadata, canonical and compatibility bins, license, templates, and portable assets are present and internally consistent.
-- If a human explicitly approves and completes Task 0150 before freeze, the migrated identity is included in this candidate and Task 0150 is added as a prerequisite; otherwise release proceeds under AgenticProjectKit and no name is inferred.
+- The release is valid under the current AgenticProjectKit product identity and does not require or imply naming/rebrand work; Tasks 0149 and 0150 are not direct or transitive prerequisites.
 - The annotated tag peels to the validated candidate SHA and is never moved or rewritten afterward.
 - POST-TAG evidence (actual-tag cold install, tag peel, released package/bin identity, downstream install, self-adoption) is recorded separately after publication.
 - The release-note file committed inside the tag contains only pre-tag-knowable facts and is never backfilled with post-tag identity or results.
@@ -119,4 +119,4 @@ Validate the next public-readiness release
 ## Notes
 
 - Treat pre-tag evidence as the gate for tag creation and post-tag evidence as a separate record; never fabricate future facts inside an immutable commit.
-- Task 0149 research alone does not approve a rebrand. Task 0150 remains optional unless the human explicitly chooses a new name before this release freeze.
+- Tasks 0149 and 0150 are optional deferred product-identity work and are outside this release's dependency path. Any future naming/rebrand investigation requires a new explicit human decision before activation and remains a separate optional milestone.

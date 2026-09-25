@@ -1,6 +1,6 @@
 # Task 0149 - Research and recommend a public project name
 
-State: todo
+State: blocked
 Owner: none
 Mode: discovery
 Lane: research
@@ -9,7 +9,7 @@ Scope: naming,research,public-readiness
 Risk: medium
 Parallel: true
 Depends on: none
-Tags: research,naming,identity
+Tags: research,naming,identity,deferred,deep-backlog,optional-product-decision
 
 ## Goal
 
@@ -44,7 +44,7 @@ Produce a dated, evidence-backed name recommendation without renaming the reposi
 
 ## Steps
 
-1. Recheck the five candidates at execution time across GitHub repos and organizations, npm, PyPI, common CLI binaries, web search, .dev/.io/.com domains where checkable, obvious dev/AI products, and public trademark sources.
+1. Begin this optional research only after a new explicit human decision to reconsider the current AgenticProjectKit identity; then recheck the five candidates at execution time across GitHub repos and organizations, npm, PyPI, common CLI binaries, web search, .dev/.io/.com domains where checkable, obvious dev/AI products, and public trademark sources.
 2. Record date, direct source links or reproducible queries, collision findings, unavailable checks, confidence limits, spelling/pronunciation, CLI, package, and repository ergonomics.
 3. Compare PatchVerity, TaskVerity, DiffLedger, GateVerity, and ChangeVerity; discard material collisions and add a candidate only with a documented reason.
 4. Recommend a candidate or no-go outcome for the human owner without selecting or applying a name.
@@ -87,10 +87,12 @@ Produce a dated, evidence-backed name recommendation without renaming the reposi
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Create docs/research/project-name-research.md and keep it as research, not an approval record.
 
 ## Notes
 
-- Research only; no rebrand, package change, CLI change, domain registration, or implied consent. May run in a separate worktree; serialize shared research navigation.
+- This task is deferred indefinitely as an optional future product decision, not a prerequisite for public readiness or the next release. Its presence is not a human decision to reconsider the current AgenticProjectKit identity; require a new explicit human decision before activation. Research alone does not authorize a rebrand. No rebrand, package change, CLI change, domain registration, or implied consent. May run in a separate worktree; serialize shared research navigation.
+- block: Deferred indefinitely as optional product-identity work; activation requires a new explicit human decision to reconsider AgenticProjectKit. Task 0149 and its research do not authorize a rebrand and are not prerequisites for public readiness or the next release.

@@ -6,7 +6,7 @@ Mode: maintenance
 Lane: task-system
 Type: bugfix
 Scope: task-system,parser,round-trip,tests,docs
-Risk: medium
+Risk: high
 Parallel: false
 Depends on: 0098
 Tags: bugfix,task-system,parser,round-trip

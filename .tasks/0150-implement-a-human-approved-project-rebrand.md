@@ -9,11 +9,11 @@ Scope: identity,compatibility,package,cli,docs,release
 Risk: high
 Parallel: false
 Depends on: 0149,0165
-Tags: migration,identity,blocked,human-decision
+Tags: migration,identity,blocked,human-decision,deferred,deep-backlog,optional-product-decision
 
 ## Goal
 
-Migrate public identity only after naming research and explicit human selection, preserving compatibility and historical truth.
+Migrate public identity only after a new explicit human decision to reconsider the current AgenticProjectKit identity and explicit human selection of a name, preserving compatibility and historical truth.
 
 ## Context files
 
@@ -74,7 +74,7 @@ Migrate public identity only after naming research and explicit human selection,
 
 ## Steps
 
-1. Remain blocked until naming research completes and the human explicitly chooses a name; record only the communicated choice.
+1. Remain deferred and blocked until a new explicit human decision activates this optional work and the human explicitly chooses a name; Task 0149 or its research recommendation alone is not that decision. Record only the communicated choice.
 2. Inventory old-name references and classify current product surfaces, compatibility aliases, and intentional historical references before editing.
 3. Plan and apply migration for repository/package identity, package metadata, canonical CLI and legacy aliases, generated instructions, docs, examples, release scripts, install instructions, tests, URLs, and migration notes.
 4. Coordinate any GitHub repository rename or redirect with the operator; verify it rather than assuming an external change occurred.
@@ -131,4 +131,4 @@ Migrate public identity only after naming research and explicit human selection,
 
 ## Notes
 
-- State remains blocked pending explicit human naming choice even after dependencies. Not a prerequisite to release under AgenticProjectKit; add it to Task 0173 only if a human approves rebrand before freeze. Never rewrite tagged releases or old ADR prose.
+- This task is deferred indefinitely and is not a prerequisite for public readiness or the next release under AgenticProjectKit. Execute only after a new explicit human decision to reconsider the current identity and a communicated name choice; Task 0149's existence or recommendation is not authorization. Never rewrite tagged releases or old ADR prose.
