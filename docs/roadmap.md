@@ -42,7 +42,7 @@
 - Issue tracker sync.
 - Database and authentication.
 
-## Next gated-workflow release (planned)
+## Gated-workflow milestone (shipped; historical plan)
 
 Tasks 0057-0081 preserve repository-first, model-agnostic control-plane direction. `done` becomes evidence-backed completion; external coding harnesses remain workers. All implementation prerequisites are complete; 0075 is done and validated candidate `5f65faa` against gated workflow plus hosted clean-checkout CI.
 
@@ -101,3 +101,18 @@ Task 0092 makes `AGENTS.md` the only full common-policy generated export and red
 Task 0097 records the boundary between APK and an external terminal/session runtime such as Herdr. APK is a repository-local semantic workflow/control plane; the external runtime owns PTY, persistent shells, detach/reattach, live process lifetime, remote connectivity, and operator navigation. APK state is repository-local and one APK package may serve many repositories.
 
 Task 0097 amends Tasks 0087 and 0088 before their implementation so attention/status stays semantic and runtime-neutral and isolated workspaces stay safe Git worktree lifecycle only. A future external-runtime dogfood is documented and deferred; no runtime adapter is implemented or planned as a dependency. See [ADR-0039](decisions.md#adr-0039---apk-is-a-repository-local-semantic-control-plane-not-an-external-runtime).
+
+
+## Public Readiness (planned)
+
+Tasks 0145-0148 are correctness prerequisites for this milestone. Task 0173 is the final release gate and integrates the exact-candidate release checks; no separate release-integration task is needed. The milestone remains under the AgenticProjectKit identity unless a human explicitly approves and completes Task 0150 before the release freeze.
+
+| Workstream | Tasks | Notes |
+| --- | --- | --- |
+| Correctness foundation | 0145-0148 | Required before the public-readiness release gate. |
+| Identity and naming | 0149-0150, 0165 | Research is open; rebrand is blocked on research and explicit human choice; CLI aliases remain compatible. |
+| Product and current truth | 0151-0157 | Requirements, compatibility, status, scope, roadmap, milestone history, architecture, and ADR lifecycle. |
+| Documentation front door | 0158-0164 | Index, user guides, README, and factual product comparison. |
+| OSS contribution readiness | 0169-0171 | Contributor UX, security reporting, and release index; Task 0170 is blocked pending operator-confirmed private reporting route. |
+| Acquisition and examples | 0166, 0172 | Preserve Task 0125 exact local pin and lockfile; provide runnable external dogfood paths. |
+| Documentation consistency and release | 0168, 0173 | Deterministic docs checks precede final frozen-candidate validation. |
