@@ -1240,3 +1240,23 @@ The canonical parser preserves continuation text in one semantic list item. The 
 Reference:
 
 Task 0145.
+
+## ADR-0075 - Benchmark evidence requires an explicit structured check declaration
+
+Status: accepted
+
+Decision:
+
+A structured verification check may declare `evidenceType: "benchmark"` only when it is an automated local/static check. This declaration overrides the check's profile-derived evidence type, makes policy declare the `benchmark` category, and allows both local execution and `apk task verify --record` to append a typed `benchmark` result. The per-check gate accepts only `benchmark` records for such a check, while the category gate continues to require a current passing record. Candidate changes during external recording leave a non-gate-eligible history record.
+
+Reason:
+
+The benchmark type existed in the evidence store and policy required it for benchmark tasks, but neither verification declarations nor supported result recording could produce it. Deriving the type from command text, summary prose, or `profile: report` would conflate distinct evidence. An explicit typed field keeps the category satisfiable without weakening result, scope, owner, or freshness checks.
+
+Implementation and invariant:
+
+The task parser validates the declaration and permits it only on automated local/static checks. Policy and the built-in benchmark template use the same field; normal verification records the declared type, and external recording requires the explicit field plus registered task ownership and a bounded reference. The gate requires the record type to match the declaration and the subject to remain current. APK guarantees declaration, execution/recording provenance, result status, and contract conformance, not scientific validity or workload quality. No second policy engine, evidence store, or benchmark-methodology validator is added.
+
+Reference:
+
+Task 0146.

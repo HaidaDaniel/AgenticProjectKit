@@ -26,6 +26,7 @@ function automated(id, options = {}) {
         environment: "local",
         profile: options.profile ?? "deterministic",
         command: options.command ?? "pnpm test",
+        ...(options.evidenceType ? { evidenceType: options.evidenceType } : {}),
         ...(options.artifact ? { artifact: options.artifact } : {}),
     };
 }
@@ -276,7 +277,7 @@ const templates = {
         risk: "high",
         tags: ["benchmark"],
         contextFiles: ["AGENTS.md", "docs/architecture.md", "docs/task-system.md"],
-        verification: [automated("benchmark-report", { profile: "report", artifact: "reports/benchmark.json" })],
+        verification: [automated("benchmark-run", { command: "pnpm benchmark", profile: "report", evidenceType: "benchmark" })],
         steps: [
             "Record a baseline with the same deterministic fixture and metric definition.",
             "Run comparable candidate and baseline measurements.",

@@ -149,7 +149,7 @@ const TASK_VERIFY_HELP_TEXT = [
     "Checks changed files against task allowed/forbidden files.",
     "Runs selected eligible automated checks and records per-check evidence.",
     "Manual/live and unselected checks remain visible as unavailable or not-run.",
-    "Use --record to store an externally-observed manual/live check result bound to the current candidate.",
+    "Use --record for an externally observed manual/live result or a check explicitly declared evidenceType=benchmark; records bind to the current candidate.",
 ].join("\n");
 const TASK_ARCHIVE_HELP_TEXT = [
     "Agentic Project Kit",

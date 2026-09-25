@@ -124,12 +124,12 @@ function declaredEvidenceCategories(task, requiredOnly = false) {
     for (const check of verificationChecks(task)) {
         if (requiredOnly && !check.required)
             continue;
-        // A single check appends exactly one typed record. Declare the same
-        // category the verifier would emit (report > live > manual > ci) so a
-        // required check cannot declare an unsatisfiable extra category. A local
-        // run of an `environment: ci` check is diagnostic only; the authoritative
-        // `ci` record is recorded externally.
-        if (check.profile === "report")
+        // An explicit evidence type is the check's canonical result category and
+        // overrides profile/environment defaults. Otherwise a single check
+        // declares the type its verifier emits (report > live > manual > ci).
+        if (check.evidenceType)
+            categories.add(check.evidenceType);
+        else if (check.profile === "report")
             categories.add("report");
         else if (check.environment === "live")
             categories.add("live");
@@ -206,6 +206,11 @@ export function resolveTaskPolicy(task, options = {}) {
         }
     }
     const declared = declaredEvidenceCategories(task, true);
+    for (const check of verificationChecks(task)) {
+        if (check.required && check.evidenceType === "benchmark") {
+            reasons.push(`verification check ${check.id} explicitly declares benchmark evidence`);
+        }
+    }
     const optionalOnly = new Set(declaredEvidenceCategories(task).filter((category) => !declared.includes(category)));
     requirements.evidenceCategories = [...new Set(requirements.evidenceCategories)].sort();
     requirements.evidenceRequired = task.risk === "high" || requirements.evidenceCategories.length > 0;

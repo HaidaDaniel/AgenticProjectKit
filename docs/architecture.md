@@ -96,6 +96,8 @@ APK-local guardrails are separate from adopted-repository policy: `typecheck` ru
 
 Task evidence uses a dedicated append-only `.agentic/evidence.jsonl` store. It is separate from agent/run analytics so verification, manual/live checks, reports, and later review evidence retain their own typed results and revision-bound subject identities. Appends use an evidence-specific lock, never the task lifecycle lock. Records explicitly mark gate eligibility; anonymous verification remains diagnostic-only. Read operations tolerate a missing store (no evidence) and report malformed records with line diagnostics. The legacy global JSONL remains the compatibility layout; a malformed line is diagnosed at read time and can still affect the global reader until evidence sharding is introduced.
 
+Benchmark evidence stays in this same store and gate. A structured verification check opts in with `evidenceType: "benchmark"`; the policy declares that category and the per-check gate accepts only a current passing record of type `benchmark` for that check. Local execution and the external `apk task verify --record` path share the existing candidate/baseline/worktree/HEAD subject. This proves provenance and declared-result conformance, not benchmark methodology or scientific validity; free-text commands and summaries never alter evidence type.
+
 Claim baselines use a parallel append-only `.agentic/task-baselines.jsonl` store. A baseline captures HEAD, dirty-file fingerprints, task path, owner, and explicit bookkeeping exclusions. Scope attribution reads this record without resetting or rewriting user files.
 
 ## Effective policy resolution

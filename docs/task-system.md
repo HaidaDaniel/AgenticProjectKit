@@ -194,7 +194,7 @@ New tasks store verification checks in a `## Verification` section. Each check i
 - `{"id":"release-smoke","type":"manual","required":true,"environment":"live","profile":"trusted","instruction":"Check the deployed release.","evidence":"release URL"}`
 ```
 
-Checks declare `type` (`automated` or `manual`), `required`, `environment` (`static`, `ci`, `local`, or `live`), and `profile` (`deterministic`, `integration`, `trusted`, or `report`). Automated checks require `command`; manual checks require `instruction`. `artifact` and `evidence` are optional requirements.
+Checks declare `type` (`automated` or `manual`), `required`, `environment` (`static`, `ci`, `local`, or `live`), and `profile` (`deterministic`, `integration`, `trusted`, or `report`). Automated checks require `command`; manual checks require `instruction`. `artifact` and `evidence` are optional requirements. The optional `evidenceType: "benchmark"` explicitly declares a benchmark-capable automated check and is valid only for `local` or `static` environments; it overrides the profile's ordinary evidence type for that check. Command or summary text never declares a benchmark.
 
 The legacy `## Verification commands` section remains valid and is normalized in memory to required automated checks with `environment: local` and `profile: deterministic`. Legacy task files are not migrated automatically. The compatible `verificationCommands` projection remains available to existing command execution until profile-aware verification is enabled.
 
@@ -249,13 +249,39 @@ An `environment: ci` check is hosted-CI evidence. A local `apk task verify` may 
 
 Each check produces a distinct `pass`, `fail`, `pending`, `unavailable`, or `not-run` result. Required non-pass checks fail verification; optional failures do not. Optional checks also do not declare completion-gate evidence categories or create evidence requirements of their own; `required: false` remains an explicit opt-out for that check surface and never cancels an independent risk, type, or tag policy requirement. A verification run records one run ID and subject identity for every check. If the candidate changes during execution, pass results are converted to mixed-revision failures.
 
+### Benchmark verification
+
+Benchmark evidence uses the same structured check, append-only evidence record, candidate subject, and completion gate as other verification. A check opts in with `"evidenceType":"benchmark"`; APK then records its result as type `benchmark` and declares the `benchmark` category for required checks. This explicit field overrides a `report` profile's ordinary `report` type, so the check and category are satisfiable by the same typed record. The built-in `benchmark` task template declares `benchmark-run` with this field and a replaceable `pnpm benchmark` command.
+
+```json
+{"id":"benchmark-run","type":"automated","required":true,"environment":"local","profile":"report","command":"pnpm benchmark","evidenceType":"benchmark"}
+```
+
+Create a task with that contract (replace the command with the repository's real benchmark runner):
+
+```bash
+pnpm exec apk task create --type benchmark --title "Compare request planner" \
+  --scope planner --allowed "src/planner/**" \
+  --verification-json '[{"id":"benchmark-run","type":"automated","required":true,"environment":"local","profile":"report","command":"pnpm benchmark","evidenceType":"benchmark"}]'
+```
+
+Run the declared command normally with `pnpm exec apk task verify <task-id> --owner <task-owner>`. For a benchmark measured outside the local command runner, record the declared check through the supported external-result path:
+
+```bash
+pnpm exec apk task verify <task-id> --record --owner <task-owner> \
+  --check benchmark-run --result pass \
+  --evidence "https://benchmark.example/runs/42 candidate=<candidate-id>"
+```
+
+Both paths preserve check ID, registered owner, run ID, baseline, candidate, worktree, repository HEAD, result, and freshness. A recording made while the candidate changes is retained but is not gate-eligible. Failures, unselected checks, unavailable results, stale subjects, and non-pass records remain history and cannot satisfy the per-check result or benchmark category; the gate requires a current passing `benchmark` record for the explicitly declared check. Report, manual, live, artifact, or ordinary automated-test evidence cannot substitute based on check ID or text. APK proves declaration, execution or external-record provenance, result status, and candidate freshness; it does not validate benchmark methodology, workload quality, or scientific validity.
+
 Claiming a task records a baseline in `.agentic/task-baselines.jsonl`: HEAD when available, dirty-file fingerprints, task file, and workflow bookkeeping paths. Later scope verification compares committed, working-tree, new, deleted, and renamed paths against that baseline. Unchanged pre-claim dirty files are reported as `preExistingFiles` and excluded from violations; edits after claim are attributed to the task. Task/evidence/run/agent/session/review bookkeeping paths, including the transient `.agentic/evidence.append.lock`, are excluded explicitly. A non-Git baseline without explicit candidate paths remains `comparisonKnown=false`; diagnostic checks may run, but their PASS cannot satisfy the gate. Explicit non-Git callers may provide changed paths for fingerprinted comparison.
 
 Each lifecycle record carries a `phase` (`claim`, `release`, or `block`). The authoritative scope baseline for an unfinished task is the earliest `claim` record, not the newest. `release` and `block` append handoff snapshots (HEAD and dirty fingerprints); a reclaim appends a new `claim` marker but never rebases the authoritative baseline, so `release -> reclaim` cannot turn task-created work into `preExistingFiles`. When a reclaim is detected, `readTaskBaseline` checks lineage: if HEAD advanced beyond the authoritative baseline without a matching handoff, or working-tree changes appeared since the handoff, the baseline is `intervening` and scope comparison fails closed (`comparisonKnown=false`) with an explicit diagnostic instead of laundering the task's old changes or blindly attributing unrelated intervening work. Legacy files with multiple unphased claim records deterministically select the earliest record. A released task that is never reclaimed stays `clean`, and a different owner may reclaim while preserving the same authoritative baseline and `baselineId`.
 
 `verifyTask` exposes machine-readable attribution with `baselineId`, `attributedFiles`, `preExistingFiles`, `bookkeepingFiles`, and diagnostics. No-git or unavailable-HEAD work remains supported but reports limited attribution instead of claiming certainty.
 
-### Externally-observed manual and live evidence
+### Externally observed manual, live, and benchmark evidence
 
 `apk task verify` never infers a pass for a manual or `live` check; those remain `unavailable`. When such a required check can only be observed outside APK, the task owner records the observed outcome explicitly:
 
@@ -265,7 +291,7 @@ pnpm exec apk task verify 0075 --record --owner <task-owner> \
   --evidence "https://ci.example/runs/42 status=success sha=abc123"
 ```
 
-Recording validates a registered owner that matches the current task owner while the task is `doing` or `review`, an existing check declared `manual`, `environment: live`, or `environment: ci`, an explicit bounded (240-character) evidence reference, and `--result pass|fail`. It captures the current baseline/candidate subject and appends a typed, candidate-bound, gate-eligible evidence record through the same append lock, freshness, and completion-gate path as executed checks. A `manual`/`live` record is typed `live` or `manual`; an `environment: ci` record is typed `ci`. A check declares exactly the evidence category its verifier emits (`report` > `live` > `manual` > `ci`), so a required `manual`+`live` check declares `live` and its recorded result satisfies both the required per-check pass and the `live` category. Local automated checks are rejected and must be run with `apk task verify`. An unregistered or non-owner agent, a missing reference, or an unknown/local-only check fails closed. Record after the final verification run: for `manual`/`live` checks a later `apk task verify` appends a fresh `unavailable` record that shadows the observation until it is recorded again, while a later local diagnostic of an `environment: ci` check stays non-gate-eligible and never shadows a current hosted `ci` PASS.
+Recording validates a registered owner that matches the current task owner while the task is `doing` or `review`, an existing check declared `manual`, `environment: live`, `environment: ci`, or `evidenceType: "benchmark"`, an explicit bounded (240-character) evidence reference, and `--result pass|fail`. It captures the current baseline/candidate subject and appends a typed, candidate-bound evidence record through the same append lock, freshness, and completion-gate path as executed checks. A `manual`/`live` record is typed `live` or `manual`; an `environment: ci` record is typed `ci`; an explicitly benchmark-declared check is typed `benchmark`. Records are gate-eligible only when candidate comparison is known and remains stable during recording. A check declares exactly the evidence category its verifier emits, so a required `manual`+`live` check declares `live` and one recorded observation satisfies both the per-check pass and `live` category. Ordinary local automated checks are rejected and must be run with `apk task verify`. An unregistered or non-owner agent, a missing reference, or an unknown/local-only check fails closed. Record after the final verification run: for `manual`/`live` checks a later `apk task verify` appends a fresh `unavailable` record that shadows the observation until it is recorded again, while a later local diagnostic of an `environment: ci` check stays non-gate-eligible and never shadows a current hosted `ci` PASS.
 
 ## Effective task policy
 
@@ -273,7 +299,7 @@ Recording validates a registered owner that matches the current task owner while
 
 - Low risk requires at least one required automated verification check and `none` assurance; no separate semantic reviewer is required.
 - Medium risk adds scope checking and `self-check` assurance. An ordinary medium task needs no separate reviewer and never consumes frontier review capacity.
-- High risk adds scope checking and `fresh-context` assurance: a separate isolated context reviews the exact candidate (it may use the same model family), plus declared evidence categories. Missing categories are blocking until declared by structured verification checks (`profile: report`, `environment: live`, `type: manual`, `artifact`, or `evidence`).
+- High risk adds scope checking and `fresh-context` assurance: a separate isolated context reviews the exact candidate (it may use the same model family), plus declared evidence categories. Missing categories are blocking until declared by structured verification checks (`profile: report`, `environment: live`, `type: manual`, `evidenceType: benchmark`, `artifact`, or `evidence`).
 - Critical risk requires `independent` assurance, with `diverse` preferred or allowed when policy raises it.
 - Classification tags and stable escalation triggers raise canonical assurance monotonically: `security`/`auth` and `release`/`integration` raise to `independent`; `migration`, `async`/`worker`, `api`, large semantic diffs, weak tests, invariant changes, worker/reviewer uncertainty, unexpected scope, and repeated deterministic failures raise to `fresh-context`. Tag rules also declare evidence categories: `deployment` and `release` require live evidence; `benchmark` and `evaluation` require benchmark evidence; `provider` and `integration` require report evidence. A category declared only by optional checks creates no requirement and never cancels a matching tag requirement; required categories remain fail-closed until declared by a required check and satisfied by current passing evidence.
 - Legacy `independentReview`/`reviewLevel` fields are a projection of canonical assurance, not a second policy engine: `none`/`self-check` require no independent semantic review, `fresh-context` requires a separate isolated reviewer at the lightweight level, and `independent`/`diverse` require independent review.

@@ -668,6 +668,62 @@ test("task policy requires declared high-risk evidence and explains tags", () =>
   assert.match(renderTaskPolicy(release), /independent review: independent/);
 });
 
+test("benchmark templates explicitly declare a satisfiable benchmark evidence category", () => {
+  const template = getTaskTemplate("benchmark");
+  const benchmark = {
+    ...TASK,
+    type: "benchmark",
+    risk: "high" as const,
+    tags: [],
+    verification: template.verification,
+    verificationCommands: [],
+  };
+  const policy = resolveTaskPolicy(benchmark);
+
+  assert.deepEqual(policy.requirements.evidenceCategories, ["benchmark"]);
+  assert.deepEqual(policy.declaredEvidenceCategories, ["benchmark"]);
+  assert.deepEqual(policy.blockers, []);
+  assert.ok(policy.reasons.some((reason) => reason.includes("benchmark-run") && reason.includes("benchmark evidence")));
+  assert.match(renderTaskPolicy(policy), /Declared evidence: benchmark/);
+  assert.match(renderTaskPolicy(policy), /benchmark-run explicitly declares benchmark evidence/);
+  assert.equal(parseTaskMarkdown(renderTaskMarkdown(benchmark)).verification?.[0].evidenceType, "benchmark");
+});
+
+test("ordinary benchmark task verification preserves the v0.4.6 unsatisfiable-category reproducer", () => {
+  const policy = resolveTaskPolicy({
+    ...TASK,
+    type: "benchmark",
+    risk: "low",
+    tags: [],
+    verificationCommands: [],
+    verification: [{
+      id: "ordinary-tests",
+      type: "automated",
+      required: true,
+      environment: "local",
+      profile: "deterministic",
+      command: "pnpm test",
+    }],
+  });
+
+  assert.deepEqual(policy.requirements.evidenceCategories, ["benchmark"]);
+  assert.deepEqual(policy.declaredEvidenceCategories, []);
+  assert.ok(policy.blockers.some((blocker) => blocker === "Evidence category benchmark is required but not declared."));
+});
+
+test("benchmark evidence declarations reject unsupported types and non-automated environments", () => {
+  for (const check of [
+    { id: "bad-type", type: "automated", required: true, environment: "local", profile: "report", command: "pnpm test", evidenceType: "report" },
+    { id: "manual", type: "manual", required: true, environment: "local", profile: "report", instruction: "Measure it.", evidenceType: "benchmark" },
+    { id: "ci", type: "automated", required: true, environment: "ci", profile: "report", command: "pnpm benchmark", evidenceType: "benchmark" },
+  ]) {
+    assert.throws(
+      () => parseTaskMarkdown(renderTaskMarkdown({ ...TASK, verification: [check as NonNullable<ProjectTask["verification"]>[number]], verificationCommands: [] })),
+      TaskFormatError,
+    );
+  }
+});
+
 test("optional checks never cancel tag evidence requirements", () => {
   const deployment = resolveTaskPolicy({
     ...TASK,
@@ -2600,6 +2656,247 @@ async function setupHostedCiRepo(directory: string): Promise<void> {
   await registerAgent(directory, { id: "codex-a", developer: "alice", platform: "codex", model: "gpt-5" });
   await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a" });
 }
+
+async function setupBenchmarkRepo(
+  directory: string,
+  verification: NonNullable<ProjectTask["verification"]> = [{
+    id: "benchmark-run",
+    type: "automated",
+    required: true,
+    environment: "local",
+    profile: "report",
+    command: "benchmark",
+    evidenceType: "benchmark",
+  }],
+  type = "benchmark",
+  tags = ["benchmark"],
+): Promise<void> {
+  const git = async (...args: string[]) => {
+    await execFileAsync("git", args, { cwd: directory });
+  };
+  await git("init", "--quiet");
+  await git("config", "user.email", "codex@example.test");
+  await git("config", "user.name", "Codex");
+  await mkdir(join(directory, ".tasks"), { recursive: true });
+  await mkdir(join(directory, "src", "benchmark"), { recursive: true });
+  await writeFile(join(directory, "src", "benchmark", "fixture.ts"), "export const fixture = 1;\n", "utf8");
+  await writeTaskFile(join(directory, ".tasks", "0007-benchmark-task.md"), {
+    ...TASK,
+    type,
+    state: "todo",
+    owner: "none",
+    mode: "product",
+    lane: "benchmark",
+    risk: "low",
+    dependsOn: [],
+    tags,
+    allowedFiles: ["src/benchmark/**"],
+    forbiddenFiles: [],
+    verificationCommands: [],
+    verification,
+  });
+  await git("add", ".");
+  await git("commit", "--quiet", "-m", "initial");
+  await registerAgent(directory, { id: "codex-a", developer: "alice", platform: "codex", model: "gpt-5" });
+  await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a" });
+}
+
+test("explicit benchmark execution writes typed current evidence and satisfies the gate", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupBenchmarkRepo(directory);
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      runCommand: async () => 0,
+    });
+    const evidence = await readTaskEvidence(directory, "0007");
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+
+    assert.equal(verification.passed, true);
+    assert.equal(verification.checkResults[0].evidenceType, "benchmark");
+    assert.match(renderTaskVerifyResult(verification), /evidence=benchmark/);
+    assert.equal(evidence[0].type, "benchmark");
+    assert.equal(evidence[0].result, "pass");
+    assert.equal(evidence[0].gateEligible, true);
+    assert.equal(gate.passed, true, gate.blockers.join("; "));
+    assert.equal(gate.verification[0].evidenceType, "benchmark");
+    assert.match(renderTaskCompletionGate(gate), /evidenceType=benchmark/);
+    assert.deepEqual(gate.policy.declaredEvidenceCategories, ["benchmark"]);
+  });
+});
+
+test("external benchmark recording uses the declared check and current candidate", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupBenchmarkRepo(directory);
+    const recorded = await recordManualVerification({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      checkId: "benchmark-run",
+      result: "pass",
+      evidence: "https://benchmark.example/runs/42 status=success",
+    });
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+
+    assert.equal(recorded.type, "benchmark");
+    assert.equal(recorded.gateEligible, true);
+    assert.equal(recorded.subject.candidateId, gate.subject.candidateId);
+    assert.equal(recorded.subject.repository, "git");
+    assert.ok(recorded.subject.headSha);
+    assert.notEqual(recorded.subject.baselineId, "unknown");
+    assert.ok(recorded.subject.worktreeId);
+    assert.match(renderRecordManualVerificationResult(recorded), /Type: benchmark/);
+    assert.equal(gate.passed, true, gate.blockers.join("; "));
+  });
+});
+
+test("benchmark fail, unavailable, pending, and not-run results never satisfy the gate", async () => {
+  for (const result of ["fail", "unavailable", "pending", "not-run"] as const) {
+    await withTempDirectory(async (directory) => {
+      await setupBenchmarkRepo(directory);
+      const candidate = await captureTaskCompletionCandidate({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+      });
+      await appendTaskEvidence(directory, {
+        taskId: "0007",
+        runId: `benchmark-${result}`,
+        agent: "codex-a",
+        gateEligible: true,
+        type: "benchmark",
+        result,
+        subject: candidate.subject,
+        checkId: "benchmark-run",
+        profile: "report",
+        evidence: "https://benchmark.example/runs/result",
+      });
+      const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+
+      assert.equal(gate.passed, false, result);
+      assert.equal(gate.verification[0].result, result, result);
+      assert.ok(gate.blockers.some((blocker) => blocker.includes("benchmark")), result);
+    });
+  }
+});
+
+test("benchmark evidence is stale after the candidate changes and cannot pass", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupBenchmarkRepo(directory);
+    await recordManualVerification({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      checkId: "benchmark-run",
+      result: "pass",
+      evidence: "https://benchmark.example/runs/old status=success",
+    });
+    await writeFile(join(directory, "src", "benchmark", "fixture.ts"), "export const fixture = 2;\n", "utf8");
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+
+    assert.equal(gate.passed, false);
+    assert.equal(gate.verification[0].result, "missing");
+    assert.ok(gate.blockers.some((blocker) => blocker.includes("another candidate revision")));
+    assert.ok(gate.blockers.some((blocker) => blocker.includes("another candidate revision") && blocker.includes("benchmark")));
+  });
+});
+
+test("benchmark evidence type rejects report/manual/live/artifact and text masquerading", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupBenchmarkRepo(directory);
+    const candidate = await captureTaskCompletionCandidate({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+    });
+    for (const [index, type] of (["automated-test", "ci", "report", "manual", "live", "dogfood"] as const).entries()) {
+      await appendTaskEvidence(directory, {
+        taskId: "0007",
+        runId: `masquerade-${type}`,
+        agent: "codex-a",
+        gateEligible: true,
+        type,
+        result: "pass",
+        subject: candidate.subject,
+        checkId: "benchmark-run",
+        profile: "report",
+        ...(index === 1 ? { artifact: "reports/benchmark.json" } : {}),
+        summary: "benchmark passed",
+        evidence: "benchmark output",
+        ...(type === "dogfood" ? {
+          scenario: "compare fixture",
+          tool: "benchmark-runner",
+          taskGoal: "measure planner latency",
+          startedAt: "2026-09-25T00:00:00.000Z",
+          endedAt: "2026-09-25T00:00:01.000Z",
+        } : {}),
+      });
+    }
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+
+    assert.equal(gate.passed, false);
+    assert.equal(gate.verification[0].result, "missing");
+    assert.ok(gate.blockers.some((blocker) => blocker.includes("missing verification evidence for check benchmark-run")));
+    assert.ok(gate.blockers.some((blocker) => blocker === "Missing current benchmark evidence."));
+  });
+});
+
+test("benchmark candidate mutation during execution converts the result to a non-pass", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupBenchmarkRepo(directory);
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      runCommand: async () => {
+        await writeFile(join(directory, "src", "benchmark", "fixture.ts"), "export const fixture = 3;\n", "utf8");
+        return 0;
+      },
+    });
+    const evidence = await readTaskEvidence(directory, "0007");
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+
+    assert.equal(verification.passed, false);
+    assert.equal(verification.checkResults[0].status, "fail");
+    assert.match(verification.checkResults[0].reason ?? "", /mixed-revision/);
+    assert.equal(evidence[0].type, "benchmark");
+    assert.equal(evidence[0].result, "fail");
+    assert.equal(evidence[0].gateEligible, false);
+    assert.equal(gate.passed, false);
+  });
+});
+
+test("ordinary benchmark-like command text remains automated-test evidence", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupBenchmarkRepo(directory, [{
+      id: "unit",
+      type: "automated",
+      required: true,
+      environment: "local",
+      profile: "deterministic",
+      command: "pnpm benchmark",
+    }], "bugfix", []);
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      runCommand: async () => 0,
+    });
+    const evidence = await readTaskEvidence(directory, "0007");
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+
+    assert.equal(verification.passed, true);
+    assert.equal(verification.checkResults[0].evidenceType, undefined);
+    assert.equal(evidence[0].type, "automated-test");
+    assert.equal(gate.passed, true, gate.blockers.join("; "));
+  });
+});
 
 test("required environment ci checks declare the ci evidence category", () => {
   const policy = resolveTaskPolicy({

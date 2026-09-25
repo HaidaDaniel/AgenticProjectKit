@@ -259,6 +259,13 @@ function parseVerificationCheck(value, checkNumber, issues) {
     const instruction = parseVerificationString(raw.instruction, "instruction", checkNumber, issues);
     const artifact = parseVerificationString(raw.artifact, "artifact", checkNumber, issues);
     const evidence = parseVerificationString(raw.evidence, "evidence", checkNumber, issues);
+    const evidenceType = parseVerificationString(raw.evidenceType, "evidenceType", checkNumber, issues);
+    if (evidenceType !== undefined && evidenceType !== "benchmark") {
+        addVerificationIssue(issues, checkNumber, 'evidenceType must be "benchmark" when provided.');
+    }
+    if (evidenceType === "benchmark" && (type !== "automated" || (environment !== "local" && environment !== "static"))) {
+        addVerificationIssue(issues, checkNumber, 'evidenceType "benchmark" requires an automated check in a local or static environment.');
+    }
     if (type === "automated" && !command) {
         addVerificationIssue(issues, checkNumber, "automated checks require command.");
     }
@@ -274,6 +281,7 @@ function parseVerificationCheck(value, checkNumber, issues) {
         required: parseVerificationBoolean(raw.required, checkNumber, issues),
         environment: environment,
         profile: profile,
+        ...(evidenceType === "benchmark" ? { evidenceType } : {}),
         ...(command ? { command } : {}),
         ...(instruction ? { instruction } : {}),
         ...(artifact ? { artifact } : {}),
@@ -1533,6 +1541,9 @@ function verifyNextStep(result) {
     return "move task to review or done with a registered owner";
 }
 function verificationEvidenceType(check, externallyObserved = false) {
+    if (check.evidenceType === "benchmark") {
+        return "benchmark";
+    }
     if (check.profile === "report") {
         return "report";
     }
@@ -1657,6 +1668,7 @@ export async function verifyTask(options) {
         checkResults.push({
             id: check.id,
             type: check.type,
+            ...(check.evidenceType ? { evidenceType: check.evidenceType } : {}),
             required: check.required,
             status,
             ...(check.command ? { command: check.command } : {}),
@@ -1808,7 +1820,7 @@ export function renderTaskVerifyResult(result) {
     }
     lines.push("Checks:");
     for (const check of result.checkResults) {
-        lines.push(`  - ${check.status} ${check.id}${check.required ? " (required)" : " (optional)"}${check.reason ? `: ${check.reason}` : ""}`);
+        lines.push(`  - ${check.status} ${check.id}${check.required ? " (required)" : " (optional)"}${check.evidenceType ? ` evidence=${check.evidenceType}` : ""}${check.reason ? `: ${check.reason}` : ""}`);
     }
     lines.push(`Evidence: ${result.evidenceWritten} record(s)`);
     lines.push(`Result: ${result.passed ? "pass" : "fail"}`);
@@ -1822,10 +1834,10 @@ export async function recordManualVerification(options) {
     const { task } = await loadTaskFile(taskPath);
     const ownerAgent = await requireAgent(options.rootDirectory, options.owner);
     if (task.state !== "doing" && task.state !== "review") {
-        throw new Error(`Task ${task.id} is ${task.state}; manual evidence can only be recorded while doing or review.`);
+        throw new Error(`Task ${task.id} is ${task.state}; external verification evidence can only be recorded while doing or review.`);
     }
     if (task.owner !== ownerAgent.id) {
-        throw new Error(`Task ${task.id} is owned by ${task.owner}, not ${ownerAgent.id}; only the task owner can record manual evidence.`);
+        throw new Error(`Task ${task.id} is owned by ${task.owner}, not ${ownerAgent.id}; only the task owner can record verification evidence.`);
     }
     const checkId = options.checkId.trim();
     if (checkId.length === 0) {
@@ -1835,12 +1847,15 @@ export async function recordManualVerification(options) {
     if (!check) {
         throw new Error(`Task ${task.id} has no verification check ${checkId}.`);
     }
-    const externallyObservable = check.type === "manual" || check.environment === "live" || check.environment === "ci";
+    const externallyObservable = check.type === "manual"
+        || check.environment === "live"
+        || check.environment === "ci"
+        || check.evidenceType === "benchmark";
     if (!externallyObservable) {
         throw new Error(`Verification check ${checkId} is a local automated check and cannot be recorded externally; run apk task verify.`);
     }
     if (options.result !== "pass" && options.result !== "fail") {
-        throw new Error("Manual verification result must be pass or fail.");
+        throw new Error("External verification result must be pass or fail.");
     }
     const evidence = options.evidence.trim();
     if (evidence.length === 0) {
@@ -1860,9 +1875,26 @@ export async function recordManualVerification(options) {
     const subject = baseline
         ? { ...captured, baselineId: baseline.baselineId }
         : captured;
-    const gateEligible = snapshot.comparisonKnown
+    let gateEligible = snapshot.comparisonKnown
         && snapshot.outOfScopeFiles.length === 0
         && snapshot.forbiddenTouchedFiles.length === 0;
+    if (check.evidenceType === "benchmark") {
+        const finalSnapshot = await captureTaskScope({
+            rootDirectory: options.rootDirectory,
+            task,
+            taskPath,
+            baseline,
+        });
+        const finalCaptured = await captureTaskEvidenceSubject(options.rootDirectory, task, finalSnapshot.changedFiles);
+        const finalSubject = baseline
+            ? { ...finalCaptured, baselineId: baseline.baselineId }
+            : finalCaptured;
+        gateEligible = gateEligible
+            && finalSnapshot.comparisonKnown
+            && finalSnapshot.outOfScopeFiles.length === 0
+            && finalSnapshot.forbiddenTouchedFiles.length === 0
+            && sameTaskEvidenceSubject(subject, finalSubject);
+    }
     const runId = `record-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const record = await appendTaskEvidence(options.rootDirectory, {
         taskId: task.id,

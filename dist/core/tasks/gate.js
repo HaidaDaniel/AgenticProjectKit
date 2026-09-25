@@ -148,7 +148,8 @@ export async function evaluateTaskCompletionGate(options) {
         const checkRecords = records.filter((record) => (record.type !== "review" &&
             record.type !== "completion" &&
             isGateEligibleEvidence(record, registeredAgents) &&
-            record.checkId === check.id));
+            record.checkId === check.id &&
+            (check.evidenceType !== "benchmark" || record.type === "benchmark")));
         const selected = currentRecord(checkRecords, subject);
         if (!selected.record) {
             const otherCandidate = checkRecords.find((record) => isOtherCandidate(record, subject));
@@ -160,6 +161,7 @@ export async function evaluateTaskCompletionGate(options) {
             verification.push({
                 checkId: check.id,
                 required: true,
+                ...(check.evidenceType ? { evidenceType: check.evidenceType } : {}),
                 result: "missing",
                 freshness: selected.freshness,
                 reason,
@@ -171,6 +173,7 @@ export async function evaluateTaskCompletionGate(options) {
         verification.push({
             checkId: check.id,
             required: true,
+            ...(check.evidenceType ? { evidenceType: check.evidenceType } : {}),
             result,
             freshness: selected.freshness,
             evidenceId: selected.record.id,
@@ -359,7 +362,7 @@ export function renderTaskCompletionGate(result) {
         `Policy blockers: ${result.policy.blockers.length}`,
         "Verification:",
         ...(result.verification.length > 0
-            ? result.verification.map((check) => `  - ${check.checkId}: ${check.result} (${check.freshness})${check.evidenceId ? ` evidence=${check.evidenceId}` : ""}`)
+            ? result.verification.map((check) => `  - ${check.checkId}: ${check.result} (${check.freshness})${check.evidenceType ? ` evidenceType=${check.evidenceType}` : ""}${check.evidenceId ? ` evidence=${check.evidenceId}` : ""}`)
             : ["  - none"]),
         `Review: ${result.review.reason}${result.review.evidenceId ? ` evidence=${result.review.evidenceId}` : ""}`,
         ...(result.review.budget ? [`Review budget: max=${result.review.budget.maxReviewPasses}; used=${result.review.budget.passesUsed}; granted=${result.review.budget.grantedPasses}; effective=${result.review.budget.effectiveMaxReviewPasses}; exhausted=${result.review.budget.exhausted}`] : []),

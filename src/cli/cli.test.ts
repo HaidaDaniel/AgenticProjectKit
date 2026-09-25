@@ -3933,12 +3933,64 @@ test("CLI task create supports typed domain templates with correctness guardrail
       assert.match(content, new RegExp(`^Type: ${type}$`, "m"));
       assert.match(content, /## Verification/);
       assert.doesNotMatch(content, /## Verification commands/);
+      if (type === "benchmark") {
+        assert.match(content, /"evidenceType":"benchmark"/);
+        assert.match(content, /"command":"pnpm benchmark"/);
+      }
       if (guardedTypes.has(type)) {
         assert.match(content, /## Correctness assumptions/);
         assert.match(content, /## Counterexample searches/);
       }
     });
   }
+});
+
+test("CLI records externally observed benchmark evidence through the declared check", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    const created = await runCli([
+      "task", "create",
+      "--type", "benchmark",
+      "--title", "CLI Benchmark Evidence",
+      "--scope", "benchmark",
+      "--allowed", ".tasks/0001-cli-benchmark-evidence.md",
+      "--verification-json", JSON.stringify([{
+        id: "benchmark-run",
+        type: "automated",
+        required: true,
+        environment: "local",
+        profile: "report",
+        command: "pnpm benchmark",
+        evidenceType: "benchmark",
+      }]),
+    ], directory);
+    assert.equal(created.exitCode, 0, created.stderr);
+    const policy = await runCli(["task", "policy", "0001"], directory);
+    assert.equal(policy.exitCode, 0, policy.stderr);
+    assert.match(policy.stdout, /Declared evidence: benchmark/);
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await runCli(["agent", "register", "--id", "codex-a", "--platform", "codex", "--model", "gpt"], directory);
+    await runCli(["claim", "0001", "--owner", "codex-a"], directory);
+
+    const recorded = await runCli([
+      "task", "verify", "0001", "--record", "--owner", "codex-a",
+      "--check", "benchmark-run", "--result", "pass",
+      "--evidence", "https://benchmark.example/runs/42 status=success",
+    ], directory);
+    assert.equal(recorded.exitCode, 0, recorded.stderr);
+    assert.match(recorded.stdout, /Type: benchmark/);
+    assert.match(recorded.stdout, /Gate-eligible: yes/);
+
+    const evidence = await runCli(["task", "evidence", "0001"], directory);
+    assert.equal(evidence.exitCode, 0, evidence.stderr);
+    assert.match(evidence.stdout, /pass benchmark agent=codex-a check=benchmark-run/);
+  });
 });
 
 test("CLI task create accepts template aliases and overrides typed guardrails", async () => {
