@@ -1,6 +1,6 @@
 # Task 0145 - Preserve multiline task list items across parse-render round-trips
 
-State: doing
+State: review
 Owner: codex-public-readiness-20260925
 Mode: maintenance
 Lane: task-system
