@@ -374,6 +374,36 @@ test("plain legacy prose in a list section is preserved as one item", () => {
   assert.match(renderTaskMarkdown(parsed), /## Notes\n\n- None\./);
 });
 
+test("unsupported task section headings fail parsing and mutation without changing task bytes", async () => {
+  const heading = "## implementation detail\n\nThis contract text must not be discarded.";
+  const source = `${renderTaskMarkdown(TASK)}\n${heading}\n`;
+  assert.throws(() => parseTaskMarkdown(source), /Unsupported task section heading/);
+
+  const repeatedSection = renderTaskMarkdown(TASK).replace(
+    "## Notes\n\n",
+    "## Goal\n\nThis duplicate section must not replace the original Goal.\n\n## Notes\n\n",
+  );
+  assert.throws(() => parseTaskMarkdown(repeatedSection), /Duplicate task section heading/);
+
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    const taskPath = join(directory, ".tasks", "0007-scoped-task.md");
+    const malformed = `${await readFile(taskPath, "utf8")}\n${heading}\n`;
+    await writeFile(taskPath, malformed, "utf8");
+
+    await assert.rejects(
+      () => claimTask({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        owner: "agent-a",
+      }),
+      /Unsupported task section heading/,
+    );
+    assert.equal(await readFile(taskPath, "utf8"), malformed);
+  });
+});
+
 test("structured verification survives canonical task round trip", () => {
   const task: ProjectTask = {
     ...TASK,

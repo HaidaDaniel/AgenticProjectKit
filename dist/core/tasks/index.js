@@ -339,8 +339,9 @@ function readRequiredMetadata(lines, label, issues) {
     }
     return value;
 }
-function parseSections(lines) {
+function parseSections(lines, issues) {
     const sections = {};
+    const seenSections = new Set();
     let current;
     let buffer = [];
     function flush() {
@@ -355,10 +356,24 @@ function parseSections(lines) {
             sections[current] = sectionLines.join("\n");
         }
     }
-    for (const line of lines) {
+    for (const [index, line] of lines.entries()) {
         if (line.startsWith("## ")) {
             flush();
-            current = SECTION_TITLES[line.slice(3).trim()];
+            const title = line.slice(3).trim();
+            const section = SECTION_TITLES[title];
+            if (!section) {
+                const boundedTitle = title.length > 80 ? `${title.slice(0, 77)}...` : title;
+                issues.push(`Unsupported task section heading at line ${index + 1}: ${JSON.stringify(boundedTitle)}.`);
+                current = undefined;
+            }
+            else if (seenSections.has(section)) {
+                issues.push(`Duplicate task section heading at line ${index + 1}: ${JSON.stringify(title)}.`);
+                current = undefined;
+            }
+            else {
+                seenSections.add(section);
+                current = section;
+            }
             buffer = [];
             continue;
         }
@@ -419,7 +434,7 @@ export function parseTaskMarkdown(markdown) {
     const dependsOnValue = readRequiredMetadata(lines, "Depends on", issues);
     const state = requireOneOf(stateValue, TASK_STATES, "State", issues);
     const mode = requireOneOf(modeValue, TASK_MODES, "Mode", issues);
-    const sections = parseSections(lines);
+    const sections = parseSections(lines, issues);
     const scope = lines.some((line) => line.startsWith("Scope:"))
         ? parseCsv(readRequiredMetadata(lines, "Scope", issues))
         : [];
