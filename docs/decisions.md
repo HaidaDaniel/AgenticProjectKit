@@ -1227,7 +1227,7 @@ Decision:
 
 Preserve multiline Markdown list items in prose-oriented task sections with a bounded indentation grammar. Peer list markers use the shallowest marker indentation in the section. A continuation is indented at least two columns farther; nested markers and fenced/code-like lines at that indentation remain content of the current item. One blank line before a continuation represents a paragraph break; blank lines between peer markers are separators. `Steps` remains on its separate ordered parser.
 
-Context/path lists and structured Verification records remain single-line. Their unsupported continuation forms fail during parse/render before a task mutation can write the contract. Unknown and duplicate `##` section headings also fail closed, since the parser cannot safely preserve text under unsupported or repeated section boundaries. Legacy Verification commands may use the same indented continuation form to preserve multiline shell commands, while structured verification continues to require one JSON object per physical list line. Prose-only legacy sections without list markers are preserved as one item. This does not introduce a general Markdown parser or change task policy semantics.
+Context/path lists and structured Verification records remain single-line. Their unsupported continuation forms fail during parse/render before a task mutation can write the contract. Unknown and duplicate `##` section headings, tab-separated section boundaries, and unsupported Markdown headings before the first supported section also fail closed, since the parser cannot safely preserve text under boundaries it does not understand. Legacy Verification commands may use the same indented continuation form to preserve multiline shell commands, while structured verification continues to require one JSON object per physical list line. Prose-only legacy sections without list markers are preserved as one item. This does not introduce a general Markdown parser or change task policy semantics.
 
 Reason:
 
@@ -1235,7 +1235,7 @@ Reason:
 
 Implementation and invariant:
 
-The canonical parser preserves continuation text in one semantic list item. The renderer emits deterministic two-space continuation indentation and ignores only peer-separator/trailing blank lines. More than one blank line before a continuation, unindented free text after a list begins, invalid indentation, unknown or duplicate section headings, multiline paths, and multiline structured verification entries produce bounded task-format errors before mutation. Rendered task files remain parse-render-parse stable for the supported subset.
+The canonical parser preserves continuation text in one semantic list item. The renderer emits deterministic two-space continuation indentation and ignores only peer-separator/trailing blank lines. More than one blank line before a continuation, unindented free text after a list begins, invalid indentation, unknown or duplicate section headings, unsupported heading forms before the first section, multiline paths, and multiline structured verification entries produce bounded task-format errors before mutation. Rendered task files remain parse-render-parse stable for the supported subset.
 
 Reference:
 

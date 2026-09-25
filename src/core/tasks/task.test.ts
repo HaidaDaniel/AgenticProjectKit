@@ -379,6 +379,12 @@ test("unsupported task section headings fail parsing and mutation without changi
   const source = `${renderTaskMarkdown(TASK)}\n${heading}\n`;
   assert.throws(() => parseTaskMarkdown(source), /Unsupported task section heading/);
 
+  const tabSeparatedHeading = renderTaskMarkdown(TASK).replace(
+    "## Goal\n\n",
+    "##\timplementation detail\n\n- This text precedes the first supported section.\n\n## Goal\n\n",
+  );
+  assert.throws(() => parseTaskMarkdown(tabSeparatedHeading), /Unsupported task section heading/);
+
   const repeatedSection = renderTaskMarkdown(TASK).replace(
     "## Notes\n\n",
     "## Goal\n\nThis duplicate section must not replace the original Goal.\n\n## Notes\n\n",
@@ -388,7 +394,8 @@ test("unsupported task section headings fail parsing and mutation without changi
   await withTempDirectory(async (directory) => {
     await setupReclaimRepo(directory);
     const taskPath = join(directory, ".tasks", "0007-scoped-task.md");
-    const malformed = `${await readFile(taskPath, "utf8")}\n${heading}\n`;
+    const original = await readFile(taskPath, "utf8");
+    const malformed = `${original}\n${heading}\n`;
     await writeFile(taskPath, malformed, "utf8");
 
     await assert.rejects(
@@ -401,6 +408,22 @@ test("unsupported task section headings fail parsing and mutation without changi
       /Unsupported task section heading/,
     );
     assert.equal(await readFile(taskPath, "utf8"), malformed);
+
+    const tabMalformed = original.replace(
+      "## Goal\n\n",
+      "##\timplementation detail\n\n- This text precedes the first supported section.\n\n## Goal\n\n",
+    );
+    await writeFile(taskPath, tabMalformed, "utf8");
+    await assert.rejects(
+      () => claimTask({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        owner: "agent-a",
+      }),
+      /Unsupported task section heading/,
+    );
+    assert.equal(await readFile(taskPath, "utf8"), tabMalformed);
   });
 });
 

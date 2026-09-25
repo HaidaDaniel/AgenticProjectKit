@@ -562,14 +562,19 @@ function parseSections(lines: readonly string[], issues: string[]): Partial<Reco
     }
   }
 
+  function reportUnsupportedHeading(lineNumber: number, title: string): void {
+    const boundedTitle = title.length > 80 ? `${title.slice(0, 77)}...` : title;
+    issues.push(`Unsupported task section heading at line ${lineNumber}: ${JSON.stringify(boundedTitle)}.`);
+  }
+
   for (const [index, line] of lines.entries()) {
+    const markdownHeading = /^( {0,3})(#{1,6})(?:[ \t]+|$)(.*)$/.exec(line);
     if (line.startsWith("## ")) {
       flush();
       const title = line.slice(3).trim();
       const section = SECTION_TITLES[title];
       if (!section) {
-        const boundedTitle = title.length > 80 ? `${title.slice(0, 77)}...` : title;
-        issues.push(`Unsupported task section heading at line ${index + 1}: ${JSON.stringify(boundedTitle)}.`);
+        reportUnsupportedHeading(index + 1, title);
         current = undefined;
       } else if (seenSections.has(section)) {
         issues.push(`Duplicate task section heading at line ${index + 1}: ${JSON.stringify(title)}.`);
@@ -578,6 +583,15 @@ function parseSections(lines: readonly string[], issues: string[]): Partial<Reco
         seenSections.add(section);
         current = section;
       }
+      buffer = [];
+      continue;
+    }
+
+    if (line.startsWith("##\t") || (!current && index > 0 && markdownHeading)) {
+      reportUnsupportedHeading(index + 1, line.startsWith("##\t")
+        ? line.slice(3).trim()
+        : markdownHeading?.[3]?.trim() ?? "");
+      current = undefined;
       buffer = [];
       continue;
     }
