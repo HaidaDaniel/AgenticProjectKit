@@ -200,18 +200,121 @@ function requireOneOf<T extends string>(
   return allowed[0];
 }
 
-function parseList(text: string): string[] {
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => /^-\s+/.test(line) || /^\d+\.\s+/.test(line))
-    .map((line) => (
-      /^\d+\.\s+/.test(line)
-        ? line.replace(/^\d+\.\s+/, "")
-        : line.replace(/^-\s+/, "")
-    ).trim())
-    .map((line) => line.replace(/^`(.+)`$/, "$1"))
-    .filter((line) => line.length > 0);
+type ListParseMode = "prose" | "single-line";
+
+function indentationColumns(value: string): number {
+  let columns = 0;
+  for (const character of value) {
+    columns += character === "\t" ? 4 - (columns % 4) : 1;
+  }
+  return columns;
+}
+
+function removeIndentColumns(line: string, columnsToRemove: number): string {
+  let columns = 0;
+  let index = 0;
+  while (index < line.length && columns < columnsToRemove) {
+    const character = line[index];
+    if (character !== " " && character !== "\t") {
+      break;
+    }
+    columns += character === "\t" ? 4 - (columns % 4) : 1;
+    index += 1;
+  }
+
+  return `${" ".repeat(Math.max(0, columns - columnsToRemove))}${line.slice(index)}`;
+}
+
+function parseList(
+  text: string,
+  section: string,
+  mode: ListParseMode = "prose",
+): string[] {
+  const lines = text.split("\n");
+  const marker = (line: string): { indent: number; content: string } | undefined => {
+    const leading = /^[ \t]*/.exec(line)?.[0] ?? "";
+    const match = /^(?:-\s+|\d+\.\s+)(.*)$/.exec(line.slice(leading.length));
+    return match
+      ? { indent: indentationColumns(leading), content: match[1].trim() }
+      : undefined;
+  };
+  const markerIndents = lines
+    .map((line) => marker(line)?.indent)
+    .filter((indent): indent is number => indent !== undefined);
+  if (mode === "prose" && markerIndents.length === 0) {
+    const plainText = text.trim();
+    return plainText.length > 0 ? [plainText] : [];
+  }
+  const baseIndent = markerIndents.length > 0 ? Math.min(...markerIndents) : 0;
+  const items: string[] = [];
+  let current: string[] | undefined;
+  let pendingBlankLines = 0;
+
+  const fail = (lineNumber: number, reason: string): never => {
+    throw new TaskFormatError([`Section "${section}" line ${lineNumber} ${reason}`]);
+  };
+  const flush = (): void => {
+    if (!current) {
+      return;
+    }
+    const value = current.join("\n").trim();
+    const normalized = value.replace(/^`(.+)`$/, "$1").trim();
+    if (normalized.length > 0) {
+      items.push(normalized);
+    }
+    current = undefined;
+  };
+
+  lines.forEach((line, index) => {
+    const lineNumber = index + 1;
+    const parsedMarker = marker(line);
+    if (line.trim().length === 0) {
+      if (current) {
+        pendingBlankLines += 1;
+      }
+      return;
+    }
+
+    if (parsedMarker && parsedMarker.indent <= baseIndent) {
+      flush();
+      current = [parsedMarker.content];
+      pendingBlankLines = 0;
+      return;
+    }
+
+    if (mode === "single-line") {
+      fail(
+        lineNumber,
+        `must keep each ${section === "Verification" ? "JSON check" : "entry"} on a single physical list line; multiline continuation is unsupported.`,
+      );
+    }
+
+    if (!current) {
+      fail(lineNumber, "must start with a bullet or numbered list item.");
+    }
+    const currentItem = current!;
+
+    const leading = /^[ \t]*/.exec(line)?.[0] ?? "";
+    const indent = indentationColumns(leading);
+    if (indent < baseIndent + 2) {
+      fail(
+        lineNumber,
+        `has unsupported continuation indentation; indent continuation content at least two columns deeper than the shallowest list marker.`,
+      );
+    }
+    if (pendingBlankLines > 1) {
+      fail(lineNumber, "has more than one blank line before a continuation; use one blank line for a paragraph break.");
+    }
+
+    if (pendingBlankLines === 1) {
+      currentItem.push("");
+    }
+    currentItem.push(removeIndentColumns(line, baseIndent + 2));
+    pendingBlankLines = 0;
+  });
+
+  flush();
+  return items;
 }
 
 function parseSteps(text: string): string[] {
@@ -237,8 +340,21 @@ function renderCsv(items: readonly string[]): string {
   return items.length === 0 ? "none" : items.join(",");
 }
 
-function renderList(items: readonly string[]): string {
-  return items.map((item) => `- ${item}`).join("\n");
+function renderList(
+  items: readonly string[],
+  section: string,
+  mode: ListParseMode = "prose",
+): string {
+  return items.map((item) => {
+    if (mode === "single-line" && /[\r\n]/.test(item)) {
+      throw new TaskFormatError([`Section "${section}" must keep each entry on one physical list line.`]);
+    }
+
+    const lines = item.split(/\r\n|\n|\r/);
+    return lines
+      .map((line, index) => index === 0 ? `- ${line}` : line.length === 0 ? "" : `  ${line}`)
+      .join("\n");
+  }).join("\n");
 }
 
 function renderSteps(items: readonly string[]): string {
@@ -348,7 +464,7 @@ function parseStructuredVerification(
   text: string,
   issues: string[],
 ): TaskVerificationCheck[] {
-  const entries = parseList(text);
+  const entries = parseList(text, "Verification", "single-line");
   const checks: TaskVerificationCheck[] = [];
   const ids = new Set<string>();
 
@@ -434,7 +550,14 @@ function parseSections(lines: readonly string[]): Partial<Record<SectionKey, str
 
   function flush(): void {
     if (current) {
-      sections[current] = buffer.join("\n").trim();
+      const sectionLines = [...buffer];
+      while (sectionLines[0]?.trim().length === 0) {
+        sectionLines.shift();
+      }
+      while (sectionLines.at(-1)?.trim().length === 0) {
+        sectionLines.pop();
+      }
+      sections[current] = sectionLines.join("\n");
     }
   }
 
@@ -536,18 +659,18 @@ export function parseTaskMarkdown(markdown: string): ProjectTask {
   }
   const verification = hasStructuredVerification
     ? parseStructuredVerification(sections.verification ?? "", issues)
-    : normalizeVerificationCommands(parseList(sections.verificationCommands ?? ""));
+    : normalizeVerificationCommands(parseList(sections.verificationCommands ?? "", "Verification commands"));
   const verificationCommands = verificationCommandsFromChecks(verification);
   const optionalLists = {
     correctnessAssumptions: sections.correctnessAssumptions === undefined
       ? undefined
-      : parseList(sections.correctnessAssumptions),
-    invariants: sections.invariants === undefined ? undefined : parseList(sections.invariants),
-    requiredEvidence: sections.requiredEvidence === undefined ? undefined : parseList(sections.requiredEvidence),
-    reviewQuestions: sections.reviewQuestions === undefined ? undefined : parseList(sections.reviewQuestions),
+      : parseList(sections.correctnessAssumptions, "Correctness assumptions"),
+    invariants: sections.invariants === undefined ? undefined : parseList(sections.invariants, "Invariants"),
+    requiredEvidence: sections.requiredEvidence === undefined ? undefined : parseList(sections.requiredEvidence, "Required evidence"),
+    reviewQuestions: sections.reviewQuestions === undefined ? undefined : parseList(sections.reviewQuestions, "Review questions"),
     counterexampleSearches: sections.counterexampleSearches === undefined
       ? undefined
-      : parseList(sections.counterexampleSearches),
+      : parseList(sections.counterexampleSearches, "Counterexample searches"),
   };
 
   const task: ProjectTask = {
@@ -572,9 +695,13 @@ export function parseTaskMarkdown(markdown: string): ProjectTask {
     goal: requireSection(sections, "goal", "Goal", issues).trim(),
     contextFiles: parseList(
       requireSection(sections, "contextFiles", "Context files", issues),
+      "Context files",
+      "single-line",
     ),
     allowedFiles: parseList(
       requireSection(sections, "allowedFiles", "Files allowed to edit", issues),
+      "Files allowed to edit",
+      "single-line",
     ),
     forbiddenFiles: parseList(
       requireSection(
@@ -583,10 +710,13 @@ export function parseTaskMarkdown(markdown: string): ProjectTask {
         "Files forbidden to edit",
         issues,
       ),
+      "Files forbidden to edit",
+      "single-line",
     ),
     steps: parseSteps(requireSection(sections, "steps", "Steps", issues)),
     acceptanceCriteria: parseList(
       requireSection(sections, "acceptanceCriteria", "Acceptance criteria", issues),
+      "Acceptance criteria",
     ),
     ...(optionalLists.correctnessAssumptions && optionalLists.correctnessAssumptions.length > 0
       ? { correctnessAssumptions: optionalLists.correctnessAssumptions } : {}),
@@ -607,8 +737,9 @@ export function parseTaskMarkdown(markdown: string): ProjectTask {
         "Documentation updates",
         issues,
       ),
+      "Documentation updates",
     ),
-    notes: parseList(requireSection(sections, "notes", "Notes", issues)),
+    notes: parseList(requireSection(sections, "notes", "Notes", issues), "Notes"),
   };
 
   if (task.dependsOn.length === 0 && dependsOnValue !== "none") {
@@ -676,7 +807,13 @@ export function renderTaskMarkdown(task: ProjectTask): string {
         ? renderSteps(value as string[])
         : key === "verification"
           ? renderVerification(verification)
-        : renderList(value as string[]);
+          : renderList(
+            value as string[],
+            title,
+            (["contextFiles", "allowedFiles", "forbiddenFiles"] as SectionKey[]).includes(key)
+              ? "single-line"
+              : "prose",
+          );
 
     return [`## ${title}`, "", content].join("\n");
   });

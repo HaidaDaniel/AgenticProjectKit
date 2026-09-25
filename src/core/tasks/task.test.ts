@@ -248,6 +248,132 @@ test("numbered list sections survive parse and render round trip", () => {
   );
 });
 
+test("prose list continuations round trip paragraphs, nested markers, and fenced code", () => {
+  const task: ProjectTask = {
+    ...TASK,
+    acceptanceCriteria: [
+      "First paragraph.\nIndented continuation with `inline code`, JSON {\"ok\":true}, and https://example.test.\n\nSecond paragraph.",
+      "Parent item.\n- Nested item.\n  - Deeper nested item.\n```ts\nconst value = 1;\n```",
+    ],
+    correctnessAssumptions: ["The parser owns task Markdown.\nMutation paths preserve continuation text."],
+    invariants: ["Steps remain separate.\nNested prose markers stay in their parent item."],
+    requiredEvidence: ["Round-trip output.\n\nClaim-style mutation output."],
+    reviewQuestions: ["Can a continuation disappear?\nWhat about a fenced block?"],
+    counterexampleSearches: ["Search nested bullets.\n  - Search code-like content too."],
+    documentationUpdates: ["Document the supported subset.\nInclude blank-line rules."],
+    notes: ["Preserve this note.\nIts second line is part of the same item."],
+  };
+
+  const rendered = renderTaskMarkdown(task);
+  assert.match(rendered, /- First paragraph\.\n  Indented continuation/);
+  assert.match(rendered, /\n\n  Second paragraph\./);
+  const parsed = parseTaskMarkdown(rendered);
+  assert.deepEqual(parsed, task);
+  assert.equal(renderTaskMarkdown(parsed), rendered);
+});
+
+test("prose list parsing keeps indented numbered and bullet peers separate", () => {
+  const task: ProjectTask = {
+    ...TASK,
+    acceptanceCriteria: ["First item.\nContinuation.", "Second item."],
+  };
+  const markdown = renderTaskMarkdown(task).replace(
+    "- First item.\n  Continuation.\n- Second item.",
+    "  1. First item.\n    Continuation.\n\n\n  - Second item.",
+  );
+
+  assert.deepEqual(parseTaskMarkdown(markdown), task);
+  assert.deepEqual(parseTaskMarkdown(markdown.replace("    Continuation.", "  \tContinuation.")), task);
+
+  const prose = renderTaskMarkdown({ ...TASK, acceptanceCriteria: ["Item.\nContinuation."] });
+  assert.throws(
+    () => parseTaskMarkdown(prose.replace("- Item.\n  Continuation.", "- Item.\nContinuation.")),
+    /unsupported continuation indentation/,
+  );
+  assert.throws(
+    () => parseTaskMarkdown(prose.replace("- Item.\n  Continuation.", "- Item.\n\n\n  Continuation.")),
+    /more than one blank line before a continuation/,
+  );
+});
+
+test("path and verification lists reject continuation text", () => {
+  const source = renderTaskMarkdown(TASK);
+  const cases = [
+    ["Context files", "- AGENTS.md"],
+    ["Files allowed to edit", "- src/core/tasks/**"],
+    ["Files forbidden to edit", "- future task files"],
+  ] as const;
+
+  for (const [section, item] of cases) {
+    const malformed = source.replace(
+      `## ${section}\n\n${item}`,
+      `## ${section}\n\n${item}\n  continuation text`,
+    );
+    assert.notEqual(malformed, source, `${section} fixture must be changed`);
+    assert.throws(
+      () => parseTaskMarkdown(malformed),
+      new RegExp(`Section "${section}".*single physical list line`),
+    );
+  }
+
+  const structured = renderTaskMarkdown({
+    ...TASK,
+    verification: [{
+      id: "check",
+      type: "automated",
+      required: true,
+      environment: "local",
+      profile: "deterministic",
+      command: "pnpm test",
+    }],
+  });
+  const structuredLine = structured.match(/^(- `\{"id":"check".*`)$/m)?.[0];
+  assert.ok(structuredLine);
+  const multilineVerification = structured.replace(structuredLine, `${structuredLine}\n  continued JSON`);
+  assert.throws(
+    () => parseTaskMarkdown(multilineVerification),
+    /Section "Verification".*single physical list line/,
+  );
+
+  assert.throws(
+    () => renderTaskMarkdown({ ...TASK, allowedFiles: ["src/core/tasks/**\nsecond path"] }),
+    /Files allowed to edit.*one physical list line/,
+  );
+});
+
+test("legacy verification commands preserve indented command continuations", () => {
+  const markdown = renderTaskMarkdown(TASK).replace(
+    "## Verification commands\n\n- pnpm test",
+    "## Verification commands\n\n- pnpm test\n  --runInBand",
+  );
+  const parsed = parseTaskMarkdown(markdown);
+
+  assert.deepEqual(parsed.verificationCommands, ["pnpm test\n--runInBand"]);
+  assert.deepEqual(parseTaskMarkdown(renderTaskMarkdown(parsed)), parsed);
+});
+
+test("Steps keep their existing physical-line parser semantics", () => {
+  const markdown = renderTaskMarkdown({ ...TASK, steps: ["First step.", "Second step."] })
+    .replace("1. First step.\n2. Second step.", "1. First step.\n    continuation-like step\n2. Second step.");
+
+  assert.deepEqual(parseTaskMarkdown(markdown).steps, [
+    "First step.",
+    "continuation-like step",
+    "Second step.",
+  ]);
+});
+
+test("plain legacy prose in a list section is preserved as one item", () => {
+  const markdown = renderTaskMarkdown(TASK).replace(
+    "## Notes\n\n- Prefer explicit fields over inferred task metadata.",
+    "## Notes\n\nNone.",
+  );
+  const parsed = parseTaskMarkdown(markdown);
+
+  assert.deepEqual(parsed.notes, ["None."]);
+  assert.match(renderTaskMarkdown(parsed), /## Notes\n\n- None\./);
+});
+
 test("structured verification survives canonical task round trip", () => {
   const task: ProjectTask = {
     ...TASK,
@@ -1830,6 +1956,71 @@ async function setupReclaimRepo(directory: string): Promise<void> {
   await registerAgent(directory, { id: "agent-a", developer: "alice", platform: "opencode", model: "m1" });
   await registerAgent(directory, { id: "agent-b", developer: "bob", platform: "opencode", model: "m1" });
 }
+
+test("claim re-render preserves multiline prose contract text", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    const taskPath = join(directory, ".tasks", "0007-scoped-task.md");
+    const { task } = await loadTaskFile(taskPath);
+    const multilineTask: ProjectTask = {
+      ...task,
+      acceptanceCriteria: ["First paragraph.\nSecond paragraph.\n\nThird paragraph."],
+      requiredEvidence: ["A claim-style rewrite.\n- Nested evidence note."],
+      notes: ["Keep this entire contract item.\n  Keep its indentation too."],
+    };
+    await writeTaskFile(taskPath, multilineTask);
+
+    const claimed = await claimTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "agent-a",
+    });
+    const persisted = (await loadTaskFile(taskPath)).task;
+
+    assert.equal(claimed.state, "doing");
+    assert.deepEqual(claimed.acceptanceCriteria, multilineTask.acceptanceCriteria);
+    assert.deepEqual(claimed.requiredEvidence, multilineTask.requiredEvidence);
+    assert.deepEqual(claimed.notes, multilineTask.notes);
+    assert.deepEqual(persisted.acceptanceCriteria, multilineTask.acceptanceCriteria);
+    assert.deepEqual(persisted.requiredEvidence, multilineTask.requiredEvidence);
+    assert.deepEqual(persisted.notes, multilineTask.notes);
+  });
+});
+
+test("claim rejects multiline path and verification entries without changing task bytes", async () => {
+  const cases = [
+    ["Context files", "continued-context", /Section "Context files".*single physical list line/],
+    ["Files allowed to edit", "continued-allowed-path", /Section "Files allowed to edit".*single physical list line/],
+    ["Files forbidden to edit", "continued-forbidden-path", /Section "Files forbidden to edit".*single physical list line/],
+    ["Verification", "continued-verification", /Section "Verification".*single physical list line/],
+  ] as const;
+
+  for (const [section, continuation, error] of cases) {
+    await withTempDirectory(async (directory) => {
+      await setupReclaimRepo(directory);
+      const taskPath = join(directory, ".tasks", "0007-scoped-task.md");
+      const original = await readFile(taskPath, "utf8");
+      const sectionStart = original.indexOf(`## ${section}\n\n`);
+      assert.notEqual(sectionStart, -1, `${section} section should exist`);
+      const itemStart = sectionStart + `## ${section}\n\n`.length;
+      const itemEnd = original.indexOf("\n", itemStart);
+      const malformed = `${original.slice(0, itemEnd)}\n  ${continuation}${original.slice(itemEnd)}`;
+      await writeFile(taskPath, malformed, "utf8");
+
+      await assert.rejects(
+        () => claimTask({
+          rootDirectory: directory,
+          taskDirectory: ".tasks",
+          taskId: "0007",
+          owner: "agent-a",
+        }),
+        error,
+      );
+      assert.equal(await readFile(taskPath, "utf8"), malformed);
+    });
+  }
+});
 
 function verifyScopedTask(directory: string, owner = "agent-a") {
   return verifyTask({
@@ -4952,5 +5143,3 @@ test("review prompt presents spec and engineering axes with a conservative overa
   assert.match(prompt, /do not continue implementation work/);
   assert.match(prompt, /Green tests alone are not correctness proof/);
 });
-
-

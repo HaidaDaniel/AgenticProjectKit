@@ -1,7 +1,7 @@
 # Task 0145 - Preserve multiline task list items across parse-render round-trips
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-public-readiness-20260925
 Mode: maintenance
 Lane: task-system
 Type: bugfix
@@ -70,7 +70,8 @@ Make the canonical task Markdown parser and renderer preserve ordinary multiline
 - An indented continuation line in a supported prose-oriented section belongs to the preceding item and survives parse-render-parse with its semantic text intact.
 - A multiline numbered item remains one item and numbered markers continue to be accepted as established by Task 0098.
 - Multiline prose items round-trip in Acceptance criteria, Correctness assumptions, Invariants, Required evidence, Review questions, Counterexample searches, Notes, Documentation updates, and other prose-oriented sections using the shared parser.
-- Context files, Files allowed to edit, Files forbidden to edit, and structured Verification entries either support a documented multiline representation or reject unsupported continuation text deterministically before mutation; malformed paths are never silently concatenated and structured JSON is never silently corrupted.
+- Context files, Files allowed to edit, and Files forbidden to edit either support a documented multiline representation or reject unsupported continuation text deterministically before mutation; malformed paths are never silently concatenated.
+- Structured Verification entries either support a documented multiline representation or reject unsupported continuation text deterministically before mutation; structured JSON is never silently corrupted.
 - Multiple consecutive multiline prose items remain separate items with deterministic ordering and no merged or dropped text.
 - Blank-line behavior between list items is explicitly defined, tested, and deterministic.
 - Single-line legacy bullets and numbered items retain their existing parse and render semantics.
@@ -148,6 +149,7 @@ Make the canonical task Markdown parser and renderer preserve ordinary multiline
 ## Notes
 
 - Confirmed v0.4.6 defect: src/core/tasks/index.ts parseList trims and filters physical lines to marker-bearing lines, so a continuation such as `validation and shared inputs.` is dropped during parse-render-writeTaskFile.
+- Baseline reproduction against pre-implementation commit 27a44f8 evaluated `- validation and` followed by its indented `shared inputs.` line as only `validation and`, and writeTaskFile-style rendering emitted no `shared inputs.`; the regression tests capture the required preserved item.
 - Downstream provenance: translator-agent had to restore the Task 0048 contract after APK re-serialization removed continuation text.
 - Task 0098 fixed only numbered markers; Task 0099 restored content already lost from Task 0092. This task is not a duplicate because it covers the remaining continuation-line loss for future and existing contracts.
 - Keep every list element in this task file on one physical Markdown line until the parser fix is implemented; this contract is intentionally safe for the current parser.
