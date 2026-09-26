@@ -1,6 +1,6 @@
 # Architecture
 
-Agentic Project Kit is intended to use a layered architecture:
+Agentic Project Kit uses a layered architecture:
 
 1. CLI entrypoints.
 2. Command handlers.
@@ -9,7 +9,7 @@ Agentic Project Kit is intended to use a layered architecture:
 5. Repository scanners and context selection.
 6. Internal docs and config as the source of truth.
 
-## Core ideas
+## Current design rules
 
 - Keep the human-readable policy in the repository.
 - Generate agent-specific instruction files from one neutral source.
@@ -17,17 +17,17 @@ Agentic Project Kit is intended to use a layered architecture:
 - Select context explicitly rather than loading the whole repository.
 - Keep commands thin and predictable.
 
-## Resource-aware execution target
+## Current resource-aware execution
 
-[Resource-Aware Execution](execution-profiles.md) defines the accepted post-gated-workflow architecture. It separates project mode, task risk/assurance, and execution profile; models model, harness, and executable worker/resource independently; and routes roles through the existing vendor-neutral worker contract.
+[Resource-Aware Execution](execution-profiles.md) records the accepted architecture implemented by Tasks 0082-0088 and shipped in [v0.4.0](releases/v0.4.0.md). It separates project mode, task risk/assurance, and execution profile; models model, harness, and executable worker/resource independently; and routes roles through the existing vendor-neutral worker contract.
 
-The target extends current task policy, gate, evidence, review, provenance, status, and `apk-worker-v1` modules. It does not add a parallel completion gate, evidence store, task classifier, or model runtime. Deterministic verification remains the first line of checking, and unavailable mandatory assurance fails visibly rather than being silently downgraded.
+The implementation extends current task policy, gate, evidence, review, provenance, status, and `apk-worker-v1` modules. It does not add a parallel completion gate, evidence store, task classifier, or model runtime. Deterministic verification remains the first line of checking, and unavailable mandatory assurance fails visibly rather than being silently downgraded.
 
-Portable resource/profile/budget/override state should extend the existing optional config schema. Deterministic detection is read-only by default; generated calibration remains distinct from user overrides and is applied only after schema validation. Secrets stay outside APK configuration.
+Portable resource/profile/budget/override state extends the existing optional config schema. Deterministic detection is read-only by default; generated calibration remains distinct from user overrides and is applied only after schema validation. Secrets stay outside APK configuration.
 
 Tasks 0083-0085 implement the optional secret-free model/harness/worker registry, deterministic profile/routing foundation, and adaptive assurance/budget projection. Task 0086 adds read-only resource detection and validated calibration; Task 0087 adds the semantic `apk attention`/`apk workers` projection, which binds workers to canonical issued work sessions and fails closed on stale/orphaned runs without claiming live process state. Task 0088 adds optional APK-owned isolated Git worktree workspaces with ownership-marker, path-containment, and clean/registered-state proof before destructive cleanup. Legacy `none`/`lightweight`/`independent` policy fields and the existing completion gate remain authoritative compatibility boundaries.
 
-## External runtime boundary
+## Current runtime boundary
 
 APK is a repository-local semantic workflow/control plane. It is not a terminal, process, or session runtime. An external runtime such as Herdr owns the live operator environment; APK integrates with it only through repository files, paths, and the existing vendor-neutral worker/package contract. The full decision is recorded in [ADR-0039](decisions.md#adr-0039---apk-is-a-repository-local-semantic-control-plane-not-an-external-runtime).
 
@@ -37,24 +37,25 @@ An external runtime owns PTY, terminal panes, persistent shells, detach/reattach
 
 APK does not implement a terminal emulator, a tmux clone, a Herdr clone, an SSH manager, a global process supervisor, a global APK daemon, cloud coordination, or a generic swarm.
 
-The supported operating model is a Windows/macOS operator machine connecting over remote SSH or an external runtime to a persistent Ubuntu dev host that holds several repositories. Each repository has its own repository-local APK state; there is no global APK project database, and one APK executable/package serves many repositories. An external runtime may open a repository or an APK-managed Git worktree path as a pane/workspace cwd.
+The documented multi-machine model is an operator machine connecting over remote SSH or an external runtime to a persistent Ubuntu dev host that holds several repositories. Each repository has its own repository-local APK state; there is no global APK project database, and one APK executable/package serves many repositories. An external runtime may open a repository or an APK-managed Git worktree path as a pane/workspace cwd.
 
-Semantic attention and isolated workspaces remain runtime-neutral: Task 0087 projects task/run/gate/review/evidence state (including canonical worker-session binding) without asserting live-process facts, and Task 0088 owns safe Git worktree lifecycle without PTY/SSH/multiplexer/process-supervisor behavior. A future external-runtime dogfood plan is documented in [execution profiles](execution-profiles.md#external-runtime-dogfood-deferred); no integration implementation is planned here.
+Semantic attention and isolated workspaces are runtime-neutral: Task 0087 projects task/run/gate/review/evidence state (including canonical worker-session binding) without asserting live-process facts, and Task 0088 owns safe Git worktree lifecycle. They do not claim PTY/SSH/multiplexer/process-supervisor behavior.
 
-## Proposed internal layout
+## Accepted target architecture
 
-```txt
-.agentic/
-  config.json
-  modes/
-  policies/
-  templates/
-  exporters/
-```
+The accepted Resource-Aware Execution target ([ADR-0034](decisions.md#adr-0034---execution-profile-is-independent-and-assurance-is-resource-aware), [Task 0082](../.tasks/0082-document-resource-aware-execution-architecture-and-backlog.md)) is implemented and is described above. No accepted, unimplemented architecture target is recorded here. Any new architecture target needs an explicit accepted decision and a task contract before it is treated as planned work.
 
-## Generated outputs
+## Deferred architecture
 
-The tool may generate or maintain:
+An external-runtime dogfood (for example, with Herdr) is deferred until the APK backlog is complete. It is a validation exercise, not an adapter implementation; no integration task or runtime dependency is planned ([deferred plan](execution-profiles.md#external-runtime-dogfood-deferred), [ADR-0039](decisions.md#adr-0039---apk-is-a-repository-local-semantic-control-plane-not-an-external-runtime)).
+
+## Excluded architecture
+
+APK does not implement a terminal emulator, terminal multiplexer, PTY/session manager, SSH manager, global process supervisor, global APK daemon, cloud coordination, provider/model SDK runtime, remote executor, or generic swarm. These responsibilities remain outside the repository-local control plane (see [ADR-0039](decisions.md#adr-0039---apk-is-a-repository-local-semantic-control-plane-not-an-external-runtime) and [ADR-0034](decisions.md#adr-0034---execution-profile-is-independent-and-assurance-is-resource-aware)).
+
+## Current generated outputs
+
+APK generates or maintains:
 
 ```txt
 AGENTS.md      # only full common-policy export

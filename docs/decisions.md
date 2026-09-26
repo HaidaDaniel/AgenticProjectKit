@@ -2,6 +2,97 @@
 
 This file records architecture and product decisions that affect the implementation.
 
+ADR status describes decision lifecycle, not implementation progress. Use task contracts and release records to establish delivery state.
+
+## ADR index
+
+One row corresponds to each retained ADR heading below. Status mirrors the explicit record status; only explicit supersession links populate the final column.
+
+| ADR | Status | Topic | Superseded by |
+| --- | --- | --- | --- |
+| [ADR-0001](#adr-0001---repository-first-source-of-truth) | accepted | Repository-first source of truth | — |
+| [ADR-0002](#adr-0002---neutral-policy-with-exporters) | accepted | Neutral policy with exporters | — |
+| [ADR-0003](#adr-0003---task-driven-execution) | accepted | Task-driven execution | — |
+| [ADR-0004](#adr-0004---cli-first-no-ui-in-v01) | accepted | CLI first, no UI in v0.1 | — |
+| [ADR-0005](#adr-0005---handlebars-templates) | accepted | Handlebars templates | — |
+| [ADR-0006](#adr-0006---caveman-as-default-style) | superseded | Caveman as default style | ADR-0062 |
+| [ADR-0007](#adr-0007---minimal-cli-scaffold-dependencies) | accepted | Minimal CLI scaffold dependencies | — |
+| [ADR-0008](#adr-0008---conservative-adopt-writes) | accepted | Conservative adopt writes | — |
+| [ADR-0009](#adr-0009---structured-verification-with-legacy-projection) | accepted | Structured verification with legacy projection | — |
+| [ADR-0010](#adr-0010---dedicated-append-only-task-evidence-store) | accepted | Dedicated append-only task evidence store | — |
+| [ADR-0011](#adr-0011---profile-aware-verification-is-fail-safe) | accepted | Profile-aware verification is fail-safe | — |
+| [ADR-0012](#adr-0012---claim-baseline-for-conservative-scope-attribution) | accepted | Claim baseline for conservative scope attribution | — |
+| [ADR-0013](#adr-0013---deterministic-effective-task-policy) | accepted | Deterministic effective task policy | — |
+| [ADR-0014](#adr-0014---independent-review-uses-separate-revision-bound-evidence) | accepted | Independent review uses separate revision-bound evidence | — |
+| [ADR-0016](#adr-0016---optional-correctness-contract-stays-descriptive-and-sparse) | accepted | Optional correctness contract stays descriptive and sparse | — |
+| [ADR-0017](#adr-0017---typed-templates-are-declarative-task-contracts) | accepted | Typed templates are declarative task contracts | — |
+| [ADR-0018](#adr-0018---repository-contract-lint-is-a-read-only-aggregate) | accepted | Repository contract lint is a read-only aggregate | — |
+| [ADR-0019](#adr-0019---budgeted-context-uses-deterministic-approximate-units) | accepted | Budgeted context uses deterministic approximate units | — |
+| [ADR-0020](#adr-0020---context-suggestions-use-bounded-local-dependency-heuristics) | accepted | Context suggestions use bounded local dependency heuristics | — |
+| [ADR-0021](#adr-0021---dogfooding-uses-bounded-vendor-neutral-evidence) | accepted | Dogfooding uses bounded vendor-neutral evidence | — |
+| [ADR-0022](#adr-0022---provenance-is-a-bounded-read-only-join-over-existing-task-records) | accepted | Provenance is a bounded read-only join over existing task records | — |
+| [ADR-0023](#adr-0023---status-is-a-concise-projection-of-gate-and-provenance-state) | accepted | Status is a concise projection of gate and provenance state | — |
+| [ADR-0024](#adr-0024---worker-handoffs-use-a-vendor-neutral-package-and-result-contract) | accepted | Worker handoffs use a vendor-neutral package and result contract | — |
+| [ADR-0025](#adr-0025---gate-evidence-is-bound-trusted-and-fail-closed) | accepted | Gate evidence is bound, trusted, and fail-closed | — |
+| [ADR-0026](#adr-0026---issued-worker-packages-are-immutable-and-review-bound) | accepted | Issued worker packages are immutable and review-bound | — |
+| [ADR-0027](#adr-0027---runtime-evidence-and-same-worktree-policy) | accepted | Runtime evidence and same-worktree policy | — |
+| [ADR-0028](#adr-0028---canonical-worker-progression-and-immutable-session-publication) | accepted | Canonical worker progression and immutable session publication | — |
+| [ADR-0029](#adr-0029---explicit-compatibility-migration-for-gated-workflow-adoption) | accepted | Explicit compatibility migration for gated workflow adoption | — |
+| [ADR-0030](#adr-0030---repository-quality-policy-names-capabilities-not-tools) | accepted | Repository quality policy names capabilities, not tools | — |
+| [ADR-0031](#adr-0031---local-mutation-locks-use-identity-not-age-for-recovery) | accepted | Local mutation locks use identity, not age, for recovery | — |
+| [ADR-0032](#adr-0032---primary-agents-may-orchestrate-required-independent-review) | accepted | Primary agents may orchestrate required independent review | — |
+| [ADR-0033](#adr-0033---worker-review-completion-is-one-serialized-lifecycle) | accepted | Worker review completion is one serialized lifecycle | — |
+| [ADR-0034](#adr-0034---execution-profile-is-independent-and-assurance-is-resource-aware) | accepted | Execution profile is independent and assurance is resource-aware | — |
+| [ADR-0035](#adr-0035---apk-local-guardrails-stay-separate-from-adopted-repository-policy) | accepted | APK-local guardrails stay separate from adopted-repository policy | — |
+| [ADR-0036](#adr-0036---clean-checkout-ci-proves-repository-reproducibility-only) | accepted | Clean-checkout CI proves repository reproducibility only | — |
+| [ADR-0037](#adr-0037---release-reports-are-post-gate-evidence-artifacts) | accepted | Release reports are post-gate evidence artifacts | — |
+| [ADR-0038](#adr-0038---operator-recorded-manual-and-live-evidence-is-explicit-and-candidate-bound) | accepted | Operator-recorded manual and live evidence is explicit and candidate-bound | — |
+| [ADR-0039](#adr-0039---apk-is-a-repository-local-semantic-control-plane-not-an-external-runtime) | accepted | APK is a repository-local semantic control plane, not an external runtime | — |
+| [ADR-0040](#adr-0040---canonical-agentsmd-export-with-thin-harness-adapters) | accepted | Canonical AGENTS.md export with thin harness adapters | — |
+| [ADR-0041](#adr-0041---task-list-sections-accept-bullet-and-numbered-items) | accepted | Task list sections accept bullet and numbered items | — |
+| [ADR-0042](#adr-0042---resource-detection-is-read-only-and-calibration-is-validated-before-explicit-apply) | accepted | Resource detection is read-only and calibration is validated before explicit apply | — |
+| [ADR-0043](#adr-0043---worker-attention-is-a-semantic-projection-not-process-monitoring) | accepted | Worker attention is a semantic projection, not process monitoring | — |
+| [ADR-0044](#adr-0044---isolated-parallel-workspaces-are-safe-git-worktree-lifecycle-only) | accepted | Isolated parallel workspaces are safe Git worktree lifecycle only | — |
+| [ADR-0045](#adr-0045---current-calibration-participates-in-routing-task-policy-stays-authoritative) | accepted | Current calibration participates in routing; task policy stays authoritative | — |
+| [ADR-0046](#adr-0046---workspace-provenance-proves-canonical-runresource-binding-and-calibration-sentinels-execute) | accepted | Workspace provenance proves canonical run/resource binding and calibration sentinels execute | — |
+| [ADR-0047](#adr-0047---workspace-create-captures-canonical-resource-identity-and-sentinels-pause-deterministic-lanes) | accepted | Workspace create captures canonical resource identity and sentinels pause deterministic lanes | — |
+| [ADR-0048](#adr-0048---legacy-review-fields-project-from-canonical-assurance) | accepted | Legacy review fields project from canonical assurance | — |
+| [ADR-0049](#adr-0049---git-tags-ship-a-runnable-dist-and-install-time-build-hooks-are-removed) | accepted | Git tags ship a runnable dist and install-time build hooks are removed | — |
+| [ADR-0050](#adr-0050---successful-tasks-require-safe-commit-hygiene-not-apk-auto-commit) | accepted | Successful tasks require safe commit hygiene, not APK auto-commit | — |
+| [ADR-0051](#adr-0051---one-authoritative-scope-baseline-per-unfinished-task-lifecycle) | accepted | One authoritative scope baseline per unfinished task lifecycle | — |
+| [ADR-0052](#adr-0052---hosted-ci-evidence-is-distinct-from-local-verification) | accepted | Hosted CI evidence is distinct from local verification | — |
+| [ADR-0053](#adr-0053---canonical-apk-operational-ignore-contract-is-generated-by-init-and-adopt) | accepted | Canonical APK operational ignore contract is generated by init and adopt | — |
+| [ADR-0054](#adr-0054---context-discovery-delegates-ignore-semantics-to-git-and-keeps-required-context) | accepted | Context discovery delegates ignore semantics to Git and keeps required context | — |
+| [ADR-0055](#adr-0055---clean-checkout-lint-does-not-fail-unverifiable-task-owners) | accepted | Clean-checkout lint does not fail unverifiable task owners | — |
+| [ADR-0056](#adr-0056---bounded-lifecycle-reason-storage-is-separate-from-presentation-width) | accepted | Bounded lifecycle reason storage is separate from presentation width | — |
+| [ADR-0057](#adr-0057---non-node-repositories-keep-repository-local-apk-pinning-tooling-semantics-stay-distinct) | accepted | Non-Node repositories keep repository-local APK pinning; tooling semantics stay distinct | — |
+| [ADR-0058](#adr-0058---apk-upgrades-are-agent-driven-compositions-of-deterministic-primitives) | accepted | APK upgrades are agent-driven compositions of deterministic primitives | — |
+| [ADR-0059](#adr-0059---human-decisions-are-first-class-operator-asserted-candidate-bound-records-for-review-budget-exhaustion) | accepted | Human decisions are first-class, operator-asserted, candidate-bound records for review-budget exhaustion | — |
+| [ADR-0060](#adr-0060---candidate-and-completion-bookkeeping-commits-are-two-normal-commits-amend-is-forbidden-after-evidence-binding) | accepted | Candidate and completion bookkeeping commits are two normal commits; amend is forbidden after evidence binding | — |
+| [ADR-0061](#adr-0061---test-readiness-findings-follow-detected-test-capability-not-test-directory-layout) | accepted | Test readiness findings follow detected test capability, not test-directory layout | — |
+| [ADR-0062](#adr-0062---concise-normal-prose-is-the-default-communication-style-caveman-is-explicit-opt-in-supersedes-adr-0006) | accepted | Concise normal prose is the default communication style; caveman is explicit opt-in (supersedes ADR-0006) | — |
+| [ADR-0063](#adr-0063---the-task-grill-instruction-is-an-optional-manually-invoked-packaged-asset-outside-common-policy) | accepted | The task-grill instruction is an optional, manually invoked packaged asset outside common policy | — |
+| [ADR-0064](#adr-0064---the-milestone-semantic-audit-is-an-optional-manually-invoked-packaged-asset-that-never-rewrites-history) | accepted | The milestone semantic audit is an optional, manually invoked packaged asset that never rewrites history | — |
+| [ADR-0065](#adr-0065---go-test-discovery-uses-canonical-git-inventory-and-never-falls-back-to-an-ignore-unaware-walk-in-git-repositories) | accepted | Go test discovery uses canonical Git inventory and never falls back to an ignore-unaware walk in Git repositories | — |
+| [ADR-0066](#adr-0066---bugfix-task-contracts-use-repro-first-guidance-with-honest-best-effort-limits) | accepted | Bugfix task contracts use repro-first guidance with honest best-effort limits | — |
+| [ADR-0067](#adr-0067---task-split-decomposition-is-an-optional-packaged-asset-that-previews-vertical-slices-before-approved-canonical-creation) | accepted | Task-split decomposition is an optional packaged asset that previews vertical slices before approved canonical creation | — |
+| [ADR-0068](#adr-0068---one-prepared-review-presents-spec-correctness-and-engineering-quality-axes-with-a-conservative-overall-outcome) | accepted | One prepared review presents Spec correctness and Engineering quality axes with a conservative Overall outcome | — |
+| [ADR-0069](#adr-0069---apk-lint-exposes-advisory-context-hygiene-estimates-and-never-gates-on-instruction-size) | accepted | APK lint exposes advisory context-hygiene estimates and never gates on instruction size | — |
+| [ADR-0070](#adr-0070---the-prototype-instruction-is-an-optional-bounded-throwaway-experiment-asset) | accepted | The prototype instruction is an optional bounded throwaway experiment asset | — |
+| [ADR-0071](#adr-0071---the-project-grill-is-an-optional-manually-invoked-packaged-asset-for-projectmilestonesubsystem-direction) | accepted | The project grill is an optional, manually invoked packaged asset for project/milestone/subsystem direction | — |
+| [ADR-0072](#adr-0072---release-evidence-is-ordered-pre-tag-evidence-must-precede-the-immutable-tag-and-post-tag-evidence-is-recorded-separately) | accepted | Release evidence is ordered: pre-tag evidence must precede the immutable tag and post-tag evidence is recorded separately | — |
+| [ADR-0073](#adr-0073---human-communication-language-is-developer-local-not-repository-truth) | accepted | Human communication language is developer-local, not repository truth | — |
+| [ADR-0074](#adr-0074---task-list-continuations-are-bounded-and-section-aware) | accepted | Task list continuations are bounded and section-aware | — |
+| [ADR-0075](#adr-0075---benchmark-evidence-requires-an-explicit-structured-check-declaration) | accepted | Benchmark evidence requires an explicit structured check declaration | — |
+| [ADR-0076](#adr-0076---artifact-is-a-separately-gated-reference-distinct-from-observer-evidence) | accepted | Artifact is a separately gated reference distinct from observer evidence | — |
+| [ADR-0077](#adr-0077---attribute-other-task-commits-only-from-bounded-completion-provenance) | accepted | Attribute other-task commits only from bounded completion provenance | — |
+
+### ADR index cross-check
+
+- [x] Each of the 76 index rows matches one retained ADR heading and its title.
+- [x] Each status matches that record's explicit `Status` field.
+- [x] The only supersession link is ADR-0006 -> ADR-0062, recorded by ADR-0006's status and ADR-0062's heading and decision text.
+
 ## ADR-0001 - Repository-first source of truth
 
 Status: accepted
@@ -72,7 +163,7 @@ Task 0004 adds Handlebars as the renderer dependency for reusable text templates
 
 ## ADR-0006 - Caveman as default style
 
-Status: accepted
+Status: superseded by ADR-0062
 
 Decision:
 
@@ -416,9 +507,7 @@ Known P2 gaps from passing 0073 review remain release-blocking under Task 0080: 
 
 ## ADR-0029 - Explicit compatibility migration for gated workflow adoption
 
-Status:
-
-accepted
+Status: accepted
 
 Decision:
 
@@ -541,7 +630,7 @@ Check-then-append admitted conflicting concurrent outcomes, while independently 
 
 ## ADR-0034 - Execution profile is independent and assurance is resource-aware
 
-Status: accepted; registry foundation implemented in Task 0083, remaining execution behavior planned in Tasks 0084-0088
+Status: accepted
 
 Decision:
 
@@ -953,6 +1042,8 @@ Task 0126 and `docs/engineering/apk-upgrade-workflow.md`.
 
 ## ADR-0059 - Human decisions are first-class, operator-asserted, candidate-bound records for review-budget exhaustion
 
+Status: accepted
+
 Exhausting the bounded semantic-review budget blocked downstream tasks with no canonical way to record an operator outcome. Add a first-class append-only `human-decision` evidence type with a bounded decision vocabulary (`accept-current`, `grant-review-passes`, `changes-required`; routed `cancel`), an explicit `actor` distinct from the recording agent, and an honest `operator-asserted` trust model.
 
 Decisions are candidate-bound through the existing evidence subject/freshness primitive; a decision for one candidate is stale for another. Gate correctness consumes structured review/budget/decision state (not blocker text) and `accept-current` removes only the `review-budget-exhausted` condition; deterministic verification, scope, dependency, evidence, diverse-assurance, and owner-as-reviewer blockers remain typed hard blockers. Review-budget extension is additive (1-2 passes per grant, +2 per candidate cap) without resetting history; `accept-current` supersedes an earlier grant. Scope expansion: `src/core/exporters/index.ts` was added to the task's allowed files so the generated canonical agent policy explicitly forbids agent self-authorization of human decisions.
@@ -965,6 +1056,8 @@ Task 0119.
 
 ## ADR-0060 - Candidate and completion bookkeeping commits are two normal commits; amend is forbidden after evidence binding
 
+Status: accepted
+
 `apk done` writes tracked task Markdown, so a completed task legitimately leaves a lifecycle-only dirty tracked file after the reviewed candidate commit. Document the canonical lifecycle as implementation/fix work -> candidate commit -> verify -> review -> gate -> `apk done` -> completion/bookkeeping commit when tracked content changed. The bookkeeping commit is lifecycle-only, never another implementation commit, and the candidate commit must never be amended, rebased, or squashed after candidate-bound evidence or provenance references its SHA. APK promises neither one-task-one-commit nor auto-commit; both SHAs are reportable, unrelated dirty state stays excluded, and an immutable tracked-task-contract plus runtime lifecycle state remains a documented future design possibility only (ADR-0057/0060, Task 0121).
 
 Reference:
@@ -972,6 +1065,8 @@ Reference:
 Task 0121.
 
 ## ADR-0061 - Test readiness findings follow detected test capability, not test-directory layout
+
+Status: accepted
 
 The audit reported `tests: detected` and `Top-level test directory not detected.` simultaneously, because readiness used `package.json exists + tests/ absent` while detection used scripts/config markers. Reconcile at the audit layer (the generic invariant, no Go-only suppression): audit runs quality detection first, and the top-level-directory readiness info is emitted only when no test capability is detected. Go modules gain bounded native test evidence: tracked `*_test.go` files via `git ls-files` with a bounded (two-level, 512-directory, vendor/`.git`/generated-skipping) filesystem fallback. `package.json` alone stays non-proving for Node application semantics (ADR-0057): tooling-only repositories without any credible test evidence still report the readiness info. The Project Map keeps truthful `Test directories: none` inventory; inventory alone never counts as missing readiness.
 
@@ -981,13 +1076,17 @@ Task 0122.
 
 ## ADR-0062 - Concise normal prose is the default communication style; caveman is explicit opt-in (supersedes ADR-0006)
 
-APK no longer defaults to the caveman style. `DEFAULT_CONFIG.agentStyle` and `DEFAULT_AGENT_POLICY.defaultStyle` are `normal`: concise, readable sentences that preserve material reasons, limitations, and uncertainty. Caveman remains available in two documented ways: an explicitly named human request for a session (transient; APK never persists it from a conversational request) and a deliberate persisted `agentStyle: caveman` rendered config-aware by export/sync. Availability/installation of an external caveman skill is separate and user-controlled; APK installs nothing. Generic brevity or token-efficiency requests, task complexity, or an installed skill never constitute caveman authorization, and caveman wording makes no universal token-saving or hidden-reasoning claims. Legacy repositories with an autogenerated `agentStyle: caveman` keep the stored value (it is schema-valid and honored) because an old default cannot prove human consent; reset is an explicit user switch to `normal` plus the existing export/sync flow. This repository's own config now uses `normal`. ADR-0006 remains recorded as accepted history.
+Status: accepted
+
+APK no longer defaults to the caveman style. `DEFAULT_CONFIG.agentStyle` and `DEFAULT_AGENT_POLICY.defaultStyle` are `normal`: concise, readable sentences that preserve material reasons, limitations, and uncertainty. Caveman remains available in two documented ways: an explicitly named human request for a session (transient; APK never persists it from a conversational request) and a deliberate persisted `agentStyle: caveman` rendered config-aware by export/sync. Availability/installation of an external caveman skill is separate and user-controlled; APK installs nothing. Generic brevity or token-efficiency requests, task complexity, or an installed skill never constitute caveman authorization, and caveman wording makes no universal token-saving or hidden-reasoning claims. Legacy repositories with an autogenerated `agentStyle: caveman` keep the stored value (it is schema-valid and honored) because an old default cannot prove human consent; reset is an explicit user switch to `normal` plus the existing export/sync flow. This repository's own config now uses `normal`. ADR-0006 remains preserved with its original rationale and is superseded by this decision.
 
 Reference:
 
-Task 0124.
+Task 0124 (original task contract, canceled); Task 0136 (validated supersession).
 
 ## ADR-0063 - The task-grill instruction is an optional, manually invoked packaged asset outside common policy
+
+Status: accepted
 
 APK ships `apk-task-grill` as a plain Markdown instruction asset at
 `src/core/templates/skills/apk-task-grill/SKILL.md.hbs`. The existing recursive `.hbs` asset copier
@@ -1011,6 +1110,8 @@ Task 0123.
 
 ## ADR-0064 - The milestone semantic audit is an optional, manually invoked packaged asset that never rewrites history
 
+Status: accepted
+
 APK ships `apk-milestone-semantic-audit` as a plain Markdown instruction asset at
 `src/core/templates/skills/apk-milestone-semantic-audit/SKILL.md.hbs`, copied by the existing
 recursive `.hbs` asset copier into `dist/core/templates/skills/apk-milestone-semantic-audit/SKILL.md.hbs`
@@ -1033,6 +1134,8 @@ Task 0127.
 
 ## ADR-0065 - Go test discovery uses canonical Git inventory and never falls back to an ignore-unaware walk in Git repositories
 
+Status: accepted
+
 Go test evidence (entry condition `go.mod`) is detected from canonical Git inventory
 (`git ls-files --cached --others --exclude-standard`) filtered to `*_test.go` and excluding
 `.git`, `vendor`, `node_modules`, and generated/heavy directories. This honors `.gitignore`
@@ -1050,6 +1153,8 @@ Task 0135.
 
 ## ADR-0066 - Bugfix task contracts use repro-first guidance with honest best-effort limits
 
+Status: accepted
+
 The `bugfix` typed template's declarative defaults now order a failing-signal attempt before implementation changes, economical minimization, competing hypotheses kept distinct from proven root cause, bounded instrumentation, the smallest safe fix, and practical regression protection. For flaky, UI-only, provider-dependent, or locally impractical defects, a captured observation with environment, attempts, and explicit limits may replace a red automated test. This is template guidance only: it adds no debugging subsystem, evidence schema, assurance or lifecycle gate, mandatory instrumentation, or forced automated red test, and it preserves explicit template overrides and historical task contracts.
 
 Reference:
@@ -1057,6 +1162,8 @@ Reference:
 Task 0128.
 
 ## ADR-0067 - Task-split decomposition is an optional packaged asset that previews vertical slices before approved canonical creation
+
+Status: accepted
 
 APK ships `apk-task-split` as plain Markdown at `src/core/templates/skills/apk-task-split/SKILL.md.hbs`,
 copied into the package payload by the existing recursive `.hbs` asset copier. It turns an
@@ -1075,6 +1182,8 @@ Task 0129.
 
 ## ADR-0068 - One prepared review presents Spec correctness and Engineering quality axes with a conservative Overall outcome
 
+Status: accepted
+
 The canonical independent-review prompt presents two explicit axes inside one prepared run: Spec
 correctness and Engineering quality. Reviewers label findings with the axis they concern, disclose
 coverage limits, and submit one conservative Overall outcome: if either axis requires changes or
@@ -1090,6 +1199,8 @@ Reference:
 Task 0130.
 
 ## ADR-0069 - APK lint exposes advisory context-hygiene estimates and never gates on instruction size
+
+Status: accepted
 
 `apk lint` (human and JSON) additionally reports bounded, read-only advisory context estimates
 using the canonical unit `ceil(UTF-8 bytes / 4)`: canonical always-loaded instructions,
@@ -1109,6 +1220,8 @@ Task 0131.
 
 ## ADR-0070 - The prototype instruction is an optional bounded throwaway experiment asset
 
+Status: accepted
+
 APK ships `apk-prototype` as plain Markdown at `src/core/templates/skills/apk-prototype/SKILL.md.hbs`,
 copied into the package payload by the existing recursive `.hbs` asset copier. It runs one small,
 explicitly human-authorized, bounded throwaway experiment for a feasibility question: it inspects
@@ -1126,6 +1239,8 @@ Reference:
 Task 0132.
 
 ## ADR-0071 - The project grill is an optional, manually invoked packaged asset for project/milestone/subsystem direction
+
+Status: accepted
 
 APK ships `apk-project-grill` as plain Markdown at
 `src/core/templates/skills/apk-project-grill/SKILL.md.hbs`, copied into the package payload by the
@@ -1155,6 +1270,8 @@ Reference:
 Task 0137.
 
 ## ADR-0072 - Release evidence is ordered: pre-tag evidence must precede the immutable tag and post-tag evidence is recorded separately
+
+Status: accepted
 
 Everything a release claims as PRE-TAG evidence must actually run against the exact frozen
 candidate SHA/tree before tag creation: local quality/coverage/build/release checks, committed
