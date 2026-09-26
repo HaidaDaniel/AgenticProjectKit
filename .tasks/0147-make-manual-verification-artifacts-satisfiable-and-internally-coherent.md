@@ -1,7 +1,7 @@
 # Task 0147 - Make manual verification artifacts satisfiable and internally coherent
 
-State: todo
-Owner: none
+State: done
+Owner: codex-0147
 Mode: maintenance
 Lane: verification
 Type: bugfix
