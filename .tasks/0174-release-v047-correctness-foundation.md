@@ -1,6 +1,6 @@
 # Task 0174 - Release v0.4.7 correctness foundation
 
-State: doing
+State: done
 Owner: codex-0174
 Mode: production
 Lane: release
