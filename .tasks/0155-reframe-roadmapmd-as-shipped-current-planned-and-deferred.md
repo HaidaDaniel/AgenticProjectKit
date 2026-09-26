@@ -1,7 +1,7 @@
 # Task 0155 - Reframe roadmap.md as shipped, current, planned, and deferred
 
-State: todo
-Owner: none
+State: done
+Owner: codex-0155
 Mode: maintenance
 Lane: documentation
 Type: docs
@@ -10,6 +10,10 @@ Risk: low
 Parallel: true
 Depends on: 0153,0154,0156,0157
 Tags: docs
+
+## Goal
+
+Turn docs/roadmap.md into an accurate index of shipped, current, planned, deferred, and excluded work.
 
 ## Context files
 
@@ -36,10 +40,6 @@ Tags: docs
 - docs/releases/**
 - docs/delivery/milestones.md
 - docs/decisions.md
-
-## Goal
-
-Turn docs/roadmap.md into an accurate index of shipped, current, planned, deferred, and excluded work.
 
 ## Steps
 
@@ -82,6 +82,7 @@ Turn docs/roadmap.md into an accurate index of shipped, current, planned, deferr
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.
