@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
+Task 0161 is `doing`: document a safe brownfield adoption path ([task](../.tasks/0161-document-safe-brownfield-adoption.md)). Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
 
 ## Known blockers
 
