@@ -30,60 +30,72 @@ For first-time use, install an exact release tag into the target repository and 
 
 ## Implemented commands
 
-- `apkit init` - create the kit structure in a new repository.
-- `apkit adopt [directory] [--preview|--dry-run|--apply]` - add the kit to an existing repository and optionally preview/apply legacy compatibility migration.
-- `apkit audit [directory]` - write lightweight kit/workflow and repository-readiness audit reports.
-- `apkit lint [--json]` - read-only validation of task graph, paths, policy, ownership, and generated instruction drift.
-- `apkit context <task-id> [--level 1|2|3] [--budget <units>]` - print legacy or budgeted task context.
-- `apkit doctor` - run read-only local workflow health checks.
-- `apkit quality detect [directory] [--json]` - detect repository quality capabilities and evaluate explicit policy without executing or mutating repository tooling.
-- `apkit agent register --id <id> --platform <platform> --model <model> [--developer <id>]` - register an agent.
+The command synopsis and option list below are rendered from `src/cli/command-registry.ts`. CLI tests require this block to match the registry exactly; the behavior notes below explain defaults and side effects.
+
+<!-- BEGIN GENERATED CLI COMMAND REFERENCE -->
+- `apkit agent register --id <id> --platform <platform> --model <model> [--label <label>] [--developer <id>]` - register an agent in the repository-local registry.
 - `apkit agent list` - list registered agents.
 - `apkit agent migrate-logs [--remove-legacy]` - convert legacy analytics logs to sharded files.
-- `apkit agent prompt --platform <platform>` - print compact agent setup instructions.
-- `apkit analytics summary [--month YYYY-MM] [--write]` - summarize team agent analytics.
-- `apkit mode <mode>` - set or inspect the current operating mode.
-- `apkit resources [--json]` - render the optional secret-free model, harness, and executable worker registry without probing providers.
-- `apkit resources detect [--json]` - deterministic read-only inventory of declared resources, local harness markers, and quality capabilities with a stable fingerprint.
-- `apkit attention [--json]` - bounded, priority-ordered semantic attention queue derived from task/gate/review/policy/resource state; never claims live process facts.
-- `apkit workers [--json]` - declared workers with semantic `ready`/`busy`/`unknown`/`unavailable` state from declared availability/capacity/occupancy plus canonical issued work sessions; exposes bounded capabilities, effective/declared occupancy, remaining slots, and a proven current task/run when one active session exists.
-- `apkit workspaces create --task <task-id> --owner <agent-id> [--resource <worker-id>] [--run <run-id>] [--branch <name>] [--name <dir>] [--baseline <ref>] [--base <dir>] [--json]` - create an APK-owned isolated Git worktree bound to the task/run/resource after validating repository root, path containment, ownership, and collisions.
-- `apkit workspaces list|status [--json]` - bounded managed-workspace state (`active`/`missing`/`unregistered`/`foreign`/`unsafe`/`ambiguous`) with a cleanup/merge/human next action and no broad absolute paths.
-- `apkit workspaces cleanup <workspace-id> [--apply] [--json]` - dry-run preview by default; `--apply` removes only an exact APK-owned, marker-matched, Git-registered, clean, inactive worktree.
-- `apkit execution explain <task-id> --role <planning|implementation|review|fix|documentation|triage|verification> [--profile <local|constrained|balanced|abundant>] [--resource <worker-id>] [--json]` - explain a deterministic resource route without starting a worker.
-- `apkit execution calibrate [--json]` - emit a bounded `apk-calibration-v1` planner package; `--recommendation <json> [--apply]` validates an external recommendation and applies it only on explicit request, preserving user overrides.
-- `apkit next-task` - choose the next task to work on.
-- `apkit tasks` - list active tasks (todo, doing, review, blocked).
-- `apkit tasks --all` - list all tasks including done, canceled, and archived.
-- `apkit tasks --state <state>` - filter tasks by exact state.
-- `apkit tasks --owner <agent-id>` - filter tasks by owner.
-- `apkit work <task-id> --owner <agent-id> --target <agent> [--resource <worker-id>] [--role implement|review|fix|verify] [--level 1|2|3|auto] [--write-session] [--json]` - issue and persist a vendor-neutral worker package; an optional resource ID must reference the validated registry; omitted role is resolved from canonical workflow state.
-- `apkit claim <task-id> --owner <agent-id>` - claim a todo task.
-- `apkit release <task-id> --owner <agent-id>` - release a task back to todo.
-- `apkit block <task-id> --owner <agent-id> --reason <text>` - block a task.
-- `apkit review <task-id> --owner <agent-id>` - move a task to review.
-- `apkit review <task-id> --reviewer <reviewer-id> --review-run <review-run-id> --result <pass|changes_requested|fail> [--finding <text>] [--implementation-run <run-id>]` - append independent review evidence without changing task state; `--review-run` is required and comes from the prior `apkit review --prompt`.
-- `apkit review <task-id> --reviewer <reviewer-id> --prompt` - render the revision-bound inspection prompt for an independent reviewer; prints the `reviewRunId` (`Review run: <review-run-id>`) required when recording the result.
-- `apkit done <task-id> --owner <agent-id>` - mark a task done.
-- `apkit cancel <task-id> --owner <agent-id> --reason <text>` - cancel a task.
-- `apkit context <task-id>` - output the context files needed for a task.
-- `apkit prompt <agent> --task <task-id> [--level 1|2|3] [--budget <units>]` - generate an agent-specific prompt from legacy or budgeted context.
-- `apkit export <agent> [--force]` - export instructions for a specific agent tool.
-- `apkit sync <agent> [--write]` - check or update generated instruction files.
-- `apkit status [--detail]` - print compact active-task workflow status without writing files; detail adds bounded gate, evidence, and provenance fields.
-- `apkit suggest-context "<task description>" [--limit <n>]` - suggest context and allowed files with reasons from local dependency/change-aware heuristics.
-- `apkit task archive <task-id>` - archive a done task by moving it to `.tasks/archive/`.
+- `apkit agent prompt --platform <platform>` - print compact setup instructions for a platform.
+- `apkit adopt [directory] [--preview|--dry-run|--apply]` - add kit files and optionally preview/apply the explicit compatibility migration.
+- `apkit analytics summary [--month YYYY-MM] [--write]` - summarize a month of agent activity, optionally writing the report.
+- `apkit attention [--json]` - project task, gate, review, policy, and resource state without claiming live process facts.
+- `apkit audit [directory]` - write lightweight kit/workflow and repository-readiness reports using static inspection.
+- `apkit block <task-id> --owner <agent-id> [--reason <text>]` - block a task with an optional reason.
+- `apkit cancel <task-id> --owner <agent-id> [--reason <text>]` - cancel a task with an optional reason.
+- `apkit claim <task-id> --owner <agent-id>` - claim a todo task and capture its task baseline.
+- `apkit context <task-id> [--level 1|2|3] [--budget <units>]` - select task context; budget units approximate tokens and required files are never dropped.
+- `apkit done <task-id> --owner <agent-id>` - evaluate the completion gate and record completion evidence; there is no force bypass.
+- `apkit doctor` - inspect local APK workflow health without running adopted-repository commands.
+- `apkit execution explain <task-id> --role <planning|implementation|review|fix|documentation|triage|verification> [--profile <local|constrained|balanced|abundant>] [--resource <worker-id>] [--complexity <simple|medium|complex>] [--json]` - explain the effective route without starting a worker.
+- `apkit execution calibrate [--json]` - emit a bounded calibration package.
+- `apkit execution calibrate --recommendation <json> [--apply]` - validate an external recommendation and apply it only when requested.
+- `apkit export [agent] [--force]` - export generated instructions; existing files are skipped unless forced.
+- `apkit export --report-legacy` - report obsolete generated files without writing.
+- `apkit export --cleanup-legacy` - remove only obsolete files whose content exactly matches a known APK rendering.
+- `apkit init [directory]` - create starter docs, config, task, ignore rules, and generated instructions.
+- `apkit language [show]` - show the resolved local language and its source.
+- `apkit language set <tag>` - persist a short developer-local language tag.
+- `apkit language reset` - remove the local preference and use the English fallback.
+- `apkit lint [--json]` - run read-only contract lint; JSON output is stable for automation.
+- `apkit mode [mode]` - inspect or set the repository's current workflow mode.
+- `apkit next-task` - select a todo task whose dependencies are complete.
+- `apkit prompt <agent> --task <task-id> [--level 1|2|3] [--budget <units>] [--language <tag>]` - render bounded task context and an optional invocation-only language override.
+- `apkit quality detect [directory] [--json]` - read declared quality signals and evaluate explicit policy without executing project commands.
+- `apkit resources [--json]` - render configured model, harness, and worker records without probing providers.
+- `apkit resources detect [--json]` - inventory local markers and declared capabilities without mutation.
+- `apkit release <task-id> --owner <agent-id>` - release a task owned by the registered agent.
+- `apkit review <task-id> --owner <agent-id>` - move the implementation task to review.
+- `apkit review <task-id> --reviewer <reviewer-id> --prompt` - prepare a revision-bound review session and print its review run ID.
+- `apkit review <task-id> --reviewer <reviewer-id> --review-run <review-run-id> --result <pass|changes_requested|fail> [--finding <text>] [--implementation-run <run-id>]` - record the prepared review outcome; reviewer must be registered and separate from the owner.
+- `apkit status [--detail]` - show task and gate state; detail adds bounded evidence/provenance diagnostics without writing files.
+- `apkit suggest-context "<task description>" [--limit <n>]` - rank context candidates from repository paths and task signals; suggestions are not guaranteed impact analysis.
+- `apkit sync [agent] [--write]` - check generated files by default; write missing or stale files only with `--write`.
+- `apkit task archive <task-id>` - archive a done task.
 - `apkit task archive --all` - archive all done top-level tasks.
-- `apkit task deps <task-id>` - inspect task prerequisites, dependents, and graph problems.
-- `apkit task evidence <task-id>` - list append-only evidence records for a task.
-- `apkit task dogfood start <task-id> --owner <agent-id> --tool <tool> --scenario <text>` - create a bounded dogfooding prompt/session.
-- `apkit task dogfood result <task-id> --owner <agent-id> --session <session-id> --outcome <pass|fail>` - record bounded dogfooding evidence.
-- `apkit task policy <task-id>` - resolve deterministic risk/tag requirements and print blockers without changing task state.
-- `apkit task gate <task-id>` - preview completion blockers for the current candidate without changing task state.
-- `apkit task decision <task-id> --actor <human-id> --result <accept-current|grant-review-passes|changes-required|cancel> --reason <text> [--passes <1-2>] [--owner <agent-id>]` - record a bounded, operator-asserted human decision bound to the current candidate. `accept-current` resolves only the structured review-budget-exhaustion condition; `grant-review-passes` extends the review budget by 1-2 passes; `changes-required` never satisfies the gate; `cancel` routes to the canonical `apkit cancel`. There is no `--force-done`, `--ignore-gate`, or `--skip-verification`.
-- `apkit task provenance <task-id> [--json]` - reconstruct bounded task runs, worker issued/output subjects, baseline, commits/diff, evidence freshness/supersession, and completion evidence.
-- `apkit task verify <task-id> [--check-files-only] [--profile <profile|all>] [--owner <agent-id>]` - run eligible verification checks and record evidence.
-- `apkit task create --title <title> --scope <csv> --allowed <csv> [--type <name>|--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>] [--assumptions <csv>] [--invariants <csv>] [--required-evidence <csv>] [--review-questions <csv>] [--counterexample-searches <csv>]` - generate a new validated task file.
+- `apkit task deps <task-id>` - inspect prerequisites, dependents, and graph problems.
+- `apkit task evidence <task-id>` - list bounded evidence references and subject identities.
+- `apkit task lock status [--kind <task|evidence>] [--json]` - inspect task/evidence lock ownership and liveness.
+- `apkit task lock recover --kind <task|evidence> [--force]` - recover a confirmed-dead lock; uncertain metadata requires `--force` and independent operator inspection.
+- `apkit task policy <task-id>` - resolve requirements and show blockers without changing task state.
+- `apkit task gate <task-id>` - preview completion blockers for the current candidate.
+- `apkit task decision <task-id> --actor <human-id> --result <accept-current|grant-review-passes|changes-required|cancel> --reason <text> [--passes <1-2>] [--owner <agent-id>]` - record an operator-asserted, candidate-bound decision; there is no generic force bypass.
+- `apkit task provenance <task-id> [--json]` - reconstruct bounded runs, commits, scope, evidence freshness, and completion provenance.
+- `apkit task dogfood start <task-id> --owner <agent-id> --tool <tool> --scenario <text> [--session <id>] [--started-at <ISO timestamp>]` - create a bounded dogfooding prompt/session.
+- `apkit task dogfood result <task-id> --owner <agent-id> --session <session-id> --outcome <pass|fail> [--ended-at <ISO timestamp>] [--failures <csv>] [--retries <n>] [--observations <csv>] [--issues <csv>] [--metrics-json <json>]` - record an immutable bounded observation for that session.
+- `apkit task verify <task-id> [--check-files-only] [--profile <profile|all>] [--owner <agent-id>]` - check task file scope, run eligible checks, and append candidate-bound evidence.
+- `apkit task verify <task-id> --record --owner <agent-id> --check <check-id> --result <pass|fail> --evidence <reference> [--summary <text>]` - record an externally observed manual/live result for a declared check.
+- `apkit task create --title <title> --scope <csv> --allowed <csv> [--type <name>|--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--forbidden <csv>] [--depends <csv>] [--parallel] [--tags <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>] [--steps <csv>] [--acceptance <csv>] [--docs <csv>] [--notes <csv>] [--assumptions <csv>] [--invariants <csv>] [--required-evidence <csv>] [--review-questions <csv>] [--counterexample-searches <csv>]` - generate a validated task file; explicit values override typed template defaults.
+- `apkit tasks [--all] [--state <state>] [--owner <agent-id>]` - list active tasks or filter the complete lifecycle set.
+- `apkit work <task-id> --owner <agent-id> --target <agent> [--resource <worker-id>] [--role implement|review|fix|verify] [--level 1|2|3|auto] [--write-session] [--json]` - claim or continue a task and persist an `apk-worker-v1` package; this does not launch an agent.
+- `apkit work result <task-id> --owner <agent-id> --run-id <run-id> --role <implement|review|fix|verify> --status <completed|failed|changes_requested> [--result-json <json>] [--commit-id <sha>] [--diff-id <id>] [--evidence-json <json>] [--finding <text>] [--reason <text>] [--json]` - submit a result for the exact activated worker run; results do not replace canonical verification or review evidence.
+- `apkit work result <task-id> --owner <agent-id> --result-json <json> [--json]` - submit the complete JSON-compatible result instead of individual result fields.
+- `apkit workers [--json]` - project declared availability/capacity and canonical issued sessions; does not claim live process state.
+- `apkit workspaces create --task <task-id> --owner <agent-id> [--resource <worker-id>] [--run <run-id>] [--branch <name>] [--name <dir>] [--baseline <ref>] [--base <dir>] [--json]` - create a worktree after validating task/run/resource binding and path ownership.
+- `apkit workspaces list [--json]` - list bounded APK-managed workspace state.
+- `apkit workspaces status [--json]` - inspect one or all managed workspace states.
+- `apkit workspaces cleanup <workspace-id> [--apply] [--json]` - preview cleanup by default; apply removes only a proven clean, inactive APK-owned worktree.
+<!-- END GENERATED CLI COMMAND REFERENCE -->
 
 ## Example usage
 

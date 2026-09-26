@@ -23,6 +23,12 @@ import {
   type WorkspaceRecord,
 } from "../core/workspaces/index.js";
 import { captureTaskEvidenceSubject, parseTaskMarkdown } from "../core/tasks/index.js";
+import {
+  PUBLIC_COMMANDS,
+  renderCliHelp,
+  renderCliReferenceSection,
+  validateCliReference,
+} from "./command-registry.js";
 
 const execFileAsync = promisify(execFile);
 const CLI_PATH = join(process.cwd(), "src/cli/index.ts");
@@ -103,6 +109,64 @@ test("CLI help lists implemented commands", async () => {
   assert.match(result.stdout, /apkit task deps <task-id>/);
   assert.match(result.stdout, /apkit tasks \[--all\] \[--state <state>\] \[--owner <agent-id>\]/);
   assert.doesNotMatch(result.stdout, /^\s+apk /m);
+});
+
+test("CLI command registry keeps help and the public reference aligned", async () => {
+  const help = await runCli(["--help"]);
+  assert.equal(help.exitCode, 0);
+  assert.equal(help.stdout, renderCliHelp());
+
+  const documentation = await readFile(join(process.cwd(), "docs/cli-commands.md"), "utf8");
+  assert.deepEqual(validateCliReference(documentation), []);
+
+  const firstCommand = PUBLIC_COMMANDS.flatMap((entry) => entry.variants)[0];
+  assert.ok(firstCommand);
+  const referenceLine = `- \`apkit ${firstCommand.usage}\` - ${firstCommand.description}`;
+  assert.ok(documentation.includes(referenceLine));
+
+  const missingReference = documentation.replace(`${referenceLine}\n`, "");
+  assert.deepEqual(validateCliReference(missingReference), [
+    "CLI command reference is missing or stale; update the generated command reference block from the CLI registry.",
+  ]);
+
+  const staleReference = documentation.replace(referenceLine, `${referenceLine} (stale)`);
+  assert.deepEqual(validateCliReference(staleReference), [
+    "CLI command reference is missing or stale; update the generated command reference block from the CLI registry.",
+  ]);
+
+  assert.ok(renderCliReferenceSection().includes(referenceLine));
+});
+
+test("command-handler help options are represented by the canonical reference registry", async () => {
+  const helpPaths = new Set(PUBLIC_COMMANDS.flatMap((entry) => entry.variants.map((variant) => {
+    const words = variant.usage.split(/\s+/);
+    const path: string[] = [];
+    for (const word of words) {
+      if (word.startsWith("-") || word.startsWith("<") || word.startsWith("[") || word.startsWith("\"")) break;
+      path.push(word);
+    }
+    return path.join(" ");
+  })));
+
+  for (const path of helpPaths) {
+    const [command, ...subcommands] = path.split(" ");
+    const help = await runCli([command!, ...subcommands, "--help"]);
+    assert.equal(help.exitCode, 0, `${path} --help failed: ${help.stdout}${help.stderr}`);
+
+    const sourceUsage = help.stdout.split(/\r?\n/).filter((line) => {
+      const usage = line.trim().replace(/^Usage:\s*/, "");
+      return /^(?:apk|apkit)\s/.test(usage);
+    });
+    const documentedFlags = new Set(PUBLIC_COMMANDS
+      .find((entry) => entry.command === command)?.variants
+      .flatMap((variant) => [...variant.usage.matchAll(/--[a-z][a-z-]*/g)].map((match) => match[0])) ?? []);
+
+    for (const line of sourceUsage) {
+      for (const match of line.matchAll(/--[a-z][a-z-]*/g)) {
+        assert.ok(documentedFlags.has(match[0]!), `${path} help exposes ${match[0]} without a registry entry`);
+      }
+    }
+  }
 });
 
 test("package CLI aliases retain the same entrypoint", async () => {

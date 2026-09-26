@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-No task is currently active. Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
+Task 0167 is `doing`: align the public CLI reference with implemented commands and options using a deterministic consistency check ([task](../.tasks/0167-keep-cli-reference-aligned-with-the-command-registry.md)). Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
 
 ## Known blockers
 
