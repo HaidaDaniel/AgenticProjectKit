@@ -26,7 +26,7 @@ Tags: docs
 - docs/cli-commands.md
 - docs/releases/index.md (future output of prerequisite Task 0171)
 - CONTRIBUTING.md (future output of prerequisite Task 0169)
-- SECURITY.md (link only when present / after Task 0170)
+- SECURITY.md (link only if the file exists)
 - CHANGELOG.md (future output of prerequisite Task 0171)
 
 ## Files allowed to edit
@@ -52,7 +52,7 @@ Replace the oversized mixed-purpose README with a concise, accurate public front
 
 1. Use approved product requirements, maturity policy, current scope, guides, install policy, and CLI identity as sources.
 2. Lead with the user problem, concrete capability, audience, and explicit product boundary.
-3. Provide one verified quickstart, a compact feature/trust summary, maturity status, and links to canonical docs and OSS metadata; link SECURITY.md only when present / after Task 0170.
+3. Provide one verified quickstart, a compact feature/trust summary, maturity status, and links to canonical docs and OSS metadata; link SECURITY.md only when the file exists.
 4. Remove duplicate command dumps and stale milestone/release claims while retaining useful links.
 
 ## Acceptance criteria

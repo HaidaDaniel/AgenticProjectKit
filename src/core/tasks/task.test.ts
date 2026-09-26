@@ -49,10 +49,12 @@ import {
   normalizeVerificationCommands,
   PACKAGED_DIST_CHECK_COMMAND,
   PACKAGED_DIST_CHECK_ID,
+  packagedDistCheckCommand,
   isPackagedInputPath,
   mayIncludePackagedSource,
   packagedDistTaskContractBlockers,
   repositoryShipsCommittedDist,
+  repositoryPackagedDistContract,
   taskPathPatternMayMatchDistOutput,
   parseTaskMarkdown,
   prepareTaskReview,
@@ -596,8 +598,48 @@ test("committed-dist task contract classifies packaged source and copied assets 
 
   await withTempDirectory(async (directory) => {
     assert.equal(await repositoryShipsCommittedDist(directory), false);
-    await writeFile(join(directory, "package.json"), JSON.stringify({ files: ["dist"], scripts: { build: "tsc" } }), "utf8");
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      files: ["dist"],
+      packageManager: "pnpm@10.28.1",
+      scripts: { build: "tsc" },
+    }), "utf8");
     assert.equal(await repositoryShipsCommittedDist(directory), true);
+    assert.deepEqual(await repositoryPackagedDistContract(directory), {
+      shipsCommittedDist: true,
+      buildScriptAvailable: true,
+      buildCommand: "pnpm build",
+      checkCommand: PACKAGED_DIST_CHECK_COMMAND,
+    });
+
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      files: ["dist"],
+      packageManager: "npm@10.0.0",
+      scripts: { build: "tsc" },
+    }), "utf8");
+    const npmContract = await repositoryPackagedDistContract(directory);
+    assert.equal(npmContract.shipsCommittedDist, true);
+    assert.equal(npmContract.checkCommand, packagedDistCheckCommand("npm run build"));
+
+    await writeFile(join(directory, "package.json"), JSON.stringify({ files: ["dist"] }), "utf8");
+    const missingBuild = await repositoryPackagedDistContract(directory);
+    assert.equal(missingBuild.shipsCommittedDist, true);
+    assert.equal(missingBuild.buildScriptAvailable, false);
+
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      files: ["dist"],
+      scripts: { build: "tsc" },
+    }), "utf8");
+    const missingManager = await repositoryPackagedDistContract(directory);
+    assert.equal(missingManager.shipsCommittedDist, true);
+    assert.equal(missingManager.checkCommand, undefined);
+
+    await writeFile(join(directory, "package-lock.json"), "{}\n", "utf8");
+    const lockfileManager = await repositoryPackagedDistContract(directory);
+    assert.equal(lockfileManager.checkCommand, packagedDistCheckCommand("npm run build"));
+    await writeFile(join(directory, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n", "utf8");
+    const ambiguousManager = await repositoryPackagedDistContract(directory);
+    assert.equal(ambiguousManager.shipsCommittedDist, true);
+    assert.equal(ambiguousManager.checkCommand, undefined);
   });
 
   const sourceTask: ProjectTask = {
@@ -3093,7 +3135,11 @@ test("completion gate rejects stale packaged output and accepts the rebuilt cand
     await mkdir(join(directory, "dist", "cli"), { recursive: true });
     await mkdir(join(directory, "src", "core", "templates", "minimal-docs"), { recursive: true });
     await mkdir(join(directory, "dist", "core", "templates", "minimal-docs"), { recursive: true });
-    await writeFile(join(directory, "package.json"), JSON.stringify({ files: ["dist"], scripts: { build: "node build.mjs" } }), "utf8");
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      files: ["dist"],
+      packageManager: "pnpm@10.28.1",
+      scripts: { build: "node build.mjs" },
+    }), "utf8");
     await writeFile(join(directory, "build.mjs"), [
       "import { copyFile, mkdir } from 'node:fs/promises';",
       "await mkdir('dist/cli', { recursive: true });",
@@ -3135,6 +3181,27 @@ test("completion gate rejects stale packaged output and accepts the rebuilt cand
       dependsOn: [],
       tags: [],
       allowedFiles: ["src/core/templates/minimal-docs/product-requirements.md.hbs", "dist/**"],
+      forbiddenFiles: [],
+      verificationCommands: [],
+      verification: [{
+        id: PACKAGED_DIST_CHECK_ID,
+        type: "automated",
+        required: true,
+        environment: "local",
+        profile: "deterministic",
+        command: PACKAGED_DIST_CHECK_COMMAND,
+      }],
+    });
+    await writeTaskFile(join(directory, ".tasks", "0009-build-script-removal.md"), {
+      ...TASK,
+      id: "0009",
+      title: "Remove build script while changing package source",
+      state: "todo",
+      owner: "none",
+      risk: "low",
+      dependsOn: [],
+      tags: [],
+      allowedFiles: ["package.json", "src/cli/index.ts", "dist/**"],
       forbiddenFiles: [],
       verificationCommands: [],
       verification: [{
@@ -3209,6 +3276,29 @@ test("completion gate rejects stale packaged output and accepts the rebuilt cand
     assert.equal(currentAsset.passed, true);
     const currentAssetGate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008" });
     assert.equal(currentAssetGate.passed, true, currentAssetGate.blockers.join("; "));
+
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0009", owner: "codex-a" });
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      files: ["dist"],
+      packageManager: "pnpm@10.28.1",
+    }), "utf8");
+    await writeFile(join(directory, "src", "cli", "index.ts"), "export const value = 'source-v3';\n", "utf8");
+    assert.equal(await repositoryShipsCommittedDist(directory), true);
+    const missingBuildScript = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0009",
+      owner: "codex-a",
+    });
+    assert.equal(missingBuildScript.passed, false);
+    assert.equal(missingBuildScript.checkResults[0]?.status, "fail");
+    const missingBuildGate = await evaluateTaskCompletionGate({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0009",
+    });
+    assert.equal(missingBuildGate.passed, false);
+    assert.ok(missingBuildGate.blockers.some((blocker) => blocker.includes("no usable scripts.build")));
   });
 });
 

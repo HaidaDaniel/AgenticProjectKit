@@ -9,7 +9,7 @@ import { syncAgentExports } from "../sync/index.js";
 import {
   parseTaskMarkdown,
   packagedDistTaskContractBlockers,
-  repositoryShipsCommittedDist,
+  repositoryPackagedDistContract,
   resolveTaskPolicy,
   validateTaskDependencies,
   type ProjectTask,
@@ -646,7 +646,7 @@ export async function lintRepositoryContracts(rootDirectory: string): Promise<Ta
   }
 
   const registeredAgents = new Set((await listAgents(rootDirectory)).map((agent) => agent.id));
-  const shipsCommittedDist = await repositoryShipsCommittedDist(rootDirectory);
+  const packagedDistContract = await repositoryPackagedDistContract(rootDirectory);
   for (const file of [...documents.active, ...documents.archived]) {
     const path = normalizeRepoPath(relative(rootDirectory, file.path));
     if (file.task.dependsOn.includes(file.task.id)) {
@@ -661,8 +661,11 @@ export async function lintRepositoryContracts(rootDirectory: string): Promise<Ta
     }
     lintPathContracts(file.task, findings, path);
     lintTaskPolicy(file.task, findings, path);
-    if (shipsCommittedDist) {
-      for (const message of packagedDistTaskContractBlockers(file.task)) {
+    if (packagedDistContract.shipsCommittedDist) {
+      for (const message of packagedDistTaskContractBlockers(file.task, {
+        buildScriptAvailable: packagedDistContract.buildScriptAvailable,
+        checkCommand: packagedDistContract.checkCommand,
+      })) {
         addFinding(findings, {
           level: "error",
           code: "packaged-dist-contract",

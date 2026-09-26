@@ -43,10 +43,9 @@ import {
   TASK_MODES,
   TASK_RISKS,
   TASK_VERIFICATION_PROFILES,
-  PACKAGED_DIST_CHECK_COMMAND,
   PACKAGED_DIST_CHECK_ID,
   mayIncludePackagedSource,
-  repositoryShipsCommittedDist,
+  repositoryPackagedDistContract,
   normalizeVerificationCommands,
   taskPathPatternMayMatchDistOutput,
   type TaskVerificationCheck,
@@ -373,10 +372,14 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
   const resolvedAllowedFiles = [...allowedFiles];
   const finalVerification = [...resolvedVerification];
   const rootDirectory = resolve(process.cwd());
+  const packagedDistContract = await repositoryPackagedDistContract(rootDirectory);
   if (
-    await repositoryShipsCommittedDist(rootDirectory)
+    packagedDistContract.shipsCommittedDist
     && allowedFiles.some(mayIncludePackagedSource)
   ) {
+    if (!packagedDistContract.checkCommand) {
+      throw new Error("This package ships dist but has no declared supported package manager; set packageManager or keep exactly one supported lockfile before creating a packaged-source task.");
+    }
     if (forbiddenFiles.some(taskPathPatternMayMatchDistOutput)) {
       throw new Error("Tasks that allow packaged source/assets cannot forbid dist output; remove the matching --forbidden path.");
     }
@@ -388,7 +391,7 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
       || existingBuildCheck.type !== "automated"
       || existingBuildCheck.environment !== "local"
       || existingBuildCheck.profile !== "deterministic"
-      || existingBuildCheck.command !== PACKAGED_DIST_CHECK_COMMAND
+      || existingBuildCheck.command !== packagedDistContract.checkCommand
     )) {
       throw new Error(`Verification check ${PACKAGED_DIST_CHECK_ID} is reserved for the required packaged-source build/current-dist command.`);
     }
@@ -399,7 +402,7 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
         required: true,
         environment: "local",
         profile: "deterministic",
-        command: PACKAGED_DIST_CHECK_COMMAND,
+        command: packagedDistContract.checkCommand,
       });
     }
   }

@@ -36,7 +36,7 @@ import {
 import {
   isPackagedInputPath,
   packagedDistTaskContractBlockers,
-  repositoryShipsCommittedDist,
+  repositoryPackagedDistContract,
 } from "./package-contract.js";
 
 export interface TaskCompletionCandidate {
@@ -263,11 +263,12 @@ export async function evaluateTaskCompletionGate(options: {
     ...(scope.attribution?.diagnostics ?? []),
     ...policy.diagnostics,
   ];
-  if (
-    await repositoryShipsCommittedDist(options.rootDirectory)
-    && candidate.changedFiles.some(isPackagedInputPath)
-  ) {
-    blockers.push(...packagedDistTaskContractBlockers(task));
+  const packagedDistContract = await repositoryPackagedDistContract(options.rootDirectory);
+  if (packagedDistContract.shipsCommittedDist && candidate.changedFiles.some(isPackagedInputPath)) {
+    blockers.push(...packagedDistTaskContractBlockers(task, {
+      buildScriptAvailable: packagedDistContract.buildScriptAvailable,
+      checkCommand: packagedDistContract.checkCommand,
+    }));
   }
   if (!candidate.comparisonKnown) {
     blockers.push("Baseline-aware Git comparison could not be established; gate-eligible evidence is blocked.");

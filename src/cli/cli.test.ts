@@ -3763,6 +3763,7 @@ test("CLI task create adds the committed-dist contract only for packaged-source 
     await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({}), "utf8");
     await writeFile(join(directory, "package.json"), JSON.stringify({
       files: ["dist", "README.md"],
+      packageManager: "pnpm@10.28.1",
       scripts: { build: "tsc -p tsconfig.build.json" },
     }), "utf8");
 
@@ -3784,6 +3785,27 @@ test("CLI task create adds the committed-dist contract only for packaged-source 
     assert.match(sourceContract, /"id":"build-current"/);
     assert.match(sourceContract, /pnpm build && test -z/);
 
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      files: ["dist", "README.md"],
+      packageManager: "npm@10.0.0",
+      scripts: { build: "tsc -p tsconfig.build.json" },
+    }), "utf8");
+    const npmSourceTask = await runCli([
+      "task", "create",
+      "--type", "feature",
+      "--title", "Npm Packaged Source Change",
+      "--mode", "maintenance",
+      "--lane", "quality",
+      "--scope", "source",
+      "--risk", "low",
+      "--context", "AGENTS.md",
+      "--allowed", "src/features/example.ts",
+      "--verification", "npm test",
+    ], directory);
+    assert.equal(npmSourceTask.exitCode, 0, `${npmSourceTask.stdout}${npmSourceTask.stderr}`);
+    const npmContract = await readFile(join(directory, ".tasks", "0002-npm-packaged-source-change.md"), "utf8");
+    assert.match(npmContract, /npm run build && test -z/);
+
     const docsTask = await runCli([
       "task", "create",
       "--type", "docs",
@@ -3797,7 +3819,7 @@ test("CLI task create adds the committed-dist contract only for packaged-source 
       "--verification", "pnpm test",
     ], directory);
     assert.equal(docsTask.exitCode, 0, `${docsTask.stdout}${docsTask.stderr}`);
-    const docsContract = await readFile(join(directory, ".tasks", "0002-documentation-only.md"), "utf8");
+    const docsContract = await readFile(join(directory, ".tasks", "0003-documentation-only.md"), "utf8");
     assert.doesNotMatch(docsContract, /dist\/\*\*/);
     assert.doesNotMatch(docsContract, /build-current/);
 
@@ -3815,7 +3837,7 @@ test("CLI task create adds the committed-dist contract only for packaged-source 
     ], directory);
     assert.equal(forbiddenSourceTask.exitCode, 1);
     assert.match(forbiddenSourceTask.stderr, /cannot forbid dist output/);
-    await assert.rejects(readFile(join(directory, ".tasks", "0003-contradictory-source-task.md"), "utf8"));
+    await assert.rejects(readFile(join(directory, ".tasks", "0004-contradictory-source-task.md"), "utf8"));
   });
 });
 

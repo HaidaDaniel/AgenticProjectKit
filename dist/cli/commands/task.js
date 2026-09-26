@@ -2,7 +2,7 @@ import { join, relative, resolve } from "node:path";
 import { readAgenticConfigFile } from "../../core/config/index.js";
 import { getTaskTemplate, resolveTaskTemplateType, TASK_TEMPLATE_TYPES, } from "../../core/templates/task-templates.js";
 import { TASK_HUMAN_DECISIONS, MAX_HUMAN_REVIEW_GRANT_PASSES, recordTaskHumanDecision, renderTaskHumanDecisionResult, cancelTask, } from "../../core/tasks/index.js";
-import { archiveAllTasks, archiveTask, buildTaskProvenance, buildTaskDeps, createTask, evaluateTaskCompletionGate, findTaskFile, listArchivedTaskFiles, listTaskFiles, loadTaskFile, readTaskEvidence, renderTaskPolicy, renderTaskDeps, renderTaskEvidence, renderTaskCompletionGate, renderTaskProvenance, renderTaskVerifyResult, renderRecordManualVerificationResult, recordManualVerification, renderDogfoodResult, renderDogfoodSession, recordDogfoodResult, resolveTaskPolicy, startDogfoodSession, TASK_MODES, TASK_RISKS, TASK_VERIFICATION_PROFILES, PACKAGED_DIST_CHECK_COMMAND, PACKAGED_DIST_CHECK_ID, mayIncludePackagedSource, repositoryShipsCommittedDist, normalizeVerificationCommands, taskPathPatternMayMatchDistOutput, verifyTask, } from "../../core/tasks/index.js";
+import { archiveAllTasks, archiveTask, buildTaskProvenance, buildTaskDeps, createTask, evaluateTaskCompletionGate, findTaskFile, listArchivedTaskFiles, listTaskFiles, loadTaskFile, readTaskEvidence, renderTaskPolicy, renderTaskDeps, renderTaskEvidence, renderTaskCompletionGate, renderTaskProvenance, renderTaskVerifyResult, renderRecordManualVerificationResult, recordManualVerification, renderDogfoodResult, renderDogfoodSession, recordDogfoodResult, resolveTaskPolicy, startDogfoodSession, TASK_MODES, TASK_RISKS, TASK_VERIFICATION_PROFILES, PACKAGED_DIST_CHECK_ID, mayIncludePackagedSource, repositoryPackagedDistContract, normalizeVerificationCommands, taskPathPatternMayMatchDistOutput, verifyTask, } from "../../core/tasks/index.js";
 import { TASK_EVIDENCE_LOCK_PATH } from "../../core/tasks/evidence.js";
 import { inspectLocalMutationLock, recoverLocalLock, renderLocalLockInspection, } from "../../core/tasks/lock.js";
 const TASK_HELP_TEXT = [
@@ -291,8 +291,12 @@ async function runCreateSubcommand(argv) {
     const resolvedAllowedFiles = [...allowedFiles];
     const finalVerification = [...resolvedVerification];
     const rootDirectory = resolve(process.cwd());
-    if (await repositoryShipsCommittedDist(rootDirectory)
+    const packagedDistContract = await repositoryPackagedDistContract(rootDirectory);
+    if (packagedDistContract.shipsCommittedDist
         && allowedFiles.some(mayIncludePackagedSource)) {
+        if (!packagedDistContract.checkCommand) {
+            throw new Error("This package ships dist but has no declared supported package manager; set packageManager or keep exactly one supported lockfile before creating a packaged-source task.");
+        }
         if (forbiddenFiles.some(taskPathPatternMayMatchDistOutput)) {
             throw new Error("Tasks that allow packaged source/assets cannot forbid dist output; remove the matching --forbidden path.");
         }
@@ -303,7 +307,7 @@ async function runCreateSubcommand(argv) {
             || existingBuildCheck.type !== "automated"
             || existingBuildCheck.environment !== "local"
             || existingBuildCheck.profile !== "deterministic"
-            || existingBuildCheck.command !== PACKAGED_DIST_CHECK_COMMAND)) {
+            || existingBuildCheck.command !== packagedDistContract.checkCommand)) {
             throw new Error(`Verification check ${PACKAGED_DIST_CHECK_ID} is reserved for the required packaged-source build/current-dist command.`);
         }
         if (!existingBuildCheck) {
@@ -313,7 +317,7 @@ async function runCreateSubcommand(argv) {
                 required: true,
                 environment: "local",
                 profile: "deterministic",
-                command: PACKAGED_DIST_CHECK_COMMAND,
+                command: packagedDistContract.checkCommand,
             });
         }
     }

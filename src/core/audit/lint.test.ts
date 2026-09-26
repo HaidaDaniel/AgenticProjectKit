@@ -200,6 +200,7 @@ test("contract lint rejects active packaged-source scope contradictions but leav
     await writeAllAgentExports(directory, undefined, { force: true });
     await writeFile(join(directory, "package.json"), JSON.stringify({
       files: ["dist"],
+      packageManager: "pnpm@10.28.1",
       scripts: { build: "tsc -p tsconfig.build.json" },
     }), "utf8");
     await registerAgent(directory, { id: "known-agent", developer: "dev", platform: "opencode", model: "m" });
@@ -216,6 +217,20 @@ test("contract lint rejects active packaged-source scope contradictions but leav
       allowedFiles: ["docs/guide.md"],
       forbiddenFiles: [],
     }));
+    await writeTask(directory, "0022-missing-build-script.md", task("0022", {
+      state: "doing",
+      owner: "known-agent",
+      allowedFiles: ["src/core/init/index.ts", "dist/**"],
+      forbiddenFiles: [],
+      verification: [{
+        id: "build-current",
+        type: "automated",
+        required: true,
+        environment: "local",
+        profile: "deterministic",
+        command: 'pnpm build && test -z "$(git status --porcelain --untracked-files=all -- dist)"',
+      }],
+    }));
 
     const result = await lintRepositoryContracts(directory);
     const sourceFinding = result.findings.find((finding) => (
@@ -225,6 +240,17 @@ test("contract lint rejects active packaged-source scope contradictions but leav
     assert.ok(sourceFinding);
     assert.equal(sourceFinding.level, "error");
     assert.match(sourceFinding.message, /Allow dist\/\*\*/);
+
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      files: ["dist"],
+      packageManager: "pnpm@10.28.1",
+    }), "utf8");
+    const missingBuildResult = await lintRepositoryContracts(directory);
+    const missingBuildFinding = missingBuildResult.findings.find((finding) => (
+      finding.code === "packaged-dist-contract" && finding.taskId === "0022"
+    ));
+    assert.ok(missingBuildFinding);
+    assert.match(missingBuildFinding.message, /no usable scripts\.build/);
     assert.ok(!result.findings.some((finding) => (
       finding.code === "packaged-dist-contract" && finding.taskId === "0021"
     )));
