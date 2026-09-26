@@ -1,7 +1,7 @@
 # Task 0162 - Document constrained and local-first execution
 
-State: todo
-Owner: none
+State: done
+Owner: codex-0162
 Mode: product
 Lane: documentation
 Type: docs
@@ -10,6 +10,10 @@ Risk: low
 Parallel: true
 Depends on: 0152,0157
 Tags: docs
+
+## Goal
+
+Explain constrained, air-gapped, and local-first workflows with precise network and support limits.
 
 ## Context files
 
@@ -35,10 +39,6 @@ Tags: docs
 - .tasks/archive/**
 - docs/releases/**
 - docs/decisions.md
-
-## Goal
-
-Explain constrained, air-gapped, and local-first workflows with precise network and support limits.
 
 ## Steps
 
@@ -82,6 +82,7 @@ Explain constrained, air-gapped, and local-first workflows with precise network 
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.

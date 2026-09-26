@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0162 is `doing`: document constrained and local-first execution with precise network limits ([guide](guides/constrained-local-execution.md), [task](../.tasks/0162-document-constrained-and-local-first-execution.md)). Its prerequisites 0152 and 0157 are done. Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
+No task is currently `doing` or `review` at this closeout. Continue the public-readiness workstream by its declared dependencies. Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
 
 ## Known blockers
 
@@ -22,6 +22,7 @@ Complete the public-readiness workstreams in the [dependency-aware roadmap](road
 
 ## Recently completed
 
+- Task 0162 documented constrained and local-first execution, including network and platform limits ([guide](guides/constrained-local-execution.md), [task](../.tasks/0162-document-constrained-and-local-first-execution.md)). Candidate commit: `1b3749a`; lifecycle closeout is committed separately.
 - Task 0160 documented APK workflow concepts and actor trust boundaries ([concepts](concepts.md), [task](../.tasks/0160-explain-apk-core-concepts-and-trust-boundaries.md)). Candidate commit: `ccdb161`; lifecycle closeout is committed separately.
 - Task 0155 reframed the roadmap around released capabilities, current readiness work, deferred items, and exclusions ([roadmap](roadmap.md), [task](../.tasks/0155-reframe-roadmapmd-as-shipped-current-planned-and-deferred.md)). Candidate commit: `cdd3cab`; lifecycle closeout is committed separately.
 - Task 0157 clarified current architecture boundaries and indexed ADR lifecycle status ([architecture](architecture.md), [decisions](decisions.md)). Candidate commit: `eeba8b7`; lifecycle closeout is committed separately.
