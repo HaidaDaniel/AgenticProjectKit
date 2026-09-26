@@ -1,7 +1,7 @@
 # Task 0167 - Keep CLI reference aligned with the command registry
 
-State: todo
-Owner: none
+State: done
+Owner: codex-0167
 Mode: maintenance
 Lane: cli
 Type: feature
@@ -10,6 +10,10 @@ Risk: medium
 Parallel: false
 Depends on: 0165
 Tags: feature
+
+## Goal
+
+Make the public CLI reference derive from or deterministically validate against implemented command definitions.
 
 ## Context files
 
@@ -34,10 +38,6 @@ Tags: feature
 - .tasks/archive/**
 - docs/releases/**
 - docs/decisions.md
-
-## Goal
-
-Make the public CLI reference derive from or deterministically validate against implemented command definitions.
 
 ## Steps
 
@@ -81,6 +81,7 @@ Make the public CLI reference derive from or deterministically validate against 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test"}`
 - `{"id":"check-3","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.

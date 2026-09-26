@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0167 is `doing`: align the public CLI reference with implemented commands and options using a deterministic consistency check ([task](../.tasks/0167-keep-cli-reference-aligned-with-the-command-registry.md)). Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
+No task is currently active. Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
 
 ## Known blockers
 
@@ -22,6 +22,7 @@ Complete the public-readiness workstreams in the [dependency-aware roadmap](road
 
 ## Recently completed
 
+- Task 0167 made one command registry drive CLI dispatch and help, generated the public command synopsis, and added tests for stale references and handler-help options ([CLI reference](cli-commands.md), [task](../.tasks/0167-keep-cli-reference-aligned-with-the-command-registry.md)). Candidate commits: `18f1002`, `05d4fec`.
 - Task 0159 documented the exact-pin install and one complete package-local task workflow, including generated-instruction inspection and the conditional review path ([guide](getting-started.md), [task](../.tasks/0159-write-a-canonical-getting-started-guide.md)). Candidate commit: `7bf395f`.
 - Task 0166 simplified first-run acquisition around an exact repository-local Git tag and lockfile, with tested local command resolution and recovery guidance ([install guide](../README.md#install-apk-in-another-repository), [task](../.tasks/0166-simplify-first-run-acquisition-while-keeping-exact-pins.md)). Candidate commit: `9c6b077`.
 - Task 0161 documented a safe brownfield adoption sequence with preview, file review, migration, sync, validation, and recovery boundaries ([guide](guides/brownfield-adoption.md), [task](../.tasks/0161-document-safe-brownfield-adoption.md)). Candidate commit: `e307bc7`; lifecycle closeout is committed separately.
