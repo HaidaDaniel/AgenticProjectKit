@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-No task is currently `doing` or `review` at this closeout. Continue the public-readiness workstream by its declared dependencies. Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
+Task 0162 is `doing`: document constrained and local-first execution with precise network limits ([guide](guides/constrained-local-execution.md), [task](../.tasks/0162-document-constrained-and-local-first-execution.md)). Its prerequisites 0152 and 0157 are done. Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
 
 ## Known blockers
 
