@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0154 is `doing`: modernize scope around current capabilities and historical plans ([task](../.tasks/0154-modernize-scopemd-around-current-and-historical-scope.md)). Continue the public-readiness workstream by its declared dependencies. Task 0173 is the final release-validation task and remains `todo` until its prerequisites are complete.
+No task is currently `doing` or `review` at this closeout. Continue the public-readiness workstream by its declared dependencies. Task 0173 is the final release-validation task and remains `todo` until its prerequisites are complete.
 
 ## Known blockers
 
@@ -22,6 +22,7 @@ Complete the public-readiness workstreams in the [dependency-aware roadmap](road
 
 ## Recently completed
 
+- Task 0154 clarified current capabilities, exclusions, and historical scope in [scope](scope.md). Candidate commit: `7607aac`; lifecycle closeout is committed separately.
 - Task 0153 reduced this page to current context and mapped historical entries to canonical records ([history map](history/progress-history.md), [task](../.tasks/0153-make-progressmd-a-concise-current-state-document.md)). Candidate commit: `236b438`; lifecycle closeout is committed separately.
 - Task 0152 published the evidence-based public maturity and compatibility policy ([document](product/maturity-and-compatibility.md), [task](../.tasks/0152-define-public-maturity-and-compatibility-policy.md)).
 - Task 0151 separated APK-owned requirements from the generic `apk init` starter ([requirements](product/requirements.md), [task](../.tasks/0151-separate-apk-requirements-from-downstream-project-templates.md)).

@@ -1,7 +1,7 @@
 # Task 0154 - Modernize scope.md around current and historical scope
 
-State: todo
-Owner: none
+State: done
+Owner: codex-0154
 Mode: maintenance
 Lane: documentation
 Type: docs
@@ -10,6 +10,10 @@ Risk: low
 Parallel: true
 Depends on: none
 Tags: docs
+
+## Goal
+
+Replace stale scope-era statements with a clear account of APK’s current boundary, shipped capabilities, and explicit exclusions.
 
 ## Context files
 
@@ -33,10 +37,6 @@ Tags: docs
 - .tasks/archive/**
 - docs/releases/**
 - docs/decisions.md
-
-## Goal
-
-Replace stale scope-era statements with a clear account of APK’s current boundary, shipped capabilities, and explicit exclusions.
 
 ## Steps
 
@@ -80,6 +80,7 @@ Replace stale scope-era statements with a clear account of APK’s current bound
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.
