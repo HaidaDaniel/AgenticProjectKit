@@ -1,7 +1,7 @@
 # Task 0152 - Define public maturity and compatibility policy
 
-State: todo
-Owner: none
+State: done
+Owner: codex-0152
 Mode: product
 Lane: documentation
 Type: docs
@@ -10,6 +10,10 @@ Risk: medium
 Parallel: true
 Depends on: none
 Tags: docs
+
+## Goal
+
+Publish a bounded, evidence-based maturity and compatibility policy for users evaluating APK.
 
 ## Context files
 
@@ -37,10 +41,6 @@ Tags: docs
 - .agentic/**
 - docs/releases/**
 - .github/workflows/**
-
-## Goal
-
-Publish a bounded, evidence-based maturity and compatibility policy for users evaluating APK.
 
 ## Steps
 
@@ -83,6 +83,7 @@ Publish a bounded, evidence-based maturity and compatibility policy for users ev
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.
