@@ -85,21 +85,34 @@ test("CLI help lists implemented commands", async () => {
   const result = await runCli(["--help"]);
 
   assert.equal(result.exitCode, 0);
-  assert.match(result.stdout, /apk audit \[directory\]/);
-  assert.match(result.stdout, /apk analytics summary \[--month YYYY-MM\] \[--write\]/);
-  assert.match(result.stdout, /apk sync \[agent\] \[--write\]/);
-  assert.match(result.stdout, /apk status/);
-  assert.match(result.stdout, /apk doctor/);
-  assert.match(result.stdout, /apk quality detect \[directory\] \[--json\]/);
-  assert.match(result.stdout, /apk lint \[--json\]/);
-  assert.match(result.stdout, /apk context <task-id> \[--level 1\|2\|3\] \[--budget <units>\]/);
-  assert.match(result.stdout, /apk prompt <agent> --task <task-id> \[--level 1\|2\|3\] \[--budget <units>\]/);
-  assert.match(result.stdout, /apk suggest-context/);
-  assert.match(result.stdout, /apk work <task-id>/);
-  assert.match(result.stdout, /apk resources \[--json\]/);
-  assert.match(result.stdout, /apk execution explain <task-id>/);
-  assert.match(result.stdout, /apk task deps <task-id>/);
-  assert.match(result.stdout, /apk tasks \[--all\] \[--state <state>\] \[--owner <agent-id>\]/);
+  assert.match(result.stdout, /^Command: apkit$/m);
+  assert.match(result.stdout, /^Aliases: apk, agentic-project-kit$/m);
+  assert.match(result.stdout, /apkit audit \[directory\]/);
+  assert.match(result.stdout, /apkit analytics summary \[--month YYYY-MM\] \[--write\]/);
+  assert.match(result.stdout, /apkit sync \[agent\] \[--write\]/);
+  assert.match(result.stdout, /apkit status/);
+  assert.match(result.stdout, /apkit doctor/);
+  assert.match(result.stdout, /apkit quality detect \[directory\] \[--json\]/);
+  assert.match(result.stdout, /apkit lint \[--json\]/);
+  assert.match(result.stdout, /apkit context <task-id> \[--level 1\|2\|3\] \[--budget <units>\]/);
+  assert.match(result.stdout, /apkit prompt <agent> --task <task-id> \[--level 1\|2\|3\] \[--budget <units>\]/);
+  assert.match(result.stdout, /apkit suggest-context/);
+  assert.match(result.stdout, /apkit work <task-id>/);
+  assert.match(result.stdout, /apkit resources \[--json\]/);
+  assert.match(result.stdout, /apkit execution explain <task-id>/);
+  assert.match(result.stdout, /apkit task deps <task-id>/);
+  assert.match(result.stdout, /apkit tasks \[--all\] \[--state <state>\] \[--owner <agent-id>\]/);
+  assert.doesNotMatch(result.stdout, /^\s+apk /m);
+});
+
+test("package CLI aliases retain the same entrypoint", async () => {
+  const packageJson = JSON.parse(await readFile(join(process.cwd(), "package.json"), "utf8")) as {
+    bin: Record<string, string>;
+  };
+
+  assert.equal(packageJson.bin.apkit, "dist/cli/index.js");
+  assert.equal(packageJson.bin.apk, packageJson.bin.apkit);
+  assert.equal(packageJson.bin["agentic-project-kit"], packageJson.bin.apkit);
 });
 
 test("CLI execution explains stable profile routing and explicit override", async () => {

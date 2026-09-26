@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-No task is currently `doing` or `review` at this closeout. Continue the public-readiness workstream by its declared dependencies. Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
+Task 0165 is `doing`: establish `apkit` as the canonical public CLI invocation while preserving aliases ([task](../.tasks/0165-establish-one-canonical-public-cli-name.md)). Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
 
 ## Known blockers
 
