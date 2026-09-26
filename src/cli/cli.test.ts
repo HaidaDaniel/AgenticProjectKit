@@ -4661,8 +4661,8 @@ interface RoleExample {
 }
 
 function roleExamples(line: string): RoleExample | undefined {
-  const isExecution = /apk execution explain\b/.test(line);
-  const isWork = /apk work\b/.test(line);
+  const isExecution = /(?:apkit|apk) execution explain\b/.test(line);
+  const isWork = /(?:apkit|apk) work\b/.test(line);
   if (!isExecution && !isWork) return undefined;
   const match = /--role\s+<?([A-Za-z|-]+)>?/.exec(line);
   if (!match) return undefined;
@@ -4707,7 +4707,7 @@ test("canonical CLI examples stay aligned with review and role parser contracts"
         for (const role of example.roles) {
           assert.ok(
             (WORKER_ROLES as readonly string[]).includes(role),
-            `${relativePath}: invalid apk work role ${role}`,
+            `${relativePath}: invalid CLI work role ${role}`,
           );
         }
       }
@@ -4717,7 +4717,7 @@ test("canonical CLI examples stay aligned with review and role parser contracts"
   assert.ok(reviewExamples > 0, "expected at least one canonical review-recording example");
   assert.ok(reviewRunMentions > 0, "expected canonical docs to explain the reviewRunId");
   assert.ok(executionExamples > 0, "expected canonical execution explain role examples");
-  assert.ok(workExamples > 0, "expected canonical apk work role examples");
+  assert.ok(workExamples > 0, "expected canonical CLI work role examples");
   assert.ok(!(EXECUTION_ROLES as readonly string[]).includes("implement"));
   assert.ok(!(WORKER_ROLES as readonly string[]).includes("implementation"));
 });
