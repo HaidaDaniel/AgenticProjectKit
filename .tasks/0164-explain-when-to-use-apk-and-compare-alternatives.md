@@ -1,7 +1,7 @@
 # Task 0164 - Explain when to use APK and compare alternatives
 
-State: todo
-Owner: none
+State: done
+Owner: codex-0164
 Mode: product
 Lane: research
 Type: docs
@@ -10,6 +10,10 @@ Risk: medium
 Parallel: true
 Depends on: 0151,0157
 Tags: docs
+
+## Goal
+
+Explain when APK is useful, when it is not, and how its repository-first workflow differs from adjacent tools.
 
 ## Context files
 
@@ -36,10 +40,6 @@ Tags: docs
 - .tasks/archive/**
 - docs/releases/**
 - docs/decisions.md
-
-## Goal
-
-Explain when APK is useful, when it is not, and how its repository-first workflow differs from adjacent tools.
 
 ## Steps
 
@@ -83,6 +83,7 @@ Explain when APK is useful, when it is not, and how its repository-first workflo
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.
