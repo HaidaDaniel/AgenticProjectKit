@@ -1,7 +1,7 @@
 # Task 0159 - Write a canonical getting-started guide
 
-State: todo
-Owner: none
+State: done
+Owner: codex-0159
 Mode: product
 Lane: documentation
 Type: docs
@@ -10,6 +10,10 @@ Risk: low
 Parallel: true
 Depends on: 0151,0152,0165,0166
 Tags: docs
+
+## Goal
+
+Give a first-time user one end-to-end quickstart using supported installation and package-local CLI commands.
 
 ## Context files
 
@@ -36,10 +40,6 @@ Tags: docs
 - .tasks/archive/**
 - docs/releases/**
 - docs/decisions.md
-
-## Goal
-
-Give a first-time user one end-to-end quickstart using supported installation and package-local CLI commands.
 
 ## Steps
 
@@ -83,6 +83,7 @@ Give a first-time user one end-to-end quickstart using supported installation an
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.
