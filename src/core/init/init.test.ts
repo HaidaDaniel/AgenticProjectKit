@@ -100,7 +100,7 @@ test("initProject uses a generic requirements starter separate from APK requirem
       ].join("\n"),
     );
     assert.equal(initializedRequirements, starterTemplate);
-    assert.match(initializedRequirements, /Describe the target users/);
+    assert.match(initializedRequirements, /Describe target users here\./);
     assert.doesNotMatch(initializedRequirements, /Agentic Project Kit/);
     assert.match(apkRequirements, /repository-local semantic workflow control plane/);
     assert.notEqual(initializedRequirements, apkRequirements);
