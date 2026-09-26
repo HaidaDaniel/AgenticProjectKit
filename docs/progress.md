@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0156 is `doing`: label the completed delivery milestones as historical ([task](../.tasks/0156-mark-old-delivery-milestones-as-historical.md)). `apk next-task` selected it as the next ready public-readiness task; Task 0155 remains blocked on 0156 and 0157. Task 0173 is the final release-validation task and remains `todo` until its prerequisites are complete.
+No task is currently `doing` or `review` at this closeout. Continue the public-readiness workstream by its declared dependencies. Task 0173 is the final release-validation task and remains `todo` until its prerequisites are complete.
 
 ## Known blockers
 
@@ -22,6 +22,7 @@ Complete the public-readiness workstreams in the [dependency-aware roadmap](road
 
 ## Recently completed
 
+- Task 0156 marked completed delivery plans as historical and linked their release evidence ([milestones](delivery/milestones.md), [task](../.tasks/0156-mark-old-delivery-milestones-as-historical.md)). Candidate commit: `7ba7cd3`; lifecycle closeout is committed separately.
 - Task 0154 clarified current capabilities, exclusions, and historical scope in [scope](scope.md). Candidate commit: `7607aac`; lifecycle closeout is committed separately.
 - Task 0153 reduced this page to current context and mapped historical entries to canonical records ([history map](history/progress-history.md), [task](../.tasks/0153-make-progressmd-a-concise-current-state-document.md)). Candidate commit: `236b438`; lifecycle closeout is committed separately.
 - Task 0152 published the evidence-based public maturity and compatibility policy ([document](product/maturity-and-compatibility.md), [task](../.tasks/0152-define-public-maturity-and-compatibility-policy.md)).

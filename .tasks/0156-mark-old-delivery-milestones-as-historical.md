@@ -1,7 +1,7 @@
 # Task 0156 - Mark old delivery milestones as historical
 
-State: todo
-Owner: none
+State: done
+Owner: codex-0156
 Mode: maintenance
 Lane: documentation
 Type: docs
@@ -10,6 +10,10 @@ Risk: low
 Parallel: true
 Depends on: none
 Tags: docs
+
+## Goal
+
+Label completed delivery milestone plans as historical and link the current roadmap without changing task or release history.
 
 ## Context files
 
@@ -32,10 +36,6 @@ Tags: docs
 - docs/releases/**
 - docs/roadmap.md
 - docs/decisions.md
-
-## Goal
-
-Label completed delivery milestone plans as historical and link the current roadmap without changing task or release history.
 
 ## Steps
 
@@ -78,6 +78,7 @@ Label completed delivery milestone plans as historical and link the current road
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.
