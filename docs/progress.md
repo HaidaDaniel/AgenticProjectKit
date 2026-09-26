@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0165 is `doing`: establish `apkit` as the canonical public CLI invocation while preserving aliases ([task](../.tasks/0165-establish-one-canonical-public-cli-name.md)). Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
+Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
 
 ## Known blockers
 
@@ -22,6 +22,7 @@ Complete the public-readiness workstreams in the [dependency-aware roadmap](road
 
 ## Recently completed
 
+- Task 0165 established `apkit` as the canonical public CLI invocation while preserving aliases ([CLI reference](cli-commands.md), [task](../.tasks/0165-establish-one-canonical-public-cli-name.md)). Candidate commit: `c868703`; lifecycle closeout is committed separately.
 - Task 0164 explained when APK fits and compared adjacent tools from dated public sources ([guide](why-apk.md), [task](../.tasks/0164-explain-when-to-use-apk-and-compare-alternatives.md)). Candidate commit: `f353b6e`; lifecycle closeout is committed separately.
 - Task 0162 documented constrained and local-first execution, including network and platform limits ([guide](guides/constrained-local-execution.md), [task](../.tasks/0162-document-constrained-and-local-first-execution.md)). Candidate commit: `1b3749a`; lifecycle closeout is committed separately.
 - Task 0160 documented APK workflow concepts and actor trust boundaries ([concepts](concepts.md), [task](../.tasks/0160-explain-apk-core-concepts-and-trust-boundaries.md)). Candidate commit: `ccdb161`; lifecycle closeout is committed separately.

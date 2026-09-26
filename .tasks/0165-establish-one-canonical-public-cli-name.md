@@ -1,7 +1,7 @@
 # Task 0165 - Establish one canonical public CLI name
 
-State: todo
-Owner: none
+State: done
+Owner: codex-0165
 Mode: maintenance
 Lane: cli
 Type: feature
@@ -10,6 +10,10 @@ Risk: medium
 Parallel: false
 Depends on: none
 Tags: feature
+
+## Goal
+
+Document `apkit` as the canonical public CLI invocation while retaining `apk` and other existing aliases for compatibility. Keep end-user invocation examples distinct from contributor/source invocation; this task does not change the AgenticProjectKit product, repository, package, or application identity.
 
 ## Context files
 
@@ -36,10 +40,6 @@ Tags: feature
 - docs/releases/**
 - docs/decisions.md
 - package.json
-
-## Goal
-
-Document `apkit` as the canonical public CLI invocation while retaining `apk` and other existing aliases for compatibility. Keep end-user invocation examples distinct from contributor/source invocation; this task does not change the AgenticProjectKit product, repository, package, or application identity.
 
 ## Steps
 
@@ -85,6 +85,7 @@ Document `apkit` as the canonical public CLI invocation while retaining `apk` an
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test"}`
 - `{"id":"check-3","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.
