@@ -28,6 +28,15 @@ A disposable Go repository at `/tmp/apk-v047-goapp.iMxCKJ` contained `go.mod` an
 
 This smoke verifies that the released APK workflow can adopt, inspect, and verify work in a non-Node application repository. It does not claim to compile or test the sample Go application itself.
 
+## AgenticProjectKit self-adoption
+
+A second disposable clone was checked out from the actual `v0.4.7` tag at frozen SHA `2797556344eb25cc34d3f51afbe10532147aca85`. The actual-tag-installed CLI from the fresh consumer above was invoked in that clone:
+
+- `adopt --preview` detected the existing gated AgenticProjectKit repository and proposed `docs/project-map.md`, `docs/adoption-report.md`, and `.tasks/0175-document-adopted-repository.md`; it confirmed that preview wrote nothing.
+- `adopt --apply` detected Node.js, TypeScript, and pnpm, created those three files, updated none, and skipped 13 existing files.
+- `sync` found all three generated files current. `lint --json` returned `hasErrors: false`. `audit` reported one warning with quality policy pass; `status --detail` displayed the existing task inventory and next task 0151; `doctor` passed with two expected environment warnings (no registered agents and no `.env.example`).
+- These adoption outputs were confined to the disposable tag clone. They do not alter the published tag, its release note, or the main checkout.
+
 ## Temporal boundary
 
 The release note contains only pre-tag-known scope and validation requirements. Candidate/tree/CI/tag identities and all cold-install/downstream facts above are post-tag observations recorded here; the annotated tag and tagged release note remain unchanged.

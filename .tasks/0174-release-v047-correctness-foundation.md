@@ -71,7 +71,7 @@ Publish an immutable, installable v0.4.7 patch release for the completed correct
 ## Acceptance criteria
 
 - The next SemVer target is free and all existing tags remain untouched.
-- `package.json` and `pnpm-lock.yaml` both identify version `0.4.7`; dependency versions and CLI bin names are unchanged.
+- `package.json` identifies version `0.4.7`; `pnpm-lock.yaml` remains valid for the manifest and dependency versions are unchanged (pnpm v9 does not store a root package-version field); CLI bin names are unchanged.
 - The release note describes only Tasks 0145-0148 and committed supporting fixes already on the candidate; it does not claim unfinished public-readiness work or a product rebrand.
 - Current release references in README and progress identify v0.4.7 without changing historical release notes or creating a premature release index.
 - The package payload contains `apkit`, `apk`, and `agentic-project-kit`, LICENSE, committed current `dist`, and required portable assets.
