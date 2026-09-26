@@ -49,6 +49,7 @@ export interface TaskGateVerification {
   checkId: string;
   required: boolean;
   evidenceType?: "benchmark";
+  artifact?: string;
   result: TaskEvidenceRecord["result"] | "missing";
   freshness: TaskEvidenceFreshness | "missing";
   evidenceId?: string;
@@ -213,8 +214,9 @@ function isGateEligibleEvidence(
 function evidenceCategoryMatches(
   record: TaskEvidenceRecord,
   category: string,
+  requiredArtifactReferences: ReadonlySet<string>,
 ): boolean {
-  if (category === "artifact") return Boolean(record.artifact);
+  if (category === "artifact") return Boolean(record.artifact && requiredArtifactReferences.has(record.artifact));
   if (category === "evidence") return Boolean(record.evidence);
   if (category === "manual") return record.type === "manual";
   return record.type === category;
@@ -288,7 +290,8 @@ export async function evaluateTaskCompletionGate(options: {
       record.type !== "completion" &&
       isGateEligibleEvidence(record, registeredAgents) &&
       record.checkId === check.id &&
-      (check.evidenceType !== "benchmark" || record.type === "benchmark")
+      (check.evidenceType !== "benchmark" || record.type === "benchmark") &&
+      (!check.artifact || record.artifact === check.artifact)
     ));
     const selected = currentRecord(checkRecords, subject);
     if (!selected.record) {
@@ -302,6 +305,7 @@ export async function evaluateTaskCompletionGate(options: {
         checkId: check.id,
         required: true,
         ...(check.evidenceType ? { evidenceType: check.evidenceType } : {}),
+        ...(check.artifact ? { artifact: check.artifact } : {}),
         result: "missing",
         freshness: selected.freshness,
         reason,
@@ -314,6 +318,7 @@ export async function evaluateTaskCompletionGate(options: {
       checkId: check.id,
       required: true,
       ...(check.evidenceType ? { evidenceType: check.evidenceType } : {}),
+      ...(check.artifact ? { artifact: check.artifact } : {}),
       result,
       freshness: selected.freshness,
       evidenceId: selected.record.id,
@@ -331,13 +336,18 @@ export async function evaluateTaskCompletionGate(options: {
       requiredCategories.add(category);
     }
   }
+  const requiredArtifactReferences = new Set(
+    getTaskVerification(task)
+      .filter((check) => check.required && check.artifact)
+      .map((check) => check.artifact!),
+  );
   for (const category of requiredCategories) {
     const categoryRecords = records.filter((record) => (
       record.type !== "review" &&
       record.type !== "completion" &&
       isGateEligibleEvidence(record, registeredAgents) &&
       record.result === "pass" &&
-      evidenceCategoryMatches(record, category)
+      evidenceCategoryMatches(record, category, requiredArtifactReferences)
     ));
     const currentCategory = categoryRecords.find((record) => (
       compareTaskEvidenceFreshness(record, subject).freshness === "current"
@@ -518,7 +528,7 @@ export function renderTaskCompletionGate(result: TaskCompletionGateResult): stri
     `Policy blockers: ${result.policy.blockers.length}`,
     "Verification:",
     ...(result.verification.length > 0
-      ? result.verification.map((check) => `  - ${check.checkId}: ${check.result} (${check.freshness})${check.evidenceType ? ` evidenceType=${check.evidenceType}` : ""}${check.evidenceId ? ` evidence=${check.evidenceId}` : ""}`)
+      ? result.verification.map((check) => `  - ${check.checkId}: ${check.result} (${check.freshness})${check.evidenceType ? ` evidenceType=${check.evidenceType}` : ""}${check.artifact ? ` artifact=${check.artifact}` : ""}${check.evidenceId ? ` evidence=${check.evidenceId}` : ""}`)
       : ["  - none"]),
     `Review: ${result.review.reason}${result.review.evidenceId ? ` evidence=${result.review.evidenceId}` : ""}`,
     ...(result.review.budget ? [`Review budget: max=${result.review.budget.maxReviewPasses}; used=${result.review.budget.passesUsed}; granted=${result.review.budget.grantedPasses}; effective=${result.review.budget.effectiveMaxReviewPasses}; exhausted=${result.review.budget.exhausted}`] : []),

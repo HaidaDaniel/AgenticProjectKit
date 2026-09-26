@@ -1260,3 +1260,27 @@ The task parser validates the declaration and permits it only on automated local
 Reference:
 
 Task 0146.
+
+## ADR-0076 - Artifact is a separately gated reference distinct from observer evidence
+
+Status: accepted
+
+Decision:
+
+The structured check's `artifact` field remains a separately satisfiable `artifact` category and is copied as the artifact reference on both locally executed evidence and externally recorded manual/live evidence. The `--evidence` value remains a separate observer-supplied reference. Policy, evidence records, verification/gate output, and CLI documentation expose those meanings consistently; the gate requires the current passing candidate-bound record to retain the artifact reference.
+
+Reason:
+
+Policy already declared `artifact` as a required category and automated verification already copied the field into evidence. External manual/live recording omitted it, leaving accepted declarations unsatisfiable. Copying the canonical task declaration into the same typed record closes that gap without a second CLI value or evidence store. Treating the artifact path as free text in `--evidence` would conflate the produced artifact with the observer's report.
+
+Implementation and invariant:
+
+External recording copies `check.artifact` after validating the existing owner, check, result, evidence-reference, and candidate contract, then rechecks candidate stability before marking artifact-bearing results gate-eligible. Structured artifact/evidence references are non-empty single-line values capped at 240 characters, matching the evidence record. Per-check and category matching require the exact artifact reference from a required task declaration. APK stores a declared reference and does not claim the external artifact exists, is intact, or is trustworthy; artifact metadata never changes evidence type or satisfies another category. Unsupported empty, multiline, and overlong artifact declarations fail during task parsing, and automated artifact recording keeps its existing behavior.
+
+Rejected alternatives:
+
+Rejecting all manual checks with artifacts would preserve the current recording shape but remove an accepted general contract instead of making it satisfiable. Putting the artifact path in `--evidence` or accepting a separate `--artifact` CLI argument would blur or split canonical references and could diverge from the task declaration. A second artifact policy or evidence store is unnecessary.
+
+Reference:
+
+Task 0147.

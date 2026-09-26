@@ -98,6 +98,8 @@ Task evidence uses a dedicated append-only `.agentic/evidence.jsonl` store. It i
 
 Benchmark evidence stays in this same store and gate. A structured verification check opts in with `evidenceType: "benchmark"`; the policy declares that category and the per-check gate accepts only a current passing record of type `benchmark` for that check. Local execution and the external `apk task verify --record` path share the existing candidate/baseline/worktree/HEAD subject. This proves provenance and declared-result conformance, not benchmark methodology or scientific validity; free-text commands and summaries never alter evidence type.
 
+An `artifact` on a structured check declares a separately satisfiable evidence category represented by the exact artifact reference on the result record. Local verification and external manual/live recording both copy the check's declaration into that field; `--evidence` remains a distinct observer-supplied reference. Artifact and structured evidence references are single-line and at most 240 characters. Per-check matching requires the record's artifact reference to equal the task declaration; category matching accepts only references declared by required checks. APK does not claim to validate arbitrary file existence, integrity, or trust. Artifact presence does not change the record's evidence type or satisfy unrelated categories.
+
 Claim baselines use a parallel append-only `.agentic/task-baselines.jsonl` store. A baseline captures HEAD, dirty-file fingerprints, task path, owner, and explicit bookkeeping exclusions. Scope attribution reads this record without resetting or rewriting user files.
 
 ## Effective policy resolution

@@ -181,6 +181,8 @@ function declaredEvidenceCategories(task: ProjectTask, requiredOnly = false): st
     // An explicit evidence type is the check's canonical result category and
     // overrides profile/environment defaults. Otherwise a single check
     // declares the type its verifier emits (report > live > manual > ci).
+    // Artifact and evidence references add their own categories independently
+    // of that result type.
     if (check.evidenceType) categories.add(check.evidenceType);
     else if (check.profile === "report") categories.add("report");
     else if (check.environment === "live") categories.add("live");
@@ -260,8 +262,13 @@ export function resolveTaskPolicy(
 
   const declared = declaredEvidenceCategories(task, true);
   for (const check of verificationChecks(task)) {
-    if (check.required && check.evidenceType === "benchmark") {
-      reasons.push(`verification check ${check.id} explicitly declares benchmark evidence`);
+    if (check.required) {
+      if (check.evidenceType === "benchmark") {
+        reasons.push(`verification check ${check.id} explicitly declares benchmark evidence`);
+      }
+      if (check.artifact) {
+        reasons.push(`verification check ${check.id} declares artifact reference ${check.artifact}; a current passing record must retain that reference`);
+      }
     }
   }
   const optionalOnly = new Set(

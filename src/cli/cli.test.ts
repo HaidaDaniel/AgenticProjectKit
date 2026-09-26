@@ -3761,6 +3761,91 @@ test("CLI task verify --record stores operator manual evidence and unblocks the 
   });
 });
 
+test("CLI manual artifact recording keeps artifact and observer evidence references distinct", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    const verification = JSON.stringify([
+      {
+        id: "unit",
+        type: "automated",
+        required: true,
+        environment: "local",
+        profile: "deterministic",
+        command: 'node -e "process.exit(0)"',
+        artifact: "reports/unit-result.xml",
+      },
+      {
+        id: "manual-artifact",
+        type: "manual",
+        required: true,
+        environment: "local",
+        profile: "trusted",
+        instruction: "Inspect the generated manual verification artifact.",
+        artifact: "reports/manual-result.json",
+      },
+    ]);
+    const created = await runCli([
+      "task", "create",
+      "--type", "bugfix",
+      "--title", "Manual Artifact Evidence",
+      "--mode", "product",
+      "--lane", "verification",
+      "--scope", "verification",
+      "--risk", "low",
+      "--context", "AGENTS.md",
+      "--allowed", ".tasks/0001-manual-artifact-evidence.md",
+      "--verification-json", verification,
+    ], directory);
+    assert.equal(created.exitCode, 0, created.stderr);
+    const policy = await runCli(["task", "policy", "0001"], directory);
+    assert.equal(policy.exitCode, 0, policy.stderr);
+    assert.match(policy.stdout, /Declared evidence: artifact,manual/);
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await runCli(["agent", "register", "--id", "codex-a", "--platform", "codex", "--model", "gpt"], directory);
+    await runCli(["claim", "0001", "--owner", "codex-a"], directory);
+
+    const help = await runCli(["task", "verify", "--help"], directory);
+    assert.match(help.stdout, /declared artifact reference/);
+    const unavailable = await runCli(["task", "verify", "0001", "--owner", "codex-a"], directory);
+    assert.equal(unavailable.exitCode, 1);
+    assert.match(unavailable.stdout, /unavailable manual-artifact/);
+    assert.match(unavailable.stdout, /pass unit \(required\) artifact=reports\/unit-result\.xml/);
+    assert.match(unavailable.stdout, /artifact=reports\/manual-result\.json/);
+
+    const missingReference = await runCli([
+      "task", "verify", "0001", "--record", "--owner", "codex-a",
+      "--check", "manual-artifact", "--result", "pass", "--evidence", "",
+    ], directory);
+    assert.equal(missingReference.exitCode, 1);
+    assert.match(missingReference.stderr, /non-empty externally-observed evidence reference/);
+
+    const recorded = await runCli([
+      "task", "verify", "0001", "--record", "--owner", "codex-a",
+      "--check", "manual-artifact", "--result", "pass",
+      "--evidence", "https://observer.example/runs/manual-1",
+    ], directory);
+    assert.equal(recorded.exitCode, 0, recorded.stderr);
+    assert.match(recorded.stdout, /Artifact reference: reports\/manual-result\.json/);
+    assert.match(recorded.stdout, /Evidence reference: https:\/\/observer\.example\/runs\/manual-1/);
+
+    const evidence = await runCli(["task", "evidence", "0001"], directory);
+    assert.equal(evidence.exitCode, 0, evidence.stderr);
+    assert.match(evidence.stdout, /Artifact reference: reports\/unit-result\.xml/);
+    assert.match(evidence.stdout, /Artifact reference: reports\/manual-result\.json/);
+    assert.match(evidence.stdout, /Evidence reference: https:\/\/observer\.example\/runs\/manual-1/);
+    const gate = await runCli(["task", "gate", "0001"], directory);
+    assert.equal(gate.exitCode, 0, gate.stdout);
+    assert.match(gate.stdout, /unit: pass \(current\) artifact=reports\/unit-result\.xml/);
+    assert.match(gate.stdout, /artifact=reports\/manual-result\.json/);
+  });
+});
+
 test("CLI task verify rejects record-only flags without --record", async () => {
   await withTempDirectory(async (directory) => {
     await mkdir(join(directory, ".tasks"), { recursive: true });

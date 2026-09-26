@@ -210,6 +210,8 @@ const TASK_VERIFY_HELP_TEXT = [
   "Runs selected eligible automated checks and records per-check evidence.",
   "Manual/live and unselected checks remain visible as unavailable or not-run.",
   "Use --record for an externally observed manual/live result or a check explicitly declared evidenceType=benchmark; records bind to the current candidate.",
+  "For a check with artifact, --record stores the declared artifact reference separately from the required --evidence observer reference; each reference is single-line and at most 240 characters.",
+  "APK records artifact references but does not verify external artifact existence or integrity.",
 ].join("\n");
 
 const TASK_ARCHIVE_HELP_TEXT = [

@@ -55,6 +55,7 @@ import {
   renderTaskMarkdown,
   renderNextTask,
   renderTaskDeps,
+  renderTaskEvidence,
   renderTaskPolicy,
   renderTaskProvenance,
   readTaskEvidence,
@@ -2670,6 +2671,7 @@ async function setupBenchmarkRepo(
   }],
   type = "benchmark",
   tags = ["benchmark"],
+  risk: ProjectTask["risk"] = "low",
 ): Promise<void> {
   const git = async (...args: string[]) => {
     await execFileAsync("git", args, { cwd: directory });
@@ -2687,7 +2689,7 @@ async function setupBenchmarkRepo(
     owner: "none",
     mode: "product",
     lane: "benchmark",
-    risk: "low",
+    risk,
     dependsOn: [],
     tags,
     allowedFiles: ["src/benchmark/**"],
@@ -2700,6 +2702,220 @@ async function setupBenchmarkRepo(
   await registerAgent(directory, { id: "codex-a", developer: "alice", platform: "codex", model: "gpt-5" });
   await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a" });
 }
+
+async function setupManualArtifactRepo(directory: string, tags: string[] = []): Promise<void> {
+  await setupBenchmarkRepo(directory, [
+    { id: "unit", type: "automated", required: true, environment: "local", profile: "deterministic", command: "unit" },
+    {
+      id: "manual-artifact",
+      type: "manual",
+      required: true,
+      environment: "local",
+      profile: "trusted",
+      instruction: "Inspect the generated manual verification artifact.",
+      artifact: "reports/manual-result.json",
+      evidence: "Observer report reference",
+    },
+  ], "bugfix", tags, "high");
+}
+
+test("external manual artifact recording preserves separate candidate-bound references", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupManualArtifactRepo(directory);
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      runCommand: async () => 0,
+    });
+    assert.equal(verification.checkResults.find((check) => check.id === "manual-artifact")?.status, "unavailable");
+    assert.match(renderTaskVerifyResult(verification), /unavailable manual-artifact \(required\) artifact=reports\/manual-result\.json/);
+    const localRecords = await readTaskEvidence(directory, "0007");
+    assert.equal(localRecords.find((record) => record.checkId === "manual-artifact")?.artifact, "reports/manual-result.json");
+
+    await assert.rejects(() => recordManualVerification({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      checkId: "manual-artifact",
+      result: "pass",
+      evidence: "",
+    }), /non-empty externally-observed evidence reference/);
+
+    const recorded = await recordManualVerification({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      checkId: "manual-artifact",
+      result: "pass",
+      evidence: "https://observer.example/runs/manual-7",
+    });
+    assert.equal(recorded.type, "manual");
+    assert.equal(recorded.record.artifact, "reports/manual-result.json");
+    assert.equal(recorded.record.evidence, "https://observer.example/runs/manual-7");
+    assert.match(renderRecordManualVerificationResult(recorded), /Artifact reference: reports\/manual-result\.json/);
+    assert.match(renderRecordManualVerificationResult(recorded), /Evidence reference: https:\/\/observer\.example\/runs\/manual-7/);
+    await registerAgent(directory, { id: "codex-reviewer", developer: "bob", platform: "codex", model: "gpt-5" });
+    await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      outcome: "pass",
+    });
+
+    const records = await readTaskEvidence(directory, "0007");
+    const evidenceOutput = renderTaskEvidence(records, "0007");
+    assert.match(evidenceOutput, /Artifact reference: reports\/manual-result\.json/);
+    assert.match(evidenceOutput, /Evidence reference: https:\/\/observer\.example\/runs\/manual-7/);
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(gate.passed, true, gate.blockers.join("; "));
+    assert.deepEqual(gate.policy.declaredEvidenceCategories, ["artifact", "evidence", "manual"]);
+    assert.match(renderTaskPolicy(gate.policy), /manual-artifact declares artifact reference reports\/manual-result\.json/);
+    assert.match(renderTaskCompletionGate(gate), /artifact=reports\/manual-result\.json/);
+  });
+});
+
+test("manual artifact fail and unavailable local placeholders do not satisfy check or category", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupManualArtifactRepo(directory);
+    await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      runCommand: async () => 0,
+    });
+    const unavailableGate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(unavailableGate.passed, false);
+    assert.equal(unavailableGate.verification.find((check) => check.checkId === "manual-artifact")?.result, "unavailable");
+    assert.ok(unavailableGate.blockers.includes("Missing current artifact evidence."));
+
+    const recorded = await recordManualVerification({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      checkId: "manual-artifact",
+      result: "fail",
+      evidence: "https://observer.example/runs/manual-fail",
+    });
+    assert.equal(recorded.record.artifact, "reports/manual-result.json");
+    const failedGate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(failedGate.passed, false);
+    assert.equal(failedGate.verification.find((check) => check.checkId === "manual-artifact")?.result, "fail");
+    assert.ok(failedGate.blockers.includes("Missing current artifact evidence."));
+  });
+});
+
+test("manual artifact references remain stale or candidate-mismatched history", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupManualArtifactRepo(directory);
+    await recordManualVerification({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      checkId: "manual-artifact",
+      result: "pass",
+      evidence: "https://observer.example/runs/manual-old",
+    });
+    await writeFile(join(directory, "src", "benchmark", "fixture.ts"), "export const fixture = 2;\n", "utf8");
+    const staleGate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(staleGate.passed, false);
+    assert.ok(staleGate.blockers.includes("Evidence category artifact belongs to another candidate revision."));
+
+    const current = await captureTaskCompletionCandidate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    await appendTaskEvidence(directory, {
+      taskId: "0007",
+      runId: "different-manual-artifact-candidate",
+      agent: "codex-a",
+      gateEligible: true,
+      type: "manual",
+      result: "pass",
+      subject: { ...current.subject, candidateId: "candidate:different" },
+      checkId: "manual-artifact",
+      profile: "trusted",
+      artifact: "reports/manual-result.json",
+      evidence: "https://observer.example/runs/manual-different-candidate",
+    });
+    const differentCandidateGate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(differentCandidateGate.passed, false);
+    assert.ok(differentCandidateGate.blockers.includes("Evidence category artifact belongs to another candidate revision."));
+  });
+});
+
+test("a different artifact reference cannot satisfy the declared check or artifact category", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupManualArtifactRepo(directory);
+    const candidate = await captureTaskCompletionCandidate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    await appendTaskEvidence(directory, {
+      taskId: "0007",
+      runId: "wrong-artifact-reference",
+      agent: "codex-a",
+      gateEligible: true,
+      type: "manual",
+      result: "pass",
+      subject: candidate.subject,
+      checkId: "manual-artifact",
+      profile: "trusted",
+      artifact: "reports/other-result.json",
+      evidence: "https://observer.example/runs/wrong-artifact",
+    });
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(gate.passed, false);
+    assert.equal(gate.verification.find((check) => check.checkId === "manual-artifact")?.result, "missing");
+    assert.ok(gate.blockers.includes("Missing current artifact evidence."));
+  });
+});
+
+test("artifact metadata and incidental text cannot satisfy unrelated evidence categories", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupManualArtifactRepo(directory, ["benchmark", "provider", "deployment"]);
+    const candidate = await captureTaskCompletionCandidate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    await appendTaskEvidence(directory, {
+      taskId: "0007",
+      runId: "artifact-only-reference",
+      agent: "codex-a",
+      gateEligible: true,
+      type: "automated-test",
+      result: "pass",
+      subject: candidate.subject,
+      checkId: "unrelated-check",
+      profile: "deterministic",
+      artifact: "reports/manual-result.json",
+      summary: "benchmark report live manual evidence",
+    });
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(gate.passed, false);
+    for (const category of ["benchmark", "report", "live", "manual", "evidence"]) {
+      assert.ok(gate.blockers.includes(`Missing current ${category} evidence.`), category);
+    }
+  });
+});
+
+test("malformed, multiline, and overlong artifact/evidence references are rejected", () => {
+  for (const field of ["artifact", "evidence"] as const) {
+    for (const reference of ["", "x".repeat(241), "reports/manual\nresult.json"]) {
+      assert.throws(() => parseTaskMarkdown(renderTaskMarkdown({
+        ...TASK,
+        verification: [{
+          id: "manual-artifact",
+          type: "manual",
+          required: true,
+          environment: "local",
+          profile: "trusted",
+          instruction: "Inspect the artifact.",
+          [field]: reference,
+        }],
+        verificationCommands: [],
+      })), TaskFormatError, `${field} reference ${JSON.stringify(reference)}`);
+    }
+  }
+});
 
 test("explicit benchmark execution writes typed current evidence and satisfies the gate", async () => {
   await withTempDirectory(async (directory) => {

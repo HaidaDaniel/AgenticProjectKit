@@ -385,6 +385,12 @@ export function renderTaskEvidence(records, taskId) {
         const profile = record.profile ? ` profile=${record.profile}` : "";
         lines.push(`  - ${record.time} ${record.result} ${record.type} agent=${record.agent}${check}${profile}`);
         lines.push(`    Subject: baseline=${record.subject.baselineId} candidate=${record.subject.candidateId} worktree=${record.subject.worktreeId}`);
+        if (record.artifact) {
+            lines.push(`    Artifact reference: ${record.artifact}`);
+        }
+        if (record.evidence) {
+            lines.push(`    Evidence reference: ${record.evidence}`);
+        }
         if (record.summary) {
             lines.push(`    Summary: ${record.summary}`);
         }

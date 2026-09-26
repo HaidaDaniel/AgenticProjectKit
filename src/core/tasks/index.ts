@@ -17,6 +17,7 @@ import { withLocalMutationLock } from "./lock.js";
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 const DEFAULT_TASK_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
+const TASK_VERIFICATION_REFERENCE_MAX_LENGTH = 240;
 
 export const TASK_STATES = [
   "todo",
@@ -408,6 +409,21 @@ function parseVerificationString(
   return value;
 }
 
+function validateVerificationReference(
+  value: string | undefined,
+  field: "artifact" | "evidence",
+  checkNumber: number,
+  issues: string[],
+): void {
+  if (value === undefined) return;
+  if (/[\r\n]/.test(value)) {
+    addVerificationIssue(issues, checkNumber, `${field} must be single-line.`);
+  }
+  if (value.length > TASK_VERIFICATION_REFERENCE_MAX_LENGTH) {
+    addVerificationIssue(issues, checkNumber, `${field} must be at most ${TASK_VERIFICATION_REFERENCE_MAX_LENGTH} characters.`);
+  }
+}
+
 function parseVerificationCheck(
   value: unknown,
   checkNumber: number,
@@ -439,6 +455,9 @@ function parseVerificationCheck(
   const artifact = parseVerificationString(raw.artifact, "artifact", checkNumber, issues);
   const evidence = parseVerificationString(raw.evidence, "evidence", checkNumber, issues);
   const evidenceType = parseVerificationString(raw.evidenceType, "evidenceType", checkNumber, issues);
+
+  validateVerificationReference(artifact, "artifact", checkNumber, issues);
+  validateVerificationReference(evidence, "evidence", checkNumber, issues);
 
   if (evidenceType !== undefined && evidenceType !== "benchmark") {
     addVerificationIssue(issues, checkNumber, 'evidenceType must be "benchmark" when provided.');
@@ -1390,6 +1409,7 @@ export interface TaskVerifyCheckResult {
   id: string;
   type: TaskVerificationType;
   evidenceType?: "benchmark";
+  artifact?: string;
   required: boolean;
   status: TaskVerifyCheckStatus;
   command?: string;
@@ -2352,6 +2372,7 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
       id: check.id,
       type: check.type,
       ...(check.evidenceType ? { evidenceType: check.evidenceType } : {}),
+      ...(check.artifact ? { artifact: check.artifact } : {}),
       required: check.required,
       status,
       ...(check.command ? { command: check.command } : {}),
@@ -2519,7 +2540,7 @@ export function renderTaskVerifyResult(result: TaskVerifyResult): string {
 
   lines.push("Checks:");
   for (const check of result.checkResults) {
-    lines.push(`  - ${check.status} ${check.id}${check.required ? " (required)" : " (optional)"}${check.evidenceType ? ` evidence=${check.evidenceType}` : ""}${check.reason ? `: ${check.reason}` : ""}`);
+    lines.push(`  - ${check.status} ${check.id}${check.required ? " (required)" : " (optional)"}${check.evidenceType ? ` evidence=${check.evidenceType}` : ""}${check.artifact ? ` artifact=${check.artifact}` : ""}${check.reason ? `: ${check.reason}` : ""}`);
   }
   lines.push(`Evidence: ${result.evidenceWritten} record(s)`);
 
@@ -2553,7 +2574,7 @@ export interface RecordManualVerificationResult {
   record: TaskEvidenceRecord;
 }
 
-const MANUAL_EVIDENCE_REFERENCE_MAX_LENGTH = 240;
+const MANUAL_EVIDENCE_REFERENCE_MAX_LENGTH = TASK_VERIFICATION_REFERENCE_MAX_LENGTH;
 
 export async function recordManualVerification(
   options: RecordManualVerificationOptions,
@@ -2622,7 +2643,7 @@ export async function recordManualVerification(
   let gateEligible = snapshot.comparisonKnown
     && snapshot.outOfScopeFiles.length === 0
     && snapshot.forbiddenTouchedFiles.length === 0;
-  if (check.evidenceType === "benchmark") {
+  if (check.evidenceType === "benchmark" || check.artifact) {
     const finalSnapshot = await captureTaskScope({
       rootDirectory: options.rootDirectory,
       task,
@@ -2654,6 +2675,7 @@ export async function recordManualVerification(
     subject,
     checkId: check.id,
     profile: check.profile,
+    ...(check.artifact ? { artifact: check.artifact } : {}),
     evidence,
     ...(options.summary ? { summary: options.summary } : {}),
   });
@@ -2688,6 +2710,8 @@ export function renderRecordManualVerificationResult(
     `Check: ${result.checkId}`,
     `Result: ${result.result}`,
     `Type: ${result.type}; profile: ${result.profile}`,
+    ...(result.record.artifact ? [`Artifact reference: ${result.record.artifact}`] : []),
+    ...(result.record.evidence ? [`Evidence reference: ${result.record.evidence}`] : []),
     `Gate-eligible: ${result.gateEligible ? "yes" : "no"}`,
     `Candidate: ${result.subject.candidateId}`,
     `Evidence: ${result.record.id}`,
