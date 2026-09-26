@@ -37,7 +37,7 @@ export async function captureTaskCompletionCandidate(options) {
     const scope = snapshot;
     let capturedSubject;
     try {
-        capturedSubject = await captureTaskEvidenceSubject(options.rootDirectory, task, scope.changedFiles);
+        capturedSubject = await captureTaskEvidenceSubject(options.rootDirectory, task, scope.changedFiles, baseline);
     }
     catch (error) {
         snapshot.diagnostics.push(error instanceof Error ? error.message : String(error));

@@ -1401,6 +1401,8 @@ export interface TaskClaimBaseline {
   /** Authoritative baseline lineage result; only set by `readTaskBaseline`. */
   lineageStatus?: TaskBaselineLineageStatus;
   lineageDiagnostic?: string;
+  /** Git HEAD against which `lineageStatus` and other-task proofs were resolved. */
+  lineageHeadSha?: string;
   /** Committed changes proven to belong to another task's bounded candidate. */
   provenOtherTaskCommits?: TaskCommitAttribution[];
 }
@@ -1683,12 +1685,38 @@ export function verifyTaskFileScope(
   };
 }
 
-async function gitLines(rootDirectory: string, args: readonly string[]): Promise<string[]> {
-  const result = await execFileAsync("git", args, { cwd: rootDirectory });
-  return result.stdout
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
+async function gitPaths(rootDirectory: string, args: readonly string[]): Promise<string[]> {
+  const result = await execFileAsync("git", args, {
+    cwd: rootDirectory,
+    encoding: "buffer",
+    maxBuffer: 8 * 1024 * 1024,
+    windowsHide: true,
+  });
+  const output = result.stdout as unknown as Buffer;
+  const paths: string[] = [];
+  let start = 0;
+  for (let index = 0; index < output.length; index += 1) {
+    if (output[index] !== 0) continue;
+    if (index === start) throw new Error("Git returned an empty path in NUL-delimited output.");
+    const bytes = output.subarray(start, index);
+    const path = bytes.toString("utf8");
+    if (!Buffer.from(path, "utf8").equals(bytes)) {
+      throw new Error("Git returned a path that is not valid UTF-8; attribution fails closed.");
+    }
+    paths.push(path);
+    start = index + 1;
+  }
+  if (start !== output.length) {
+    throw new Error("Git path output is not NUL-terminated; attribution fails closed.");
+  }
+  return paths;
+}
+
+function normalizeGitPath(path: string): string {
+  if (path.includes("\\")) {
+    throw new Error("Git path contains a backslash and cannot be attributed safely.");
+  }
+  return path.replace(/^\.\//, "");
 }
 
 async function gitOutput(
@@ -1705,12 +1733,12 @@ async function gitOutput(
 
 export async function listGitChangedFiles(rootDirectory: string): Promise<string[]> {
   const files = await Promise.all([
-    gitLines(rootDirectory, ["diff", "--name-only"]),
-    gitLines(rootDirectory, ["diff", "--name-only", "--cached"]),
-    gitLines(rootDirectory, ["ls-files", "--others", "--exclude-standard"]),
+    gitPaths(rootDirectory, ["diff", "--name-only", "-z"]),
+    gitPaths(rootDirectory, ["diff", "--name-only", "--cached", "-z"]),
+    gitPaths(rootDirectory, ["ls-files", "--others", "--exclude-standard", "-z"]),
   ]);
 
-  return [...new Set(files.flat().map(normalizeRepoPath))].sort();
+  return [...new Set(files.flat().map(normalizeGitPath))].sort();
 }
 
 function hashCandidatePart(value: unknown): string {
@@ -2009,14 +2037,20 @@ async function listLinearGitCommits(
     }
     let files: string[];
     try {
-      files = await gitLines(rootDirectory, ["diff-tree", "--no-commit-id", "--name-only", "--no-renames", "-r", sha]);
+      files = await gitPaths(rootDirectory, ["diff-tree", "--no-commit-id", "--name-only", "--no-renames", "-r", "-z", sha]);
     } catch (error: unknown) {
       return { diagnostic: `Changed paths for commit ${shortenSha(sha)} are unreadable (${error instanceof Error ? error.message : String(error)}).` };
     }
     if (files.length > MAX_TASK_ATTRIBUTION_FILES) {
       return { diagnostic: `Commit ${shortenSha(sha)} exceeds the ${MAX_TASK_ATTRIBUTION_FILES}-file attribution limit.` };
     }
-    commits.push({ sha, parents, files: [...new Set(files.map(normalizeRepoPath))].sort() });
+    try {
+      commits.push({ sha, parents, files: [...new Set(files.map(normalizeGitPath))].sort() });
+    } catch (error: unknown) {
+      return {
+        diagnostic: `Changed paths for commit ${shortenSha(sha)} cannot be represented safely (${error instanceof Error ? error.message : String(error)}).`,
+      };
+    }
     previous = sha;
   }
   if (previous !== toSha) {
@@ -2056,7 +2090,7 @@ async function gitFileFingerprint(
     return createHash("sha256").update(result.stdout as unknown as Buffer).digest("hex");
   } catch {
     try {
-      const treePaths = await gitLines(rootDirectory, ["ls-tree", "-r", "--name-only", revision, "--", path]);
+      const treePaths = await gitPaths(rootDirectory, ["ls-tree", "-r", "--name-only", "-z", revision, "--", path]);
       return treePaths.includes(path) ? "unreadable" : "missing";
     } catch {
       return "unreadable";
@@ -2220,7 +2254,7 @@ async function resolveTaskBaselineLineage(
   rootDirectory: string,
   authoritative: TaskClaimBaseline,
   taskRecords: readonly TaskClaimBaseline[],
-): Promise<Pick<TaskClaimBaseline, "lineageStatus" | "lineageDiagnostic" | "provenOtherTaskCommits">> {
+): Promise<Pick<TaskClaimBaseline, "lineageStatus" | "lineageDiagnostic" | "lineageHeadSha" | "provenOtherTaskCommits">> {
   if (authoritative.repository !== "git" || !authoritative.headSha) {
     return {
       lineageStatus: "unresolved",
@@ -2261,8 +2295,8 @@ async function resolveTaskBaselineLineage(
           const line = (await gitOutput(rootDirectory, ["rev-list", "--parents", "-n", "1", sha])).trim();
           const [commitSha, ...parents] = line.split(" ");
           if (!commitSha) return undefined;
-          const files = await gitLines(rootDirectory, ["diff-tree", "--no-commit-id", "--name-only", "--no-renames", "-r", sha]);
-          commit = { sha: commitSha, parents, files: [...new Set(files.map(normalizeRepoPath))].sort() };
+          const files = await gitPaths(rootDirectory, ["diff-tree", "--no-commit-id", "--name-only", "--no-renames", "-r", "-z", sha]);
+          commit = { sha: commitSha, parents, files: [...new Set(files.map(normalizeGitPath))].sort() };
         } catch {
           return undefined;
         }
@@ -2401,7 +2435,6 @@ async function resolveTaskBaselineLineage(
   let currentDirty: string[];
   try {
     currentDirty = (await listGitChangedFiles(rootDirectory))
-      .map(normalizeRepoPath)
       .filter((path) => !isBookkeepingPath(path, authoritative));
   } catch (error: unknown) {
     return lineageFailure(`Current working-tree attribution is unreadable (${error instanceof Error ? error.message : String(error)}).`, "unresolved", proven);
@@ -2417,8 +2450,23 @@ async function resolveTaskBaselineLineage(
     }
   }
 
+  let finalHead: string;
+  try {
+    finalHead = (await gitOutput(rootDirectory, ["rev-parse", "HEAD"])).trim();
+  } catch (error: unknown) {
+    return lineageFailure(`Current Git HEAD became unreadable during lineage evaluation (${error instanceof Error ? error.message : String(error)}).`, "unresolved", proven);
+  }
+  if (finalHead !== currentHead) {
+    return lineageFailure(
+      `Git HEAD changed from ${shortenSha(currentHead)} to ${shortenSha(finalHead)} while task lineage was evaluated; scope fails closed.`,
+      "intervening",
+      proven,
+    );
+  }
+
   return {
     lineageStatus: proven.length > 0 ? "attributed" : "clean",
+    lineageHeadSha: currentHead,
     ...(proven.length > 0 ? { provenOtherTaskCommits: proven } : {}),
   };
 }
@@ -2450,23 +2498,67 @@ export async function listTaskChangedFilesSinceBaseline(
   baseline: TaskClaimBaseline,
 ): Promise<string[]> {
   if (baseline.repository === "git" && baseline.headSha) {
-    const committedAndWorking = await gitOutput(rootDirectory, [
+    const committedAndWorking = await gitPaths(rootDirectory, [
       "diff",
       "--name-only",
       "--no-renames",
+      "-z",
       baseline.headSha,
     ]);
-    const untracked = await gitOutput(rootDirectory, ["ls-files", "--others", "--exclude-standard"]);
-    return [...new Set([
-      ...(committedAndWorking ?? "").split(/\r?\n/),
-      ...(untracked ?? "").split(/\r?\n/),
-    ].map(normalizeRepoPath).filter((path) => path.length > 0))].sort();
+    const untracked = await gitPaths(rootDirectory, ["ls-files", "--others", "--exclude-standard", "-z"]);
+    return [...new Set([...committedAndWorking, ...untracked].map(normalizeGitPath))].sort();
   }
 
   throw new TaskGitComparisonError(
     ["baseline"],
     new Error("task baseline has no resolvable Git HEAD; current paths must be supplied explicitly"),
   );
+}
+
+async function taskBaselineSnapshotDiagnostic(
+  rootDirectory: string,
+  baseline: TaskClaimBaseline | undefined,
+): Promise<string | undefined> {
+  if (
+    !baseline
+    || baseline.repository !== "git"
+    || !baseline.lineageHeadSha
+    || (baseline.lineageStatus !== "clean" && baseline.lineageStatus !== "attributed")
+  ) return undefined;
+
+  let currentHead: string;
+  try {
+    currentHead = (await gitOutput(rootDirectory, ["rev-parse", "HEAD"])).trim();
+  } catch (error: unknown) {
+    return `Current Git HEAD is unreadable after lineage evaluation (${error instanceof Error ? error.message : String(error)}); scope fails closed.`;
+  }
+  if (currentHead !== baseline.lineageHeadSha) {
+    return `Git HEAD changed from ${shortenSha(baseline.lineageHeadSha)} to ${shortenSha(currentHead)} after lineage evaluation; scope fails closed.`;
+  }
+
+  const excludedPaths = new Set((baseline.provenOtherTaskCommits ?? []).flatMap((commit) => commit.files));
+  if (excludedPaths.size > 0) {
+    let dirtyFiles: string[];
+    try {
+      dirtyFiles = await listGitChangedFiles(rootDirectory);
+    } catch (error: unknown) {
+      return `Current working-tree attribution is unreadable after lineage evaluation (${error instanceof Error ? error.message : String(error)}); scope fails closed.`;
+    }
+    const overlap = dirtyFiles.find((path) => excludedPaths.has(path));
+    if (overlap) {
+      return `Task-attributed working-tree file ${overlap} overlaps an excluded task commit after lineage evaluation; scope fails closed.`;
+    }
+  }
+
+  try {
+    currentHead = (await gitOutput(rootDirectory, ["rev-parse", "HEAD"])).trim();
+  } catch (error: unknown) {
+    return `Current Git HEAD became unreadable during candidate capture (${error instanceof Error ? error.message : String(error)}); scope fails closed.`;
+  }
+  if (currentHead !== baseline.lineageHeadSha) {
+    return `Git HEAD changed to ${shortenSha(currentHead)} during candidate capture; scope fails closed.`;
+  }
+  return undefined;
 }
 
 export async function captureTaskScope(options: {
@@ -2477,22 +2569,34 @@ export async function captureTaskScope(options: {
   changedFiles?: readonly string[];
 }): Promise<TaskScopeSnapshot> {
   const diagnostics: string[] = [];
-  let comparisonKnown = options.changedFiles !== undefined;
+  let comparisonKnown = true;
   let rawChangedFiles: readonly string[] = options.changedFiles ?? [];
+
+  const beforeLineageCheck = await taskBaselineSnapshotDiagnostic(options.rootDirectory, options.baseline);
+  if (beforeLineageCheck) {
+    comparisonKnown = false;
+    diagnostics.push(beforeLineageCheck);
+  }
 
   if (options.changedFiles === undefined) {
     try {
       rawChangedFiles = options.baseline
         ? await listTaskChangedFilesSinceBaseline(options.rootDirectory, options.baseline)
         : await listGitChangedFiles(options.rootDirectory);
-      comparisonKnown = true;
     } catch (error: unknown) {
+      comparisonKnown = false;
       diagnostics.push(error instanceof Error ? error.message : String(error));
       rawChangedFiles = [];
       if (options.baseline?.repository === "none") {
         diagnostics.push("Non-Git task baseline has no explicit candidate paths; repository-wide change discovery is unavailable.");
       }
     }
+  }
+
+  const afterLineageCheck = await taskBaselineSnapshotDiagnostic(options.rootDirectory, options.baseline);
+  if (afterLineageCheck) {
+    comparisonKnown = false;
+    diagnostics.push(afterLineageCheck);
   }
 
   const normalizedTaskPath = options.taskPath
@@ -2588,7 +2692,12 @@ export async function captureTaskEvidenceSubject(
   rootDirectory: string,
   task: ProjectTask,
   changedFiles: readonly string[],
+  baseline?: TaskClaimBaseline,
 ): Promise<TaskEvidenceCandidateSubject> {
+  const beforeLineageCheck = await taskBaselineSnapshotDiagnostic(rootDirectory, baseline);
+  if (beforeLineageCheck) {
+    throw new TaskGitComparisonError(["baseline lineage"], new Error(beforeLineageCheck));
+  }
   const normalizedChangedFiles = [...new Set(changedFiles.map(normalizeRepoPath))]
     .filter((path) => path.length > 0)
     .sort();
@@ -2602,6 +2711,12 @@ export async function captureTaskEvidenceSubject(
   const headSha = isGit
     ? (await gitOutput(rootDirectory, ["rev-parse", "HEAD"])).trim() || undefined
     : undefined;
+  if (baseline?.lineageHeadSha && headSha !== baseline.lineageHeadSha) {
+    throw new TaskGitComparisonError(
+      ["rev-parse", "HEAD"],
+      new Error(`Git HEAD changed from ${shortenSha(baseline.lineageHeadSha)} to ${shortenSha(headSha)} during candidate capture.`),
+    );
+  }
   const repository = headSha ? "git" : "none";
   const diff = isGit && normalizedChangedFiles.length > 0
     ? [
@@ -2624,6 +2739,11 @@ export async function captureTaskEvidenceSubject(
     fingerprints,
     diff,
   })}`;
+
+  const afterLineageCheck = await taskBaselineSnapshotDiagnostic(rootDirectory, baseline);
+  if (afterLineageCheck) {
+    throw new TaskGitComparisonError(["baseline lineage"], new Error(afterLineageCheck));
+  }
 
   return {
     taskId: task.id,
@@ -2766,6 +2886,7 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
       options.rootDirectory,
       task,
       scope.changedFiles,
+      baseline,
     );
   } catch (error: unknown) {
     diagnostics.push(error instanceof Error ? error.message : String(error));
@@ -2850,6 +2971,7 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
       options.rootDirectory,
       task,
       afterSnapshot.changedFiles,
+      baseline,
     );
   } catch (error: unknown) {
     diagnostics.push(error instanceof Error ? error.message : String(error));
@@ -3095,6 +3217,7 @@ export async function recordManualVerification(
     options.rootDirectory,
     task,
     snapshot.changedFiles,
+    baseline,
   );
   const subject: TaskEvidenceCandidateSubject = baseline
     ? { ...captured, baselineId: baseline.baselineId }
@@ -3113,6 +3236,7 @@ export async function recordManualVerification(
       options.rootDirectory,
       task,
       finalSnapshot.changedFiles,
+      baseline,
     );
     const finalSubject = baseline
       ? { ...finalCaptured, baselineId: baseline.baselineId }

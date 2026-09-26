@@ -156,6 +156,7 @@ export async function captureTaskCompletionCandidate(options: {
       options.rootDirectory,
       task,
       scope.changedFiles,
+      baseline,
     );
   } catch (error: unknown) {
     snapshot.diagnostics.push(error instanceof Error ? error.message : String(error));

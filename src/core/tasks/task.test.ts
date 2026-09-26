@@ -31,6 +31,7 @@ import {
   buildTaskFileName,
   captureTaskBaseline,
   captureTaskEvidenceSubject,
+  captureTaskScope,
   captureTaskCompletionCandidate,
   createTask,
   compareTaskEvidenceFreshness,
@@ -60,6 +61,7 @@ import {
   renderTaskProvenance,
   readTaskEvidence,
   readTaskBaseline,
+  listTaskChangedFilesSinceBaseline,
   renderTasksTable,
   resolveTaskPolicy,
   selectNextTask,
@@ -2039,6 +2041,95 @@ test("claim baseline attributes later git changes without blaming pre-existing d
   });
 });
 
+test("NUL-delimited Git path discovery preserves whitespace and newline filenames", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const claimedBaseline = await readTaskBaseline(directory, "0007");
+    assert.ok(claimedBaseline);
+
+    const paths = ["src/core/tasks/trailing-space.ts ", "src/core/tasks/line\nbreak.ts"];
+    for (const path of paths) {
+      await writeFile(join(directory, path), "unusual path\n", "utf8");
+      await execFileAsync("git", ["add", "--", path], { cwd: directory });
+    }
+    await execFileAsync("git", ["commit", "--quiet", "-m", "unusual paths"], { cwd: directory });
+
+    const currentBaseline = await readTaskBaseline(directory, "0007");
+    assert.ok(currentBaseline);
+    const changedFiles = await listTaskChangedFilesSinceBaseline(directory, currentBaseline);
+    assert.ok(paths.every((path) => changedFiles.includes(path)));
+    const { task } = await loadTaskFile(join(directory, ".tasks", "0007-scoped-task.md"));
+    const snapshot = await captureTaskScope({ rootDirectory: directory, task, baseline: currentBaseline });
+    assert.equal(snapshot.comparisonKnown, true);
+    assert.ok(paths.every((path) => snapshot.attribution?.attributedFiles.includes(path)));
+    assert.deepEqual(snapshot.outOfScopeFiles, ["src/core/tasks/line\nbreak.ts"]);
+  });
+});
+
+test("Git paths with literal backslashes fail scope closed instead of aliasing slash paths", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const path = "src/core/tasks/alias\\outside.ts";
+    await writeFile(join(directory, path), "literal backslash path\n", "utf8");
+    await execFileAsync("git", ["add", "--", path], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "literal backslash path"], { cwd: directory });
+
+    const result = await verifyScopedTask(directory);
+    assert.equal(result.passed, false);
+    assert.ok(result.diagnostics.some((diagnostic) => /backslash.*cannot be attributed safely/i.test(diagnostic)));
+  });
+});
+
+test("scope and candidate capture fail closed when HEAD moves after lineage resolution", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const staleBaseline = await readTaskBaseline(directory, "0007");
+    assert.ok(staleBaseline?.lineageHeadSha);
+    const { task } = await loadTaskFile(join(directory, ".tasks", "0007-scoped-task.md"));
+
+    await writeFile(join(directory, "src", "core", "tasks", "after-lineage.ts"), "in-scope anonymous commit\n", "utf8");
+    await execFileAsync("git", ["add", "src/core/tasks/after-lineage.ts"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "anonymous in-scope change"], { cwd: directory });
+
+    const snapshot = await captureTaskScope({ rootDirectory: directory, task, baseline: staleBaseline });
+    assert.equal(snapshot.comparisonKnown, false);
+    assert.ok(snapshot.diagnostics.some((diagnostic) => /HEAD changed.*after lineage evaluation/i.test(diagnostic)));
+    await assert.rejects(
+      captureTaskEvidenceSubject(directory, task, snapshot.changedFiles, staleBaseline),
+      /HEAD changed.*after lineage evaluation/i,
+    );
+  });
+});
+
+test("verification cannot pass when an anonymous commit arrives during a check", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const result = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "agent-a",
+      runCommand: async () => {
+        await writeFile(join(directory, "src", "core", "tasks", "during-check.ts"), "anonymous commit\n", "utf8");
+        await execFileAsync("git", ["add", "src/core/tasks/during-check.ts"], { cwd: directory });
+        await execFileAsync("git", ["commit", "--quiet", "-m", "anonymous commit during verification"], { cwd: directory });
+        return 0;
+      },
+    });
+
+    assert.equal(result.passed, false);
+    assert.ok(result.diagnostics.some((diagnostic) => /HEAD changed.*after lineage evaluation/i.test(diagnostic)));
+    const evidence = await readTaskEvidence(directory, "0007");
+    assert.equal(evidence.at(-1)?.result, "fail");
+    assert.equal(evidence.at(-1)?.gateEligible, false);
+  });
+});
+
 async function setupReclaimRepo(directory: string): Promise<void> {
   const git = async (...args: string[]) => {
     await execFileAsync("git", args, { cwd: directory });
@@ -2401,6 +2492,22 @@ test("active task keeps its own earlier commit and excludes a later proven task 
     assert.deepEqual(result.attribution?.attributedFiles, ["src/core/tasks/owned.ts"]);
     assert.deepEqual(result.attribution?.preExistingFiles, ["secrets/config.txt"]);
     assert.ok(result.attribution?.excludedFiles.includes("docs/task-b/change.md"));
+  });
+});
+
+test("dirty changes to an excluded file after lineage resolution fail scope closed", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const commits = await completeBoundedTaskB(directory);
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.equal(baseline?.lineageStatus, "attributed");
+
+    await writeFile(join(directory, commits.file), "edited after lineage resolution\n", "utf8");
+    const { task } = await loadTaskFile(join(directory, ".tasks", "0007-scoped-task.md"));
+    const snapshot = await captureTaskScope({ rootDirectory: directory, task, baseline });
+    assert.equal(snapshot.comparisonKnown, false);
+    assert.ok(snapshot.diagnostics.some((diagnostic) => /working-tree file .*overlaps an excluded task commit/i.test(diagnostic)));
   });
 });
 
