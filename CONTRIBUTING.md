@@ -16,9 +16,12 @@ pnpm install --frozen-lockfile
 pnpm exec tsx src/cli/index.ts --help
 ```
 
-For APK commands from this checkout, use `pnpm exec apkit`; the `apk` and
-`agentic-project-kit` names remain compatibility aliases. The [CLI reference](docs/cli-commands.md)
-lists the public commands.
+This source checkout does not install itself as a package executable. Run APK commands
+here through `pnpm exec tsx src/cli/index.ts <command>`; for example,
+`pnpm exec tsx src/cli/index.ts lint --json`. In a downstream repository where APK is
+installed as a dev dependency, use `pnpm exec apkit`; `apk` and `agentic-project-kit`
+remain compatibility aliases. The [CLI reference](docs/cli-commands.md) lists the public
+commands.
 
 ## Propose a bounded change
 
@@ -53,7 +56,7 @@ pnpm test
 For task-contract and documentation changes, also run:
 
 ```sh
-pnpm exec apkit lint --json
+pnpm exec tsx src/cli/index.ts lint --json
 git diff --check
 ```
 
