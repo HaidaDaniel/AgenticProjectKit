@@ -3094,8 +3094,16 @@ test("completion gate rejects stale packaged output and accepts the rebuilt cand
     await mkdir(join(directory, "src", "core", "templates", "minimal-docs"), { recursive: true });
     await mkdir(join(directory, "dist", "core", "templates", "minimal-docs"), { recursive: true });
     await writeFile(join(directory, "package.json"), JSON.stringify({ files: ["dist"], scripts: { build: "node build.mjs" } }), "utf8");
+    await writeFile(join(directory, "build.mjs"), [
+      "import { copyFile, mkdir } from 'node:fs/promises';",
+      "await mkdir('dist/cli', { recursive: true });",
+      "await copyFile('src/cli/index.ts', 'dist/cli/index.js');",
+      "await mkdir('dist/core/templates/minimal-docs', { recursive: true });",
+      "await copyFile('src/core/templates/minimal-docs/product-requirements.md.hbs', 'dist/core/templates/minimal-docs/product-requirements.md.hbs');",
+      "",
+    ].join("\n"), "utf8");
     await writeFile(join(directory, "src", "cli", "index.ts"), "export const value = 'source-v1';\n", "utf8");
-    await writeFile(join(directory, "dist", "cli", "index.js"), "built-from:source-v0\n", "utf8");
+    await writeFile(join(directory, "dist", "cli", "index.js"), "export const value = 'source-v1';\n", "utf8");
     await writeFile(join(directory, "src", "core", "templates", "minimal-docs", "product-requirements.md.hbs"), "starter-v1\n", "utf8");
     await writeFile(join(directory, "dist", "core", "templates", "minimal-docs", "product-requirements.md.hbs"), "starter-v1\n", "utf8");
     await writeTaskFile(join(directory, ".tasks", "0007-packaged-source.md"), {
@@ -3150,25 +3158,26 @@ test("completion gate rejects stale packaged output and accepts the rebuilt cand
       taskDirectory: ".tasks",
       taskId: "0007",
       owner: "codex-a",
-      runCommand: async (command) => command === PACKAGED_DIST_CHECK_COMMAND ? 1 : 0,
     });
     assert.equal(stale.checkResults[0]?.id, PACKAGED_DIST_CHECK_ID);
     assert.equal(stale.checkResults[0]?.status, "fail");
+    assert.equal(await readFile(join(directory, "dist", "cli", "index.js"), "utf8"), "export const value = 'source-v2';\n");
+    const uncommittedSourceOutput = await execFileAsync("git", ["status", "--porcelain", "--untracked-files=all", "--", "dist"], { cwd: directory });
+    assert.match(uncommittedSourceOutput.stdout, /dist\/cli\/index\.js/);
     const staleGate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
     assert.equal(staleGate.passed, false);
-    assert.ok(staleGate.blockers.some((blocker) => blocker.includes(`check ${PACKAGED_DIST_CHECK_ID} is fail`)));
+    assert.ok(
+      staleGate.blockers.some((blocker) => blocker.includes(PACKAGED_DIST_CHECK_ID)),
+      staleGate.blockers.join("; "),
+    );
 
-    await writeFile(join(directory, "dist", "cli", "index.js"), "built-from:source-v2\n", "utf8");
+    await git("add", "src/cli/index.ts", "dist/cli/index.js");
+    await git("commit", "--quiet", "-m", "commit rebuilt TypeScript output");
     const rebuilt = await verifyTask({
       rootDirectory: directory,
       taskDirectory: ".tasks",
       taskId: "0007",
       owner: "codex-a",
-      runCommand: async (command) => {
-        const source = await readFile(join(directory, "src", "cli", "index.ts"), "utf8");
-        const output = await readFile(join(directory, "dist", "cli", "index.js"), "utf8");
-        return command === PACKAGED_DIST_CHECK_COMMAND && output === `built-from:${source.match(/'([^']+)'/)?.[1]}\n` ? 0 : 1;
-      },
     });
     assert.equal(rebuilt.passed, true);
     const rebuiltGate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
@@ -3181,28 +3190,21 @@ test("completion gate rejects stale packaged output and accepts the rebuilt cand
       taskDirectory: ".tasks",
       taskId: "0008",
       owner: "codex-b",
-      runCommand: async () => {
-        const source = await readFile(join(directory, "src", "core", "templates", "minimal-docs", "product-requirements.md.hbs"), "utf8");
-        const output = await readFile(join(directory, "dist", "core", "templates", "minimal-docs", "product-requirements.md.hbs"), "utf8");
-        return source === output ? 0 : 1;
-      },
     });
     assert.equal(staleAsset.checkResults[0]?.status, "fail");
+    assert.equal(await readFile(join(directory, "dist", "core", "templates", "minimal-docs", "product-requirements.md.hbs"), "utf8"), "starter-v2\n");
+    const uncommittedAssetOutput = await execFileAsync("git", ["status", "--porcelain", "--untracked-files=all", "--", "dist"], { cwd: directory });
+    assert.match(uncommittedAssetOutput.stdout, /product-requirements\.md\.hbs/);
     const staleAssetGate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008" });
     assert.equal(staleAssetGate.passed, false);
 
-    const assetSource = await readFile(join(directory, "src", "core", "templates", "minimal-docs", "product-requirements.md.hbs"), "utf8");
-    await writeFile(join(directory, "dist", "core", "templates", "minimal-docs", "product-requirements.md.hbs"), assetSource, "utf8");
+    await git("add", "src/core/templates/minimal-docs/product-requirements.md.hbs", "dist/core/templates/minimal-docs/product-requirements.md.hbs");
+    await git("commit", "--quiet", "-m", "commit rebuilt template output");
     const currentAsset = await verifyTask({
       rootDirectory: directory,
       taskDirectory: ".tasks",
       taskId: "0008",
       owner: "codex-b",
-      runCommand: async () => {
-        const source = await readFile(join(directory, "src", "core", "templates", "minimal-docs", "product-requirements.md.hbs"), "utf8");
-        const output = await readFile(join(directory, "dist", "core", "templates", "minimal-docs", "product-requirements.md.hbs"), "utf8");
-        return source === output ? 0 : 1;
-      },
     });
     assert.equal(currentAsset.passed, true);
     const currentAssetGate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008" });
