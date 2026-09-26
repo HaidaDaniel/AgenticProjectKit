@@ -114,7 +114,7 @@ test("CLI help lists implemented commands", async () => {
 test("CLI command registry keeps help and the public reference aligned", async () => {
   const help = await runCli(["--help"]);
   assert.equal(help.exitCode, 0);
-  assert.equal(help.stdout, renderCliHelp());
+  assert.equal(help.stdout, `${renderCliHelp()}\n`);
 
   const documentation = await readFile(join(process.cwd(), "docs/cli-commands.md"), "utf8");
   assert.deepEqual(validateCliReference(documentation), []);
