@@ -60,6 +60,53 @@ test("initProject creates starter kit files", async () => {
   });
 });
 
+test("initProject uses a generic requirements starter separate from APK requirements", async () => {
+  await withTempDirectory(async (directory) => {
+    await initProject(directory);
+
+    const initializedRequirements = await readFile(
+      join(directory, "docs/product/requirements.md"),
+      "utf8",
+    );
+    const starterTemplate = await readFile(
+      join(
+        process.cwd(),
+        "src/core/templates/minimal-docs/product-requirements.md.hbs",
+      ),
+      "utf8",
+    );
+    const apkRequirements = await readFile(
+      join(process.cwd(), "docs/product/requirements.md"),
+      "utf8",
+    );
+
+    assert.equal(
+      starterTemplate,
+      [
+        "# Product Requirements",
+        "",
+        "## Users",
+        "",
+        "- Describe target users here.",
+        "",
+        "## Goals",
+        "",
+        "- Define product goals.",
+        "",
+        "## Non-goals",
+        "",
+        "- Explicit exclusions.",
+        "",
+      ].join("\n"),
+    );
+    assert.equal(initializedRequirements, starterTemplate);
+    assert.match(initializedRequirements, /Describe the target users/);
+    assert.doesNotMatch(initializedRequirements, /Agentic Project Kit/);
+    assert.match(apkRequirements, /repository-local semantic workflow control plane/);
+    assert.notEqual(initializedRequirements, apkRequirements);
+  });
+});
+
 test("initProject does not overwrite existing files", async () => {
   await withTempDirectory(async (directory) => {
     const projectDocPath = join(directory, "docs/project.md");

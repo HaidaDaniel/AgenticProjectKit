@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import {
@@ -8,8 +9,15 @@ import {
   DEFAULT_CONFIG,
   serializeAgenticConfig,
 } from "../config/index.js";
+import { renderTemplateFile } from "../templates/index.js";
 
 const execFileAsync = promisify(execFile);
+const initTemplateDirectory = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "templates",
+  "minimal-docs",
+);
 
 export const GITIGNORE_PATH = ".gitignore";
 
@@ -193,10 +201,9 @@ export interface InitResult {
   diagnostics: string[];
 }
 
-interface StarterFile {
-  path: string;
-  content: string;
-}
+type StarterFile =
+  | { path: string; content: string }
+  | { path: string; templatePath: string };
 
 const STARTER_FILES: StarterFile[] = [
   {
@@ -344,22 +351,10 @@ const STARTER_FILES: StarterFile[] = [
     },
     {
       path: "docs/product/requirements.md",
-      content: [
-        "# Product Requirements",
-        "",
-        "## Users",
-        "",
-        "- Describe target users here.",
-        "",
-        "## Goals",
-        "",
-        "- Define product goals.",
-        "",
-        "## Non-goals",
-        "",
-        "- Explicit exclusions.",
-        "",
-      ].join("\n"),
+      templatePath: join(
+        initTemplateDirectory,
+        "product-requirements.md.hbs",
+      ),
     },
     {
       path: "docs/engineering/load-profile.md",
@@ -506,7 +501,11 @@ export async function initProject(rootDirectory: string): Promise<InitResult> {
     }
 
     await mkdir(dirname(absolutePath), { recursive: true });
-    await writeFile(absolutePath, file.content, "utf8");
+    const content =
+      "templatePath" in file
+        ? await renderTemplateFile(file.templatePath)
+        : file.content;
+    await writeFile(absolutePath, content, "utf8");
     created.push(file.path);
   }
 
