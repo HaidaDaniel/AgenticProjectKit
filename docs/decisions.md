@@ -1438,7 +1438,10 @@ diagnoses manually written active-task contracts that omit them, and the complet
 actual changed paths so a task cannot complete by avoiding the check or excluding its output. The
 manifest must provide a usable `scripts.build`; the package manager is derived from `packageManager`
 or one unambiguous supported lockfile (`pnpm`, `npm`, `yarn`, or `bun`). Missing build scripts or
-ambiguous/unknown manager metadata are blockers.
+ambiguous/unknown manager metadata are blockers. Payload detection recognizes explicit `dist`
+entries, matching package `files` globs, `main`/`bin`/`directories.bin` references, and the default
+all-files payload when `dist` exists. Malformed payload metadata is treated as uncertain and blocks
+active packaged-source tasks.
 
 Reason:
 

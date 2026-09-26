@@ -677,6 +677,52 @@ test("committed-dist task contract classifies packaged source and copied assets 
   assert.equal(packagedDistTaskContractBlockers(contradictory).length, 2);
 });
 
+test("package payload detection covers broad files globs, published entrypoints, and invalid metadata", async () => {
+  await withTempDirectory(async (directory) => {
+    const manifest = {
+      packageManager: "npm@10.0.0",
+      scripts: { build: "tsc" },
+    };
+    await writeFile(join(directory, "package.json"), JSON.stringify({ ...manifest, files: ["*"] }), "utf8");
+    const broadGlob = await repositoryPackagedDistContract(directory);
+    assert.equal(broadGlob.shipsCommittedDist, true);
+    assert.equal(broadGlob.checkCommand, packagedDistCheckCommand("npm run build"));
+
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      ...manifest,
+      files: ["README.md"],
+      main: "./dist/cli/index.js",
+    }), "utf8");
+    assert.equal((await repositoryPackagedDistContract(directory)).shipsCommittedDist, true);
+
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      ...manifest,
+      files: ["README.md"],
+      bin: { apk: "dist/cli/index.js" },
+    }), "utf8");
+    assert.equal((await repositoryPackagedDistContract(directory)).shipsCommittedDist, true);
+
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      ...manifest,
+      files: ["README.md"],
+      directories: { bin: "dist/cli" },
+    }), "utf8");
+    assert.equal((await repositoryPackagedDistContract(directory)).shipsCommittedDist, true);
+
+    await mkdir(join(directory, "dist"));
+    await writeFile(join(directory, "package.json"), JSON.stringify(manifest), "utf8");
+    assert.equal((await repositoryPackagedDistContract(directory)).shipsCommittedDist, true);
+
+    await writeFile(join(directory, "package.json"), JSON.stringify({ ...manifest, files: ["README.md"] }), "utf8");
+    assert.equal((await repositoryPackagedDistContract(directory)).shipsCommittedDist, false);
+
+    await writeFile(join(directory, "package.json"), "{ invalid json", "utf8");
+    const malformed = await repositoryPackagedDistContract(directory);
+    assert.equal(malformed.shipsCommittedDist, true);
+    assert.equal(malformed.buildScriptAvailable, false);
+  });
+});
+
 test("review fields are a coherent projection of canonical assurance", () => {
   const low = resolveTaskPolicy({ ...TASK, risk: "low", tags: ["docs"] });
   assert.equal(low.requirements.assurance, "none");
@@ -3279,7 +3325,8 @@ test("completion gate rejects stale packaged output and accepts the rebuilt cand
 
     await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0009", owner: "codex-a" });
     await writeFile(join(directory, "package.json"), JSON.stringify({
-      files: ["dist"],
+      files: ["*"],
+      main: "dist/cli/index.js",
       packageManager: "pnpm@10.28.1",
     }), "utf8");
     await writeFile(join(directory, "src", "cli", "index.ts"), "export const value = 'source-v3';\n", "utf8");

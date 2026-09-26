@@ -94,11 +94,11 @@ Restore source-to-package parity on main and add a deterministic task contract t
 2. Trace package inputs, task typed templates, verification policy, lint, completion gate, CI, and completed Tasks 0151, 0165, and 0167. Identify the smallest deterministic rule using packaged-source and packaged-asset paths, not a short list of named files.
 3. Regenerate committed `dist/**` with the normal build only. Add deterministic source/compiled CLI help parity and generic init/template parity coverage; verify package payload and the compiled entrypoint.
 4. Add a reusable contract guard so a task that edits packaged source or copied assets cannot validly complete without a required build-and-dist-current check and permission to commit generated `dist/**`. Detect a source-versus-dist scope contradiction with a clear diagnostic before completion. Docs-only tasks must not acquire build requirements. Cover source edits, rebuilt output, docs-only tasks, forbidden dist scope, and copied `.hbs` assets.
-   Determine applicability from package payload metadata independently of `scripts.build`; derive the command from `packageManager` or exactly one supported lockfile (pnpm, npm, Yarn, or Bun). Missing build scripts or ambiguous/unknown package-manager metadata must block active packaged-source tasks.
-5. Keep CI's clean-checkout committed-dist check and make sure it observes copied assets as well as compiled JavaScript. Update the canonical testing/task workflow documentation and ADR if the completion contract changes.
-6. Correct only the planning contracts for Tasks 0158, 0163, and 0168: remove their direct dependency on 0170 and make security-page links/checks conditional on `SECURITY.md` being present. Keep 0173's dependency on 0170 unchanged.
-7. Commit implementation and generated output, then run all verification against the committed candidate. Obtain a fresh-context read-only review from a separately registered identity, fix any findings, and repeat candidate-bound verification and review as required.
-8. Record passing exact-HEAD hosted Quality evidence, complete the APK gate, mark this task done, and commit lifecycle bookkeeping separately.
+5. Determine applicability from package payload metadata independently of `scripts.build`; derive the command from `packageManager` or exactly one supported lockfile (pnpm, npm, Yarn, or Bun). Missing build scripts or ambiguous/unknown package-manager metadata must block active packaged-source tasks.
+6. Keep CI's clean-checkout committed-dist check and make sure it observes copied assets as well as compiled JavaScript. Update the canonical testing/task workflow documentation and ADR if the completion contract changes.
+7. Correct only the planning contracts for Tasks 0158, 0163, and 0168: remove their direct dependency on 0170 and make security-page links/checks conditional on `SECURITY.md` being present. Keep 0173's dependency on 0170 unchanged.
+8. Commit implementation and generated output, then run all verification against the committed candidate. Obtain a fresh-context read-only review from a separately registered identity, fix any findings, and repeat candidate-bound verification and review as required.
+9. Record passing exact-HEAD hosted Quality evidence, complete the APK gate, mark this task done, and commit lifecycle bookkeeping separately.
 
 ## Acceptance criteria
 
@@ -108,7 +108,7 @@ Restore source-to-package parity on main and add a deterministic task contract t
 - Running compiled `init` in an isolated temporary project emits the generic downstream requirements starter from the copied template; it does not emit the old APK-specific inline starter. Source and copied template parity is covered deterministically.
 - A current clean package dry run includes the CLI modules and portable template asset, and the committed package executes the current source behavior.
 - Packaged TypeScript source and copied `src/**/*.hbs` assets have a deterministic task contract requiring both `dist/**` scope and a required build-plus-dist-current verification. If an actual source/asset edit is attributed to a task whose contract forbids dist or omits that check, lint or the completion gate reports an actionable blocker before the task can complete.
-- Package payload detection remains active when a task removes `scripts.build`; the changed source task is blocked with a missing-build-script diagnostic. npm-managed fixtures receive an `npm run build` check, while the current pnpm package receives `pnpm build`.
+- Package payload detection remains active when a task removes `scripts.build` or changes package metadata while `dist` remains included by a broad `files` glob or `main`/`bin`; the changed source task is blocked with a missing-build-script diagnostic. Malformed payload metadata fails closed. npm-managed fixtures receive an `npm run build` check, while the current pnpm package receives `pnpm build`.
 - Regression tests prove stale packaged output blocks, rebuilt and committed output passes, docs-only work does not require build/dist work, source changes with forbidden dist scope are rejected, and a copied template asset receives the same protection as TypeScript source.
 - Existing historical states for Tasks 0151, 0165, and 0167 remain `done`; their evidence/history is not rewritten.
 - Hosted Quality succeeds on the exact final candidate SHA, including `Verify committed dist is current` and final tracked-drift rejection.
@@ -153,6 +153,7 @@ Restore source-to-package parity on main and add a deterministic task contract t
 - Change a copied `.hbs` asset but leave its copied dist file untouched.
 - Declare packaged source in allowed paths while omitting `dist/**` or the build-current check.
 - Remove `scripts.build` while changing packaged source and confirm package-payload applicability remains true and lint/gate block completion.
+- Use `files: ["*"]`, a `main`/`bin` path under `dist`, and malformed package metadata to confirm payload detection cannot be disabled by removing the literal `dist` entry.
 - Exercise an npm-managed package and confirm task creation derives `npm run build`; confirm ambiguous or absent manager metadata blocks check derivation.
 - Rebuild dist, commit it, and ensure the same guard passes.
 - Change documentation only and ensure the guard does not request a build.

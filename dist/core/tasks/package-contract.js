@@ -90,19 +90,124 @@ async function packageManagerFromManifest(rootDirectory, declaredManager) {
     }
     return present.length === 1 ? present[0] : undefined;
 }
-export async function repositoryPackagedDistContract(rootDirectory) {
+function packagePathMayMatchDist(path) {
+    const normalized = normalizeRepoPath(path).replace(/\/+$/, "");
+    return normalized === "dist" || normalized.startsWith("dist/");
+}
+function packageFilesPatternMayIncludeDist(pattern) {
+    const normalized = normalizeRepoPath(pattern);
+    if (packagePathMayMatchDist(normalized))
+        return true;
+    const firstSegment = normalized.split("/")[0];
+    if (!firstSegment)
+        return true;
+    if (firstSegment.includes("{") || firstSegment.includes("}"))
+        return true;
+    let expression = "^";
+    for (let index = 0; index < firstSegment.length; index += 1) {
+        const char = firstSegment[index];
+        if (char === "*") {
+            expression += "[^/]*";
+        }
+        else if (char === "?") {
+            expression += "[^/]";
+        }
+        else if (char === "[") {
+            const close = firstSegment.indexOf("]", index + 1);
+            if (close < 0)
+                return true;
+            expression += firstSegment.slice(index, close + 1);
+            index = close;
+        }
+        else {
+            expression += char.replace(/[|\\()[\]^$+?.]/g, "\\$&");
+        }
+    }
     try {
-        const manifest = JSON.parse(await readFile(join(rootDirectory, "package.json"), "utf8"));
-        if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+        return new RegExp(`${expression}$`).test("dist");
+    }
+    catch {
+        return true;
+    }
+}
+function packageBinPaths(value) {
+    if (value === undefined)
+        return [];
+    if (typeof value === "string")
+        return [value];
+    if (!value || typeof value !== "object" || Array.isArray(value))
+        return undefined;
+    const paths = [];
+    for (const entry of Object.values(value)) {
+        if (typeof entry !== "string")
+            return undefined;
+        paths.push(entry);
+    }
+    return paths;
+}
+async function packageMayShipDist(rootDirectory, record) {
+    const entrypointPaths = [];
+    if (record.main !== undefined) {
+        if (typeof record.main !== "string")
+            return true;
+        entrypointPaths.push(record.main);
+    }
+    const binPaths = packageBinPaths(record.bin);
+    if (!binPaths)
+        return true;
+    entrypointPaths.push(...binPaths);
+    if (record.directories !== undefined) {
+        if (!record.directories || typeof record.directories !== "object" || Array.isArray(record.directories))
+            return true;
+        const binDirectory = record.directories.bin;
+        if (binDirectory !== undefined) {
+            if (typeof binDirectory !== "string")
+                return true;
+            entrypointPaths.push(binDirectory);
+        }
+    }
+    if (entrypointPaths.some(packagePathMayMatchDist))
+        return true;
+    if (record.files === undefined) {
+        // npm's omitted files field defaults to including the package tree.
+        try {
+            await access(join(rootDirectory, "dist"));
+            return true;
+        }
+        catch {
+            return false;
+        }
+    }
+    if (!Array.isArray(record.files))
+        return true;
+    if (record.files.some((entry) => typeof entry !== "string"))
+        return true;
+    return record.files.some(packageFilesPatternMayIncludeDist);
+}
+export async function repositoryPackagedDistContract(rootDirectory) {
+    let rawManifest;
+    try {
+        rawManifest = await readFile(join(rootDirectory, "package.json"), "utf8");
+    }
+    catch (error) {
+        if (error.code === "ENOENT") {
             return { shipsCommittedDist: false, buildScriptAvailable: false };
         }
+        return { shipsCommittedDist: true, buildScriptAvailable: false };
+    }
+    let manifest;
+    try {
+        manifest = JSON.parse(rawManifest);
+    }
+    catch {
+        return { shipsCommittedDist: true, buildScriptAvailable: false };
+    }
+    try {
+        if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+            return { shipsCommittedDist: true, buildScriptAvailable: false };
+        }
         const record = manifest;
-        const shipsCommittedDist = Array.isArray(record.files) && record.files.some((entry) => {
-            if (typeof entry !== "string")
-                return false;
-            const packagePath = entry.replace(/\\/g, "/").replace(/^\.\//, "");
-            return packagePath === "dist" || packagePath.startsWith("dist/");
-        });
+        const shipsCommittedDist = await packageMayShipDist(rootDirectory, record);
         if (!shipsCommittedDist)
             return { shipsCommittedDist: false, buildScriptAvailable: false };
         const manager = await packageManagerFromManifest(rootDirectory, record.packageManager);
@@ -119,7 +224,7 @@ export async function repositoryPackagedDistContract(rootDirectory) {
         };
     }
     catch {
-        return { shipsCommittedDist: false, buildScriptAvailable: false };
+        return { shipsCommittedDist: true, buildScriptAvailable: false };
     }
 }
 export async function repositoryShipsCommittedDist(rootDirectory) {
