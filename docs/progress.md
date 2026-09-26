@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0160 is `doing`: explain APK workflow concepts and actor trust boundaries ([task](../.tasks/0160-explain-apk-core-concepts-and-trust-boundaries.md)). Its prerequisites 0151 and 0157 are done. Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
+No task is currently `doing` or `review` at this closeout. Continue the public-readiness workstream by its declared dependencies. Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
 
 ## Known blockers
 
@@ -22,6 +22,7 @@ Complete the public-readiness workstreams in the [dependency-aware roadmap](road
 
 ## Recently completed
 
+- Task 0160 documented APK workflow concepts and actor trust boundaries ([concepts](concepts.md), [task](../.tasks/0160-explain-apk-core-concepts-and-trust-boundaries.md)). Candidate commit: `ccdb161`; lifecycle closeout is committed separately.
 - Task 0155 reframed the roadmap around released capabilities, current readiness work, deferred items, and exclusions ([roadmap](roadmap.md), [task](../.tasks/0155-reframe-roadmapmd-as-shipped-current-planned-and-deferred.md)). Candidate commit: `cdd3cab`; lifecycle closeout is committed separately.
 - Task 0157 clarified current architecture boundaries and indexed ADR lifecycle status ([architecture](architecture.md), [decisions](decisions.md)). Candidate commit: `eeba8b7`; lifecycle closeout is committed separately.
 - Task 0156 marked completed delivery plans as historical and linked their release evidence ([milestones](delivery/milestones.md), [task](../.tasks/0156-mark-old-delivery-milestones-as-historical.md)). Candidate commit: `7ba7cd3`; lifecycle closeout is committed separately.

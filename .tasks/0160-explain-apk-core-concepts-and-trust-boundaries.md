@@ -1,7 +1,7 @@
 # Task 0160 - Explain APK core concepts and trust boundaries
 
-State: todo
-Owner: none
+State: done
+Owner: codex-0160
 Mode: product
 Lane: documentation
 Type: docs
@@ -10,6 +10,10 @@ Risk: low
 Parallel: true
 Depends on: 0151,0157
 Tags: docs
+
+## Goal
+
+Explain APK’s core workflow concepts and trust boundaries in terms supported by current implementation.
 
 ## Context files
 
@@ -36,10 +40,6 @@ Tags: docs
 - .tasks/archive/**
 - docs/releases/**
 - docs/decisions.md
-
-## Goal
-
-Explain APK’s core workflow concepts and trust boundaries in terms supported by current implementation.
 
 ## Steps
 
@@ -83,6 +83,7 @@ Explain APK’s core workflow concepts and trust boundaries in terms supported b
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.
