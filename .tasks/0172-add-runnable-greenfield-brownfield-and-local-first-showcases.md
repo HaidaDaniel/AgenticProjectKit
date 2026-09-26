@@ -1,6 +1,6 @@
 # Task 0172 - Add runnable greenfield, brownfield, and local-first showcases
 
-State: doing
+State: done
 Owner: codex-0172
 Mode: product
 Lane: examples

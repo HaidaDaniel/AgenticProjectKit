@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0172 is `doing`: add isolated greenfield, brownfield, and local-first showcase workflows with repeatable smoke output ([task](../.tasks/0172-add-runnable-greenfield-brownfield-and-local-first-showcases.md)). Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
+No public-readiness task is currently actionable. Tasks 0158, 0163, and 0168 depend on blocked Task 0170; Task 0173 also depends on those tasks and Task 0170. The next work requires the operator to provide a usable private vulnerability-reporting route for Task 0170.
 
 ## Known blockers
 
@@ -22,6 +22,7 @@ Complete the public-readiness workstreams in the [dependency-aware roadmap](road
 
 ## Recently completed
 
+- Task 0172 added isolated, repeatable greenfield, brownfield, and local-first showcase workflows; all three smoke outputs passed on Node `22.22.1` and pnpm `10.28.1`, including brownfield preservation and offline-capable reruns ([examples](examples.md), [task](../.tasks/0172-add-runnable-greenfield-brownfield-and-local-first-showcases.md)). Candidate commit: `4ef89da`.
 - Task 0171 added a concise changelog entrypoint and a release index that links all 12 current local/remote tags, seven retained versioned notes, four post-tag workflow records, and the gated-workflow evidence; current package version and `v0.4.7` tag agree ([changelog](../CHANGELOG.md), [index](releases/index.md), [task](../.tasks/0171-establish-a-release-changelog-and-index-strategy.md)). Candidate commit: `f96b377`.
 - Task 0169 added a contributor quickstart, three GitHub issue forms, a concise pull-request template, and a bounded `good first issue` label convention ([guide](../CONTRIBUTING.md), [task](../.tasks/0169-add-contributor-docs-and-lightweight-github-contribution-ux.md)). A fresh clone at candidate `abef1a8` passed frozen install, source CLI help/lint, form parsing, and local-link checks. Candidate commits: `4673665`, `abef1a8`.
 - Task 0167 made one command registry drive CLI dispatch and help, generated the public command synopsis, and added tests for stale references and handler-help options ([CLI reference](cli-commands.md), [task](../.tasks/0167-keep-cli-reference-aligned-with-the-command-registry.md)). Candidate commits: `18f1002`, `05d4fec`.
