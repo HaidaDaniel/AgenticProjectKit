@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-No task is currently `doing` or `review` at this closeout. Continue the public-readiness workstream by its declared dependencies. Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
+Task 0164 is `doing`: explain when APK is useful and compare adjacent tools ([task](../.tasks/0164-explain-when-to-use-apk-and-compare-alternatives.md)). Its prerequisites 0151 and 0157 are done. Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
 
 ## Known blockers
 
