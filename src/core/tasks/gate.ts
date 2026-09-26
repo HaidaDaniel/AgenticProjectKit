@@ -524,6 +524,10 @@ export function renderTaskCompletionGate(result: TaskCompletionGateResult): stri
     `Gate: ${result.passed ? "pass" : "blocked"}`,
     `Subject: baseline=${result.subject.baselineId} candidate=${result.subject.candidateId} worktree=${result.subject.worktreeId}`,
     `Changed files: ${result.changedFiles.length}`,
+    ...(result.attribution ? [
+      `Scope attribution: baseline=${result.attribution.baselineId} lineage=${result.attribution.lineageStatus}`,
+      ...result.attribution.excludedCommits.map((commit) => `  - excluded commit ${commit.sha.slice(0, 12)} task=${commit.taskId} kind=${commit.kind} files=${commit.files.join(",") || "none"}`),
+    ] : []),
     `Dependencies: ${result.dependencies.length > 0 ? result.dependencies.join(",") : "none"}`,
     `Policy blockers: ${result.policy.blockers.length}`,
     "Verification:",

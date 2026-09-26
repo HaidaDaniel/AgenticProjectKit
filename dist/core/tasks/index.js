@@ -3,13 +3,17 @@ import { createHash } from "node:crypto";
 import { appendFile, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { promisify } from "node:util";
-import { appendRunLog, requireAgent } from "../agents/index.js";
-import { appendTaskEvidence, } from "./evidence.js";
+import { appendRunLog, readRunLog, requireAgent } from "../agents/index.js";
+import { appendTaskEvidence, readTaskEvidence, } from "./evidence.js";
 import { withLocalMutationLock } from "./lock.js";
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 const DEFAULT_TASK_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 const TASK_VERIFICATION_REFERENCE_MAX_LENGTH = 240;
+const MAX_TASK_ATTRIBUTION_COMMITS = 128;
+const MAX_TASK_ATTRIBUTION_FILES = 512;
+const MAX_TASK_ATTRIBUTION_OUTPUT_COMMITS = 16;
+const MAX_TASK_ATTRIBUTION_OUTPUT_FILES = 128;
 export const TASK_STATES = [
     "todo",
     "doing",
@@ -1285,76 +1289,33 @@ export async function recordTaskHandoff(rootDirectory, taskId, owner, taskFile, 
 function shortenSha(sha) {
     return sha ? sha.slice(0, 12) : "none";
 }
-async function handoffDirtyDiffers(rootDirectory, handoff) {
-    let currentDirty;
-    try {
-        currentDirty = (await listGitChangedFiles(rootDirectory))
-            .map(normalizeRepoPath)
-            .filter((file) => !isBookkeepingPath(file, handoff));
-    }
-    catch (error) {
-        return { differs: true, file: `unreadable working tree (${error instanceof Error ? error.message : String(error)})` };
-    }
-    const current = new Set(currentDirty);
-    for (const file of currentDirty) {
-        const [fingerprint] = await fingerprintChangedFiles(rootDirectory, [file]);
-        if (handoff.dirtyFiles[file] !== fingerprint?.sha256) {
-            return { differs: true, file };
-        }
-    }
-    for (const file of Object.keys(handoff.dirtyFiles)) {
-        if (isBookkeepingPath(file, handoff))
-            continue;
-        if (!current.has(file)) {
-            return { differs: true, file };
-        }
-    }
-    return { differs: false };
+function lineageFailure(message, status = "intervening", provenOtherTaskCommits) {
+    return {
+        lineageStatus: status,
+        lineageDiagnostic: message.slice(0, 480),
+        ...(provenOtherTaskCommits ? { provenOtherTaskCommits } : {}),
+    };
 }
-async function resolveReclaimLineage(rootDirectory, authoritative, handoff) {
-    if (authoritative.repository !== "git" || !authoritative.headSha) {
-        return {
-            lineageStatus: "unresolved",
-            lineageDiagnostic: "Task was released and reclaimed without a Git baseline HEAD; scope lineage cannot be re-verified.",
-        };
+function boundCommitAttributions(proofs) {
+    const bounded = [];
+    let remainingFiles = MAX_TASK_ATTRIBUTION_OUTPUT_FILES;
+    for (const proof of proofs.slice(0, MAX_TASK_ATTRIBUTION_OUTPUT_COMMITS)) {
+        if (remainingFiles <= 0)
+            break;
+        const files = proof.files.slice(0, remainingFiles);
+        bounded.push({ ...proof, files });
+        remainingFiles -= files.length;
     }
-    let currentHead;
-    try {
-        currentHead = (await gitOutput(rootDirectory, ["rev-parse", "HEAD"])).trim();
-    }
-    catch (error) {
-        return {
-            lineageStatus: "intervening",
-            lineageDiagnostic: `Task was released and reclaimed but current HEAD is unreadable (${error instanceof Error ? error.message : String(error)}); scope lineage fails closed.`,
-        };
-    }
-    if (currentHead !== authoritative.headSha) {
-        if (!handoff?.headSha || handoff.headSha !== currentHead) {
-            return {
-                lineageStatus: "intervening",
-                lineageDiagnostic: `Repository HEAD advanced from authoritative baseline ${shortenSha(authoritative.headSha)} to ${shortenSha(currentHead)} while the task was released; intervening work cannot be distinguished safely and scope fails closed.`,
-            };
-        }
-    }
-    if (handoff) {
-        const dirtyDiff = await handoffDirtyDiffers(rootDirectory, handoff);
-        if (dirtyDiff.differs) {
-            return {
-                lineageStatus: "intervening",
-                lineageDiagnostic: `Working-tree changes appeared while the task was released (${dirtyDiff.file ?? "unknown path"}); scope lineage is ambiguous and fails closed.`,
-            };
-        }
-    }
-    return { lineageStatus: "clean" };
+    return bounded;
 }
-export async function readTaskBaseline(rootDirectory, taskId) {
+async function readAllTaskBaselineRecords(rootDirectory) {
     let content;
     try {
         content = await readFile(join(rootDirectory, TASK_BASELINES_PATH), "utf8");
     }
     catch (error) {
         if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-            return undefined;
+            return [];
         }
         throw error;
     }
@@ -1371,24 +1332,415 @@ export async function readTaskBaseline(rootDirectory, taskId) {
                 `Baseline line ${index + 1} must be valid JSON (${error instanceof Error ? error.message : String(error)}).`,
             ]);
         }
-        const baseline = normalizeBaseline(value, index + 1);
-        if (baseline.taskId === taskId) {
-            records.push(baseline);
+        records.push(normalizeBaseline(value, index + 1));
+    }
+    return records;
+}
+async function listLinearGitCommits(rootDirectory, fromSha, toSha) {
+    if (fromSha === toSha)
+        return { commits: [] };
+    try {
+        await gitOutput(rootDirectory, ["merge-base", "--is-ancestor", fromSha, toSha]);
+    }
+    catch (error) {
+        return {
+            diagnostic: `Git history from ${shortenSha(fromSha)} to ${shortenSha(toSha)} is not a proven descendant chain (${error instanceof Error ? error.message : String(error)}).`,
+        };
+    }
+    let lines;
+    try {
+        lines = (await gitOutput(rootDirectory, ["rev-list", "--reverse", "--topo-order", "--parents", `${fromSha}..${toSha}`]))
+            .split(/\r?\n/)
+            .filter((line) => line.length > 0);
+    }
+    catch (error) {
+        return { diagnostic: `Git commit range is unreadable (${error instanceof Error ? error.message : String(error)}).` };
+    }
+    if (lines.length > MAX_TASK_ATTRIBUTION_COMMITS) {
+        return { diagnostic: `Git commit range exceeds the ${MAX_TASK_ATTRIBUTION_COMMITS}-commit attribution limit.` };
+    }
+    const commits = [];
+    let previous = fromSha;
+    for (const line of lines) {
+        const [sha, ...parents] = line.split(" ");
+        if (!sha || parents.length !== 1 || parents[0] !== previous) {
+            return {
+                diagnostic: `Nonlinear or merge history at commit ${shortenSha(sha)} between ${shortenSha(fromSha)} and ${shortenSha(toSha)} is unsupported and scope fails closed.`,
+            };
+        }
+        let files;
+        try {
+            files = await gitLines(rootDirectory, ["diff-tree", "--no-commit-id", "--name-only", "--no-renames", "-r", sha]);
+        }
+        catch (error) {
+            return { diagnostic: `Changed paths for commit ${shortenSha(sha)} are unreadable (${error instanceof Error ? error.message : String(error)}).` };
+        }
+        if (files.length > MAX_TASK_ATTRIBUTION_FILES) {
+            return { diagnostic: `Commit ${shortenSha(sha)} exceeds the ${MAX_TASK_ATTRIBUTION_FILES}-file attribution limit.` };
+        }
+        commits.push({ sha, parents, files: [...new Set(files.map(normalizeRepoPath))].sort() });
+        previous = sha;
+    }
+    if (previous !== toSha) {
+        return { diagnostic: `Git did not produce a complete linear range ending at ${shortenSha(toSha)}.` };
+    }
+    return { commits };
+}
+function sameEvidenceCandidate(left, right) {
+    return left.taskId === right.taskId
+        && left.repository === right.repository
+        && left.headSha === right.headSha
+        && left.baselineId === right.baselineId
+        && left.candidateId === right.candidateId
+        && left.worktreeId === right.worktreeId;
+}
+function comparableTaskContract(task) {
+    return renderTaskMarkdown({ ...task, state: "doing", owner: "none" });
+}
+async function gitFileFingerprint(rootDirectory, revision, path) {
+    try {
+        const result = await execFileAsync("git", ["show", `${revision}:${path}`], {
+            cwd: rootDirectory,
+            encoding: "buffer",
+            maxBuffer: 8 * 1024 * 1024,
+            windowsHide: true,
+        });
+        return createHash("sha256").update(result.stdout).digest("hex");
+    }
+    catch {
+        try {
+            const treePaths = await gitLines(rootDirectory, ["ls-tree", "-r", "--name-only", revision, "--", path]);
+            return treePaths.includes(path) ? "unreadable" : "missing";
+        }
+        catch {
+            return "unreadable";
         }
     }
+}
+async function resolveTaskCandidateCommit(rootDirectory, taskFiles, baselineRecords, evidenceRecords, runEvents, activeTaskId, commit) {
+    if (commit.parents.length !== 1)
+        return undefined;
+    const parentSha = commit.parents[0];
+    const matches = [];
+    for (const taskFile of taskFiles) {
+        const task = taskFile.task;
+        if (task.id === activeTaskId || task.state !== "done")
+            continue;
+        const relativeTaskFile = normalizeRepoPath(relative(rootDirectory, taskFile.path));
+        const taskBaselines = baselineRecords.filter((record) => record.taskId === task.id);
+        const authoritative = taskBaselines.find((record) => (record.phase ?? "claim") === "claim");
+        if (!authoritative
+            || authoritative.repository !== "git"
+            || authoritative.headSha !== parentSha
+            || authoritative.taskFile !== relativeTaskFile)
+            continue;
+        const taskEvidence = evidenceRecords.filter((record) => record.taskId === task.id);
+        const completions = taskEvidence.filter((record) => (record.type === "completion"
+            && record.result === "pass"
+            && record.gateEligible === true
+            && record.subject.repository === "git"
+            && record.subject.headSha === commit.sha
+            && record.subject.baselineId === authoritative.baselineId
+            && record.subject.taskId === task.id));
+        if (completions.length !== 1)
+            continue;
+        const completion = completions[0];
+        if (task.owner !== completion.agent)
+            continue;
+        const doneEvents = runEvents.filter((event) => (event.event === "done"
+            && event.outcome === "ok"
+            && event.state === "done"
+            && event.task === task.id
+            && event.runId === completion.runId
+            && event.agent === completion.agent));
+        if (doneEvents.length !== 1)
+            continue;
+        const evidenceSet = completion.evidenceSet ?? [];
+        if (new Set(evidenceSet).size !== evidenceSet.length)
+            continue;
+        const evidenceSetValid = evidenceSet.every((id) => {
+            const matchesById = taskEvidence.filter((record) => record.id === id);
+            return matchesById.length === 1
+                && matchesById[0].result === "pass"
+                && matchesById[0].type !== "completion"
+                && sameEvidenceCandidate(matchesById[0].subject, completion.subject);
+        });
+        if (!evidenceSetValid)
+            continue;
+        try {
+            const baselineContract = parseTaskMarkdown(await gitOutput(rootDirectory, ["show", `${parentSha}:${relativeTaskFile}`]));
+            const historicalContract = parseTaskMarkdown(await gitOutput(rootDirectory, ["show", `${commit.sha}:${relativeTaskFile}`]));
+            const candidateContract = comparableTaskContract(historicalContract);
+            if (comparableTaskContract(baselineContract) !== candidateContract
+                || candidateContract !== comparableTaskContract(task))
+                continue;
+        }
+        catch {
+            continue;
+        }
+        const scopeFiles = [];
+        for (const path of commit.files) {
+            if (isBookkeepingPath(path, authoritative))
+                continue;
+            const originalFingerprint = authoritative.dirtyFiles[path];
+            if (originalFingerprint && originalFingerprint === await gitFileFingerprint(rootDirectory, commit.sha, path)) {
+                continue;
+            }
+            scopeFiles.push(path);
+        }
+        const scope = verifyTaskFileScope(task, scopeFiles);
+        if (scope.outOfScopeFiles.length > 0 || scope.forbiddenTouchedFiles.length > 0)
+            continue;
+        matches.push({
+            attribution: {
+                sha: commit.sha,
+                taskId: task.id,
+                kind: "task-candidate",
+                files: commit.files,
+            },
+            taskFile: relativeTaskFile,
+            completionAgent: completion.agent,
+            taskBaselineDirtyFiles: authoritative.dirtyFiles,
+        });
+    }
+    return matches.length === 1 ? matches[0] : undefined;
+}
+async function resolveCompletionBookkeepingCommit(rootDirectory, commit, proofForCandidate) {
+    if (commit.parents.length !== 1 || commit.files.length !== 1)
+        return undefined;
+    const parentSha = commit.parents[0];
+    const candidate = await proofForCandidate(parentSha);
+    if (!candidate || commit.files[0] !== candidate.taskFile)
+        return undefined;
+    try {
+        const before = parseTaskMarkdown(await gitOutput(rootDirectory, ["show", `${parentSha}:${candidate.taskFile}`]));
+        const after = parseTaskMarkdown(await gitOutput(rootDirectory, ["show", `${commit.sha}:${candidate.taskFile}`]));
+        if (!["todo", "doing", "review"].includes(before.state)
+            || after.state !== "done"
+            || after.owner !== candidate.completionAgent
+            || comparableTaskContract(before) !== comparableTaskContract(after))
+            return undefined;
+        return {
+            attribution: {
+                sha: commit.sha,
+                taskId: candidate.attribution.taskId,
+                kind: "completion-bookkeeping",
+                files: [candidate.taskFile],
+            },
+            taskFile: candidate.taskFile,
+            completionAgent: candidate.completionAgent,
+            taskBaselineDirtyFiles: candidate.taskBaselineDirtyFiles,
+        };
+    }
+    catch {
+        return undefined;
+    }
+}
+function snapshotDirtyDifference(before, after) {
+    const beforeFiles = Object.fromEntries(Object.entries(before.dirtyFiles)
+        .filter(([path]) => !isBookkeepingPath(path, before)));
+    const afterFiles = Object.fromEntries(Object.entries(after.dirtyFiles)
+        .filter(([path]) => !isBookkeepingPath(path, before)));
+    for (const path of [...new Set([...Object.keys(beforeFiles), ...Object.keys(afterFiles)])].sort()) {
+        if (beforeFiles[path] !== afterFiles[path])
+            return path;
+    }
+    return undefined;
+}
+async function resolveTaskBaselineLineage(rootDirectory, authoritative, taskRecords) {
+    if (authoritative.repository !== "git" || !authoritative.headSha) {
+        return {
+            lineageStatus: "unresolved",
+            lineageDiagnostic: "Task baseline has no Git HEAD; commit ownership and scope lineage cannot be re-verified.",
+        };
+    }
+    let currentHead;
+    try {
+        currentHead = (await gitOutput(rootDirectory, ["rev-parse", "HEAD"])).trim();
+    }
+    catch (error) {
+        return lineageFailure(`Current Git HEAD is unreadable (${error instanceof Error ? error.message : String(error)}).`, "unresolved");
+    }
+    const range = await listLinearGitCommits(rootDirectory, authoritative.headSha, currentHead);
+    if (!range.commits)
+        return lineageFailure(range.diagnostic ?? "Git lineage cannot be established.");
+    const linearCommits = range.commits;
+    let baselineRecords;
+    let taskFiles;
+    let evidenceRecords;
+    let runEvents;
+    try {
+        baselineRecords = await readAllTaskBaselineRecords(rootDirectory);
+        taskFiles = await allTaskFiles(rootDirectory, dirname(authoritative.taskFile));
+        evidenceRecords = await readTaskEvidence(rootDirectory);
+        runEvents = await readRunLog(rootDirectory);
+    }
+    catch (error) {
+        return lineageFailure(`Canonical task attribution evidence is unreadable (${error instanceof Error ? error.message : String(error)}).`, "unresolved");
+    }
+    const proofCache = new Map();
+    const proofForCandidate = (sha) => {
+        const existing = proofCache.get(sha);
+        if (existing)
+            return existing;
+        const operation = (async () => {
+            let commit = linearCommits.find((entry) => entry.sha === sha);
+            if (!commit) {
+                try {
+                    const line = (await gitOutput(rootDirectory, ["rev-list", "--parents", "-n", "1", sha])).trim();
+                    const [commitSha, ...parents] = line.split(" ");
+                    if (!commitSha)
+                        return undefined;
+                    const files = await gitLines(rootDirectory, ["diff-tree", "--no-commit-id", "--name-only", "--no-renames", "-r", sha]);
+                    commit = { sha: commitSha, parents, files: [...new Set(files.map(normalizeRepoPath))].sort() };
+                }
+                catch {
+                    return undefined;
+                }
+            }
+            return resolveTaskCandidateCommit(rootDirectory, taskFiles, baselineRecords, evidenceRecords, runEvents, authoritative.taskId, commit);
+        })();
+        proofCache.set(sha, operation);
+        return operation;
+    };
+    const proofByCommit = new Map();
+    for (const commit of linearCommits) {
+        const candidateProof = await proofForCandidate(commit.sha);
+        if (candidateProof) {
+            proofByCommit.set(commit.sha, candidateProof);
+            continue;
+        }
+        const bookkeepingProof = await resolveCompletionBookkeepingCommit(rootDirectory, commit, proofForCandidate);
+        if (bookkeepingProof)
+            proofByCommit.set(commit.sha, bookkeepingProof);
+    }
+    const proven = [...proofByCommit.values()].map((proof) => proof.attribution);
+    const provenPathCount = proven.reduce((count, proof) => count + proof.files.length, 0);
+    if (proven.length > MAX_TASK_ATTRIBUTION_OUTPUT_COMMITS
+        || provenPathCount > MAX_TASK_ATTRIBUTION_OUTPUT_FILES) {
+        return lineageFailure(`Proven task attribution exceeds the bounded output limit (${MAX_TASK_ATTRIBUTION_OUTPUT_COMMITS} commits / ${MAX_TASK_ATTRIBUTION_OUTPUT_FILES} files); scope fails closed.`, "intervening", boundCommitAttributions(proven));
+    }
+    const taskTimeline = taskRecords.filter((record) => record.taskId === authoritative.taskId);
+    const claims = taskTimeline.filter((record) => (record.phase ?? "claim") === "claim");
+    for (let index = 1; index < claims.length; index += 1) {
+        const previousIndex = taskTimeline.indexOf(claims[index - 1]);
+        const claimIndex = taskTimeline.indexOf(claims[index]);
+        const hasHandoff = taskTimeline.slice(previousIndex + 1, claimIndex)
+            .some((record) => record.phase === "release" || record.phase === "block");
+        if (!hasHandoff
+            && claims[index - 1].headSha
+            && claims[index].headSha
+            && claims[index - 1].headSha !== claims[index].headSha) {
+            return lineageFailure(`Claim baseline advanced from ${shortenSha(claims[index - 1].headSha)} to ${shortenSha(claims[index].headSha)} without a recorded release/block handoff; legacy lineage fails closed.`, "intervening", proven);
+        }
+    }
+    const recordIndexes = new Map(linearCommits.map((commit, index) => [commit.sha, index]));
+    const intervalCommits = (fromSha, toSha) => {
+        const fromIndex = fromSha === authoritative.headSha ? -1 : recordIndexes.get(fromSha);
+        const toIndex = toSha === authoritative.headSha ? -1 : recordIndexes.get(toSha);
+        if (fromIndex === undefined || toIndex === undefined || toIndex < fromIndex)
+            return undefined;
+        return linearCommits.slice(fromIndex + 1, toIndex + 1);
+    };
+    for (let index = 0; index < taskTimeline.length; index += 1) {
+        const record = taskTimeline[index];
+        if (record.phase !== "release" && record.phase !== "block")
+            continue;
+        const nextClaim = taskTimeline.slice(index + 1).find((entry) => (entry.phase ?? "claim") === "claim");
+        if (!nextClaim)
+            continue;
+        if (!record.headSha || !nextClaim.headSha) {
+            return lineageFailure("Release/reclaim records do not contain Git HEAD; scope lineage fails closed.", "intervening", proven);
+        }
+        const commits = intervalCommits(record.headSha, nextClaim.headSha);
+        if (!commits) {
+            return lineageFailure(`Release/reclaim range ${shortenSha(record.headSha)}..${shortenSha(nextClaim.headSha)} is outside the authoritative linear history.`, "intervening", proven);
+        }
+        const dirtyFile = snapshotDirtyDifference(record, nextClaim);
+        if (dirtyFile) {
+            return lineageFailure(`Working-tree file ${dirtyFile} changed while the task was released; ownership is ambiguous and scope fails closed.`, "intervening", proven);
+        }
+        for (const commit of commits) {
+            if (!proofByCommit.has(commit.sha)) {
+                const file = commit.files[0] ?? "no changed path";
+                return lineageFailure(`Intervening commit ${shortenSha(commit.sha)} (${file}) has no canonical completed-task candidate provenance; scope fails closed.`, "intervening", proven);
+            }
+        }
+    }
+    const taskOwnedCommitFiles = new Set();
+    for (const commit of linearCommits) {
+        if (proofByCommit.has(commit.sha))
+            continue;
+        for (const path of commit.files) {
+            if (!isBookkeepingPath(path, authoritative))
+                taskOwnedCommitFiles.add(path);
+        }
+    }
+    for (const proof of proofByCommit.values()) {
+        for (const path of proof.attribution.files) {
+            const otherTaskDirtyFingerprint = proof.taskBaselineDirtyFiles[path];
+            if (otherTaskDirtyFingerprint !== undefined
+                && path !== proof.taskFile
+                && !isBookkeepingPath(path, authoritative)
+                && authoritative.dirtyFiles[path] !== otherTaskDirtyFingerprint) {
+                return {
+                    lineageStatus: "intervening",
+                    lineageDiagnostic: `Task ${proof.attribution.taskId} commit ${shortenSha(proof.attribution.sha)} includes ${path}, which was already dirty at that task's baseline but is not the same pre-existing content at this task's baseline; ownership is ambiguous and scope fails closed.`,
+                    provenOtherTaskCommits: proven,
+                };
+            }
+            if (taskOwnedCommitFiles.has(path)
+                || (authoritative.dirtyFiles[path] !== undefined && path !== proof.taskFile)
+                || taskTimeline.some((record) => ((record.phase === "release" || record.phase === "block")
+                    && record.dirtyFiles[path] !== undefined
+                    && path !== proof.taskFile))) {
+                return {
+                    lineageStatus: "intervening",
+                    lineageDiagnostic: `Task ${proof.attribution.taskId} commit ${shortenSha(proof.attribution.sha)} overlaps task-owned or pre-existing file ${path}; same-file attribution is ambiguous and scope fails closed.`,
+                    provenOtherTaskCommits: proven,
+                };
+            }
+        }
+    }
+    let currentDirty;
+    try {
+        currentDirty = (await listGitChangedFiles(rootDirectory))
+            .map(normalizeRepoPath)
+            .filter((path) => !isBookkeepingPath(path, authoritative));
+    }
+    catch (error) {
+        return lineageFailure(`Current working-tree attribution is unreadable (${error instanceof Error ? error.message : String(error)}).`, "unresolved", proven);
+    }
+    for (const proof of proofByCommit.values()) {
+        const overlap = currentDirty.find((path) => proof.attribution.files.includes(path));
+        if (overlap) {
+            return {
+                lineageStatus: "intervening",
+                lineageDiagnostic: `Task ${proof.attribution.taskId} commit ${shortenSha(proof.attribution.sha)} overlaps current working-tree file ${overlap}; same-file attribution is ambiguous and scope fails closed.`,
+                provenOtherTaskCommits: proven,
+            };
+        }
+    }
+    return {
+        lineageStatus: proven.length > 0 ? "attributed" : "clean",
+        ...(proven.length > 0 ? { provenOtherTaskCommits: proven } : {}),
+    };
+}
+export async function readTaskBaseline(rootDirectory, taskId) {
+    const allRecords = await readAllTaskBaselineRecords(rootDirectory);
+    const records = allRecords.filter((record) => record.taskId === taskId);
     if (records.length === 0) {
         return undefined;
     }
     const claims = records.filter((record) => (record.phase ?? "claim") === "claim");
     const authoritative = claims[0] ?? records[0];
-    const latestClaim = claims.length > 0 ? claims[claims.length - 1] : undefined;
-    const handoffs = records.filter((record) => record.phase === "release" || record.phase === "block");
-    const latestHandoff = handoffs.length > 0 ? handoffs[handoffs.length - 1] : undefined;
-    // No reclaim after the authoritative claim: normal same-claim continuation.
-    if (!latestClaim || latestClaim.baselineId === authoritative.baselineId) {
+    const lastRecord = records[records.length - 1];
+    // A task still released has no active candidate to attribute. Its next claim
+    // will validate the complete release interval against the recorded handoff.
+    if (lastRecord.phase === "release" || lastRecord.phase === "block") {
         return { ...authoritative, lineageStatus: "clean" };
     }
-    const lineage = await resolveReclaimLineage(rootDirectory, authoritative, latestHandoff);
+    const lineage = await resolveTaskBaselineLineage(rootDirectory, authoritative, allRecords);
     return { ...authoritative, ...lineage };
 }
 export async function listTaskChangedFilesSinceBaseline(rootDirectory, baseline) {
@@ -1435,7 +1787,10 @@ export async function captureTaskScope(options) {
             ? rawChangedFiles.filter((path) => !isDefaultBookkeepingPath(normalizeRepoPath(path), normalizedTaskPath))
             : rawChangedFiles);
     const lineage = options.baseline?.lineageStatus;
-    if (options.baseline?.repository === "git" && lineage !== undefined && lineage !== "clean") {
+    if (options.baseline?.repository === "git"
+        && lineage !== undefined
+        && lineage !== "clean"
+        && lineage !== "attributed") {
         comparisonKnown = false;
         diagnostics.push(options.baseline.lineageDiagnostic
             ?? `Task baseline lineage is ${lineage}; scope comparison fails closed.`);
@@ -1450,9 +1805,13 @@ export async function captureTaskScope(options) {
     };
 }
 export async function verifyTaskFileScopeSinceBaseline(rootDirectory, task, changedFiles, baseline) {
-    const normalizedChanged = [...new Set(changedFiles.map(normalizeRepoPath))]
+    const allNormalizedChanged = [...new Set(changedFiles.map(normalizeRepoPath))]
         .filter((file) => file.length > 0)
         .sort();
+    const excludedCommits = baseline.provenOtherTaskCommits ?? [];
+    const excludedFileSet = new Set(excludedCommits.flatMap((commit) => commit.files.map(normalizeRepoPath)));
+    const excludedFiles = allNormalizedChanged.filter((file) => excludedFileSet.has(file));
+    const normalizedChanged = allNormalizedChanged.filter((file) => !excludedFileSet.has(file));
     const fingerprints = Object.fromEntries((await fingerprintChangedFiles(rootDirectory, normalizedChanged))
         .map(({ path, sha256 }) => [path, sha256]));
     const attributedFiles = [];
@@ -1477,7 +1836,13 @@ export async function verifyTaskFileScopeSinceBaseline(rootDirectory, task, chan
             attributedFiles,
             preExistingFiles,
             bookkeepingFiles,
-            diagnostics: baseline.diagnostics,
+            excludedFiles,
+            excludedCommits,
+            lineageStatus: baseline.lineageStatus ?? "clean",
+            diagnostics: [
+                ...baseline.diagnostics,
+                ...(baseline.lineageDiagnostic ? [baseline.lineageDiagnostic] : []),
+            ],
         },
     };
 }
@@ -1805,6 +2170,12 @@ export function renderTaskVerifyResult(result) {
         `Changed files: ${result.changedFiles.length}`,
         `File scope: ${result.outOfScopeFiles.length === 0 && result.forbiddenTouchedFiles.length === 0 ? "pass" : "fail"}`,
     ];
+    if (result.attribution) {
+        lines.push(`Scope attribution: baseline=${result.attribution.baselineId} lineage=${result.attribution.lineageStatus}`);
+        for (const commit of result.attribution.excludedCommits) {
+            lines.push(`  - excluded commit ${shortenSha(commit.sha)} task=${commit.taskId} kind=${commit.kind} files=${commit.files.join(",") || "none"}`);
+        }
+    }
     if (result.outOfScopeFiles.length > 0) {
         lines.push("Out of allowed files:");
         for (const file of result.outOfScopeFiles) {

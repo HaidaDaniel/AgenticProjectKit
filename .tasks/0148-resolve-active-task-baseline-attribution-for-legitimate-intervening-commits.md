@@ -1,7 +1,7 @@
 # Task 0148 - Resolve active-task baseline attribution for legitimate intervening commits
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-0148
 Mode: maintenance
 Lane: workflow
 Type: bugfix

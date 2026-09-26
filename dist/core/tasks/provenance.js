@@ -346,6 +346,7 @@ export async function buildTaskProvenance(rootDirectory, taskDirectory, taskId) 
         taskPath: candidate.taskPath.replace(/\\/g, "/"),
         currentSubject: candidate.subject,
         changedFiles: [...candidate.changedFiles].sort(),
+        ...(candidate.scope.attribution ? { scopeAttribution: candidate.scope.attribution } : {}),
         ...(baseline ? { baseline } : {}),
         taskAttributedFiles,
         repositoryActivity,
@@ -379,6 +380,10 @@ export function renderTaskProvenance(provenance) {
         `Current worktree: ${provenance.currentSubject.worktreeId}`,
         renderBaseline(provenance.baseline),
         `Changed files: ${provenance.changedFiles.length > 0 ? provenance.changedFiles.join(", ") : "none"}`,
+        ...(provenance.scopeAttribution ? [
+            `Scope attribution: baseline=${provenance.scopeAttribution.baselineId} lineage=${provenance.scopeAttribution.lineageStatus}`,
+            ...provenance.scopeAttribution.excludedCommits.map((commit) => `  - excluded commit ${commit.sha.slice(0, 12)} task=${commit.taskId} kind=${commit.kind} files=${commit.files.join(",") || "none"}`),
+        ] : []),
         "Participants:",
         ...(provenance.participants.length > 0
             ? provenance.participants.map((participant) => `  - ${participant.agent} (${participant.platform}/${participant.model}; runs=${participant.runIds.length}; evidence=${participant.evidenceIds.length})`)

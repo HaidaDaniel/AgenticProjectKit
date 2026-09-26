@@ -1284,3 +1284,25 @@ Rejecting all manual checks with artifacts would preserve the current recording 
 Reference:
 
 Task 0147.
+
+## ADR-0077 - Attribute other-task commits only from bounded completion provenance
+
+Status: accepted
+
+Decision:
+
+Keep the earliest claim as the unfinished task's authoritative scope baseline. Recompute commit attribution from Git history and existing APK task, baseline, evidence, and run-log records; do not persist a second ownership ledger. Exclude a commit from the active task only when it is a direct child of another task's recorded Git baseline, the other task is currently `done`, its PASS completion evidence binds that exact commit and baseline, all evidence IDs selected by the completion record are present and pass for the same candidate, the matching successful `done` run event exists, the other task's contract matches the candidate tree, and the commit's non-bookkeeping paths satisfy that task's allowed and non-forbidden scope. A single direct child may then contain only that task file's transition to `done` with unchanged contract content; it is classified as completion bookkeeping.
+
+For each recorded release/block-to-claim interval, every commit must have the preceding bounded task-candidate proof and the handoff's non-bookkeeping dirty fingerprints must match the next claim. While the task remains claimed, only commits with that same other-task proof are excluded; all other paths remain in the active task's scope. An excluded commit that overlaps task-attributed history, pre-existing or handoff-dirty work, or current dirty work makes ownership ambiguous and blocks comparison. Git history must be a bounded linear parent chain. Missing or malformed provenance, author/message-only clues, changed dirty state, same-file overlap, merges, rewrites, and over-limit histories fail closed. Verify, gate, and provenance expose the same attribution result and diagnostics; candidate subject and evidence/review freshness rules do not change.
+
+Reason:
+
+The earliest baseline is required to preserve Task 0116's anti-laundering behavior, but blindly diffing it to a later HEAD also attributes legitimate unrelated work. A Git commit's author, message, time, or branch does not identify its owner. A completed APK task supplies a bounded candidate subject and a successful gate transition; matching that provenance to the exact Git parent/child edge proves the commit belongs to that task. Narrow direct-child and state-only bookkeeping rules preserve the existing Task 0121 commit lifecycle while leaving incomplete, mixed, or overlapping history ambiguous.
+
+Implementation and invariant:
+
+The attribution is derived on read and is not an authority to expand allowed paths. The other task's completion record must be tied to the exact child HEAD and its baseline must equal the child's direct parent. The candidate commit's changed files are separately checked against that task's contract; a terminal bookkeeping child may touch only that task's file and may change only lifecycle state/owner. A release gap containing any unproven commit, changed handoff dirty file, nonlinear history, or same-file overlap makes scope unknown and blocks verify/gate. Proven files are excluded from the active task candidate file set, but the current HEAD remains in its subject, so prior verification and review evidence still becomes stale when HEAD advances.
+
+Reference:
+
+Task 0148.
