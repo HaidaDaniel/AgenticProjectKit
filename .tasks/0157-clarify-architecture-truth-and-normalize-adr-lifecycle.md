@@ -1,7 +1,7 @@
 # Task 0157 - Clarify architecture truth and normalize ADR lifecycle
 
-State: todo
-Owner: none
+State: done
+Owner: codex-0157
 Mode: maintenance
 Lane: documentation
 Type: docs
@@ -10,6 +10,10 @@ Risk: low
 Parallel: true
 Depends on: none
 Tags: docs,adr,architecture
+
+## Goal
+
+Separate current, accepted target, deferred, and excluded architecture while making ADR supersession status easy to inspect.
 
 ## Context files
 
@@ -33,10 +37,6 @@ Tags: docs,adr,architecture
 - dist/**
 - docs/releases/**
 - .tasks/archive/**
-
-## Goal
-
-Separate current, accepted target, deferred, and excluded architecture while making ADR supersession status easy to inspect.
 
 ## Steps
 
@@ -86,6 +86,7 @@ Separate current, accepted target, deferred, and excluded architecture while mak
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.

@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0157 is `doing`: clarify current architecture and normalize ADR lifecycle ([task](../.tasks/0157-clarify-architecture-truth-and-normalize-adr-lifecycle.md)). `apk next-task` selected it as the next ready public-readiness task. Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
+Task 0155 is `todo` and now ready: reframe the roadmap after Tasks 0156 and 0157 completed ([task](../.tasks/0155-reframe-roadmapmd-as-shipped-current-planned-and-deferred.md)). `apk next-task` selected it as the next public-readiness task. Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
 
 ## Known blockers
 
@@ -22,6 +22,7 @@ Complete the public-readiness workstreams in the [dependency-aware roadmap](road
 
 ## Recently completed
 
+- Task 0157 clarified current architecture boundaries and indexed ADR lifecycle status ([architecture](architecture.md), [decisions](decisions.md)). Candidate commit: `eeba8b7`; lifecycle closeout is committed separately.
 - Task 0156 marked completed delivery plans as historical and linked their release evidence ([milestones](delivery/milestones.md), [task](../.tasks/0156-mark-old-delivery-milestones-as-historical.md)). Candidate commit: `7ba7cd3`; lifecycle closeout is committed separately.
 - Task 0154 clarified current capabilities, exclusions, and historical scope in [scope](scope.md). Candidate commit: `7607aac`; lifecycle closeout is committed separately.
 - Task 0153 reduced this page to current context and mapped historical entries to canonical records ([history map](history/progress-history.md), [task](../.tasks/0153-make-progressmd-a-concise-current-state-document.md)). Candidate commit: `236b438`; lifecycle closeout is committed separately.
