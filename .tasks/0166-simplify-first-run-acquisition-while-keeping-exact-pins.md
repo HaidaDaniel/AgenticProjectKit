@@ -1,7 +1,7 @@
 # Task 0166 - Simplify first-run acquisition while keeping exact pins
 
-State: todo
-Owner: none
+State: done
+Owner: codex-0166
 Mode: product
 Lane: distribution
 Type: feature
@@ -10,6 +10,10 @@ Risk: medium
 Parallel: false
 Depends on: 0165
 Tags: feature
+
+## Goal
+
+Reduce first-run acquisition friction while installing an exact repository-local APK version and keeping normal commands pinned locally.
 
 ## Context files
 
@@ -40,10 +44,6 @@ Tags: feature
 - docs/releases/**
 - docs/decisions.md
 - .agentic/**
-
-## Goal
-
-Reduce first-run acquisition friction while installing an exact repository-local APK version and keeping normal commands pinned locally.
 
 ## Steps
 
@@ -89,6 +89,7 @@ Reduce first-run acquisition friction while installing an exact repository-local
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test"}`
 - `{"id":"check-3","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.
