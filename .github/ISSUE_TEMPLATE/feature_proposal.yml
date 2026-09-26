@@ -1,0 +1,25 @@
+name: Feature proposal
+description: Describe a user problem and a bounded improvement.
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the user, context, and current limitation.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: What outcome would help?
+      description: State the smallest useful result; a particular implementation is optional.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints or current workaround
+      description: Include relevant compatibility, workflow, or scope constraints.
+    validations:
+      required: false

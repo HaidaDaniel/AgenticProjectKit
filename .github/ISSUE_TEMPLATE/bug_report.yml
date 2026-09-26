@@ -1,0 +1,36 @@
+name: Bug report
+description: Report a reproducible problem with Agentic Project Kit.
+title: "[Bug]: "
+body:
+  - type: textarea
+    id: observed
+    attributes:
+      label: What happened?
+      description: Describe the observed result and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: How can it be reproduced?
+      description: Include the smallest useful sequence of commands or steps.
+      placeholder: |
+        1. Run ...
+        2. Observe ...
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Relevant environment
+      description: Include APK version, OS, Node.js, or package-manager versions that matter.
+      placeholder: "APK v0.4.7, Ubuntu, Node.js 22.x, pnpm 10.x"
+    validations:
+      required: false
+  - type: textarea
+    id: output
+    attributes:
+      label: Relevant output
+      description: Add a short error or log excerpt if it helps. Remove credentials, tokens, and private data.
+    validations:
+      required: false

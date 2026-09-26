@@ -1,7 +1,7 @@
 # Task 0169 - Add contributor docs and lightweight GitHub contribution UX
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-0169
 Mode: product
 Lane: community
 Type: docs
@@ -10,6 +10,10 @@ Risk: low
 Parallel: true
 Depends on: none
 Tags: docs
+
+## Goal
+
+Give outside contributors a concise contribution path and lightweight GitHub issue and pull-request templates.
 
 ## Context files
 
@@ -36,10 +40,6 @@ Tags: docs
 - docs/releases/**
 - docs/decisions.md
 - SECURITY.md
-
-## Goal
-
-Give outside contributors a concise contribution path and lightweight GitHub issue and pull-request templates.
 
 ## Steps
 
@@ -84,6 +84,7 @@ Give outside contributors a concise contribution path and lightweight GitHub iss
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.

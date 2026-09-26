@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-No task is currently active. Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
+Task 0169 is `doing`: add concise contributor guidance and lightweight GitHub issue and pull-request templates ([task](../.tasks/0169-add-contributor-docs-and-lightweight-github-contribution-ux.md)). Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
 
 ## Known blockers
 

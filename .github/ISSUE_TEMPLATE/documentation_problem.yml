@@ -1,0 +1,31 @@
+name: Documentation problem
+description: Report instructions that are missing, unclear, or hard to follow.
+title: "[Docs]: "
+body:
+  - type: input
+    id: location
+    attributes:
+      label: Page, section, or command
+      description: Link the page or name the command whose documentation needs attention.
+    validations:
+      required: true
+  - type: textarea
+    id: reader-goal
+    attributes:
+      label: What were you trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: gap
+    attributes:
+      label: What was missing or unclear?
+      description: Describe the question you could not answer or the step that did not work.
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Possible improvement
+      description: Optional wording or an example that would have helped.
+    validations:
+      required: false
