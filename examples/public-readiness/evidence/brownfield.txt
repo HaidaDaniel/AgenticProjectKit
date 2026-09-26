@@ -1,0 +1,4 @@
+Environment: Linux x64, Node.js 22.22.1, pnpm 10.28.1
+Arguments: examples/public-readiness/smoke.mjs --scenario brownfield
+Captured stdout:
+PASS brownfield: preview was read-only; apply preserved user files; second apply added no changes.

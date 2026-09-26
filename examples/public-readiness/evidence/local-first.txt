@@ -1,0 +1,4 @@
+Environment: Linux x64, Node.js 22.22.1, pnpm 10.28.1
+Arguments: examples/public-readiness/smoke.mjs --scenario local-first
+Captured stdout:
+PASS local-first: exact v0.4.7 pin; cached offline installs and local APK commands passed after acquisition; rerun added no changes.

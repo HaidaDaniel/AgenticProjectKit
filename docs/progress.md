@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-No task is currently active. Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
+Task 0172 is `doing`: add isolated greenfield, brownfield, and local-first showcase workflows with repeatable smoke output ([task](../.tasks/0172-add-runnable-greenfield-brownfield-and-local-first-showcases.md)). Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
 
 ## Known blockers
 

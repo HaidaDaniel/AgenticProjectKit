@@ -1,7 +1,7 @@
 # Task 0172 - Add runnable greenfield, brownfield, and local-first showcases
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-0172
 Mode: product
 Lane: examples
 Type: feature
@@ -10,6 +10,10 @@ Risk: medium
 Parallel: false
 Depends on: 0159,0161,0162,0165,0166
 Tags: feature
+
+## Goal
+
+Provide runnable greenfield, brownfield, and local-first examples demonstrating representative public workflows.
 
 ## Context files
 
@@ -34,10 +38,6 @@ Tags: feature
 - .tasks/archive/**
 - docs/releases/**
 - docs/decisions.md
-
-## Goal
-
-Provide runnable greenfield, brownfield, and local-first examples demonstrating representative public workflows.
 
 ## Steps
 
@@ -83,6 +83,7 @@ Provide runnable greenfield, brownfield, and local-first examples demonstrating 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test"}`
 - `{"id":"check-3","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.

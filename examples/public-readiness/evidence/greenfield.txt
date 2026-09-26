@@ -1,0 +1,4 @@
+Environment: Linux x64, Node.js 22.22.1, pnpm 10.28.1
+Arguments: examples/public-readiness/smoke.mjs --scenario greenfield
+Captured stdout:
+PASS greenfield: exact v0.4.7 pin; task 0002 done; repeated init left the worktree unchanged.
