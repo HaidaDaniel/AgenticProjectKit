@@ -1,6 +1,6 @@
 # Task 0169 - Add contributor docs and lightweight GitHub contribution UX
 
-State: doing
+State: done
 Owner: codex-0169
 Mode: product
 Lane: community
