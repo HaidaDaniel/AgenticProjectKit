@@ -1,124 +1,62 @@
 # Roadmap
 
-## v0.1
+This page separates released capabilities from work on `main` and future plans. Task contracts define lifecycle state and dependencies; release notes and delivery records define what has shipped. Roadmap grouping does not override either source.
 
-- TypeScript CLI scaffold.
-- Project config generation.
-- `init`, `adopt`, `mode`, `next-task`, `context`, `prompt`, and `export`.
-- Minimal templates.
-- Basic exporters for the core agent files.
-- Task file generation.
+## Shipped
 
-## v0.2
+### Latest validated installable release
 
-- Better repository scanning.
-- `apk audit` report generation.
-- Better validation of config and task files through audit.
-- Stronger context selection.
-- Better prompt generation.
+[v0.4.7](releases/v0.4.7.md) is the latest validated installable release. Its correctness foundation is Tasks 0145-0148; the [post-release validation record](delivery/workflow-v0.4.7-self-dogfood.md) records the exact candidate, successful exact-SHA CI, tag peel, cold install, and downstream smoke.
 
-## v0.3
+### Gated workflow foundation
 
-- `apk sync` check and write workflow.
-- Improved adoption and audit flows.
-- Better mode-aware behavior.
-- More template coverage.
-- Stronger CLI tests.
-- More polished task orchestration.
+Tasks 0057-0081 are complete. Task 0075 validated frozen v0.3.1 candidate `5f65faa6a46c0e48e9586540b943898269fb78f7`; the [release evidence](delivery/gated-workflow-release-evidence.md) records candidate-bound checks, dogfood, review, gate, and hosted CI. The detailed milestone history and dependency graph are in the [historical delivery record](delivery/milestones.md).
 
-## Future
+### Resource-aware execution
 
-- Web UI.
-- SaaS support.
-- Cloud sync.
-- Integrations with issue trackers.
-- Multi-repo workflows.
+Tasks 0082-0088 are complete and included in the [v0.4.0 release](releases/v0.4.0.md). The accepted design and current behavior are documented in [execution profiles](execution-profiles.md). Task 0092's canonical instruction-export consolidation is also complete ([contract](../.tasks/0092-consolidate-agent-instruction-exports-around-canonical-agentsmd.md)).
 
-## Excluded from v0.2 and v0.3
+## Current state
 
-- Web UI.
-- SaaS backend.
-- Cloud sync.
-- Issue tracker sync.
-- Database and authentication.
-
-## Gated-workflow milestone (shipped; historical plan)
-
-Tasks 0057-0081 preserve repository-first, model-agnostic control-plane direction. `done` becomes evidence-backed completion; external coding harnesses remain workers. All implementation prerequisites are complete; 0075 is done and validated candidate `5f65faa` against gated workflow plus hosted clean-checkout CI.
-
-| Milestone | Tasks | Capability |
-| --- | --- | --- |
-| 1 - Meaningful Done | 0057, 0058, 0059, 0060, 0061, 0063, 0062 | Revision-bound evidence, verification, scope, policy, independent review capability, then completion enforcement |
-| 1 - Reliability / Foundation | 0076, 0080 | Safe stale-lock recovery plus bounded Task 0073 P2 reliability fixes; both required before final release |
-| 2 - Independent Correctness | 0064-0066 | Assumptions/invariants, typed guardrails, built-in consistency lint |
-| 3 - Efficient Agent Workflow | 0067-0071 | Budgeted context, change-aware suggestions, dogfood evidence, provenance, explainable status |
-| 4 - Harness Interoperability | 0072-0073 | Worker contract, implement/review/fix composition |
-| 5 - Upgrade, Quality and Release | 0074, 0077-0079, 0075 | Safe v0.3.1 adoption, vendor-neutral capability policy, APK-local guardrails, clean-checkout CI and candidate-specific validation |
-
-Task links and direct dependency graph: [delivery milestones](delivery/milestones.md#next-gated-workflow-release-planned).
-
-Bootstrap: 0063 depends on 0058,0061; 0062 depends on 0059,0060,0061,0063. Pre-release chain: 0073 -> 0074 -> 0077 -> 0078 -> 0079. Tasks 0076 and 0080 are independent graph branches but must be serialized where files overlap. 0075 requires all branches. Evidence freshness is mandatory; stale history remains visible but cannot close tasks. Release lifecycle: prepare -> freeze exact candidate -> non-mutating validation -> evidence; changed candidate requires new freeze/revalidation.
-
-Quality boundary: APK detects stable capability IDs, evaluates explicit repository policy and recommends missing optional capability. APK-local ESLint/hooks/coverage/GitHub tooling never becomes an automatic adopted-repository dependency. Hooks = feedback, APK verify/gate = task proof, CI = clean-checkout proof, 0075 = frozen-candidate proof.
-
-This backlog excludes model runtime ownership, RAG/vector storage, cloud/UI/SaaS work, autonomous swarms and remote execution. Earlier future ideas remain separate.
-
-## Resource-Aware Execution (next coherent milestone)
-
-Resource-Aware Execution follows the gated-workflow foundation and precedes any further expansion of automatic multi-agent orchestration. The accepted architecture is documented in [execution profiles](execution-profiles.md); Task 0082 records the documentation/backlog pass, and Tasks 0083-0088 implement it.
-
-| Order | Task | Priority | Capability |
-| --- | --- | --- | --- |
-| Plan | 0082 | complete before implementation | Architecture and implementation-ready contracts |
-| A | 0083 | P0 | Vendor-neutral model, harness, and executable worker/resource registry |
-| B | 0084 | P0 | `executionProfile` and deterministic resource-aware role routing |
-| C | 0085 | P0 | Adaptive assurance levels, trigger escalation, deterministic-first review, and budgets |
-| D | 0086 | high | Deterministic detection plus validated vendor-neutral workflow calibration/explain |
-| E | 0087 | later | Worker/resource occupancy and bounded human attention status |
-| F | 0088 | later | Optional safe isolated Git workspaces for parallel top-level workers |
-
-Direct implementation graph:
-
-```text
-0072 + 0074 + 0082 -> 0083 -> 0084 -> 0085
-                                          |----> 0086 (+ 0077)
-                                          `----> 0087 (+ 0070, 0071) -> 0088
-                                                                           (+ 0070, 0073, 0084)
-```
-
-Tasks 0077-0079 remain an independent quality/release chain and do not wait for resource-aware execution. After 0085, Tasks 0086 and 0087 can proceed independently: 0086 also waits for 0077 to reuse its deterministic repository quality-capability inventory, while 0087 does not wait for calibration. Task 0075 is not retroactively made dependent on this later milestone.
-
-The milestone retains the existing independent-review capability while making its use risk-, trigger-, resource-, and budget-aware. In particular, a constrained medium-risk task does not automatically require a second frontier run. Deterministic checks run before semantic review, and required but unavailable assurance remains an explicit gate/attention state.
-
-This milestone does not implement an LLM runtime, provider SDK layer, secret manager, autonomous swarm, always-on master LLM, cloud control plane, dashboard/SaaS, remote execution platform, billing system, or generic scheduler.
-
-## Exporter consolidation (done)
-
-Task 0092 makes `AGENTS.md` the only full common-policy generated export and reduces other harness files to direct consumption or minimal native adapters. Codex, OpenCode, and Cursor read `AGENTS.md` directly; `CLAUDE.md` and `GEMINI.md` are thin `@AGENTS.md` imports; obsolete `.codex/instructions.md`, `.opencode/AGENTS.md`, and `.cursor/rules/*.mdc` files have a conservative report/cleanup migration path. It depends on completed exporter, sync, contract-lint, adoption-compatibility and generated-policy foundations (`0029`, `0040`, `0066`, `0074`, `0081`) and does not block the release or Resource-Aware Execution branches.
-
-## External runtime alignment (planning)
-
-Task 0097 records the boundary between APK and an external terminal/session runtime such as Herdr. APK is a repository-local semantic workflow/control plane; the external runtime owns PTY, persistent shells, detach/reattach, live process lifetime, remote connectivity, and operator navigation. APK state is repository-local and one APK package may serve many repositories.
-
-Task 0097 amends Tasks 0087 and 0088 before their implementation so attention/status stays semantic and runtime-neutral and isolated workspaces stay safe Git worktree lifecycle only. A future external-runtime dogfood is documented and deferred; no runtime adapter is implemented or planned as a dependency. See [ADR-0039](decisions.md#adr-0039---apk-is-a-repository-local-semantic-control-plane-not-an-external-runtime).
-
+AgenticProjectKit remains the product identity. The latest validated installable release is v0.4.7; public-readiness documentation and follow-up work on `main` do not change that release record. The next release version and date have not been decided.
 
 ## Public Readiness (current work)
 
-Tasks 0145-0148 are correctness prerequisites for this work. Tasks 0151-0172 cover product truth, documentation, contribution readiness, acquisition, CLI consistency, and examples. Task 0173 is the final release gate and integrates the exact-candidate release checks; no separate release-integration task is needed. Public-readiness work proceeds under the current AgenticProjectKit product identity.
+Public readiness is the one current planned milestone. Tasks 0145-0148 are already shipped as the v0.4.7 correctness foundation. Product-truth tasks 0151-0157 are being completed before the documentation front door and final release gate. The current task state is recorded in the linked contracts.
 
-| Workstream | Tasks | Notes |
+| Workstream | Current state | Task contracts |
 | --- | --- | --- |
-| Correctness foundation | 0145-0148 | Required before the public-readiness release gate. |
-| Product and current truth | 0151-0157 | Requirements, compatibility, status, scope, roadmap, milestone history, architecture, and ADR lifecycle. |
-| Documentation front door | 0158-0164 | Index, user guides, README, and factual product comparison. |
-| CLI consistency | 0165, 0167 | `apkit` is the canonical documented public CLI name; existing aliases remain compatible; examples distinguish user and contributor invocation. |
-| OSS contribution readiness | 0169-0171 | Contributor UX, security reporting, and release index; Task 0170 is blocked pending operator-confirmed private reporting route. |
-| Acquisition and examples | 0166, 0172 | Preserve Task 0125 exact local pin and lockfile; provide runnable external dogfood paths. |
-| Documentation consistency and release | 0168, 0173 | Deterministic docs checks precede final frozen-candidate validation. |
+| Product and current truth | 0151-0154 and 0156-0157 done; 0155 doing | [0151](../.tasks/0151-separate-apk-requirements-from-downstream-project-templates.md), [0152](../.tasks/0152-define-public-maturity-and-compatibility-policy.md), [0153](../.tasks/0153-make-progressmd-a-concise-current-state-document.md), [0154](../.tasks/0154-modernize-scopemd-around-current-and-historical-scope.md), [0155](../.tasks/0155-reframe-roadmapmd-as-shipped-current-planned-and-deferred.md), [0156](../.tasks/0156-mark-old-delivery-milestones-as-historical.md), [0157](../.tasks/0157-clarify-architecture-truth-and-normalize-adr-lifecycle.md) |
+| Documentation front door | todo | [0158](../.tasks/0158-add-a-documentation-home.md), [0159](../.tasks/0159-write-a-canonical-getting-started-guide.md), [0160](../.tasks/0160-explain-apk-core-concepts-and-trust-boundaries.md), [0161](../.tasks/0161-document-safe-brownfield-adoption.md), [0162](../.tasks/0162-document-constrained-and-local-first-execution.md), [0163](../.tasks/0163-redesign-readme-as-the-public-front-door.md), [0164](../.tasks/0164-explain-when-to-use-apk-and-compare-alternatives.md) |
+| CLI consistency | todo | [0165](../.tasks/0165-establish-one-canonical-public-cli-name.md), [0167](../.tasks/0167-keep-cli-reference-aligned-with-the-command-registry.md) |
+| OSS contribution readiness | 0169 and 0171 todo; 0170 blocked | [0169](../.tasks/0169-add-contributor-docs-and-lightweight-github-contribution-ux.md), [0170](../.tasks/0170-publish-a-truthful-security-reporting-policy.md), [0171](../.tasks/0171-establish-a-release-changelog-and-index-strategy.md) |
+| Acquisition and examples | todo | [0166](../.tasks/0166-simplify-first-run-acquisition-while-keeping-exact-pins.md), [0172](../.tasks/0172-add-runnable-greenfield-brownfield-and-local-first-showcases.md) |
+| Documentation consistency and release gate | todo | [0168](../.tasks/0168-add-deterministic-documentation-consistency-checks.md), [0173](../.tasks/0173-validate-the-next-public-readiness-release.md) |
+
+Task contracts carry the exact prerequisite graph; use `apk task deps <task-id>` to inspect it. In particular, the documentation home and final release gate wait for their declared guide, CLI, contribution, and consistency prerequisites. Task 0173 validates an exact frozen candidate only after its dependencies pass; it does not assign a version or date in advance.
 
 ## Deep backlog / deferred product identity
 
-AgenticProjectKit remains the current product identity. A future naming/rebrand investigation is deferred indefinitely and requires a new explicit human decision before activation.
+Tasks 0149 and 0150 are blocked and deferred identity work, not public-readiness prerequisites. Reconsidering the name requires a new explicit human decision; research does not authorize a rebrand ([0149](../.tasks/0149-research-and-recommend-a-public-project-name.md), [0150](../.tasks/0150-implement-a-human-approved-project-rebrand.md)).
 
-Tasks 0149 and 0150 remain available as optional future work, marked blocked/deferred in the task backlog. Neither is a prerequisite for public readiness or the next release. Naming research does not authorize a rebrand; any activated identity investigation and possible rebrand are a separate optional milestone.
+The external-runtime dogfood recorded by Task 0097 is deferred until the APK backlog is complete. It is a validation exercise, not an adapter implementation or dependency ([Task 0097](../.tasks/0097-align-apk-with-external-agent-runtimes-and-persistent-dev-hosts.md), [ADR-0039](decisions.md#adr-0039---apk-is-a-repository-local-semantic-control-plane-not-an-external-runtime)).
+
+## Blocked work
+
+Task 0170 cannot be completed until the operator confirms a usable private vulnerability-reporting route. The task contract remains blocked while that external decision is missing.
+
+Task 0173 depends on Task 0170, so the final release gate cannot pass until this prerequisite is unblocked and completed.
+
+## Excluded from current scope
+
+Web UI or SaaS, global/cloud project state, cloud sync, issue-tracker synchronization, multi-repository orchestration, provider/model runtime, and remote execution remain excluded. See the [current scope](scope.md#current-non-goals) and [runtime boundary decision](decisions.md#adr-0039---apk-is-a-repository-local-semantic-control-plane-not-an-external-runtime).
+
+## Historical roadmap phases
+
+The old v0.1-v0.3 sections are historical planning summaries, not upcoming release plans:
+
+- **v0.1:** initial CLI, project files, task/context/prompt flows, templates, and agent-file exporters.
+- **v0.2:** broader repository inspection, audit, validation, context selection, and prompt generation.
+- **v0.3:** improved adoption/audit, mode-aware behavior, synchronization, templates, and tests.
+
+The earlier gated-workflow and resource-aware dependency maps remain available in the [historical delivery milestone record](delivery/milestones.md).

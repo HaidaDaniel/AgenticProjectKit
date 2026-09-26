@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0155 is `todo` and now ready: reframe the roadmap after Tasks 0156 and 0157 completed ([task](../.tasks/0155-reframe-roadmapmd-as-shipped-current-planned-and-deferred.md)). `apk next-task` selected it as the next public-readiness task. Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
+Task 0155 is `doing`: reframe the roadmap as shipped, current, planned, deferred, and excluded work ([task](../.tasks/0155-reframe-roadmapmd-as-shipped-current-planned-and-deferred.md)). Its prerequisites 0153, 0154, 0156, and 0157 are done. Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
 
 ## Known blockers
 
