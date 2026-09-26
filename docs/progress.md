@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-No task is currently active. Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
+Task 0159 is `doing`: write the canonical first-run path from exact-pin install through one completed sample task ([task](../.tasks/0159-write-a-canonical-getting-started-guide.md)). Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
 
 ## Known blockers
 
