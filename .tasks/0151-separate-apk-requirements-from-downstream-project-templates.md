@@ -1,7 +1,7 @@
 # Task 0151 - Separate APK requirements from downstream project templates
 
-State: todo
-Owner: none
+State: done
+Owner: codex-0151
 Mode: product
 Lane: documentation
 Type: docs
@@ -10,6 +10,10 @@ Risk: medium
 Parallel: false
 Depends on: none
 Tags: docs
+
+## Goal
+
+Write factual first-party APK product requirements while keeping the generic requirements document emitted into initialized repositories as a separate template.
 
 ## Context files
 
@@ -36,10 +40,6 @@ Tags: docs
 - package.json
 - pnpm-lock.yaml
 - .agentic/**
-
-## Goal
-
-Write factual first-party APK product requirements while keeping the generic requirements document emitted into initialized repositories as a separate template.
 
 ## Steps
 
@@ -85,6 +85,7 @@ Write factual first-party APK product requirements while keeping the generic req
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test"}`
 - `{"id":"check-3","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.
