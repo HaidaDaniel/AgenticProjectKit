@@ -1,7 +1,7 @@
 # Task 0161 - Document safe brownfield adoption
 
-State: todo
-Owner: none
+State: done
+Owner: codex-0161
 Mode: product
 Lane: documentation
 Type: docs
@@ -10,6 +10,10 @@ Risk: low
 Parallel: true
 Depends on: 0151,0152,0165
 Tags: docs
+
+## Goal
+
+Document a safe APK adoption path for an existing repository with local changes and established conventions.
 
 ## Context files
 
@@ -35,10 +39,6 @@ Tags: docs
 - .tasks/archive/**
 - docs/releases/**
 - docs/decisions.md
-
-## Goal
-
-Document a safe APK adoption path for an existing repository with local changes and established conventions.
 
 ## Steps
 
@@ -80,6 +80,7 @@ Document a safe APK adoption path for an existing repository with local changes 
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.
