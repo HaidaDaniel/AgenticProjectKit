@@ -1,6 +1,6 @@
 # Task 0171 - Establish a release changelog and index strategy
 
-State: doing
+State: done
 Owner: codex-0171
 Mode: maintenance
 Lane: release
