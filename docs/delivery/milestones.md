@@ -1,36 +1,38 @@
 # Milestones
 
-## Milestone 1
+This page preserves historical delivery plans, dependencies, and rationale. It does not define current work ordering; see the [current public-readiness roadmap](../roadmap.md#public-readiness-current-work).
+
+## Initial project milestones (historical plan)
 
 - repository documentation phase complete;
 - task system defined;
 - agent instructions defined;
 - roadmap established.
 
-## Milestone 2
+## Milestone 2 (historical plan)
 
 - TypeScript CLI scaffold;
 - config schema;
 - init command;
 - task and context plumbing.
 
-## Milestone 3
+## Milestone 3 (historical plan)
 
 - template rendering;
 - minimal doc generation;
 - agent exporters;
 - adoption flow.
 
-## Milestone 4
+## Milestone 4 (historical plan)
 
 - task selection;
 - prompt generation;
 - stronger scanning;
 - broader export support.
 
-## Next gated-workflow release (planned)
+## Gated-workflow milestone (shipped; historical plan)
 
-Tasks 0057-0074 and 0076-0081: done. Task 0075 is in frozen-release preparation. Milestone numbering below belongs to this release; earlier milestones remain historical.
+Tasks 0057-0081 are done. Task 0075 validated the frozen v0.3.1 candidate `5f65faa6a46c0e48e9586540b943898269fb78f7`; its [release evidence](gated-workflow-release-evidence.md) records the passing checks, dogfood, independent review, gate, and exact-SHA hosted CI. The Task 0075 [contract](../../.tasks/0075-validate-next-agenticprojectkit-release-against-gated-workflow.md) remains the lifecycle source. The milestone numbering below is historical.
 
 APK remains model-agnostic repository-first control plane. External harnesses own model execution; APK owns task contracts, verification, scope, evidence, review and completion.
 
@@ -123,11 +125,11 @@ Each row lists direct prerequisites; all IDs numeric. Release validation include
 - Evidence binds evaluated HEAD/baseline/worktree identity; stale/superseded records stay visible but cannot satisfy gate. 0070 reports history; 0062 owns enforcement.
 - 0075 lifecycle: mutating preparation -> exact candidate freeze -> non-mutating validation using 0066 read-only lint/audit -> evidence. Candidate-input mutation invalidates evidence and requires new freeze/revalidation.
 
-## Resource-Aware Execution (planned after gated workflow)
+## Resource-Aware Execution (shipped; historical plan)
 
-[Architecture](../execution-profiles.md) is fixed by Task 0082. Tasks 0083-0088 implement the milestone without rewriting completed contracts or blocking the existing 0077 -> 0078 -> 0079 quality chain.
+Tasks 0082-0088 are done. The [v0.4.0 release](../releases/v0.4.0.md) records the completed resource-aware execution and isolated-workspace milestone; the current architecture is in [execution profiles](../execution-profiles.md). The original plan did not block or rewrite the 0077 -> 0078 -> 0079 quality chain.
 
-| Task | Title | Priority | Direct dependencies |
+| Task | Title | Priority at planning time | Direct dependencies |
 | --- | --- | --- | --- |
 | 0082 | Document resource-aware execution architecture and backlog | planning | none |
 | 0083 | Resource and Worker Registry | P0 | 0072, 0074, 0082 |
@@ -144,10 +146,10 @@ Each row lists direct prerequisites; all IDs numeric. Release validation include
                                                            (+ 0070, 0073, 0084)
 ```
 
-The ordering is A -> B -> adaptive assurance, after which calibration and attention can proceed independently; workspaces remain downstream of attention. `constrained` is the reference profile. Deterministic checks precede optional semantic review, frontier review loops are bounded, and an unmet mandatory assurance level remains a visible blocker.
+The recorded implementation order was A -> B -> adaptive assurance, after which calibration and attention could proceed independently; workspaces remained downstream of attention. `constrained` is the reference profile. Deterministic checks precede optional semantic review, frontier review loops are bounded, and an unmet mandatory assurance level remains a visible blocker.
 
-## Exporter consolidation (done)
+## Exporter consolidation (shipped follow-up; historical record)
 
 - [0092 - Consolidate agent instruction exports around canonical `AGENTS.md`](../../.tasks/0092-consolidate-agent-instruction-exports-around-canonical-agentsmd.md)
 
-This bounded follow-up depends on completed exporter/sync, contract-lint, adoption-compatibility and generated-policy foundations (`0029`, `0040`, `0066`, `0074`, `0081`). `AGENTS.md` is now the only full common-policy export; `CLAUDE.md` and `GEMINI.md` are thin `@AGENTS.md` imports, Codex/OpenCode/Cursor read `AGENTS.md` directly, and obsolete generated files have a conservative report/cleanup migration path. It is independent of the active release task and the Resource-Aware Execution implementation chain.
+This completed follow-up depends on exporter/sync, contract-lint, adoption-compatibility, and generated-policy foundations (`0029`, `0040`, `0066`, `0074`, `0081`). `AGENTS.md` is the only full common-policy export; `CLAUDE.md` and `GEMINI.md` are thin `@AGENTS.md` imports, Codex/OpenCode/Cursor read `AGENTS.md` directly, and obsolete generated files have a conservative report/cleanup migration path. Task 0092 remains the canonical implementation record; current sequencing is maintained by the roadmap.

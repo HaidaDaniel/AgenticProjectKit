@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-No task is currently `doing` or `review` at this closeout. Continue the public-readiness workstream by its declared dependencies. Task 0173 is the final release-validation task and remains `todo` until its prerequisites are complete.
+Task 0156 is `doing`: label the completed delivery milestones as historical ([task](../.tasks/0156-mark-old-delivery-milestones-as-historical.md)). `apk next-task` selected it as the next ready public-readiness task; Task 0155 remains blocked on 0156 and 0157. Task 0173 is the final release-validation task and remains `todo` until its prerequisites are complete.
 
 ## Known blockers
 
