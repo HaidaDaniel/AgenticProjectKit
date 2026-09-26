@@ -8,8 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-- Task 0153 is `doing`: reduce this page to current context and map removed journal entries to their durable records ([task](../.tasks/0153-make-progressmd-a-concise-current-state-document.md)).
-- Continue public-readiness tasks by their declared dependencies. Task 0173 is the final release-validation task and remains `todo` until its prerequisites are complete.
+No task is currently `doing` or `review` at this closeout. Continue the public-readiness workstream by its declared dependencies. Task 0173 is the final release-validation task and remains `todo` until its prerequisites are complete.
 
 ## Known blockers
 
@@ -23,6 +22,7 @@ Complete the public-readiness workstreams in the [dependency-aware roadmap](road
 
 ## Recently completed
 
+- Task 0153 reduced this page to current context and mapped historical entries to canonical records ([history map](history/progress-history.md), [task](../.tasks/0153-make-progressmd-a-concise-current-state-document.md)). Candidate commit: `236b438`; lifecycle closeout is committed separately.
 - Task 0152 published the evidence-based public maturity and compatibility policy ([document](product/maturity-and-compatibility.md), [task](../.tasks/0152-define-public-maturity-and-compatibility-policy.md)).
 - Task 0151 separated APK-owned requirements from the generic `apk init` starter ([requirements](product/requirements.md), [task](../.tasks/0151-separate-apk-requirements-from-downstream-project-templates.md)).
 - Tasks 0145-0148 completed the v0.4.7 correctness foundation, published by Task 0174 ([release](releases/v0.4.7.md), [task](../.tasks/0174-release-v047-correctness-foundation.md)).

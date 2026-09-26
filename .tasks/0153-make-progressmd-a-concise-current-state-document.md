@@ -1,7 +1,7 @@
 # Task 0153 - Make progress.md a concise current-state document
 
-State: todo
-Owner: none
+State: done
+Owner: codex-0153
 Mode: maintenance
 Lane: documentation
 Type: docs
@@ -10,6 +10,10 @@ Risk: low
 Parallel: false
 Depends on: none
 Tags: docs
+
+## Goal
+
+Make docs/progress.md a concise current-context page and move unique historical journal detail to a history record or existing release/task records.
 
 ## Context files
 
@@ -32,10 +36,6 @@ Tags: docs
 - .tasks/archive/**
 - docs/releases/**
 - docs/decisions.md
-
-## Goal
-
-Make docs/progress.md a concise current-context page and move unique historical journal detail to a history record or existing release/task records.
 
 ## Steps
 
@@ -79,6 +79,7 @@ Make docs/progress.md a concise current-context page and move unique historical 
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.
