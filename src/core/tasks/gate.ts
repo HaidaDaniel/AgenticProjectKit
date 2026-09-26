@@ -33,6 +33,11 @@ import {
   resolveTaskPolicy,
   type EffectiveTaskPolicy,
 } from "./policy.js";
+import {
+  isPackagedInputPath,
+  packagedDistTaskContractBlockers,
+  repositoryShipsCommittedDist,
+} from "./package-contract.js";
 
 export interface TaskCompletionCandidate {
   task: ProjectTask;
@@ -258,6 +263,12 @@ export async function evaluateTaskCompletionGate(options: {
     ...(scope.attribution?.diagnostics ?? []),
     ...policy.diagnostics,
   ];
+  if (
+    await repositoryShipsCommittedDist(options.rootDirectory)
+    && candidate.changedFiles.some(isPackagedInputPath)
+  ) {
+    blockers.push(...packagedDistTaskContractBlockers(task));
+  }
   if (!candidate.comparisonKnown) {
     blockers.push("Baseline-aware Git comparison could not be established; gate-eligible evidence is blocked.");
   }

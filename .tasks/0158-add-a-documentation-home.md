@@ -8,7 +8,7 @@ Type: docs
 Scope: documentation-navigation,information-architecture,docs
 Risk: low
 Parallel: false
-Depends on: 0151,0152,0153,0154,0155,0156,0157,0159,0160,0161,0162,0164,0165,0166,0167,0169,0170,0171
+Depends on: 0151,0152,0153,0154,0155,0156,0157,0159,0160,0161,0162,0164,0165,0166,0167,0169,0171
 Tags: docs
 
 ## Context files
@@ -45,13 +45,14 @@ Create a documentation home that routes users and contributors to one canonical 
 ## Steps
 
 1. Group documentation by audience and question: start, understand, adopt, reference, contribute, and release history.
-2. Link only to files that exist or are explicit outputs of prerequisites.
+2. Link only to files that exist or are explicit outputs of prerequisites; include SECURITY.md only when it exists.
 3. Use short descriptions that explain when each guide is useful.
 4. Check relative links and remove duplicate or stale destinations.
 
 ## Acceptance criteria
 
-- The index links to Getting Started, Core Concepts, user Guides, CLI/Configuration Reference, Architecture, Decisions/ADRs, Releases, Contributing, Security, and historical/archive planning.
+- The index links to Getting Started, Core Concepts, user Guides, CLI/Configuration Reference, Architecture, Decisions/ADRs, Releases, Contributing, and historical/archive planning.
+- Add a Security link only if SECURITY.md exists; its absence while Task 0170 is blocked is not a broken-link failure.
 - Every link resolves when prerequisites complete.
 - The page is navigation-focused and does not duplicate long-form content.
 

@@ -43,7 +43,12 @@ import {
   TASK_MODES,
   TASK_RISKS,
   TASK_VERIFICATION_PROFILES,
+  PACKAGED_DIST_CHECK_COMMAND,
+  PACKAGED_DIST_CHECK_ID,
+  mayIncludePackagedSource,
+  repositoryShipsCommittedDist,
   normalizeVerificationCommands,
+  taskPathPatternMayMatchDistOutput,
   type TaskVerificationCheck,
   type TaskEvidenceMetrics,
   verifyTask,
@@ -364,6 +369,40 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
     ?? (verificationCommands.length > 0
       ? normalizeVerificationCommands(verificationCommands)
       : template?.defaults.verification ?? []);
+  const forbiddenFiles = parseCsvFlag(parseFlag(argv, "--forbidden"));
+  const resolvedAllowedFiles = [...allowedFiles];
+  const finalVerification = [...resolvedVerification];
+  const rootDirectory = resolve(process.cwd());
+  if (
+    await repositoryShipsCommittedDist(rootDirectory)
+    && allowedFiles.some(mayIncludePackagedSource)
+  ) {
+    if (forbiddenFiles.some(taskPathPatternMayMatchDistOutput)) {
+      throw new Error("Tasks that allow packaged source/assets cannot forbid dist output; remove the matching --forbidden path.");
+    }
+    if (!resolvedAllowedFiles.includes("dist/**")) resolvedAllowedFiles.push("dist/**");
+
+    const existingBuildCheck = finalVerification.find((check) => check.id === PACKAGED_DIST_CHECK_ID);
+    if (existingBuildCheck && (
+      !existingBuildCheck.required
+      || existingBuildCheck.type !== "automated"
+      || existingBuildCheck.environment !== "local"
+      || existingBuildCheck.profile !== "deterministic"
+      || existingBuildCheck.command !== PACKAGED_DIST_CHECK_COMMAND
+    )) {
+      throw new Error(`Verification check ${PACKAGED_DIST_CHECK_ID} is reserved for the required packaged-source build/current-dist command.`);
+    }
+    if (!existingBuildCheck) {
+      finalVerification.push({
+        id: PACKAGED_DIST_CHECK_ID,
+        type: "automated",
+        required: true,
+        environment: "local",
+        profile: "deterministic",
+        command: PACKAGED_DIST_CHECK_COMMAND,
+      });
+    }
+  }
 
   if (resolvedContextFiles.length === 0) {
     throw new Error("--context must include at least one file.");
@@ -377,7 +416,7 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
     throw new Error("--allowed must include at least one file.");
   }
 
-  if (resolvedVerification.length === 0) {
+  if (finalVerification.length === 0) {
     throw new Error("--verification or --verification-json must include at least one check.");
   }
 
@@ -395,8 +434,8 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
       : template?.defaults.tags ?? [],
     goal: parseFlag(argv, "--goal") ?? title,
     contextFiles: resolvedContextFiles,
-    allowedFiles,
-    forbiddenFiles: parseCsvFlag(parseFlag(argv, "--forbidden")),
+    allowedFiles: resolvedAllowedFiles,
+    forbiddenFiles,
     steps: parseCsvFlag(parseFlag(argv, "--steps")).length > 0
       ? parseCsvFlag(parseFlag(argv, "--steps"))
       : template?.defaults.steps ?? [],
@@ -408,7 +447,7 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
     requiredEvidence: resolvedRequiredEvidence,
     reviewQuestions: resolvedReviewQuestions,
     counterexampleSearches: resolvedCounterexampleSearches,
-    verification: resolvedVerification,
+    verification: finalVerification,
     documentationUpdates: parseCsvFlag(parseFlag(argv, "--docs")).length > 0
       ? parseCsvFlag(parseFlag(argv, "--docs"))
       : template?.defaults.documentationUpdates ?? [],
@@ -417,7 +456,6 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
       : template?.defaults.notes ?? [],
   };
 
-  const rootDirectory = resolve(process.cwd());
   const config = await readAgenticConfigFile(rootDirectory);
 
   const result = await createTask(rootDirectory, config.taskDirectory, input);

@@ -3,6 +3,7 @@ import { allTaskFiles, captureTaskScope, captureTaskEvidenceSubject, findTaskFil
 import { compareTaskEvidenceFreshness, readTaskEvidence, } from "./evidence.js";
 import { assessTaskHumanDecisions, assessTaskReviews, listTaskHumanDecisions, listTaskReviews, MAX_HUMAN_REVIEW_GRANT_PASSES, TASK_DECISION_RESOLVED_BLOCKER, } from "./review.js";
 import { resolveTaskPolicy, } from "./policy.js";
+import { isPackagedInputPath, packagedDistTaskContractBlockers, repositoryShipsCommittedDist, } from "./package-contract.js";
 export class TaskCompletionGateError extends Error {
     gate;
     constructor(gate) {
@@ -117,6 +118,10 @@ export async function evaluateTaskCompletionGate(options) {
         ...(scope.attribution?.diagnostics ?? []),
         ...policy.diagnostics,
     ];
+    if (await repositoryShipsCommittedDist(options.rootDirectory)
+        && candidate.changedFiles.some(isPackagedInputPath)) {
+        blockers.push(...packagedDistTaskContractBlockers(task));
+    }
     if (!candidate.comparisonKnown) {
         blockers.push("Baseline-aware Git comparison could not be established; gate-eligible evidence is blocked.");
     }

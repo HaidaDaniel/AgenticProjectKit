@@ -194,6 +194,43 @@ test("contract lint proves glob overlaps instead of using shared prefixes", asyn
   });
 });
 
+test("contract lint rejects active packaged-source scope contradictions but leaves docs-only tasks clear", async () => {
+  await withTempDirectory(async (directory) => {
+    await initProject(directory);
+    await writeAllAgentExports(directory, undefined, { force: true });
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      files: ["dist"],
+      scripts: { build: "tsc -p tsconfig.build.json" },
+    }), "utf8");
+    await registerAgent(directory, { id: "known-agent", developer: "dev", platform: "opencode", model: "m" });
+
+    await writeTask(directory, "0020-source-contradiction.md", task("0020", {
+      state: "doing",
+      owner: "known-agent",
+      allowedFiles: ["src/core/init/index.ts"],
+      forbiddenFiles: ["dist/**"],
+    }));
+    await writeTask(directory, "0021-docs-only.md", task("0021", {
+      state: "doing",
+      owner: "known-agent",
+      allowedFiles: ["docs/guide.md"],
+      forbiddenFiles: [],
+    }));
+
+    const result = await lintRepositoryContracts(directory);
+    const sourceFinding = result.findings.find((finding) => (
+      finding.code === "packaged-dist-contract" && finding.taskId === "0020"
+    ));
+    assert.equal(result.hasErrors, true);
+    assert.ok(sourceFinding);
+    assert.equal(sourceFinding.level, "error");
+    assert.match(sourceFinding.message, /Allow dist\/\*\*/);
+    assert.ok(!result.findings.some((finding) => (
+      finding.code === "packaged-dist-contract" && finding.taskId === "0021"
+    )));
+  });
+});
+
 test("contract lint exposes advisory context-hygiene estimates and keeps repeats non-fatal", async () => {
   await withTempDirectory(async (directory) => {
     await initProject(directory);

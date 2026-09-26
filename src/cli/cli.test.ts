@@ -111,6 +111,31 @@ test("CLI help lists implemented commands", async () => {
   assert.doesNotMatch(result.stdout, /^\s+apk /m);
 });
 
+test("committed CLI help and init output match their source surfaces", async () => {
+  const compiledCli = join(process.cwd(), "dist/cli/index.js");
+  const sourceHelp = await runCli(["--help"]);
+  const compiledHelp = await execFileAsync(process.execPath, [compiledCli, "--help"]);
+  assert.equal(compiledHelp.stdout, sourceHelp.stdout);
+
+  await withTempDirectory(async (directory) => {
+    const sourceProject = join(directory, "source-project");
+    const compiledProject = join(directory, "compiled-project");
+    const sourceInit = await runCli(["init", sourceProject], directory);
+    assert.equal(sourceInit.exitCode, 0, `${sourceInit.stdout}${sourceInit.stderr}`);
+    await execFileAsync(process.execPath, [compiledCli, "init", compiledProject], { cwd: directory });
+
+    const sourceRequirements = await readFile(join(sourceProject, "docs/product/requirements.md"), "utf8");
+    const compiledRequirements = await readFile(join(compiledProject, "docs/product/requirements.md"), "utf8");
+    const sourceAsset = await readFile(join(process.cwd(), "src/core/templates/minimal-docs/product-requirements.md.hbs"), "utf8");
+    const compiledAsset = await readFile(join(process.cwd(), "dist/core/templates/minimal-docs/product-requirements.md.hbs"), "utf8");
+
+    assert.equal(compiledAsset, sourceAsset);
+    assert.equal(compiledRequirements, sourceRequirements);
+    assert.match(compiledRequirements, /^# Product Requirements/m);
+    assert.doesNotMatch(compiledRequirements, /Agentic Project Kit/);
+  });
+});
+
 test("CLI command registry keeps help and the public reference aligned", async () => {
   const help = await runCli(["--help"]);
   assert.equal(help.exitCode, 0);
@@ -3729,6 +3754,68 @@ test("CLI task create writes structured verification from JSON", async () => {
     assert.match(content, /## Correctness assumptions/);
     assert.match(content, /## Counterexample searches/);
     assert.doesNotMatch(content, /## Verification commands/);
+  });
+});
+
+test("CLI task create adds the committed-dist contract only for packaged-source scope", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({}), "utf8");
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      files: ["dist", "README.md"],
+      scripts: { build: "tsc -p tsconfig.build.json" },
+    }), "utf8");
+
+    const sourceTask = await runCli([
+      "task", "create",
+      "--type", "feature",
+      "--title", "Packaged Source Change",
+      "--mode", "maintenance",
+      "--lane", "quality",
+      "--scope", "source",
+      "--risk", "low",
+      "--context", "AGENTS.md",
+      "--allowed", "src/features/example.ts",
+      "--verification", "pnpm test",
+    ], directory);
+    assert.equal(sourceTask.exitCode, 0, `${sourceTask.stdout}${sourceTask.stderr}`);
+    const sourceContract = await readFile(join(directory, ".tasks", "0001-packaged-source-change.md"), "utf8");
+    assert.match(sourceContract, /- dist\/\*\*/);
+    assert.match(sourceContract, /"id":"build-current"/);
+    assert.match(sourceContract, /pnpm build && test -z/);
+
+    const docsTask = await runCli([
+      "task", "create",
+      "--type", "docs",
+      "--title", "Documentation Only",
+      "--mode", "maintenance",
+      "--lane", "docs",
+      "--scope", "docs",
+      "--risk", "low",
+      "--context", "AGENTS.md",
+      "--allowed", "docs/guide.md",
+      "--verification", "pnpm test",
+    ], directory);
+    assert.equal(docsTask.exitCode, 0, `${docsTask.stdout}${docsTask.stderr}`);
+    const docsContract = await readFile(join(directory, ".tasks", "0002-documentation-only.md"), "utf8");
+    assert.doesNotMatch(docsContract, /dist\/\*\*/);
+    assert.doesNotMatch(docsContract, /build-current/);
+
+    const forbiddenSourceTask = await runCli([
+      "task", "create",
+      "--type", "feature",
+      "--title", "Contradictory Source Task",
+      "--mode", "maintenance",
+      "--lane", "quality",
+      "--scope", "source",
+      "--context", "AGENTS.md",
+      "--allowed", "src/features/example.ts",
+      "--forbidden", "dist/core/tasks/**",
+      "--verification", "pnpm test",
+    ], directory);
+    assert.equal(forbiddenSourceTask.exitCode, 1);
+    assert.match(forbiddenSourceTask.stderr, /cannot forbid dist output/);
+    await assert.rejects(readFile(join(directory, ".tasks", "0003-contradictory-source-task.md"), "utf8"));
   });
 });
 

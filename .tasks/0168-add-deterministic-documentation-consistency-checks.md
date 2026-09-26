@@ -8,7 +8,7 @@ Type: feature
 Scope: docs-consistency,ci,tests,docs
 Risk: medium
 Parallel: false
-Depends on: 0151,0152,0153,0154,0155,0156,0157,0158,0159,0160,0161,0162,0163,0164,0165,0166,0167,0169,0170,0171
+Depends on: 0151,0152,0153,0154,0155,0156,0157,0158,0159,0160,0161,0162,0163,0164,0165,0166,0167,0169,0171
 Tags: feature
 
 ## Context files
@@ -57,6 +57,7 @@ Add a small deterministic CI check for high-value documentation inconsistencies 
 - Evaluate exact checks for current release/version alignment, canonical install command, relative links, documented context paths, CLI reference versus registry, shipped milestones mislabeled planned, and package version versus release index; implement only decidable checks.
 - The checker catches a real high-value drift case and has pass/fail tests.
 - Each checked value has one canonical source and deterministic rule.
+- Do not require SECURITY.md while Task 0170 is blocked or incomplete; if the file exists, check any in-scope security link deterministically.
 - No NLP guessing, web access, or brittle broad matching is used.
 - CI failure names the affected file and correction.
 

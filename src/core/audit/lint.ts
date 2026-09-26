@@ -8,6 +8,8 @@ import { classifyLegacyAgentExports } from "../exporters/index.js";
 import { syncAgentExports } from "../sync/index.js";
 import {
   parseTaskMarkdown,
+  packagedDistTaskContractBlockers,
+  repositoryShipsCommittedDist,
   resolveTaskPolicy,
   validateTaskDependencies,
   type ProjectTask,
@@ -342,7 +344,8 @@ function lintTaskPolicy(
     const hard = blocker.includes("conflicting policy rules")
       || blocker.includes("no-verification")
       || blocker.includes("no-review")
-      || blocker.includes("local-only");
+      || blocker.includes("local-only")
+      || blocker.startsWith("packaged-source:");
     addFinding(findings, {
       level: hard ? "error" : "warning",
       code: "policy-blocker",
@@ -643,6 +646,7 @@ export async function lintRepositoryContracts(rootDirectory: string): Promise<Ta
   }
 
   const registeredAgents = new Set((await listAgents(rootDirectory)).map((agent) => agent.id));
+  const shipsCommittedDist = await repositoryShipsCommittedDist(rootDirectory);
   for (const file of [...documents.active, ...documents.archived]) {
     const path = normalizeRepoPath(relative(rootDirectory, file.path));
     if (file.task.dependsOn.includes(file.task.id)) {
@@ -657,6 +661,18 @@ export async function lintRepositoryContracts(rootDirectory: string): Promise<Ta
     }
     lintPathContracts(file.task, findings, path);
     lintTaskPolicy(file.task, findings, path);
+    if (shipsCommittedDist) {
+      for (const message of packagedDistTaskContractBlockers(file.task)) {
+        addFinding(findings, {
+          level: "error",
+          code: "packaged-dist-contract",
+          area: "packaging",
+          message,
+          path,
+          taskId: file.task.id,
+        });
+      }
+    }
     lintTaskStateOwner(file.task, registeredAgents, registeredAgents.size > 0, findings, path);
   }
 

@@ -47,6 +47,13 @@ import {
   loadTaskFile,
   nextTaskId,
   normalizeVerificationCommands,
+  PACKAGED_DIST_CHECK_COMMAND,
+  PACKAGED_DIST_CHECK_ID,
+  isPackagedInputPath,
+  mayIncludePackagedSource,
+  packagedDistTaskContractBlockers,
+  repositoryShipsCommittedDist,
+  taskPathPatternMayMatchDistOutput,
   parseTaskMarkdown,
   prepareTaskReview,
   recordTaskReview,
@@ -571,6 +578,61 @@ test("task policy applies deterministic risk defaults", () => {
   assert.equal(medium.requirements.assurance, "self-check");
   assert.equal(medium.requirements.evidenceRequired, false);
   assert.deepEqual(medium.blockers, []);
+});
+
+test("committed-dist task contract classifies packaged source and copied assets deterministically", async () => {
+  assert.equal(isPackagedInputPath("src/cli/index.ts"), true);
+  assert.equal(isPackagedInputPath("src/core/templates/minimal-docs/product-requirements.md.hbs"), true);
+  assert.equal(isPackagedInputPath("src/cli/cli.test.ts"), false);
+  assert.equal(isPackagedInputPath("docs/task-system.md"), false);
+  assert.equal(mayIncludePackagedSource("src/core/tasks/*.ts"), true);
+  assert.equal(mayIncludePackagedSource("src/**/*.test.ts"), false);
+  assert.equal(mayIncludePackagedSource("src/core/templates/**/*.hbs"), true);
+  assert.equal(mayIncludePackagedSource("docs/**"), false);
+  assert.equal(taskPathPatternMayMatchDistOutput("dist/core/tasks/**"), true);
+  assert.equal(taskPathPatternMayMatchDistOutput("d*/**"), true);
+  assert.equal(taskPathPatternMayMatchDistOutput("docs/**"), false);
+  assert.equal(taskPathPatternMayMatchDistOutput("dist"), false);
+
+  await withTempDirectory(async (directory) => {
+    assert.equal(await repositoryShipsCommittedDist(directory), false);
+    await writeFile(join(directory, "package.json"), JSON.stringify({ files: ["dist"], scripts: { build: "tsc" } }), "utf8");
+    assert.equal(await repositoryShipsCommittedDist(directory), true);
+  });
+
+  const sourceTask: ProjectTask = {
+    ...TASK,
+    state: "doing",
+    allowedFiles: ["src/core/init/index.ts", "dist/**"],
+    verificationCommands: [],
+    verification: [{
+      id: PACKAGED_DIST_CHECK_ID,
+      type: "automated",
+      required: true,
+      environment: "local",
+      profile: "deterministic",
+      command: PACKAGED_DIST_CHECK_COMMAND,
+    }],
+  };
+  assert.deepEqual(packagedDistTaskContractBlockers(sourceTask), []);
+
+  const docsTask = { ...sourceTask, allowedFiles: ["docs/task-system.md"], verification: [] };
+  assert.deepEqual(packagedDistTaskContractBlockers(docsTask), []);
+
+  const contradictory = {
+    ...sourceTask,
+    allowedFiles: ["src/core/init/index.ts"],
+    forbiddenFiles: ["dist/core/tasks/**"],
+    verification: [{
+      id: "tests",
+      type: "automated" as const,
+      required: true,
+      environment: "local" as const,
+      profile: "deterministic" as const,
+      command: "pnpm test",
+    }],
+  };
+  assert.equal(packagedDistTaskContractBlockers(contradictory).length, 2);
 });
 
 test("review fields are a coherent projection of canonical assurance", () => {
@@ -3017,6 +3079,136 @@ async function setupHostedCiRepo(directory: string): Promise<void> {
   await registerAgent(directory, { id: "codex-a", developer: "alice", platform: "codex", model: "gpt-5" });
   await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a" });
 }
+
+test("completion gate rejects stale packaged output and accepts the rebuilt candidate", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await mkdir(join(directory, "src", "cli"), { recursive: true });
+    await mkdir(join(directory, "dist", "cli"), { recursive: true });
+    await mkdir(join(directory, "src", "core", "templates", "minimal-docs"), { recursive: true });
+    await mkdir(join(directory, "dist", "core", "templates", "minimal-docs"), { recursive: true });
+    await writeFile(join(directory, "package.json"), JSON.stringify({ files: ["dist"], scripts: { build: "node build.mjs" } }), "utf8");
+    await writeFile(join(directory, "src", "cli", "index.ts"), "export const value = 'source-v1';\n", "utf8");
+    await writeFile(join(directory, "dist", "cli", "index.js"), "built-from:source-v0\n", "utf8");
+    await writeFile(join(directory, "src", "core", "templates", "minimal-docs", "product-requirements.md.hbs"), "starter-v1\n", "utf8");
+    await writeFile(join(directory, "dist", "core", "templates", "minimal-docs", "product-requirements.md.hbs"), "starter-v1\n", "utf8");
+    await writeTaskFile(join(directory, ".tasks", "0007-packaged-source.md"), {
+      ...TASK,
+      state: "todo",
+      owner: "none",
+      risk: "low",
+      dependsOn: [],
+      tags: [],
+      allowedFiles: ["src/cli/index.ts", "dist/**"],
+      forbiddenFiles: [],
+      verificationCommands: [],
+      verification: [{
+        id: PACKAGED_DIST_CHECK_ID,
+        type: "automated",
+        required: true,
+        environment: "local",
+        profile: "deterministic",
+        command: PACKAGED_DIST_CHECK_COMMAND,
+      }],
+    });
+    await writeTaskFile(join(directory, ".tasks", "0008-packaged-template-asset.md"), {
+      ...TASK,
+      id: "0008",
+      title: "Package template asset",
+      state: "todo",
+      owner: "none",
+      risk: "low",
+      dependsOn: [],
+      tags: [],
+      allowedFiles: ["src/core/templates/minimal-docs/product-requirements.md.hbs", "dist/**"],
+      forbiddenFiles: [],
+      verificationCommands: [],
+      verification: [{
+        id: PACKAGED_DIST_CHECK_ID,
+        type: "automated",
+        required: true,
+        environment: "local",
+        profile: "deterministic",
+        command: PACKAGED_DIST_CHECK_COMMAND,
+      }],
+    });
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await registerAgent(directory, { id: "codex-a", developer: "alice", platform: "codex", model: "gpt-5" });
+    await registerAgent(directory, { id: "codex-b", developer: "bob", platform: "codex", model: "gpt-5" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a" });
+
+    await writeFile(join(directory, "src", "cli", "index.ts"), "export const value = 'source-v2';\n", "utf8");
+    const stale = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      runCommand: async (command) => command === PACKAGED_DIST_CHECK_COMMAND ? 1 : 0,
+    });
+    assert.equal(stale.checkResults[0]?.id, PACKAGED_DIST_CHECK_ID);
+    assert.equal(stale.checkResults[0]?.status, "fail");
+    const staleGate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(staleGate.passed, false);
+    assert.ok(staleGate.blockers.some((blocker) => blocker.includes(`check ${PACKAGED_DIST_CHECK_ID} is fail`)));
+
+    await writeFile(join(directory, "dist", "cli", "index.js"), "built-from:source-v2\n", "utf8");
+    const rebuilt = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-a",
+      runCommand: async (command) => {
+        const source = await readFile(join(directory, "src", "cli", "index.ts"), "utf8");
+        const output = await readFile(join(directory, "dist", "cli", "index.js"), "utf8");
+        return command === PACKAGED_DIST_CHECK_COMMAND && output === `built-from:${source.match(/'([^']+)'/)?.[1]}\n` ? 0 : 1;
+      },
+    });
+    assert.equal(rebuilt.passed, true);
+    const rebuiltGate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(rebuiltGate.passed, true, rebuiltGate.blockers.join("; "));
+
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner: "codex-b" });
+    await writeFile(join(directory, "src", "core", "templates", "minimal-docs", "product-requirements.md.hbs"), "starter-v2\n", "utf8");
+    const staleAsset = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0008",
+      owner: "codex-b",
+      runCommand: async () => {
+        const source = await readFile(join(directory, "src", "core", "templates", "minimal-docs", "product-requirements.md.hbs"), "utf8");
+        const output = await readFile(join(directory, "dist", "core", "templates", "minimal-docs", "product-requirements.md.hbs"), "utf8");
+        return source === output ? 0 : 1;
+      },
+    });
+    assert.equal(staleAsset.checkResults[0]?.status, "fail");
+    const staleAssetGate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008" });
+    assert.equal(staleAssetGate.passed, false);
+
+    const assetSource = await readFile(join(directory, "src", "core", "templates", "minimal-docs", "product-requirements.md.hbs"), "utf8");
+    await writeFile(join(directory, "dist", "core", "templates", "minimal-docs", "product-requirements.md.hbs"), assetSource, "utf8");
+    const currentAsset = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0008",
+      owner: "codex-b",
+      runCommand: async () => {
+        const source = await readFile(join(directory, "src", "core", "templates", "minimal-docs", "product-requirements.md.hbs"), "utf8");
+        const output = await readFile(join(directory, "dist", "core", "templates", "minimal-docs", "product-requirements.md.hbs"), "utf8");
+        return source === output ? 0 : 1;
+      },
+    });
+    assert.equal(currentAsset.passed, true);
+    const currentAssetGate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008" });
+    assert.equal(currentAssetGate.passed, true, currentAssetGate.blockers.join("; "));
+  });
+});
 
 async function setupBenchmarkRepo(
   directory: string,

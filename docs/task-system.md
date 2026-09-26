@@ -183,6 +183,8 @@ The `bugfix` template defaults to repro-first debugging: attempt a failing signa
 
 Templates provide default mode, lane, risk, tags, context, verification, steps, acceptance criteria, documentation updates, and notes. Explicit flags override template defaults. `--title`, `--scope`, and `--allowed` remain required.
 
+For an npm package whose `package.json` ships `dist` and defines a build script, task creation recognizes allowed paths that may include compiled `src/**/*.ts` files or recursively copied `src/**/*.hbs` assets. It adds `dist/**` to the allowed paths and a required `build-current` check that runs `pnpm build` and rejects any remaining `dist` drift. Repository contract lint reports an active task that allows packaged source without both requirements, and the completion gate independently checks them whenever the candidate changes a packaged input. This catches manually written or later-edited contracts as well as generated tasks. Test-only `*.test.ts` paths and docs-only paths do not trigger the build contract. The current repository's recursive template copier makes `.hbs` inputs part of the same package surface as compiled TypeScript.
+
 ## Verification contract
 
 New tasks store verification checks in a `## Verification` section. Each check is one JSON object in a readable Markdown bullet:
@@ -357,6 +359,8 @@ Semantics and boundaries:
 `pnpm exec apk task gate <task-id>` previews the evaluator used by `done`. It is read-only and reports the exact candidate subject, dependency status, required verification evidence, scope violations, policy blockers, and independent review status. `apk done` runs this evaluator under the task mutation lock and has no force bypass.
 
 Completion accepts only current PASS evidence for the evaluated task/baseline/candidate/worktree. Missing, failed, pending, unavailable, not-run, stale, or different-candidate verification/review evidence blocks completion. A successful transition appends a `completion` evidence record containing the exact evidence ID set before writing `State: done`; persistence or candidate-mutation errors fail closed. Existing task readability is preserved, but legacy tasks still need current verification evidence and any policy-required review/evidence.
+
+For packages that ship committed `dist`, changing a compiled source file or copied `.hbs` asset adds one completion requirement: a current passing `build-current` record plus `dist/**` in the task's allowed scope. The check runs the build before checking working-tree drift, so a clean status alone cannot hide stale committed output. A task that excludes or forbids `dist/**`, omits the check, or leaves generated changes uncommitted receives an actionable lint or gate blocker before `done`.
 
 ## Successful task commit hygiene
 

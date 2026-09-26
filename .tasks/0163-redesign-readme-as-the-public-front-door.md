@@ -8,7 +8,7 @@ Type: docs
 Scope: readme,positioning,public-readiness
 Risk: medium
 Parallel: false
-Depends on: 0151,0152,0158,0159,0160,0161,0162,0164,0165,0166,0169,0170,0171
+Depends on: 0151,0152,0158,0159,0160,0161,0162,0164,0165,0166,0169,0171
 Tags: docs
 
 ## Context files
@@ -26,7 +26,7 @@ Tags: docs
 - docs/cli-commands.md
 - docs/releases/index.md (future output of prerequisite Task 0171)
 - CONTRIBUTING.md (future output of prerequisite Task 0169)
-- SECURITY.md (future output of prerequisite Task 0170)
+- SECURITY.md (link only when present / after Task 0170)
 - CHANGELOG.md (future output of prerequisite Task 0171)
 
 ## Files allowed to edit
@@ -52,7 +52,7 @@ Replace the oversized mixed-purpose README with a concise, accurate public front
 
 1. Use approved product requirements, maturity policy, current scope, guides, install policy, and CLI identity as sources.
 2. Lead with the user problem, concrete capability, audience, and explicit product boundary.
-3. Provide one verified quickstart, a compact feature/trust summary, maturity status, and links to canonical docs and OSS metadata.
+3. Provide one verified quickstart, a compact feature/trust summary, maturity status, and links to canonical docs and OSS metadata; link SECURITY.md only when present / after Task 0170.
 4. Remove duplicate command dumps and stale milestone/release claims while retaining useful links.
 
 ## Acceptance criteria
@@ -61,6 +61,7 @@ Replace the oversized mixed-purpose README with a concise, accurate public front
 - All product, compatibility, installation, and CLI claims match canonical sources.
 - README contains no full CLI dump or stale future milestone claim.
 - All links resolve and no unsupported features or guarantees are promised.
+- Missing SECURITY.md while Task 0170 is blocked does not block README completion; add its link when the policy page exists.
 
 ## Correctness assumptions
 

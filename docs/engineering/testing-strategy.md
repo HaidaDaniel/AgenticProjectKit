@@ -30,6 +30,7 @@ The implementation should use tests to protect the CLI and repository generation
 - verify team analytics with sharded log fixtures.
 - keep dogfooding evidence separate from automated tests and benchmark fixtures; never treat a failed session as a pass.
 - assert that typecheck-only lint scripts are not source-lint evidence and that quality JSON is deterministic and mutation-free.
+- compare source and compiled CLI help and init output; exercise the committed-dist guard with compiled TypeScript and copied template inputs, including stale and rebuilt output.
 
 ## Repro-first debugging
 
@@ -55,6 +56,7 @@ Hooks can be intentionally bypassed for an exceptional commit with `git commit -
 pnpm quality
 pnpm test:coverage
 pnpm build
+Verify committed dist is current
 pnpm release:check
 node dist/cli/index.js lint --json
 node dist/cli/index.js sync
@@ -62,7 +64,7 @@ node dist/cli/index.js audit
 git diff --check && reject tracked/unexpected untracked drift
 ```
 
-The runner is disposable, so report-writing audit output cannot affect a developer checkout. Tracked drift still fails visibly. Hosted CI status and URL, together with exact SHA, may be recorded by Task 0075 as separate release evidence; CI does not satisfy APK verification/review/gate or frozen-candidate proof. No retry, matrix, credentials, publish, deployment, or adopted-repository workflow generation belongs in this check.
+The runner is disposable, so report-writing audit output cannot affect a developer checkout. `Verify committed dist is current` rejects tracked or untracked build output after the build and includes recursively copied `.hbs` assets; the final drift check also catches mutations from later release, lint, sync, or audit steps. Hosted CI status and URL, together with exact SHA, may be recorded by Task 0075 as separate release evidence; CI does not satisfy APK verification/review/gate or frozen-candidate proof. No retry, matrix, credentials, publish, deployment, or adopted-repository workflow generation belongs in this check.
 
 ## Frozen release validation
 

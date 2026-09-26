@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-No public-readiness task is currently actionable. Tasks 0158, 0163, and 0168 depend on blocked Task 0170; Task 0173 also depends on those tasks and Task 0170. The next work requires the operator to provide a usable private vulnerability-reporting route for Task 0170.
+Task 0175 is in progress to restore source-to-package parity and add a permanent packaged-source verification guard. Its planning correction removes the direct Task 0170 dependency from Tasks 0158, 0163, and 0168; they resume after Task 0175 is green. Task 0173 continues to require Task 0170.
 
 ## Known blockers
 

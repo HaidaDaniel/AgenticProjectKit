@@ -2484,6 +2484,7 @@ export function renderTaskDeps(result) {
 }
 export * from "./evidence.js";
 export * from "./lock.js";
+export * from "./package-contract.js";
 export * from "./policy.js";
 export * from "./review.js";
 export * from "./gate.js";

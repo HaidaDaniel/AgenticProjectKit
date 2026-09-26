@@ -1,9 +1,12 @@
 import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { CURRENT_CONFIG_SCHEMA_VERSION, DEFAULT_CONFIG, serializeAgenticConfig, } from "../config/index.js";
+import { renderTemplateFile } from "../templates/index.js";
 const execFileAsync = promisify(execFile);
+const initTemplateDirectory = join(dirname(fileURLToPath(import.meta.url)), "..", "templates", "minimal-docs");
 export const GITIGNORE_PATH = ".gitignore";
 /**
  * Canonical APK-owned operational/generated ignore entries. This is an additive
@@ -289,22 +292,7 @@ const STARTER_FILES = [
     },
     {
         path: "docs/product/requirements.md",
-        content: [
-            "# Product Requirements",
-            "",
-            "## Users",
-            "",
-            "- Describe target users here.",
-            "",
-            "## Goals",
-            "",
-            "- Define product goals.",
-            "",
-            "## Non-goals",
-            "",
-            "- Explicit exclusions.",
-            "",
-        ].join("\n"),
+        templatePath: join(initTemplateDirectory, "product-requirements.md.hbs"),
     },
     {
         path: "docs/engineering/load-profile.md",
@@ -443,7 +431,10 @@ export async function initProject(rootDirectory) {
             continue;
         }
         await mkdir(dirname(absolutePath), { recursive: true });
-        await writeFile(absolutePath, file.content, "utf8");
+        const content = "templatePath" in file
+            ? await renderTemplateFile(file.templatePath)
+            : file.content;
+        await writeFile(absolutePath, content, "utf8");
         created.push(file.path);
     }
     const gitignore = await ensureApkGitignore(rootDirectory);

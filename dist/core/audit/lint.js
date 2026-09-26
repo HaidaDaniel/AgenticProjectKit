@@ -5,7 +5,7 @@ import { readAgenticConfigFile } from "../config/index.js";
 import { selectTaskContext } from "../docs/context.js";
 import { classifyLegacyAgentExports } from "../exporters/index.js";
 import { syncAgentExports } from "../sync/index.js";
-import { parseTaskMarkdown, resolveTaskPolicy, validateTaskDependencies, TaskFormatError, } from "../tasks/index.js";
+import { parseTaskMarkdown, packagedDistTaskContractBlockers, repositoryShipsCommittedDist, resolveTaskPolicy, validateTaskDependencies, TaskFormatError, } from "../tasks/index.js";
 function normalizeRepoPath(value) {
     return value.replace(/\\/g, "/").replace(/^\.\//, "");
 }
@@ -254,7 +254,8 @@ function lintTaskPolicy(task, findings, path) {
         const hard = blocker.includes("conflicting policy rules")
             || blocker.includes("no-verification")
             || blocker.includes("no-review")
-            || blocker.includes("local-only");
+            || blocker.includes("local-only")
+            || blocker.startsWith("packaged-source:");
         addFinding(findings, {
             level: hard ? "error" : "warning",
             code: "policy-blocker",
@@ -526,6 +527,7 @@ export async function lintRepositoryContracts(rootDirectory) {
         });
     }
     const registeredAgents = new Set((await listAgents(rootDirectory)).map((agent) => agent.id));
+    const shipsCommittedDist = await repositoryShipsCommittedDist(rootDirectory);
     for (const file of [...documents.active, ...documents.archived]) {
         const path = normalizeRepoPath(relative(rootDirectory, file.path));
         if (file.task.dependsOn.includes(file.task.id)) {
@@ -540,6 +542,18 @@ export async function lintRepositoryContracts(rootDirectory) {
         }
         lintPathContracts(file.task, findings, path);
         lintTaskPolicy(file.task, findings, path);
+        if (shipsCommittedDist) {
+            for (const message of packagedDistTaskContractBlockers(file.task)) {
+                addFinding(findings, {
+                    level: "error",
+                    code: "packaged-dist-contract",
+                    area: "packaging",
+                    message,
+                    path,
+                    taskId: file.task.id,
+                });
+            }
+        }
         lintTaskStateOwner(file.task, registeredAgents, registeredAgents.size > 0, findings, path);
     }
     let sync = { checked: [], current: [], missing: [], stale: [] };
