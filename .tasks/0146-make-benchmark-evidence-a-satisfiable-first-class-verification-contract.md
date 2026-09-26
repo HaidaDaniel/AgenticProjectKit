@@ -1,7 +1,7 @@
 # Task 0146 - Make benchmark evidence a satisfiable first-class verification contract
 
-State: todo
-Owner: none
+State: done
+Owner: codex-public-readiness-20260925
 Mode: maintenance
 Lane: verification
 Type: bugfix
