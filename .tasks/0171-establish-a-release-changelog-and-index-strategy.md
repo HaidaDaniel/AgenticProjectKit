@@ -1,7 +1,7 @@
 # Task 0171 - Establish a release changelog and index strategy
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-0171
 Mode: maintenance
 Lane: release
 Type: docs
@@ -10,6 +10,10 @@ Risk: low
 Parallel: true
 Depends on: none
 Tags: docs
+
+## Goal
+
+Establish a navigable changelog strategy that preserves release artifacts and avoids fabricated unreleased changes.
 
 ## Context files
 
@@ -38,10 +42,6 @@ Tags: docs
 - docs/releases/v0.4.5.md
 - docs/releases/v0.4.6.md
 - docs/decisions.md
-
-## Goal
-
-Establish a navigable changelog strategy that preserves release artifacts and avoids fabricated unreleased changes.
 
 ## Steps
 
@@ -84,6 +84,7 @@ Establish a navigable changelog strategy that preserves release artifacts and av
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.

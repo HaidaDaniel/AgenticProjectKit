@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-No task is currently active. Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
+Task 0171 is `doing`: establish a concise changelog and a source-linked index for tagged releases and their canonical notes/evidence ([task](../.tasks/0171-establish-a-release-changelog-and-index-strategy.md)). Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
 
 ## Known blockers
 
