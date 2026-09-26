@@ -26,6 +26,8 @@ pnpm exec tsx src/cli/index.ts --help
 
 The `apk` and `agentic-project-kit` aliases remain available for existing scripts and local workflows. New public examples use `apkit`.
 
+For first-time use, install an exact release tag into the target repository and then run the local binary with `pnpm exec apkit`; see the [repository-local install and recovery steps](../README.md#install-apk-in-another-repository).
+
 ## Implemented commands
 
 - `apkit init` - create the kit structure in a new repository.

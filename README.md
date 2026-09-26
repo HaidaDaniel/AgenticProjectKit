@@ -33,60 +33,62 @@ apkit
 
 `apk` is still shipped as a short alias for existing local workflows, but `apkit` is the safer public command name because `apk` already exists as an unrelated npm package.
 
-During local development, run it through `tsx`:
+From the APK source checkout, contributors can run the TypeScript entrypoint directly:
 
 ```bash
 pnpm exec tsx src/cli/index.ts --help
 ```
 
-After building or installing the package, run the CLI as:
+After installing APK as a project dependency, run the repository-pinned executable:
 
 ```bash
-apkit --help
+pnpm exec apkit --help
 ```
+
+`apk` and `agentic-project-kit` remain aliases for compatibility. Project instructions should use `pnpm exec apkit` so the current repository selects its pinned copy.
 
 Implemented commands:
 
-- `apk init`
-- `apk adopt`
-- `apk agent register`
-- `apk agent list`
-- `apk agent migrate-logs`
-- `apk analytics summary`
-- `apk agent prompt`
-- `apk audit`
-- `apk lint [--json]`
-- `apk tasks`
-- `apk resources [--json]`
-- `apk resources detect [--json]`
-- `apk attention [--json]`
-- `apk workers [--json]`
-- `apk workspaces <create|list|status|cleanup> [--json] [--apply]` - `create --run` proves the canonical task/run binding before mutation and captures the canonical resource (`--resource` requires `--run` and must match exactly); cleanup re-validates it and fails closed.
-- `apk execution explain <task-id> --role <role> [--profile <profile>] [--resource <worker-id>] [--json]` - show effective profile/route source; a current applied calibration (including `wait`/`needs-human` sentinels that pause even deterministic lanes, and `deterministic` under canonical policy) participates, stale calibration is ignored.
-- `apk execution calibrate [--recommendation <json>] [--apply] [--json]` - current recommendations influence routing subject to canonical policy; assurance is raise-only.
-- `apk work <task-id> --owner <agent-id> --target <agent> [--resource <worker-id>] [--role implement|review|fix|verify] [--json]`
-- `apk claim`
-- `apk release`
-- `apk block`
-- `apk review`
-- `apk done`
-- `apk doctor`
-- `apk cancel`
-- `apk language [show|set <tag>|reset]` - inspect, set, or reset the developer-local human communication language.
-- `apk context <task-id> [--level 1|2|3] [--budget <units>]`
-- `apk mode [mode]`
-- `apk next-task`
-- `apk prompt <agent> --task <task-id> [--level 1|2|3] [--budget <units>] [--language <tag>]`
-- `apk export [agent]`
-- `apk sync [agent]`
-- `apk status [--detail]`
-- `apk suggest-context "<task description>"`
-- `apk task deps <task-id>`
-- `apk task evidence <task-id>`
-- `apk task policy <task-id>`
-- `apk task gate <task-id>`
-- `apk task provenance <task-id> [--json]`
-- `apk task create`
+- `apkit init`
+- `apkit adopt`
+- `apkit agent register`
+- `apkit agent list`
+- `apkit agent migrate-logs`
+- `apkit analytics summary`
+- `apkit agent prompt`
+- `apkit audit`
+- `apkit lint [--json]`
+- `apkit tasks`
+- `apkit resources [--json]`
+- `apkit resources detect [--json]`
+- `apkit attention [--json]`
+- `apkit workers [--json]`
+- `apkit workspaces <create|list|status|cleanup> [--json] [--apply]` - `create --run` proves the canonical task/run binding before mutation and captures the canonical resource (`--resource` requires `--run` and must match exactly); cleanup re-validates it and fails closed.
+- `apkit execution explain <task-id> --role <role> [--profile <profile>] [--resource <worker-id>] [--json]` - show effective profile/route source; a current applied calibration (including `wait`/`needs-human` sentinels that pause even deterministic lanes, and `deterministic` under canonical policy) participates, stale calibration is ignored.
+- `apkit execution calibrate [--recommendation <json>] [--apply] [--json]` - current recommendations influence routing subject to canonical policy; assurance is raise-only.
+- `apkit work <task-id> --owner <agent-id> --target <agent> [--resource <worker-id>] [--role implement|review|fix|verify] [--json]`
+- `apkit claim`
+- `apkit release`
+- `apkit block`
+- `apkit review`
+- `apkit done`
+- `apkit doctor`
+- `apkit cancel`
+- `apkit language [show|set <tag>|reset]` - inspect, set, or reset the developer-local human communication language.
+- `apkit context <task-id> [--level 1|2|3] [--budget <units>]`
+- `apkit mode [mode]`
+- `apkit next-task`
+- `apkit prompt <agent> --task <task-id> [--level 1|2|3] [--budget <units>] [--language <tag>]`
+- `apkit export [agent]`
+- `apkit sync [agent]`
+- `apkit status [--detail]`
+- `apkit suggest-context "<task description>"`
+- `apkit task deps <task-id>`
+- `apkit task evidence <task-id>`
+- `apkit task policy <task-id>`
+- `apkit task gate <task-id>`
+- `apkit task provenance <task-id> [--json]`
+- `apkit task create`
 
 ## Developer-local communication language
 
@@ -99,10 +101,10 @@ CLI commands, errors, and machine-readable output stay canonical English.
 Inspect, set, or reset it with:
 
 ```bash
-apk language             # show the resolved language and its source
-apk language show        # same as above
-apk language set uk      # persist "uk" locally (any short language tag: en, ru, uk, ...)
-apk language reset       # remove the local preference -> English fallback
+pnpm exec apkit language             # show the resolved language and its source
+pnpm exec apkit language show        # same as above
+pnpm exec apkit language set uk      # persist "uk" locally (any short language tag: en, ru, uk, ...)
+pnpm exec apkit language reset       # remove the local preference -> English fallback
 ```
 
 Storage is outside the repository and cross-platform:
@@ -130,134 +132,59 @@ APK exposes the resolved language through the instruction surfaces it owns (`apk
 runtime: a compatible harness or skill must follow the APK-provided guidance for the preference to
 affect its conversational output.
 
-## Using it in other repositories
+## Install APK in another repository
 
-There are four practical ways to use Agentic Project Kit outside this repository without publishing it to npm.
-
-### Option 1: Pin a stable release tag (recommended)
-
-Best for teams and real projects. Pin a stable tag so every repository uses the exact CLI version it expects.
-
-Use SSH when the machine already has GitHub credentials:
+Use one repository-local Git tag pin. This works for Node applications and for non-Node repositories that choose to keep APK as development tooling in a root `package.json`.
 
 ```bash
 cd path/to/your-project
-pnpm add -D git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.7
-pnpm exec apk init
+pnpm add -D agentic-project-kit@git+https://github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.7
+pnpm exec apkit --help
 ```
 
-For an existing repository:
+`pnpm add -D` writes the exact tag to `devDependencies`, resolves it into `pnpm-lock.yaml`, and makes `pnpm exec apkit` use the local binary. The lockfile records the resolved Git commit. If the repository has no `package.json`, pnpm creates a minimal manifest and lockfile. Review both files before committing. For a tooling-only manifest, set `"private": true` if the repository must not be published to npm, and add `node_modules/` to `.gitignore` if it is not already ignored.
+
+After install, initialize a new project with:
 
 ```bash
-pnpm add -D git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.7
-pnpm exec apk adopt
+pnpm exec apkit init
 ```
 
-HTTPS equivalent when GitHub auth is configured for HTTPS:
+For an existing repository, preview and inspect adoption before applying it:
 
 ```bash
-pnpm add -D git+https://github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.7
+pnpm exec apkit adopt --preview
+pnpm exec apkit adopt --apply
 ```
 
-`#main` tracks unreleased development and is for development/testing only. Do not use `#main` as the stable installation path; pin a tag for repeatable installs.
-
-`v0.4.2` and newer ship a runnable `dist/` inside the tag, so no build-script allowlist is needed. `v0.4.1` and earlier build from source on install and may require `onlyBuiltDependencies`/`allowBuilds`; prefer `v0.4.7` or newer.
-
-This is usually better than a global install because every repository pins the exact CLI version it expects.
-
-On a new server for a repository that already has Agentic Project Kit in `devDependencies`, bootstrap with the project lockfile:
+On a fresh checkout that already has the APK pin and lockfile, install the saved resolution and run the local command:
 
 ```bash
-corepack enable
 pnpm install --frozen-lockfile
-pnpm exec apk doctor
+pnpm exec apkit --help
 ```
 
-### Option 2: Install globally from GitHub
+For later APK upgrades, replace the tag only with a validated release and review both `package.json` and `pnpm-lock.yaml`. Do not use `#main` for a reproducible project pin.
 
-Best for personal use across many local repositories. Repository-local pinning is still preferred for reproducibility.
+### Acquisition options and support boundary
 
-```bash
-npm install -g git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.7
-apk --help
-```
+| Path | Decision | Reason |
+| --- | --- | --- |
+| Local pnpm dependency from an exact Git tag | Recommended and tested | Records the chosen package in `package.json`, the resolved commit in `pnpm-lock.yaml`, and exposes the repo-local binary. |
+| npm registry install | Unavailable as checked 2026-09-26 | `agentic-project-kit` returned HTTP 404 from the npm registry; use the public Git tag. |
+| [`pnpm dlx`](https://pnpm.io/10.x/cli/dlx) or [`npx`](https://docs.npmjs.com/cli/v11/commands/npm-exec/) one-shot command | Not the project install path | Runs a fetched command without saving the dependency and lock resolution to this repository; it cannot establish the normal local command by itself. |
+| Exact-tag helper script | No-go | pnpm already accepts a Git tag and writes the manifest and lockfile. A helper would wrap that command without removing the pnpm and Git requirements. |
+| Lightweight installer or package-manager wrapper | No-go | It would have to detect or choose a manager, preserve existing metadata, and maintain shell/platform behavior before handing off to the same local binary. |
+| Global install or shell alias | Not recommended for project work | It leaves normal command selection outside the repository's pinned dependency and can select a different APK version. |
+| Standalone binary or OS installer | No-go for this release | It would add separate platform, download, update, and recovery paths. Task 0125 found no evidence that this extra mechanism solves a material installation defect. |
 
-or:
+The current validated release is [`v0.4.7`](docs/releases/v0.4.7.md), checked against the available Git tags on 2026-09-26. The package declares Node.js `>=22.22.1`; release validation used Node.js `22.22.1`, pnpm `10.28.1`, and an Ubuntu runner. Other Node/pnpm versions and end-to-end macOS/Windows installs are unverified. A first install needs Git and network access; offline use requires the release and dependencies to already be cached. See the [maturity policy](docs/product/maturity-and-compatibility.md) and [Task 0125 distribution research](docs/research/non-node-apk-installation-and-distribution.md).
 
-```bash
-pnpm add -g git+ssh://git@github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.7
-apk --help
-```
+The pnpm 10 documentation covers [Git tag installs](https://pnpm.io/10.x/package-sources), [saving a dev dependency](https://pnpm.io/10.x/cli/add), and [ephemeral `pnpm dlx`](https://pnpm.io/10.x/cli/dlx). In a disposable repository using pnpm 10.28.1, the before-state had a tracked `package.json` with `private`, a `test` script, `pnpm@10.28.1`, and `is-number@7.0.0`, plus its existing `pnpm-lock.yaml`. After the command above, those two files were the only tracked changes: the manifest pinned `github:HaidaDaniel/AgenticProjectKit#v0.4.7`, and the lockfile resolved it to commit `2797556344eb25cc34d3f51afbe10532147aca85`. `pnpm install --frozen-lockfile`, the pre-existing test script, and `pnpm exec apkit --help` passed; `require.resolve('agentic-project-kit')` pointed inside that repository's `node_modules` at `dist/cli/index.js`. Putting a fake global `apkit` first on `PATH` did not change the command selected by `pnpm exec`. With no manifest, the same install command created `package.json` and `pnpm-lock.yaml` before exposing the local binary.
 
-If `apk` is not found after a pnpm global install:
+Before bootstrapping an existing repository, inspect and back up the current manifest and lockfile. If installation fails or is interrupted, inspect `git status --short` and `git diff -- package.json pnpm-lock.yaml` before invoking APK. Finish with `pnpm install --frozen-lockfile` only when the manifest and lockfile contain a consistent exact pin; otherwise restore both from the same checkpoint, then run the frozen install. A missing-tag test on pnpm 10.28.1 failed without changing those tracked files. An interrupted install can still leave local `node_modules` state, so confirm the local command path before continuing.
 
-```bash
-pnpm bin -g
-pnpm setup
-source ~/.bashrc
-```
-
-This is convenient, but less reproducible for teams because each developer may have a different global version.
-
-### Option 3: Link a local checkout while developing the CLI
-
-Best while working on Agentic Project Kit itself.
-
-Clone the repository on the target machine:
-
-```bash
-git clone git@github.com:HaidaDaniel/AgenticProjectKit.git ~/tools/AgenticProjectKit
-cd ~/tools/AgenticProjectKit
-corepack enable
-pnpm install
-pnpm build
-pnpm link --global
-```
-
-Then from any target repository:
-
-```bash
-apk init
-apk next-task
-```
-
-When you change CLI source code, rebuild:
-
-```bash
-cd ~/tools/AgenticProjectKit
-pnpm build
-```
-
-The package bin points to `dist/cli/index.js`, so global/package usage depends on the build output.
-
-### Option 4: Run from a local checkout without global install
-
-Best when PATH/global package setup is inconvenient.
-
-Build the CLI once:
-
-```bash
-git clone git@github.com:HaidaDaniel/AgenticProjectKit.git ~/tools/AgenticProjectKit
-cd ~/tools/AgenticProjectKit
-corepack enable
-pnpm install
-pnpm build
-```
-
-Run it from another repository:
-
-```bash
-cd path/to/your-project
-node ~/tools/AgenticProjectKit/dist/cli/index.js adopt
-```
-
-Optional shell alias for personal use:
-
-```bash
-echo 'alias apk="node ~/tools/AgenticProjectKit/dist/cli/index.js"' >> ~/.bashrc
-source ~/.bashrc
-apk adopt
-```
+This distribution path treats the root Node manifest as APK tooling metadata when the application itself uses another runtime; it does not make the application a Node project. The reason to keep this path is documented in the [non-Node distribution research](docs/research/non-node-apk-installation-and-distribution.md#separate-the-two-problems).
 
 ## Dogfood workflow (Codex/OpenCode from VS Code)
 
@@ -271,22 +198,24 @@ APK is the repository control plane; it keeps task contracts, verification, revi
 A typical loop in a repository that pins a stable tag:
 
 ```bash
-pnpm exec apk doctor
-pnpm exec apk next-task
-pnpm exec apk context 0001
-pnpm exec apk prompt codex --task 0001
-pnpm exec apk prompt opencode --task 0001
+pnpm exec apkit doctor
+pnpm exec apkit next-task
+pnpm exec apkit context 0001
+pnpm exec apkit prompt codex --task 0001
+pnpm exec apkit prompt opencode --task 0001
 ```
 
 Implement with Codex or OpenCode in VS Code, then:
 
 ```bash
-pnpm exec apk task verify 0001 --owner <agent-id>
-pnpm exec apk task gate 0001
-pnpm exec apk done 0001 --owner <agent-id>
+pnpm exec apkit task verify 0001 --owner <agent-id>
+pnpm exec apkit task gate 0001
+pnpm exec apkit done 0001 --owner <agent-id>
 ```
 
-## Quickstart
+## Contributor quickstart from source
+
+Use this section only when developing APK in its own source checkout. For an application repository, first follow [Install APK in another repository](#install-apk-in-another-repository) and run the project-local `pnpm exec apkit` command.
 
 Install dependencies:
 
@@ -303,7 +232,7 @@ pnpm exec tsx src/cli/index.ts --help
 If installed as a package:
 
 ```bash
-apk --help
+pnpm exec apkit --help
 ```
 
 Create starter kit files in the current repository:
@@ -369,7 +298,7 @@ pnpm exec tsx src/cli/index.ts export
 pnpm exec tsx src/cli/index.ts export codex --force
 ```
 
-Supported export targets: `agents`, `claude`, `gemini`, plus `codex`, `opencode`, and `cursor` compatibility aliases. `AGENTS.md` is the only full common-policy export. `CLAUDE.md` and `GEMINI.md` are thin `@AGENTS.md` imports; Codex, OpenCode, and Cursor read `AGENTS.md` directly. Legacy generated files can be previewed with `pnpm exec apk export --report-legacy` and cleaned up explicitly with `pnpm exec apk export --cleanup-legacy`, which removes only exact unmodified generated files.
+Supported export targets: `agents`, `claude`, `gemini`, plus `codex`, `opencode`, and `cursor` compatibility aliases. `AGENTS.md` is the only full common-policy export. `CLAUDE.md` and `GEMINI.md` are thin `@AGENTS.md` imports; Codex, OpenCode, and Cursor read `AGENTS.md` directly. Legacy generated files can be previewed with `pnpm exec apkit export --report-legacy` and cleaned up explicitly with `pnpm exec apkit export --cleanup-legacy`, which removes only exact unmodified generated files.
 
 `export` skips existing files by default. Use `--force` to overwrite generated instruction files. The core exporter API uses the same safe default unless `force` is explicitly true.
 
@@ -429,8 +358,8 @@ Existing `## Verification commands` task files remain readable. Flat commands no
 For independent review, prepare an inspection prompt and record a separately identified reviewer outcome:
 
 ```bash
-pnpm exec apk review 0001 --reviewer codex-reviewer --prompt
-pnpm exec apk review 0001 --reviewer codex-reviewer --review-run <review-run-id> --result pass --implementation-run verify-123
+pnpm exec apkit review 0001 --reviewer codex-reviewer --prompt
+pnpm exec apkit review 0001 --reviewer codex-reviewer --review-run <review-run-id> --result pass --implementation-run verify-123
 ```
 
 `--prompt` prepares and persists a revision-bound review session and prints the `reviewRunId` (`Review run: <review-run-id>`) that must be supplied as `--review-run` when recording the result.
@@ -440,8 +369,8 @@ Review evidence keeps findings and revision-bound freshness; the implementation 
 Preview and enforce completion with the same candidate-aware gate:
 
 ```bash
-pnpm exec apk task gate 0001
-pnpm exec apk done 0001 --owner codex-a
+pnpm exec apkit task gate 0001
+pnpm exec apkit done 0001 --owner codex-a
 ```
 
 `done` rejects missing, failed, stale, or wrong-candidate verification/review evidence and records a completion evidence set on success. There is no force bypass.
@@ -451,8 +380,8 @@ The work loop also exposes the vendor-neutral `apk-worker-v1` package/result con
 Inspect the active workflow and actionable gate state:
 
 ```bash
-pnpm exec apk status
-pnpm exec apk status --detail
+pnpm exec apkit status
+pnpm exec apkit status --detail
 ```
 
 The default status is concise. Detail mode adds bounded policy, verification, scope, review, evidence, gate-blocker and provenance summaries without raw logs. Status reuses the same gate evaluator as `apk task gate` and `apk done`.
@@ -460,8 +389,8 @@ The default status is concise. Detail mode adds bounded policy, verification, sc
 Run all eligible checks or one verification profile:
 
 ```bash
-pnpm exec apk task verify 0001 --profile deterministic --owner codex-a
-pnpm exec apk task evidence 0001
+pnpm exec apkit task verify 0001 --profile deterministic --owner codex-a
+pnpm exec apkit task evidence 0001
 ```
 
 Required manual/live checks stay unresolved and optional failures do not block verification. Every check result is appended to `.agentic/evidence.jsonl` with candidate identity; stale or mixed-revision results cannot be treated as a current pass.
@@ -469,7 +398,7 @@ Required manual/live checks stay unresolved and optional failures do not block v
 Record an externally-observed manual or live result explicitly when APK cannot execute it:
 
 ```bash
-pnpm exec apk task verify 0001 --record --owner codex-a \
+pnpm exec apkit task verify 0001 --record --owner codex-a \
   --check clean-checkout-ci --result pass --evidence "https://ci.example/runs/42 status=success sha=abc123"
 ```
 
@@ -477,29 +406,29 @@ Recording requires the registered task owner, a declared manual or `live` check,
 
 ## Example workflow
 
-1. Start a new repository with `pnpm exec apk init`, or add the kit to an existing repository with `pnpm exec apk adopt`.
-2. Register the working agent with `pnpm exec apk agent register`.
-3. Run `pnpm exec apk status` to inspect current workflow state.
-4. Run `pnpm exec apk next-task` to pick the next todo task.
-5. Claim it with `pnpm exec apk claim <task-id> --owner <agent-id>`.
-6. Run `pnpm exec apk context <task-id>` and `pnpm exec apk prompt <agent> --task <task-id>`.
+1. Start a new repository with `pnpm exec apkit init`, or add the kit to an existing repository with `pnpm exec apkit adopt`.
+2. Register the working agent with `pnpm exec apkit agent register`.
+3. Run `pnpm exec apkit status` to inspect current workflow state.
+4. Run `pnpm exec apkit next-task` to pick the next todo task.
+5. Claim it with `pnpm exec apkit claim <task-id> --owner <agent-id>`.
+6. Run `pnpm exec apkit context <task-id>` and `pnpm exec apkit prompt <agent> --task <task-id>`.
 7. Work one task at a time.
 8. Move the task through `review` and `done`.
-9. Run `pnpm exec apk sync` to check generated instruction drift.
-10. Run `pnpm exec apk export` or `pnpm exec apk sync --write` when generated instructions need regeneration.
+9. Run `pnpm exec apkit sync` to check generated instruction drift.
+10. Run `pnpm exec apkit export` or `pnpm exec apkit sync --write` when generated instructions need regeneration.
 
 ## Agent workflow
 
 Register each agent before task work:
 
 ```bash
-pnpm exec apk agent register --id codex-a --developer alice --platform codex --model gpt-5.5
+pnpm exec apkit agent register --id codex-a --developer alice --platform codex --model gpt-5.5
 ```
 
 Start or continue a task through the CLI work loop:
 
 ```bash
-pnpm exec apk work 0001 --owner codex-a --target codex --level auto
+pnpm exec apkit work 0001 --owner codex-a --target codex --level auto
 ```
 
 `work` claims a todo task, renders the prompt, persists the package/metadata, and prints role-valid next commands. Use `--write-session` to store the exact prompt beside the package. It warns when another unsettled mutable run is detected in the same worktree; concurrent mutable tasks should use separate Git worktrees/branches. It does not launch external AI agents.
@@ -507,35 +436,35 @@ pnpm exec apk work 0001 --owner codex-a --target codex --level auto
 List registered agents:
 
 ```bash
-pnpm exec apk agent list
+pnpm exec apkit agent list
 ```
 
 Print compact setup instructions for a platform:
 
 ```bash
-pnpm exec apk agent prompt --platform codex
+pnpm exec apkit agent prompt --platform codex
 ```
 
 Claim and complete a task:
 
 ```bash
-pnpm exec apk tasks --state todo
-pnpm exec apk claim 0001 --owner codex-a
-pnpm exec apk context 0001 --level 2
-pnpm exec apk prompt codex --task 0001 --level 2
-pnpm exec apk task verify 0001 --owner codex-a
+pnpm exec apkit tasks --state todo
+pnpm exec apkit claim 0001 --owner codex-a
+pnpm exec apkit context 0001 --level 2
+pnpm exec apkit prompt codex --task 0001 --level 2
+pnpm exec apkit task verify 0001 --owner codex-a
 pnpm test
 pnpm lint
-pnpm exec apk review 0001 --owner codex-a
-pnpm exec apk done 0001 --owner codex-a
+pnpm exec apkit review 0001 --owner codex-a
+pnpm exec apkit done 0001 --owner codex-a
 ```
 
 If a task cannot continue:
 
 ```bash
-pnpm exec apk block 0001 --owner codex-a --reason "needs product decision"
-pnpm exec apk release 0001 --owner codex-a
-pnpm exec apk cancel 0001 --owner codex-a --reason "obsolete"
+pnpm exec apkit block 0001 --owner codex-a --reason "needs product decision"
+pnpm exec apkit release 0001 --owner codex-a
+pnpm exec apkit cancel 0001 --owner codex-a --reason "obsolete"
 ```
 
 Task files stay compact and only store the current owner id. Developer/platform/model metadata stays in the registry and run log.
@@ -549,19 +478,19 @@ Team analytics use sharded, git-friendly files:
 Legacy `.agentic/agents.jsonl` and `.agentic/runs.jsonl` are migration inputs only. Convert them with:
 
 ```bash
-pnpm exec apk agent migrate-logs --remove-legacy
+pnpm exec apkit agent migrate-logs --remove-legacy
 ```
 
 Register a team agent with an explicit developer id when needed:
 
 ```bash
-pnpm exec apk agent register --id codex-a --developer alice --platform codex --model gpt-5.5
+pnpm exec apkit agent register --id codex-a --developer alice --platform codex --model gpt-5.5
 ```
 
 Generate a monthly comparison summary:
 
 ```bash
-pnpm exec apk analytics summary --month 2026-05 --write
+pnpm exec apkit analytics summary --month 2026-05 --write
 ```
 
 Analytics summaries include active and archived task metadata when grouping risk, mode, and lane.
@@ -591,7 +520,7 @@ None auto-activates, and an ordinary task proceeds through the normal claim/work
 
 ## Usage scenarios
 
-The scenario commands below assume Agentic Project Kit is installed as a project dev dependency and run through `pnpm exec apk`. If you intentionally use a global install or shell alias, the command body is the same.
+The scenario commands below use Agentic Project Kit from the repository's project dependency through `pnpm exec apkit`.
 
 ### Scenario 1: Start a new project
 
@@ -599,31 +528,31 @@ Use this when the repository is empty or still at the planning stage.
 
 ```bash
 cd path/to/new-project
-pnpm exec apk init
+pnpm exec apkit init
 ```
 
 The kit creates the base project docs, task directory, config file, and agent instruction files. After that, choose the operating mode:
 
 ```bash
-pnpm exec apk mode discovery
+pnpm exec apkit mode discovery
 ```
 
 Use `discovery` while the idea, users, and scope are still unclear. Switch to `mvp` when the first deliverable is defined:
 
 ```bash
-pnpm exec apk mode mvp
+pnpm exec apkit mode mvp
 ```
 
 Then work from task files:
 
 ```bash
-pnpm exec apk next-task
-pnpm exec apk context 0001 --level 2
-pnpm exec apk prompt codex --task 0001 --level 2
+pnpm exec apkit next-task
+pnpm exec apkit context 0001 --level 2
+pnpm exec apkit prompt codex --task 0001 --level 2
 ```
 
 Give the generated prompt to the selected agent, let it work only inside the allowed files, then run the verification commands listed in the task file.
-Use `pnpm exec apk task verify <task-id>` to check changed files against the task's allowed and forbidden file lists before review or done.
+Use `pnpm exec apkit task verify <task-id>` to check changed files against the task's allowed and forbidden file lists before review or done.
 
 ### Scenario 2: Adopt an existing repository
 
@@ -631,7 +560,7 @@ Use this when the app already exists and you want to add repository-first AI wor
 
 ```bash
 cd path/to/existing-repo
-pnpm exec apk adopt
+pnpm exec apkit adopt
 ```
 
 `adopt` performs a lightweight repository-shape scan and writes missing kit files such as docs, config, task files, and agent instructions. It skips existing files instead of overwriting them.
@@ -639,18 +568,18 @@ pnpm exec apk adopt
 For an existing v0.3.1-style repository, preview compatibility and exact proposed changes before writing:
 
 ```bash
-pnpm exec apk adopt --preview
+pnpm exec apkit adopt --preview
 ```
 
-Apply the compatibility marker and missing kit files explicitly with `pnpm exec apk adopt --apply`. Legacy task Markdown remains readable and is not rewritten; customized instructions and unknown config keys are preserved. Repeating `--apply` is idempotent. Use `--dry-run` as an alias for `--preview`.
+Apply the compatibility marker and missing kit files explicitly with `pnpm exec apkit adopt --apply`. Legacy task Markdown remains readable and is not rewritten; customized instructions and unknown config keys are preserved. Repeating `--apply` is idempotent. Use `--dry-run` as an alias for `--preview`.
 
 Both `init` and `adopt` additively add the canonical APK operational ignore rules to `.gitignore` without reformatting existing content, and warn when APK runtime state is already tracked in Git (ignore rules cannot untrack it; APK never runs `git rm --cached`).
 
 After adoption:
 
 ```bash
-pnpm exec apk mode adopt
-pnpm exec apk next-task
+pnpm exec apkit mode adopt
+pnpm exec apkit next-task
 ```
 
 Use `adopt` mode while documenting the existing repo and creating cleanup tasks. Move to `maintenance`, `product`, or `production` after the docs and task flow are stable.
@@ -662,13 +591,13 @@ Use this when you want an agent to work without relying on long chat history.
 First pick a task:
 
 ```bash
-pnpm exec apk next-task
+pnpm exec apkit next-task
 ```
 
 Then inspect context:
 
 ```bash
-pnpm exec apk context 0014 --level 2
+pnpm exec apkit context 0014 --level 2
 ```
 
 Context levels:
@@ -680,7 +609,7 @@ Context levels:
 Generate the prompt:
 
 ```bash
-pnpm exec apk prompt codex --task 0014 --level 2
+pnpm exec apkit prompt codex --task 0014 --level 2
 ```
 
 Supported prompt agents:
@@ -701,18 +630,18 @@ Use this when project rules change and generated agent instruction files need to
 Export all supported targets:
 
 ```bash
-pnpm exec apk export
+pnpm exec apkit export
 ```
 
 Export one target:
 
 ```bash
-pnpm exec apk export claude --force
-pnpm exec apk export codex --force
-pnpm exec apk export gemini --force
-pnpm exec apk export cursor --force
-pnpm exec apk export opencode --force
-pnpm exec apk export agents --force
+pnpm exec apkit export claude --force
+pnpm exec apkit export codex --force
+pnpm exec apkit export gemini --force
+pnpm exec apkit export cursor --force
+pnpm exec apkit export opencode --force
+pnpm exec apkit export agents --force
 ```
 
 Generated outputs include:
@@ -721,7 +650,7 @@ Generated outputs include:
 - `CLAUDE.md` - thin `@AGENTS.md` import for Claude Code.
 - `GEMINI.md` - thin `@./AGENTS.md` import for Gemini CLI.
 
-Obsolete `.codex/instructions.md`, `.opencode/AGENTS.md`, and `.cursor/rules/*.mdc` files are no longer generated. `pnpm exec apk export --report-legacy` reports any that remain; `pnpm exec apk export --cleanup-legacy` removes only exact unmodified generated files and preserves customized content.
+Obsolete `.codex/instructions.md`, `.opencode/AGENTS.md`, and `.cursor/rules/*.mdc` files are no longer generated. `pnpm exec apkit export --report-legacy` reports any that remain; `pnpm exec apkit export --cleanup-legacy` removes only exact unmodified generated files and preserves customized content.
 
 The source of truth remains the repository docs and neutral policy content; exported files are derived artifacts.
 
@@ -730,10 +659,10 @@ The source of truth remains the repository docs and neutral policy content; expo
 Use this when you want to check kit/workflow readiness without changing application source files.
 
 ```bash
-pnpm exec apk audit
-pnpm exec apk lint --json
-pnpm exec apk sync
-pnpm exec apk sync codex --write
+pnpm exec apkit audit
+pnpm exec apkit lint --json
+pnpm exec apkit sync
+pnpm exec apkit sync codex --write
 ```
 
 `audit` writes `docs/audit-report.md` and `docs/project-map.md` from lightweight repository and kit checks. It reports static readiness facts such as package scripts, lockfiles, CI presence, env examples, tests, license, README, Docker files, monorepo indicators, and TypeScript strict mode. It does not perform deep application architecture, security, coverage, or production-readiness analysis. `sync` is check-only unless `--write` is present.
@@ -774,13 +703,13 @@ Use this after the first v0.1 scope is ready and the next work should focus on i
 Check the current mode:
 
 ```bash
-pnpm exec apk mode
+pnpm exec apkit mode
 ```
 
 Switch from `mvp` to `product`:
 
 ```bash
-pnpm exec apk mode product
+pnpm exec apkit mode product
 ```
 
 Use `product` mode for v0.2 work such as richer lightweight repository scanning, audit reports, improved context selection, and stronger validation.
@@ -794,23 +723,23 @@ Use this once the command surface is stable and the main work is incremental imp
 Recommended loop:
 
 ```bash
-pnpm exec apk mode product
-pnpm exec apk status
-pnpm exec apk doctor
-pnpm exec apk next-task
-pnpm exec apk context <task-id> --level 2
-pnpm exec apk prompt codex --task <task-id> --level 2
+pnpm exec apkit mode product
+pnpm exec apkit status
+pnpm exec apkit doctor
+pnpm exec apkit next-task
+pnpm exec apkit context <task-id> --level 2
+pnpm exec apkit prompt codex --task <task-id> --level 2
 pnpm test
 pnpm lint
 ```
 
 For risky changes, use `--level 3` so the agent sees source files and support files named by the task.
-Run `pnpm exec apk task verify <task-id> --owner <agent-id>` before moving the task to review or done.
+Run `pnpm exec apkit task verify <task-id> --owner <agent-id>` before moving the task to review or done.
 
 When a task is done, update the task status and `docs/progress.md`. If the change affects agent instructions, run:
 
 ```bash
-pnpm exec apk export --force
+pnpm exec apkit export --force
 ```
 
 ## Current status
@@ -819,7 +748,7 @@ Tasks 0001 through 0070 are complete, and Task 0071 adds concise active-task gat
 
 The repository now has a minimal TypeScript CLI scaffold, config schema, `init`, lightweight `adopt`, kit/workflow `audit`, `analytics summary`, `mode`, `next-task`, `tasks`, agent registration, task state transitions, sharded run analytics, `context`, `prompt`, `export`, `sync`, template rendering, doc generation helpers, Claude/Gemini/Codex/OpenCode/Cursor agent exporters, task archive/dependency commands, compact task parsing, and typed verification requirements.
 
-Default agent style for this repository: concise, readable `normal` prose. `agentStyle: caveman` is an explicit user preference; set it in `.agentic/config.json` deliberately and persist it through `pnpm exec apk sync`. A transient request to "be brief" never edits persistent config; caveman skill availability/installation is separate and user-controlled. Legacy repositories that received an autogenerated `agentStyle: caveman` from an older APK keep that stored value until their own users reset it explicitly.
+Default agent style for this repository: concise, readable `normal` prose. `agentStyle: caveman` is an explicit user preference; set it in `.agentic/config.json` deliberately and persist it through `pnpm exec apkit sync`. A transient request to "be brief" never edits persistent config; caveman skill availability/installation is separate and user-controlled. Legacy repositories that received an autogenerated `agentStyle: caveman` from an older APK keep that stored value until their own users reset it explicitly.
 
 Tasks 0072 and 0073 provide the model-agnostic worker boundary and corrective lifecycle safeguards. Task 0074 adds the explicit compatibility preview/apply path for adopting the gated workflow; Task 0075 performs the final frozen-candidate validation.
 

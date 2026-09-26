@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
+Task 0166 is `doing`: reduce first-run acquisition friction while retaining an exact repository-local pin and lockfile ([task](../.tasks/0166-simplify-first-run-acquisition-while-keeping-exact-pins.md)). Task 0173 remains the final release-validation task and is `todo` until its prerequisites are complete.
 
 ## Known blockers
 
