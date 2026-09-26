@@ -1,77 +1,41 @@
 # Scope
 
-## v0.1
+## Current scope
 
-The first version should establish the repository structure and the documentation-driven workflow.
+Agentic Project Kit (APK) is a repository-local CLI and semantic workflow control plane for AI-assisted software development. Project context, task contracts, shared agent instructions, and workflow state live with each repository; APK does not depend on a hosted project database or long chat history. See the [project description](project.md) and [architecture](architecture.md).
 
-Included:
+APK currently supports:
 
-- TypeScript CLI scaffold;
-- `apk init`;
-- `apk adopt`;
-- `apk mode`;
-- `apk next-task`;
-- `apk context`;
-- `apk prompt`;
-- `apk export`;
-- minimal templates;
-- basic exporters for AGENTS, Codex, Cursor, and OpenCode;
-- task file generation;
-- project config generation.
+- initializing a project or adopting APK into an existing repository, with bounded repository-shape inspection;
+- maintaining project documentation, configuration, task contracts, and generated agent instructions from repository-owned policy;
+- selecting task context, preparing prompts and worker packages, and exporting or synchronizing instructions for supported agent ecosystems;
+- auditing repository workflow readiness and detecting declared quality capabilities without running the adopted repository's commands;
+- managing task dependencies, ownership, risk, execution profiles, routing, assurance, candidate-bound verification and evidence, independent review, completion gates, provenance, semantic attention, and safe Git worktree lifecycle.
 
-## v0.2
+The public CLI and lifecycle are documented in the [architecture](architecture.md), [task system](task-system.md), and [resource-aware execution guide](execution-profiles.md). The latest validated installable release is [v0.4.7](releases/v0.4.7.md); the separate [release validation record](delivery/workflow-v0.4.7-self-dogfood.md) identifies its exact candidate and downstream checks.
 
-The next version should improve task generation and project analysis.
+## Current non-goals
 
-Included:
+- A model or provider runtime, autonomous worker launcher, terminal/session manager, SSH manager, remote execution service, or global process supervisor. APK owns semantic task state; an external harness or runtime owns model execution and the live operator environment ([ADR-0039](decisions.md#adr-0039---apk-is-a-repository-local-semantic-control-plane-not-an-external-runtime)).
+- A hosted control plane, global project database, SaaS service, account system, cloud coordination or sync, or multi-repository orchestrator. APK state is repository-local.
+- Issue-tracker synchronization, including GitHub Issues, Jira, and Linear. Repository task contracts remain the workflow source of truth.
+- Automatic application-source rewriting or unrestricted/deep AST analysis. Repository inspection is bounded and purpose-specific.
+- Mandatory packaged agent skills or automatic skill activation. Packaged skills are separate optional assets and do not replace task verification, review, or the completion gate ([ADR-0063](decisions.md#adr-0063---the-task-grill-instruction-is-an-optional-manually-invoked-packaged-asset-outside-common-policy)).
 
-- richer scanning for existing repositories;
-- `apk audit`;
-- documentation and generated export gap reports;
-- task and config validation surfaced through audit;
-- better context selection;
-- improved prompt generation.
+## Next milestone
 
-## v0.3
+Public readiness is the current milestone, tracked in the [roadmap](roadmap.md#public-readiness-current-work). Tasks 0151-0172 cover product truth, documentation, CLI consistency, contribution readiness, and examples; Task 0173 performs final validation against the exact release candidate after its prerequisites pass. These are planned work items, not claims that every listed improvement is already shipped.
 
-The third version should focus on workflow quality and broader support.
+Tasks 0149 and 0150 remain deferred identity work and are not prerequisites for this milestone. Task 0170 remains blocked pending an operator-confirmed private security-reporting route. The roadmap is the source for current task ordering and status.
 
-Included:
+## Historical scope
 
-- more robust audit and adopt flows;
-- better mode-specific behavior;
-- additional templates;
-- `apk sync` check and write workflow;
-- stronger test coverage for the CLI and task pipeline.
+The v0.1-v0.3 sections in the [roadmap](roadmap.md) preserve the original staged plan:
 
-## Future scope
+- **v0.1:** establish the TypeScript CLI, project files, initial `init`/`adopt`/mode/task/context/prompt/export flows, minimal templates, and basic agent-file exporters.
+- **v0.2:** expand repository scanning, audit and gap reports, config/task validation, context selection, and prompt generation.
+- **v0.3:** improve adopt/audit and mode-aware behavior, add templates and `sync`, and strengthen CLI/task-pipeline tests.
 
-Possible later additions:
+These are planning-history summaries, not a current delivery checklist. Their future-tense wording does not describe the current release state; use the current-scope section above and tagged [release notes](releases/) for shipped behavior.
 
-- web UI;
-- SaaS backend;
-- cloud sync;
-- issue tracker integrations;
-- multi-repo orchestration;
-- advanced project intelligence.
-
-## Explicit non-goals for v0.1
-
-- no web UI;
-- no authentication;
-- no database;
-- no cloud storage;
-- no GitHub Issues sync;
-- no Jira or Linear sync;
-- no automatic source code rewriting;
-- no complex AST analysis;
-- no SaaS backend.
-
-## Explicit non-goals for v0.2 and v0.3
-
-- no web UI;
-- no authentication;
-- no database;
-- no cloud sync;
-- no issue tracker sync;
-- no SaaS backend.
+Earlier planning also listed a web UI, SaaS, cloud sync, issue-tracker integrations, multi-repository workflows, and advanced project intelligence as possible future additions. They remain outside the current scope; none should be read as a committed or implemented capability.

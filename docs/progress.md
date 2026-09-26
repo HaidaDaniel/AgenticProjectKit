@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-No task is currently `doing` or `review` at this closeout. Continue the public-readiness workstream by its declared dependencies. Task 0173 is the final release-validation task and remains `todo` until its prerequisites are complete.
+Task 0154 is `doing`: modernize scope around current capabilities and historical plans ([task](../.tasks/0154-modernize-scopemd-around-current-and-historical-scope.md)). Continue the public-readiness workstream by its declared dependencies. Task 0173 is the final release-validation task and remains `todo` until its prerequisites are complete.
 
 ## Known blockers
 
