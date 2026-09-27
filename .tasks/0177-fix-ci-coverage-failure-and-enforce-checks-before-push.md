@@ -30,6 +30,7 @@ Reproduce the current hosted Quality coverage failure, correct its proven cause,
 - docs/releases/v0.4.2.md
 - .tasks/0078-add-first-class-local-quality-guardrails-for-agenticprojectkit-itself.md
 - scripts/check-docs-consistency.test.mjs
+- scripts/setup-hooks.mjs
 - .tasks/0177-fix-ci-coverage-failure-and-enforce-checks-before-push.md
 
 ## Files allowed to edit
@@ -38,6 +39,7 @@ Reproduce the current hosted Quality coverage failure, correct its proven cause,
 - .husky/pre-push
 - docs/engineering/testing-strategy.md
 - docs/progress.md
+- scripts/setup-hooks.mjs
 - .tasks/0177-fix-ci-coverage-failure-and-enforce-checks-before-push.md
 
 ## Files forbidden to edit
@@ -50,7 +52,7 @@ Reproduce the current hosted Quality coverage failure, correct its proven cause,
 2. Isolate how the new documentation-consistency test entry affects source coverage while retaining that test in fast quality.
 3. Make the smallest evidence-based coverage correction.
 4. Strengthen the existing Husky pre-push hook to run the useful CI checks without duplicating quality, coverage, or build work.
-5. Preserve the documented explicit Husky setup path; do not add an install lifecycle hook contrary to the distribution decision.
+5. Preserve the documented explicit Husky setup path; repair generated hook-stub permissions there and do not add an install lifecycle hook contrary to the distribution decision.
 6. Run the full declared quality, coverage, build, APK, and drift checks; commit implementation before candidate-bound verification and gate.
 
 ## Acceptance criteria
@@ -58,6 +60,7 @@ Reproduce the current hosted Quality coverage failure, correct its proven cause,
 - The coverage failure from hosted Quality run 36316706652 is reproduced and its cause is addressed without removing documentation consistency tests from quality.
 - pnpm test:coverage reports source coverage that satisfies its documented thresholds.
 - The documented `pnpm setup:dev` path enables pre-push and the hook runs the documented CI-equivalent checks before allowing a push.
+- Re-running `pnpm setup:dev` repairs execute permissions on existing generated Husky hook stubs.
 - Documentation truthfully describes the checks and install/setup path.
 - All task verification passes and changes remain inside the allowed scope.
 
@@ -96,6 +99,7 @@ Reproduce the current hosted Quality coverage failure, correct its proven cause,
 - `{"id":"check-6","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node dist/cli/index.js audit"}`
 - `{"id":"check-7","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-8","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+- `{"id":"check-9","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm setup:dev && test -x .husky/_/pre-push"}`
 
 ## Documentation updates
 
