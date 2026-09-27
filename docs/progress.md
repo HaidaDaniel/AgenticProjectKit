@@ -8,7 +8,9 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Tasks 0175, 0176, and 0158 are complete. Task 0158's documentation home passed its per-destination link check. Task 0163 is next, followed by Task 0168. Task 0170 remains blocked on the operator's private-reporting route; Task 0173 continues to require it.
+Tasks 0175, 0176, and 0158 are complete. Task 0163 is in progress to make the README the accurate public front door; Task 0168 follows it. Task 0170 remains blocked on the operator's private-reporting route; Task 0173 continues to require it.
+
+Task 0163 README claim audit: product identity, audience, and repository-local boundaries map to `docs/product/requirements.md` and `docs/architecture.md`; init/adopt map to `src/cli/commands/init.ts`, `src/cli/commands/adopt.ts`, `src/core/init/index.ts`, and `src/core/docs/adopt.ts`; task scope, context, prompts, candidate evidence, and gates map to `docs/task-system.md`, `src/core/docs/context.ts`, `src/core/docs/prompt.ts`, and `src/core/tasks/`; generated instructions, lint, readiness reports, and quality inventory map to `docs/agent-exporters.md`, `src/core/exporters/index.ts`, `src/core/audit/`, and `src/core/quality/index.ts`; install and CLI claims map to `docs/getting-started.md`, `docs/cli-commands.md`, and `docs/research/non-node-apk-installation-and-distribution.md`; release and compatibility claims map to `docs/product/maturity-and-compatibility.md`, `docs/releases/v0.4.7.md`, `package.json`, and `.github/workflows/quality.yml`; navigation and OSS metadata map to `docs/index.md`, `docs/roadmap.md`, `CONTRIBUTING.md`, and `LICENSE`.
 
 ## Known blockers
 
