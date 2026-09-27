@@ -134,6 +134,21 @@ function checkPrematureValidatedClaim(note, candidateVersion, validatedVersion, 
       report(issues, `docs/releases/v${candidateVersion}.md`, lineNumber(note, match.index), `candidate note claims latest validated tagged release v${match[1]}; canonical validated release is v${validatedVersion}`);
     }
   }
+
+  const candidate = `v${escapeRegExp(candidateVersion)}`;
+  const publishedStatus = String.raw`(?:has\s+(?:(?:already|now|just)\s+)?been|is|was)\s+(?:(?:already|currently|now)\s+)?(?:published|released|available|shipped)`;
+  const publicationClaims = [
+    new RegExp(String.raw`\b${candidate}\b(?:\s+release)?\s+${publishedStatus}\b`, "gi"),
+    new RegExp(String.raw`\brelease\b[^\r\n]{0,40}\b${candidate}\b[^\r\n]{0,40}\b${publishedStatus}\b`, "gi"),
+  ];
+  const reportedOffsets = new Set();
+  for (const publicationClaim of publicationClaims) {
+    for (const match of note.matchAll(publicationClaim)) {
+      if (reportedOffsets.has(match.index)) continue;
+      reportedOffsets.add(match.index);
+      report(issues, `docs/releases/v${candidateVersion}.md`, lineNumber(note, match.index), `candidate note claims release v${candidateVersion} is already published or available; qualify the statement until validation (canonical validated release is v${validatedVersion})`);
+    }
+  }
 }
 
 function fencedCodeLines(markdown) {
