@@ -1,6 +1,6 @@
 # Task 0175 - Restore committed dist currency and prevent source-task dist divergence
 
-State: doing
+State: done
 Owner: codex-0175
 Mode: maintenance
 Lane: quality

@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0175 is in progress to restore source-to-package parity and add a permanent packaged-source verification guard. Its planning correction removes the direct Task 0170 dependency from Tasks 0158, 0163, and 0168; they resume after Task 0175 is green. Task 0173 continues to require Task 0170.
+Task 0175 is complete: source-to-package parity is restored, and the packaged-source verification guard is in place. Task 0176 is next to finish the remaining public-readiness task-contract corrections. Task 0173 continues to require Task 0170, which remains blocked on the operator's private-reporting route.
 
 ## Known blockers
 
@@ -22,6 +22,7 @@ Complete the public-readiness workstreams in the [dependency-aware roadmap](road
 
 ## Recently completed
 
+- Task 0175 restored committed package parity and added a clean-build guard for packaged source and copied templates; its exact-SHA Quality run and fresh independent review passed ([task](../.tasks/0175-restore-committed-dist-currency-and-prevent-source-task-dist-divergence.md)). Candidate commit: `f95570f`.
 - Task 0172 added isolated, repeatable greenfield, brownfield, and local-first showcase workflows; all three smoke outputs passed on Node `22.22.1` and pnpm `10.28.1`, including brownfield preservation and offline-capable reruns ([examples](examples.md), [task](../.tasks/0172-add-runnable-greenfield-brownfield-and-local-first-showcases.md)). Candidate commit: `4ef89da`.
 - Task 0171 added a concise changelog entrypoint and a release index that links all 12 current local/remote tags, seven retained versioned notes, four post-tag workflow records, and the gated-workflow evidence; current package version and `v0.4.7` tag agree ([changelog](../CHANGELOG.md), [index](releases/index.md), [task](../.tasks/0171-establish-a-release-changelog-and-index-strategy.md)). Candidate commit: `f96b377`.
 - Task 0169 added a contributor quickstart, three GitHub issue forms, a concise pull-request template, and a bounded `good first issue` label convention ([guide](../CONTRIBUTING.md), [task](../.tasks/0169-add-contributor-docs-and-lightweight-github-contribution-ux.md)). A fresh clone at candidate `abef1a8` passed frozen install, source CLI help/lint, form parsing, and local-link checks. Candidate commits: `4673665`, `abef1a8`.
