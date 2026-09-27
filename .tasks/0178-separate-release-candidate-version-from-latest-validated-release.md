@@ -103,24 +103,6 @@ Make documentation consistency distinguish the current package/candidate version
 - Fresh independent review and passing completion gate.
 - Read-only confirmation that annotated tag `v0.4.7` and its peeled candidate remain identical to preflight.
 
-## Pre-fix candidate-state evidence
-
-Replayed the original checker from baseline `8b21762a1feccec11db1225fd7c723889a3f4a1b` after advancing only `package.json.version` to `0.5.0` and adding a matching candidate note. The checker exited 1 with:
-
-```text
-README.md:36: validated release and note link must match package.json version 0.5.0
-docs/product/maturity-and-compatibility.md:7: latest validated release must match package.json version 0.5.0
-docs/roadmap.md:9: latest roadmap release and note link must match package.json version 0.5.0
-docs/index.md:40: documentation-home latest release and note link must match package.json version 0.5.0
-docs/releases/index.md:3: current package version and validated tag must match package.json version 0.5.0
-docs/releases/index.md:1: versioned release table is missing the package tag v0.5.0
-README.md:12: quickstart install command must be exactly: pnpm add -D agentic-project-kit@git+https://github.com/HaidaDaniel/AgenticProjectKit.git#v0.5.0
-docs/cli-commands.md:35: CLI reference is stale; regenerate it from src/cli/command-registry.ts
-EXIT 1
-```
-
-The first seven diagnostics show stable release claims and the install pin were coupled to the package candidate. The CLI-reference diagnostic is an additional baseline issue from this replay and is independent of release-version selection.
-
 ## Review questions
 
 - Can a newer package candidate pass while stable release claims and install pins remain on the validated tag?
@@ -157,3 +139,14 @@ The first seven diagnostics show stable release claims and the install pin were 
 
 - Post-publication validated-version promotion belongs to a separate bookkeeping change on `main`; it is not written back into the immutable tagged candidate.
 - Tasks 0149/0150 remain deferred and outside this release path.
+- Pre-fix candidate-state reproduction: replayed the original checker from baseline `8b21762a1feccec11db1225fd7c723889a3f4a1b` after advancing only `package.json.version` to `0.5.0` and adding a matching candidate note. The checker exited 1 with the captured output below. The first seven diagnostics show stable release claims and the install pin were coupled to the package candidate; the CLI-reference diagnostic is additional baseline drift independent of release-version selection.
+  ```text
+  README.md:36: validated release and note link must match package.json version 0.5.0
+  docs/product/maturity-and-compatibility.md:7: latest validated release must match package.json version 0.5.0
+  docs/roadmap.md:9: latest roadmap release and note link must match package.json version 0.5.0
+  docs/index.md:40: documentation-home latest release and note link must match package.json version 0.5.0
+  docs/releases/index.md:3: current package version and validated tag must match package.json version 0.5.0
+  docs/releases/index.md:1: versioned release table is missing the package tag v0.5.0
+  README.md:12: quickstart install command must be exactly: pnpm add -D agentic-project-kit@git+https://github.com/HaidaDaniel/AgenticProjectKit.git#v0.5.0
+  docs/cli-commands.md:35: CLI reference is stale; regenerate it from src/cli/command-registry.ts
+  EXIT 1
