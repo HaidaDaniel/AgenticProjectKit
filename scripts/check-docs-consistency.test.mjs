@@ -211,6 +211,7 @@ test("a candidate note cannot directly claim that its release is already publish
   for (const claim of [
     "The v0.5.0 release is available now.",
     "v0.5.0 has been published.",
+    "v0.5.0 has shipped.",
     "The release v0.5.0 is now available.",
   ]) {
     const repo = await fixture(t, undefined, { version: "0.5.0", validatedVersion: "0.4.7" });
@@ -227,7 +228,7 @@ test("a candidate note may describe future or not-yet-published availability", a
   const repo = await fixture(t, undefined, { version: "0.5.0", validatedVersion: "0.4.7" });
   const notePath = join(repo.root, "docs/releases/v0.5.0.md");
   const note = await readFile(notePath, "utf8");
-  await write(repo.root, "docs/releases/v0.5.0.md", `${note}\nThe v0.5.0 release will be available after publication. The v0.5.0 release is not yet published.\n`);
+  await write(repo.root, "docs/releases/v0.5.0.md", `${note}\nThe v0.5.0 release will be available after publication. The v0.5.0 release is not yet published. It will ship after validation.\n`);
 
   const issues = await checkDocumentationConsistency(repo.root, cliReference);
   assert.deepEqual(issues, []);

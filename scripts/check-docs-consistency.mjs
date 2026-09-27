@@ -136,7 +136,7 @@ function checkPrematureValidatedClaim(note, candidateVersion, validatedVersion, 
   }
 
   const candidate = `v${escapeRegExp(candidateVersion)}`;
-  const publishedStatus = String.raw`(?:has\s+(?:(?:already|now|just)\s+)?been|is|was)\s+(?:(?:already|currently|now)\s+)?(?:published|released|available|shipped)`;
+  const publishedStatus = String.raw`(?:has\s+(?:(?:(?:already|now|just)\s+)?been\s+)?|is\s+|was\s+)(?:(?:already|currently|now)\s+)?(?:published|released|available|shipped|launched|live)`;
   const publicationClaims = [
     new RegExp(String.raw`\b${candidate}\b(?:\s+release)?\s+${publishedStatus}\b`, "gi"),
     new RegExp(String.raw`\brelease\b[^\r\n]{0,40}\b${candidate}\b[^\r\n]{0,40}\b${publishedStatus}\b`, "gi"),
