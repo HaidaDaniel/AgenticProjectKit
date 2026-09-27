@@ -11,6 +11,7 @@ import {
   renderTaskMarkdown,
   type ProjectTask,
 } from "../tasks/index.js";
+import { packagedDistCheckCommand } from "../tasks/package-contract.js";
 import { lintRepositoryContracts, renderTaskLintResult } from "./lint.js";
 
 async function withTempDirectory(
@@ -228,7 +229,7 @@ test("contract lint rejects active packaged-source scope contradictions but leav
         required: true,
         environment: "local",
         profile: "deterministic",
-        command: 'pnpm build && test -z "$(git status --porcelain --untracked-files=all -- dist)"',
+        command: packagedDistCheckCommand("pnpm build"),
       }],
     }));
 
