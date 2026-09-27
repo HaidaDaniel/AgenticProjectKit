@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Tasks 0175 and 0176 are complete: packaged-source verification is in place, and the remaining public-readiness contracts now have bounded scopes and a dependency-aware sequence. The next work is Tasks 0158 -> 0163 -> 0168. Task 0170 follows those prerequisites but remains blocked on the operator's private-reporting route; Task 0173 continues to require it.
+Tasks 0175 and 0176 are complete. Task 0158 is in progress to create the documentation home, followed by Tasks 0163 and 0168. Task 0170 follows those prerequisites but remains blocked on the operator's private-reporting route; Task 0173 continues to require it.
 
 ## Known blockers
 
