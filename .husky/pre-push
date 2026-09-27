@@ -1,3 +1,20 @@
-pnpm quality
-pnpm test:coverage
-pnpm build
+set -eu
+
+initial_status="$(git status --porcelain --untracked-files=all)"
+
+pnpm release:check
+node dist/cli/index.js lint --json
+
+git diff --check
+
+if [ -n "$(git status --porcelain --untracked-files=all --ignored=matching -- dist)" ]; then
+  echo "pre-push failed: committed dist/ is stale or the build left unexpected dist output"
+  git status --porcelain --untracked-files=all --ignored=matching -- dist
+  exit 1
+fi
+
+if [ -z "$initial_status" ] && [ -n "$(git status --short --untracked-files=all)" ]; then
+  echo "pre-push failed: quality checks produced tracked or untracked working-tree drift"
+  git status --short --untracked-files=all
+  exit 1
+fi

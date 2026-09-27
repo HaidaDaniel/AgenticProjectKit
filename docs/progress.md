@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Tasks 0175, 0176, 0158, 0163, and 0168 are complete. Task 0170 remains blocked on the operator's private-reporting route; Task 0173 continues to require it.
+Task 0177 is active to correct the current hosted Quality coverage failure and strengthen local pre-push checks. Tasks 0175, 0176, 0158, 0163, and 0168 are complete. Task 0170 remains blocked on the operator's private-reporting route; Task 0173 continues to require it.
 
 ## Known blockers
 
