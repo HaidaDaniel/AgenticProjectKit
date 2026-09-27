@@ -12,7 +12,7 @@ APK currently supports:
 - auditing repository workflow readiness and detecting declared quality capabilities without running the adopted repository's commands;
 - managing task dependencies, ownership, risk, execution profiles, routing, assurance, candidate-bound verification and evidence, independent review, completion gates, provenance, semantic attention, and safe Git worktree lifecycle.
 
-The public CLI and lifecycle are documented in the [architecture](architecture.md), [task system](task-system.md), and [resource-aware execution guide](execution-profiles.md). The latest validated installable release is [v0.4.7](releases/v0.4.7.md); the separate [release validation record](delivery/workflow-v0.4.7-self-dogfood.md) identifies its exact candidate and downstream checks.
+The public CLI and lifecycle are documented in the [architecture](architecture.md), [task system](task-system.md), and [resource-aware execution guide](execution-profiles.md). The latest validated installable release is [v0.4.7](releases/v0.4.7.md); the current package version may be a newer pre-tag candidate. The separate [release validation record](delivery/workflow-v0.4.7-self-dogfood.md) identifies the validated release's exact candidate and downstream checks.
 
 ## Current non-goals
 
@@ -24,9 +24,9 @@ The public CLI and lifecycle are documented in the [architecture](architecture.m
 
 ## Next milestone
 
-Public readiness is the current milestone, tracked in the [roadmap](roadmap.md#public-readiness-current-work). Tasks 0151-0172 cover product truth, documentation, CLI consistency, contribution readiness, and examples; Task 0173 performs final validation against the exact release candidate after its prerequisites pass. These are planned work items, not claims that every listed improvement is already shipped.
+Public readiness is the current milestone, tracked in the [roadmap](roadmap.md#public-readiness-current-work). Tasks 0151-0172 cover product truth, documentation, CLI consistency, contribution readiness, and examples. Corrective Tasks 0178 and 0179 must pass before Task 0173 performs final validation against the exact release candidate and its other prerequisites. These are planned work items, not claims that every listed improvement is already shipped.
 
-Tasks 0149 and 0150 remain deferred identity work and are not prerequisites for this milestone. Task 0170 remains blocked pending an operator-confirmed private security-reporting route. The roadmap is the source for current task ordering and status.
+Tasks 0149 and 0150 remain deferred identity work and are not prerequisites for this milestone. Task 0170 remains blocked pending an operator-confirmed private security-reporting route. Corrective Tasks 0178 and 0179 precede Task 0173; the roadmap is the source for current task ordering and status.
 
 ## Historical scope
 

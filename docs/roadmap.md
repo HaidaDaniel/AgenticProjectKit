@@ -18,11 +18,11 @@ Tasks 0082-0088 are complete and included in the [v0.4.0 release](releases/v0.4.
 
 ## Current state
 
-AgenticProjectKit remains the product identity. The latest validated installable release is v0.4.7; public-readiness documentation and follow-up work on `main` do not change that release record. The next release version and date have not been decided.
+AgenticProjectKit remains the product identity. The latest validated installable release is v0.4.7; a newer package version may be a pre-tag candidate and does not change that release record. The next release version and date have not been decided.
 
 ## Public Readiness (current work)
 
-Public readiness is the one current planned milestone. Tasks 0145-0148 are already shipped as the v0.4.7 correctness foundation. Product-truth tasks 0151-0157 are complete; remaining documentation checks and the final release gate are tracked in the task rows below.
+Public readiness is the one current planned milestone. Tasks 0145-0148 are already shipped as the v0.4.7 correctness foundation. Product-truth tasks 0151-0157 are complete. Corrective Task 0178 separates a pre-tag package candidate from the last validated release; Task 0179 will close the hosted-CI completion-gate gap. Task 0173 runs only after those corrections and its existing prerequisites pass.
 
 ### Task state rows
 
@@ -52,9 +52,10 @@ Each row repeats its contract's lifecycle state so readers can compare the roadm
 | Acquisition and examples | 0166 | done | [0166](../.tasks/0166-simplify-first-run-acquisition-while-keeping-exact-pins.md) |
 | Acquisition and examples | 0172 | done | [0172](../.tasks/0172-add-runnable-greenfield-brownfield-and-local-first-showcases.md) |
 | Documentation consistency and release gate | 0168 | done | [0168](../.tasks/0168-add-deterministic-documentation-consistency-checks.md) |
+| Documentation consistency and release gate | 0178 | doing | [0178](../.tasks/0178-separate-release-candidate-version-from-latest-validated-release.md) |
 | Documentation consistency and release gate | 0173 | todo | [0173](../.tasks/0173-validate-the-next-public-readiness-release.md) |
 
-Task contracts carry the exact prerequisite graph; use `apk task deps <task-id>` to inspect it. In particular, the documentation home and final release gate wait for their declared guide, CLI, contribution, and consistency prerequisites. Task 0173 validates an exact frozen candidate only after its dependencies pass; it does not assign a version or date in advance.
+Task contracts carry the exact prerequisite graph; use `apk task deps <task-id>` to inspect it. In particular, Task 0173 depends on 0178 as well as its existing guide, CLI, contribution, consistency, and security prerequisites; Task 0179 will be added after 0178 completes. Task 0173 validates an exact frozen candidate only after its dependencies pass; it does not assign a version or date in advance. Its PRE-TAG state may have `packageVersion` ahead of `validatedReleaseVersion`; promotion follows successful post-tag validation in a separate change on `main`.
 
 ## Deep backlog / deferred product identity
 
@@ -66,7 +67,7 @@ The external-runtime dogfood recorded by Task 0097 is deferred until the APK bac
 
 Task 0170 cannot be completed until the operator confirms a usable private vulnerability-reporting route. The task contract remains blocked while that external decision is missing.
 
-Task 0173 depends on Task 0170, so the final release gate cannot pass until this prerequisite is unblocked and completed.
+Task 0173 still depends on Task 0170, so the final release gate cannot pass until the operator confirms a usable private reporting route and Task 0170 is completed. The new release semantics and hosted-CI policy corrections are separate prerequisites.
 
 ## Excluded from current scope
 

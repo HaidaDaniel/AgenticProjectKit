@@ -21,12 +21,11 @@ async function write(root, path, content) {
   await writeFile(absolute, content);
 }
 
-async function fixture(t, taskRows = [{ id: nextTaskId(), state: "done" }]) {
+async function fixture(t, taskRows = [{ id: nextTaskId(), state: "done" }], { version = "0.4.7", validatedVersion = version } = {}) {
   const root = await mkdtemp(join(tmpdir(), "apk-doc-check-"));
   t.after(() => rm(root, { recursive: true, force: true }));
 
-  const version = "3.4.5";
-  const install = `pnpm add -D agentic-project-kit@git+https://example.invalid/apk.git#v${version}`;
+  const install = `pnpm add -D agentic-project-kit@git+https://example.invalid/apk.git#v${validatedVersion}`;
   const roadmapRows = taskRows.map(({ id, state }) => {
     const filename = `${id}-sample.md`;
     return `| Readiness | ${id} | ${state} | [${id}](../.tasks/${filename}) |`;
@@ -44,7 +43,7 @@ async function fixture(t, taskRows = [{ id: nextTaskId(), state: "done" }]) {
     "",
     "Install the validated release.",
     "",
-    `The current validated installable release is [v${version}](docs/releases/v${version}.md).`,
+    `The current validated installable release is [v${validatedVersion}](docs/releases/v${validatedVersion}.md).`,
     "",
     "```bash",
     install,
@@ -54,11 +53,12 @@ async function fixture(t, taskRows = [{ id: nextTaskId(), state: "done" }]) {
     "",
     "## Install APK in another repository",
   ].join("\n"));
-  await write(root, "docs/index.md", `# Documentation\n\n[Latest Release: v${version}](releases/v${version}.md)\n`);
+  await write(root, "CHANGELOG.md", `# Changelog\n\n[v${validatedVersion}](docs/releases/v${validatedVersion}.md) is the latest validated installable release.\n`);
+  await write(root, "docs/index.md", `# Documentation\n\n[Latest Release: v${validatedVersion}](releases/v${validatedVersion}.md)\n`);
   await write(root, "docs/roadmap.md", [
     "# Roadmap",
     "",
-    ` [v${version}](releases/v${version}.md) is the latest validated installable release.`,
+    ` [v${validatedVersion}](releases/v${validatedVersion}.md) is the latest validated installable release.`,
     "",
     "### Task state rows",
     "",
@@ -66,26 +66,32 @@ async function fixture(t, taskRows = [{ id: nextTaskId(), state: "done" }]) {
     "| --- | --- | --- | --- |",
     ...roadmapRows,
   ].join("\n"));
-  await write(root, "docs/progress.md", "# Progress\n");
+  await write(root, "docs/progress.md", `# Progress\n\nThe latest validated, installable release is [v${validatedVersion}](releases/v${validatedVersion}.md).\n`);
+  await write(root, "docs/scope.md", `# Scope\n\nThe latest validated installable release is [v${validatedVersion}](releases/v${validatedVersion}.md).\n`);
   await write(root, "docs/product/maturity-and-compatibility.md", [
     "# Maturity",
     "",
-    `The latest validated, installable release at this policy snapshot is \`v${version}\`.`,
+    `The latest validated, installable release at this policy snapshot is \`v${validatedVersion}\`.`,
+    "",
+    `| Package release | \`v${validatedVersion}\` is the latest validated Git-tag release. |`,
     "",
     "[Install guidance](../../README.md#install-apk-in-another-repository)",
   ].join("\n"));
   await write(root, "docs/releases/index.md", [
-    `The current package version is \`${version}\`, matching the latest validated tagged release`,
-    "[`v" + version + "`](https://example.invalid/apk/tree/v" + version + ").",
+    `<!-- APK_VALIDATED_RELEASE: v${validatedVersion} -->`,
+    "",
+    `The current package/candidate version is \`${version}\`.`,
+    `The latest validated tagged release is [v${validatedVersion}](v${validatedVersion}.md).`,
     "",
     "## Versioned release records",
     "",
     "| Tag | Note |",
     "| --- | --- |",
     "| `v0.1.0` | [historical note](v0.1.0.md) |",
-    `| \`v${version}\` | [v${version} release note](v${version}.md) |`,
+    `| \`v${validatedVersion}\` | [v${validatedVersion} release note](v${validatedVersion}.md) |`,
   ].join("\n"));
-  await write(root, `docs/releases/v${version}.md`, `# Agentic Project Kit v${version}\n`);
+  await write(root, `docs/releases/v${validatedVersion}.md`, `# Agentic Project Kit v${validatedVersion}\n`);
+  if (version !== validatedVersion) await write(root, `docs/releases/v${version}.md`, `# Agentic Project Kit v${version}\n\nCandidate notes before tag publication.\n`);
   await write(root, "docs/releases/v0.1.0.md", "# Obsolete release data\n\n[Unresolved historical link](missing.md#old-anchor)\n");
   await write(root, "docs/cli-commands.md", [
     "# CLI Commands",
@@ -102,10 +108,10 @@ async function fixture(t, taskRows = [{ id: nextTaskId(), state: "done" }]) {
     await write(root, `.tasks/${id}-sample.md`, `# Task ${id} - Sample\n\nState: ${state}\nOwner: none\n`);
   }
 
-  return { root, version, install, taskRows };
+  return { root, version, validatedVersion, install, taskRows };
 }
 
-test("current docs pass with reordered task and release rows; historical release content is exempt", async (t) => {
+test("released state passes with reordered rows; historical release content is exempt", async (t) => {
   const first = { id: nextTaskId(), state: "done" };
   let secondId = nextTaskId();
   while (secondId === first.id) secondId = nextTaskId();
@@ -122,23 +128,90 @@ test("current docs pass with reordered task and release rows; historical release
   assert.deepEqual(issues, []);
 });
 
-test("release version drift names the stale source", async (t) => {
+test("the release index package/candidate identity must match package metadata", async (t) => {
   const repo = await fixture(t);
   const packageData = JSON.parse(await readFile(join(repo.root, "package.json"), "utf8"));
-  packageData.version = "3.4.6";
+  packageData.version = "0.5.0";
   await write(repo.root, "package.json", `${JSON.stringify(packageData, null, 2)}\n`);
 
   const issues = await checkDocumentationConsistency(repo.root, cliReference);
-  assert.ok(issues.some((issue) => issue.startsWith("README.md:") && issue.includes("package.json version 3.4.6")));
-  assert.ok(issues.some((issue) => issue.startsWith("docs/releases/index.md:") && issue.includes("package.json version 3.4.6")));
+  assert.ok(issues.some((issue) => issue.startsWith("docs/releases/index.md:") && issue.includes("current package/candidate version must match package.json version v0.5.0")));
+  assert.ok(issues.some((issue) => issue.includes("package candidate release note does not exist: docs/releases/v0.5.0.md")));
 });
 
-test("the README quickstart install must match package metadata", async (t) => {
-  const repo = await fixture(t);
-  await write(repo.root, "README.md", (await readFile(join(repo.root, "README.md"), "utf8")).replace(repo.install, repo.install.replace("v3.4.5", "v3.4.4")));
+test("a pre-tag candidate may advance while stable docs stay on the last validated release", async (t) => {
+  const repo = await fixture(t, undefined, { version: "0.5.0", validatedVersion: "0.4.7" });
+
+  const issues = await checkDocumentationConsistency(repo.root, cliReference);
+  assert.deepEqual(issues, []);
+});
+
+test("a missing candidate note fails with an actionable diagnostic", async (t) => {
+  const repo = await fixture(t, undefined, { version: "0.5.0", validatedVersion: "0.4.7" });
+  await rm(join(repo.root, "docs/releases/v0.5.0.md"));
+
+  const issues = await checkDocumentationConsistency(repo.root, cliReference);
+  assert.ok(issues.some((issue) => issue.includes("package candidate release note does not exist: docs/releases/v0.5.0.md")));
+});
+
+test("a candidate note must use the package candidate heading", async (t) => {
+  const repo = await fixture(t, undefined, { version: "0.5.0", validatedVersion: "0.4.7" });
+  await write(repo.root, "docs/releases/v0.5.0.md", "# Agentic Project Kit v0.4.7\n");
+
+  const issues = await checkDocumentationConsistency(repo.root, cliReference);
+  assert.ok(issues.some((issue) => issue.includes("candidate release note heading must name v0.5.0")));
+});
+
+test("the README quickstart install remains pinned to the validated release", async (t) => {
+  const repo = await fixture(t, undefined, { version: "0.5.0", validatedVersion: "0.4.7" });
+  await write(repo.root, "README.md", (await readFile(join(repo.root, "README.md"), "utf8")).replace(repo.install, repo.install.replace("v0.4.7", "v0.4.6")));
 
   const issues = await checkDocumentationConsistency(repo.root, cliReference);
   assert.ok(issues.some((issue) => issue.startsWith("README.md:") && issue.includes("quickstart install command")));
+});
+
+test("a package candidate below the validated release fails", async (t) => {
+  const repo = await fixture(t, undefined, { version: "0.4.7", validatedVersion: "0.5.0" });
+
+  const issues = await checkDocumentationConsistency(repo.root, cliReference);
+  assert.ok(issues.some((issue) => issue.includes("package version 0.4.7 is below the latest validated release v0.5.0")));
+});
+
+test("the validated release sentinel rejects malformed and duplicate values", async (t) => {
+  const malformed = await fixture(t);
+  const malformedIndex = await readFile(join(malformed.root, "docs/releases/index.md"), "utf8");
+  await write(malformed.root, "docs/releases/index.md", malformedIndex.replace("<!-- APK_VALIDATED_RELEASE: v0.4.7 -->", "<!-- APK_VALIDATED_RELEASE: v00.4.7 -->"));
+  let issues = await checkDocumentationConsistency(malformed.root, cliReference);
+  assert.ok(issues.some((issue) => issue.includes("validated-release sentinel version must be a numeric major.minor.patch")));
+
+  const duplicate = await fixture(t);
+  const duplicateIndex = await readFile(join(duplicate.root, "docs/releases/index.md"), "utf8");
+  await write(duplicate.root, "docs/releases/index.md", `${duplicateIndex}\n<!-- APK_VALIDATED_RELEASE: v0.4.7 -->\n`);
+  issues = await checkDocumentationConsistency(duplicate.root, cliReference);
+  assert.ok(issues.some((issue) => issue.includes("validated-release sentinel must appear exactly once; found 2")));
+
+  const missing = await fixture(t);
+  const missingIndex = await readFile(join(missing.root, "docs/releases/index.md"), "utf8");
+  await write(missing.root, "docs/releases/index.md", missingIndex.replace("<!-- APK_VALIDATED_RELEASE: v0.4.7 -->\n", ""));
+  issues = await checkDocumentationConsistency(missing.root, cliReference);
+  assert.ok(issues.some((issue) => issue.includes("validated-release sentinel must appear exactly once; missing")));
+});
+
+test("a candidate note cannot claim its unpublished version as the latest validated tag", async (t) => {
+  const repo = await fixture(t, undefined, { version: "0.5.0", validatedVersion: "0.4.7" });
+  const notePath = join(repo.root, "docs/releases/v0.5.0.md");
+  const note = await readFile(notePath, "utf8");
+  await write(repo.root, "docs/releases/v0.5.0.md", `${note}\nThe latest validated tagged release = v0.5.0.\n`);
+
+  const issues = await checkDocumentationConsistency(repo.root, cliReference);
+  assert.ok(issues.some((issue) => issue.includes("candidate note claims latest validated tagged release v0.5.0; canonical validated release is v0.4.7")));
+});
+
+test("a post-publication promotion with matching package and validated versions passes", async (t) => {
+  const repo = await fixture(t, undefined, { version: "0.5.0", validatedVersion: "0.5.0" });
+
+  const issues = await checkDocumentationConsistency(repo.root, cliReference);
+  assert.deepEqual(issues, []);
 });
 
 test("a missing README anchor referenced by the maturity policy is reported", async (t) => {

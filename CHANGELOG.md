@@ -7,8 +7,10 @@ source, and separate validation record without copying their details here.
 ## Current validated release
 
 [v0.4.7](docs/releases/v0.4.7.md) is the latest validated installable release. The
-package version is `0.4.7`; its tag and post-tag checks are recorded in the [release
-index](docs/releases/index.md).
+release index records that validated version separately from the current package/candidate
+version. During pre-tag work, the package may advance while this entry continues to identify
+the previous validated release. See the [release index](docs/releases/index.md) for the
+canonical version marker and promotion chronology.
 
 ## Unreleased work
 

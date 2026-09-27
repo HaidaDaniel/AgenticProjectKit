@@ -4,9 +4,11 @@ import { fileURLToPath } from "node:url";
 
 const LINK_CHECK_FILES = [
   "README.md",
+  "CHANGELOG.md",
   "docs/index.md",
   "docs/roadmap.md",
   "docs/progress.md",
+  "docs/scope.md",
   "docs/cli-commands.md",
   "docs/releases/index.md",
   "docs/product/maturity-and-compatibility.md",
@@ -42,15 +44,51 @@ async function exists(path) {
   }
 }
 
-function packageVersion(value, file, issues) {
-  if (typeof value?.version !== "string" || !/^\d+\.\d+\.\d+$/.test(value.version)) {
-    report(issues, file, 1, "package.json must declare a numeric major.minor.patch version");
-    return "";
+const NUMERIC_SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+
+function numericVersion(value, file, issues, description) {
+  const match = typeof value === "string" ? value.match(NUMERIC_SEMVER) : null;
+  if (!match) {
+    report(issues, file, 1, `${description} must be a numeric major.minor.patch version without leading zeroes`);
+    return null;
   }
-  return value.version;
+  return { text: value, parts: match.slice(1).map(BigInt) };
 }
 
-function checkVersionClaim({ file, text, pattern, expected, issues, description }) {
+function packageVersion(value, file, issues) {
+  return numericVersion(value?.version, file, issues, "package.json version");
+}
+
+function compareVersions(left, right) {
+  for (let index = 0; index < left.parts.length; index += 1) {
+    if (left.parts[index] !== right.parts[index]) return left.parts[index] < right.parts[index] ? -1 : 1;
+  }
+  return 0;
+}
+
+function validatedReleaseVersion(markdown, issues) {
+  const matches = [...markdown.matchAll(/APK_VALIDATED_RELEASE/g)];
+  if (matches.length !== 1) {
+    const line = matches.length > 0 ? lineNumber(markdown, matches[0].index) : 1;
+    const reason = matches.length === 0 ? "missing" : `found ${matches.length}`;
+    report(issues, "docs/releases/index.md", line, `validated-release sentinel must appear exactly once; ${reason}`);
+    return "";
+  }
+
+  const lineStart = markdown.lastIndexOf("\n", matches[0].index - 1) + 1;
+  const lineEnd = markdown.indexOf("\n", matches[0].index);
+  const line = markdown.slice(lineStart, lineEnd === -1 ? markdown.length : lineEnd).trim();
+  const marker = line.match(/^<!-- APK_VALIDATED_RELEASE: (v.+) -->$/);
+  if (!marker) {
+    report(issues, "docs/releases/index.md", lineNumber(markdown, matches[0].index), "validated-release sentinel is malformed; use `<!-- APK_VALIDATED_RELEASE: vX.Y.Z -->`");
+    return "";
+  }
+
+  const rawVersion = marker[1].slice(1);
+  return numericVersion(rawVersion, "docs/releases/index.md", issues, "validated-release sentinel version");
+}
+
+function checkVersionClaim({ file, text, pattern, expected, issues, description, expectedLabel = "validated release" }) {
   const globalPattern = new RegExp(pattern.source, `${pattern.flags}g`);
   const matches = [...text.matchAll(globalPattern)];
   if (matches.length === 0) {
@@ -66,13 +104,36 @@ function checkVersionClaim({ file, text, pattern, expected, issues, description 
     const claimedVersion = match[1];
     const linkedVersion = match[2];
     if (claimedVersion !== expected || (linkedVersion && linkedVersion !== expected)) {
-      report(issues, file, line, `${description} must match package.json version ${expected}`);
+      report(issues, file, line, `${description} must match ${expectedLabel} v${expected}`);
     }
   }
 }
 
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function readReleaseNote(root, version, label, issues) {
+  const path = `docs/releases/v${version}.md`;
+  if (!(await exists(resolve(root, path)))) {
+    report(issues, "docs/releases/index.md", 1, `${label} release note does not exist: ${path}`);
+    return "";
+  }
+
+  const text = await readText(root, path, issues);
+  if (!new RegExp(`^# Agentic Project Kit v${escapeRegExp(version)}\\s*$`, "m").test(text)) {
+    report(issues, path, 1, `${label} release note heading must name v${version}`);
+  }
+  return text;
+}
+
+function checkPrematureValidatedClaim(note, candidateVersion, validatedVersion, issues) {
+  const pattern = /latest validated tagged release\s*(?:is|:|=)\s*`?v?(\d+\.\d+\.\d+)`?/gi;
+  for (const match of note.matchAll(pattern)) {
+    if (match[1] !== validatedVersion) {
+      report(issues, `docs/releases/v${candidateVersion}.md`, lineNumber(note, match.index), `candidate note claims latest validated tagged release v${match[1]}; canonical validated release is v${validatedVersion}`);
+    }
+  }
 }
 
 function fencedCodeLines(markdown) {
@@ -370,7 +431,8 @@ export async function checkDocumentationConsistency(root, expectedCliReference) 
     return issues;
   }
 
-  const version = packageVersion(packageData, "package.json", issues);
+  const packageRelease = packageVersion(packageData, "package.json", issues);
+  const version = packageRelease?.text ?? "";
   const qualityScript = packageData.scripts?.quality;
   if (typeof qualityScript !== "string" || !qualityScript.includes("node scripts/check-docs-consistency.mjs")) {
     report(issues, "package.json", 1, "the quality script must run node scripts/check-docs-consistency.mjs");
@@ -391,11 +453,20 @@ export async function checkDocumentationConsistency(root, expectedCliReference) 
   }
 
   const readme = documents.get("README.md") ?? "";
+  const changelog = documents.get("CHANGELOG.md") ?? "";
   const index = documents.get("docs/index.md") ?? "";
   const roadmap = documents.get("docs/roadmap.md") ?? "";
+  const progress = documents.get("docs/progress.md") ?? "";
+  const scope = documents.get("docs/scope.md") ?? "";
   const releaseIndex = documents.get("docs/releases/index.md") ?? "";
   const maturity = documents.get("docs/product/maturity-and-compatibility.md") ?? "";
   const cliReference = documents.get("docs/cli-commands.md") ?? "";
+  const validatedRelease = validatedReleaseVersion(releaseIndex, issues);
+  const validatedVersion = validatedRelease?.text ?? "";
+
+  if (packageRelease && validatedRelease && compareVersions(packageRelease, validatedRelease) < 0) {
+    report(issues, "package.json", 1, `package version ${version} is below the latest validated release v${validatedVersion}`);
+  }
 
   const versionClaims = [
     {
@@ -405,10 +476,22 @@ export async function checkDocumentationConsistency(root, expectedCliReference) 
       description: "validated release and note link",
     },
     {
+      file: "CHANGELOG.md",
+      text: changelog,
+      pattern: /\[v(\d+\.\d+\.\d+)\]\(docs\/releases\/v(\d+\.\d+\.\d+)\.md\) is the latest validated installable release/,
+      description: "changelog latest validated release and note link",
+    },
+    {
       file: "docs/product/maturity-and-compatibility.md",
       text: maturity,
       pattern: /latest validated, installable release at this policy snapshot is `v(\d+\.\d+\.\d+)`/i,
       description: "latest validated release",
+    },
+    {
+      file: "docs/product/maturity-and-compatibility.md",
+      text: maturity,
+      pattern: /\| Package release \| `v(\d+\.\d+\.\d+)` is the latest validated Git-tag release/,
+      description: "maturity-policy validated Git-tag release",
     },
     {
       file: "docs/roadmap.md",
@@ -417,47 +500,71 @@ export async function checkDocumentationConsistency(root, expectedCliReference) 
       description: "latest roadmap release and note link",
     },
     {
+      file: "docs/progress.md",
+      text: progress,
+      pattern: /The latest validated, installable release is \[v(\d+\.\d+\.\d+)\]\(releases\/v(\d+\.\d+\.\d+)\.md\)/,
+      description: "progress latest validated release and note link",
+    },
+    {
+      file: "docs/scope.md",
+      text: scope,
+      pattern: /The latest validated installable release is \[v(\d+\.\d+\.\d+)\]\(releases\/v(\d+\.\d+\.\d+)\.md\)/,
+      description: "scope latest validated release and note link",
+    },
+    {
       file: "docs/index.md",
       text: index,
       pattern: /\[Latest Release: v(\d+\.\d+\.\d+)\]\(releases\/v(\d+\.\d+\.\d+)\.md\)/,
       description: "documentation-home latest release and note link",
     },
+    {
+      file: "docs/releases/index.md",
+      text: releaseIndex,
+      pattern: /The latest validated tagged release is \[v(\d+\.\d+\.\d+)\]\(v(\d+\.\d+\.\d+)\.md\)/,
+      description: "release-index validated tag and release note link",
+    },
   ];
-  for (const claim of versionClaims) checkVersionClaim({ ...claim, expected: version, issues });
+  if (validatedVersion) {
+    for (const claim of versionClaims) checkVersionClaim({ ...claim, expected: validatedVersion, issues });
 
-  const indexVersion = releaseIndex.match(/The current package version is `(\d+\.\d+\.\d+)`, matching the latest validated tagged release\s+\[`v(\d+\.\d+\.\d+)`\]/s);
-  if (!indexVersion) {
-    report(issues, "docs/releases/index.md", 1, "could not find the structured current package version and validated tag");
-  } else {
-    if (indexVersion[1] !== version || indexVersion[2] !== version) {
-      report(issues, "docs/releases/index.md", lineNumber(releaseIndex, indexVersion.index), `current package version and validated tag must match package.json version ${version}`);
-    }
-    const tagRows = releaseIndex.split(/\r?\n/).filter((line) => line.startsWith(`| \`v${version}\` |`));
+    const tagRows = releaseIndex.split(/\r?\n/).filter((line) => line.startsWith(`| \`v${validatedVersion}\` |`));
     if (tagRows.length === 0) {
-      report(issues, "docs/releases/index.md", 1, `versioned release table is missing the package tag v${version}`);
-    } else if (!tagRows.some((line) => line.includes(`[v${version} release note](v${version}.md)`))) {
-      report(issues, "docs/releases/index.md", lineNumber(releaseIndex, releaseIndex.indexOf(tagRows[0])), `v${version} row must link its matching versioned release note`);
+      report(issues, "docs/releases/index.md", 1, `versioned release table is missing validated tag v${validatedVersion}`);
+    } else if (tagRows.length > 1) {
+      report(issues, "docs/releases/index.md", lineNumber(releaseIndex, releaseIndex.indexOf(tagRows[1])), `validated tag v${validatedVersion} appears more than once in the release table`);
+    } else if (!tagRows[0].includes(`[v${validatedVersion} release note](v${validatedVersion}.md)`)) {
+      report(issues, "docs/releases/index.md", lineNumber(releaseIndex, releaseIndex.indexOf(tagRows[0])), `v${validatedVersion} row must link its matching versioned release note`);
     }
+
+    await readReleaseNote(root, validatedVersion, "validated", issues);
   }
 
+  const packageClaim = /The current package\/candidate version is `(\d+\.\d+\.\d+)`\./;
+  let packageNote = "";
   if (version) {
-    const releaseNote = `docs/releases/v${version}.md`;
-    const releaseNotePath = resolve(root, releaseNote);
-    if (!(await exists(releaseNotePath))) {
-      report(issues, "docs/releases/index.md", 1, `current release note does not exist: ${releaseNote}`);
-    } else {
-      const currentNote = await readText(root, releaseNote, issues);
-      if (!new RegExp(`^# Agentic Project Kit v${escapeRegExp(version)}\\s*$`, "m").test(currentNote)) {
-        report(issues, releaseNote, 1, `current release note heading must name v${version}`);
-      }
-    }
+    checkVersionClaim({
+      file: "docs/releases/index.md",
+      text: releaseIndex,
+      pattern: packageClaim,
+      expected: version,
+      expectedLabel: "package.json version",
+      description: "current package/candidate version",
+      issues,
+    });
+    packageNote = await readReleaseNote(root, version, "package candidate", issues);
+  }
 
+  if (version && validatedVersion && packageRelease && validatedRelease && compareVersions(packageRelease, validatedRelease) > 0) {
+    checkPrematureValidatedClaim(packageNote, version, validatedVersion, issues);
+  }
+
+  if (validatedVersion) {
     const repositoryUrl = typeof packageData.repository === "string" ? packageData.repository : packageData.repository?.url;
     if (typeof packageData.name !== "string" || typeof repositoryUrl !== "string" || !repositoryUrl) {
-      report(issues, "package.json", 1, "package name and repository URL are required to derive the canonical install command");
+      report(issues, "package.json", 1, "package name and repository URL are required to derive the canonical stable install command");
     } else {
       const gitUrl = repositoryUrl.startsWith("git+") ? repositoryUrl : `git+${repositoryUrl}`;
-      const expectedInstall = `pnpm add -D ${packageData.name}@${gitUrl}#v${version}`;
+      const expectedInstall = `pnpm add -D ${packageData.name}@${gitUrl}#v${validatedVersion}`;
       const installLines = [...readme.matchAll(/^pnpm add -D [^\r\n]+$/gm)];
       if (installLines.length !== 1 || installLines[0]?.[0] !== expectedInstall) {
         const line = installLines[0] ? lineNumber(readme, installLines[0].index) : 1;

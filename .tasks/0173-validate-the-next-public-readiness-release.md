@@ -8,7 +8,7 @@ Type: release
 Scope: release,public-readiness,distribution,verification
 Risk: high
 Parallel: false
-Depends on: 0145,0146,0147,0148,0151,0152,0153,0154,0155,0156,0157,0158,0159,0160,0161,0162,0163,0164,0165,0166,0167,0168,0169,0170,0171,0172,0175
+Depends on: 0145,0146,0147,0148,0151,0152,0153,0154,0155,0156,0157,0158,0159,0160,0161,0162,0163,0164,0165,0166,0167,0168,0169,0170,0171,0172,0175,0178
 Tags: release
 
 ## Goal
@@ -30,6 +30,7 @@ Validate the next public-readiness release
 - .tasks/0146-make-benchmark-evidence-a-satisfiable-first-class-verification-contract.md
 - .tasks/0147-make-manual-verification-artifacts-satisfiable-and-internally-coherent.md
 - .tasks/0148-resolve-active-task-baseline-attribution-for-legitimate-intervening-commits.md
+- .tasks/0178-separate-release-candidate-version-from-latest-validated-release.md
 
 ## Files allowed to edit
 
@@ -51,20 +52,23 @@ Validate the next public-readiness release
 
 ## Steps
 
-1. Resolve the free next SemVer target and confirm existing tags are immutable; never move or rewrite a published tag.
-2. Freeze the exact candidate SHA/tree from a clean checkout and observe every declared PRE-TAG criterion against that exact SHA, including quality/coverage/build/release checks, committed dist currency, APK lint/sync/doctor/audit, package/bin/asset payload, declared compatibility or downstream smoke, and exact-SHA hosted CI.
-3. Create the annotated tag only after all PRE-TAG criteria pass, pointing to the validated candidate SHA, and verify the peeled commit equals that SHA.
-4. Run POST-TAG checks separately: actual immutable-tag cold install, tag-peel verification, released package/bin identity, downstream install from the tag, and post-release self-adoption. Treat the release-note file inside the tag as pre-tag-only and store post-tag observations in a separate artifact.
-5. Record post-tag evidence in a post-release artifact, never backfilled into the release-note file committed inside the tag, and do not mutate the candidate or tag after evidence is captured.
+1. Resolve the free next SemVer target and confirm existing tags are immutable; never move or rewrite a published tag. Treat `packageVersion` as the package/candidate and `validatedReleaseVersion` as the last published release that passed post-tag validation.
+2. Prepare the candidate release note and any required current documentation truthfully. PRE-TAG, `packageVersion` may be newer than `validatedReleaseVersion`; stable install guidance and latest-validated claims remain on the previous release, with no claim that the candidate tag is already published.
+3. Freeze the exact candidate SHA/tree from a clean checkout and observe every declared PRE-TAG criterion against that exact SHA, including quality/coverage/build/release checks, committed dist currency, APK lint/sync/doctor/audit, package/bin/asset payload, declared compatibility or downstream smoke, and exact-SHA hosted CI.
+4. Create the annotated tag only after all PRE-TAG criteria pass, pointing to the validated candidate SHA, and verify the peeled commit equals that SHA.
+5. Run POST-TAG checks separately: actual immutable-tag cold install, tag-peel verification, released package/bin identity, downstream install from the tag, and post-release self-adoption. Treat the release-note file inside the tag as pre-tag-only and store post-tag observations in a separate artifact.
+6. After successful POST-TAG validation, promote `validatedReleaseVersion` to the published version on `main`. If changing the sentinel/stable docs inside this release task would stale or invalidate candidate-bound evidence/gate proof, create and execute a separate, bounded post-release bookkeeping task after publication. That task must not alter the tag or tagged candidate, and the repository must not remain indefinitely with package ahead of a release that already passed post-tag validation.
 
 ## Acceptance criteria
 
 - The next SemVer target is free and all existing tags remain untouched.
+- PRE-TAG documentation may show `packageVersion` ahead of `validatedReleaseVersion`, while stable install guidance and latest-validated claims continue to identify the prior published release.
 - Every criterion claimed as PRE-TAG evidence actually ran against the exact frozen candidate SHA from a clean checkout before tag creation, including exact-SHA hosted CI.
 - Package payload inspection confirms metadata, canonical and compatibility bins, license, templates, and portable assets are present and internally consistent.
 - The release is valid under the current AgenticProjectKit product identity and does not require or imply naming/rebrand work; Tasks 0149 and 0150 are not direct or transitive prerequisites.
 - The annotated tag peels to the validated candidate SHA and is never moved or rewritten afterward.
 - POST-TAG evidence (actual-tag cold install, tag peel, released package/bin identity, downstream install, self-adoption) is recorded separately after publication.
+- After successful POST-TAG validation, `validatedReleaseVersion` is promoted on `main` in a separate bookkeeping change if needed; the change is kept outside the immutable tagged candidate and its commit is recorded.
 - The release-note file committed inside the tag contains only pre-tag-knowable facts and is never backfilled with post-tag identity or results.
 - No candidate mutation occurs after final evidence; a changed candidate forces a new freeze, rerun, and CI.
 
@@ -77,12 +81,13 @@ Validate the next public-readiness release
 ## Invariants
 
 - Pre-tag and post-tag evidence are temporally distinct and never conflated.
+- Candidate package identity and last post-tag-validated release remain separate until promotion.
 - A published tag is immutable; the tagged artifact and recorded evidence refer to the same candidate tree.
 - Tagged release notes contain only facts knowable before tagging.
 
 ## Required evidence
 
-- Pre-tag criteria observed against the frozen candidate SHA, exact-SHA hosted CI, annotated tag peel to that SHA, and a distinct post-tag cold-install/released-consumer record.
+- Pre-tag criteria observed against the frozen candidate SHA, exact-SHA hosted CI, annotated tag peel to that SHA, a distinct post-tag cold-install/released-consumer record, and the post-tag validated-version promotion or its completed bounded follow-up task.
 
 ## Review questions
 

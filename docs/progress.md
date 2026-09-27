@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Tasks 0177, 0175, 0176, 0158, 0163, and 0168 are complete. Task 0170 remains blocked on the operator's private-reporting route; Task 0173 continues to require it.
+Tasks 0177, 0175, 0176, 0158, 0163, and 0168 are complete. Task 0178 is active. Task 0170 remains blocked on the operator's private-reporting route; Task 0173 waits on that route and the corrective Tasks 0178/0179.
 
 ## Known blockers
 
@@ -18,7 +18,9 @@ Tasks 0177, 0175, 0176, 0158, 0163, and 0168 are complete. Task 0170 remains blo
 
 ## Next milestone
 
-Task 0170 can proceed only when the operator confirms a private reporting route; then run Task 0173 against the exact release candidate. Tasks 0145-0148 are complete correctness prerequisites; optional naming/rebrand work remains separate.
+Complete Task 0178, then create and complete Task 0179. Task 0170 can proceed only when the operator confirms a private reporting route. Task 0173 runs after 0170, 0178, 0179, and its other prerequisites against an exact release candidate. Tasks 0145-0148 are complete correctness prerequisites; optional naming/rebrand work remains separate.
+
+Task 0178 was created after preflight confirmed HEAD `8b21762a1feccec11db1225fd7c723889a3f4a1b` and successful exact-HEAD hosted Quality run [36339811645](https://github.com/HaidaDaniel/AgenticProjectKit/actions/runs/36339811645). Local quality, coverage, and build passed at that baseline. Its failing candidate-state fixture showed the checker requiring current release claims, the release-index tag row, and the README install pin to advance with `package.json.version` from `0.4.7` to `0.5.0`, even while the validated release remained `0.4.7`.
 
 ## Recently completed
 
@@ -29,7 +31,7 @@ Task 0170 can proceed only when the operator confirms a private reporting route;
 - Task 0176 bounded the remaining public-readiness task scopes, aligned Task 0173 with Task 0175, and made the documentation evidence and Task 0170 handoff explicit ([task](../.tasks/0176-make-remaining-public-readiness-task-contracts-internally-satisfiable.md)). Candidate commit: `fc4873e`.
 - Task 0175 restored committed package parity and added a clean-build guard for packaged source and copied templates; its exact-SHA Quality run and fresh independent review passed ([task](../.tasks/0175-restore-committed-dist-currency-and-prevent-source-task-dist-divergence.md)). Candidate commit: `f95570f`.
 - Task 0172 added isolated, repeatable greenfield, brownfield, and local-first showcase workflows; all three smoke outputs passed on Node `22.22.1` and pnpm `10.28.1`, including brownfield preservation and offline-capable reruns ([examples](examples.md), [task](../.tasks/0172-add-runnable-greenfield-brownfield-and-local-first-showcases.md)). Candidate commit: `4ef89da`.
-- Task 0171 added a concise changelog entrypoint and a release index that links all 12 current local/remote tags, seven retained versioned notes, four post-tag workflow records, and the gated-workflow evidence; current package version and `v0.4.7` tag agree ([changelog](../CHANGELOG.md), [index](releases/index.md), [task](../.tasks/0171-establish-a-release-changelog-and-index-strategy.md)). Candidate commit: `f96b377`.
+- Task 0171 added a concise changelog entrypoint and a release index that links all 12 local/remote tags observed at the time, seven retained versioned notes, four post-tag workflow records, and the gated-workflow evidence. At that snapshot, package version and the `v0.4.7` tag agreed ([changelog](../CHANGELOG.md), [index](releases/index.md), [task](../.tasks/0171-establish-a-release-changelog-and-index-strategy.md)). Candidate commit: `f96b377`.
 - Task 0169 added a contributor quickstart, three GitHub issue forms, a concise pull-request template, and a bounded `good first issue` label convention ([guide](../CONTRIBUTING.md), [task](../.tasks/0169-add-contributor-docs-and-lightweight-github-contribution-ux.md)). A fresh clone at candidate `abef1a8` passed frozen install, source CLI help/lint, form parsing, and local-link checks. Candidate commits: `4673665`, `abef1a8`.
 - Task 0167 made one command registry drive CLI dispatch and help, generated the public command synopsis, and added tests for stale references and handler-help options ([CLI reference](cli-commands.md), [task](../.tasks/0167-keep-cli-reference-aligned-with-the-command-registry.md)). Candidate commits: `18f1002`, `05d4fec`.
 - Task 0159 documented the exact-pin install and one complete package-local task workflow, including generated-instruction inspection and the conditional review path ([guide](getting-started.md), [task](../.tasks/0159-write-a-canonical-getting-started-guide.md)). Candidate commit: `7bf395f`.

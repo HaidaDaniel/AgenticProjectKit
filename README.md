@@ -33,7 +33,7 @@ APK prepares and records the workflow around coding agents; it does not launch o
 
 ## Maturity and compatibility
 
-The current validated installable release is [v0.4.7](docs/releases/v0.4.7.md). The package declares Node.js `>=22.22.1`; release validation used Node.js `22.22.1`, pnpm `10.28.1`, and an Ubuntu runner. Other Node.js or pnpm versions and end-to-end macOS or Windows installs are unverified. A first Git-tag install requires Git and network access; offline use requires the release and dependencies to be cached.
+The current validated installable release is [v0.4.7](docs/releases/v0.4.7.md). A newer package version may be a pre-tag candidate; stable install guidance remains on the validated tag until post-tag validation finishes. The package declares Node.js `>=22.22.1`; release validation used Node.js `22.22.1`, pnpm `10.28.1`, and an Ubuntu runner. Other Node.js or pnpm versions and end-to-end macOS or Windows installs are unverified. A first Git-tag install requires Git and network access; offline use requires the release and dependencies to be cached.
 
 See the [maturity and compatibility policy](docs/product/maturity-and-compatibility.md) for the evidence and support limits.
 
