@@ -4,9 +4,9 @@ import { join } from "node:path";
 import type { ProjectTask, TaskVerificationCheck } from "./index.js";
 
 export const PACKAGED_DIST_CHECK_ID = "build-current";
-const DIST_STATUS_CHECK = 'test -z "$(git status --porcelain --untracked-files=all -- dist)"';
+const DIST_STATUS_CHECK = 'test -z "$(git status --porcelain --untracked-files=all --ignored=matching -- dist)"';
 export const PACKAGED_DIST_BUILD_COMMAND = "pnpm build";
-export const PACKAGED_DIST_CHECK_COMMAND = `${PACKAGED_DIST_BUILD_COMMAND} && ${DIST_STATUS_CHECK}`;
+export const PACKAGED_DIST_CHECK_COMMAND = packagedDistCheckCommand(PACKAGED_DIST_BUILD_COMMAND);
 
 export type SupportedPackageManager = "pnpm" | "npm" | "yarn" | "bun";
 
@@ -62,15 +62,16 @@ export function packagedDistBuildCommand(manager: SupportedPackageManager): stri
 }
 
 export function packagedDistCheckCommand(buildCommand: string): string {
-  return `${buildCommand} && ${DIST_STATUS_CHECK}`;
+  return `rm -rf dist && ${buildCommand} && ${DIST_STATUS_CHECK}`;
 }
 
-/** The repository packages compiled TypeScript and recursively copied Handlebars assets. */
+/** The repository packages compiled TypeScript and Handlebars assets copied from core/templates. */
 export function isPackagedInputPath(path: string): boolean {
   const normalized = normalizeRepoPath(path);
   if (!normalized.startsWith("src/")) return false;
   if (normalized.endsWith(".test.ts")) return false;
-  return normalized.endsWith(".ts") || normalized.endsWith(".hbs");
+  return normalized.endsWith(".ts")
+    || (normalized.startsWith("src/core/templates/") && normalized.endsWith(".hbs"));
 }
 
 /** Conservatively match task globs that may include a compiled source or copied asset. */
@@ -79,7 +80,15 @@ export function mayIncludePackagedSource(pattern: string): boolean {
   if (!normalized.startsWith("src/") || normalized.endsWith(".test.ts")) return false;
   const leaf = normalized.slice(normalized.lastIndexOf("/") + 1);
   const extension = leaf.match(/\.([^./*]+)$/)?.[1];
-  return extension === undefined || extension === "ts" || extension === "hbs";
+  if (extension === undefined || extension === "ts") return true;
+  if (extension !== "hbs") return false;
+  if (normalized.startsWith("src/core/templates/")) return true;
+  // Broad globs may cover the supported copy root even when the root is wildcarded.
+  return normalized.startsWith("src/**")
+    || normalized.startsWith("src/*/**")
+    || normalized.startsWith("src/*/templates/")
+    || normalized.startsWith("src/core/**")
+    || normalized.startsWith("src/core/*/");
 }
 
 async function packageManagerFromManifest(

@@ -52,13 +52,13 @@ jobs:
         run: pnpm test:coverage
 
       - name: Build package
-        run: pnpm build
+        run: rm -rf dist && pnpm build
 
       - name: Verify committed dist is current
         run: |
-          if [ -n "$(git status --porcelain --untracked-files=all -- dist)" ]; then
+          if [ -n "$(git status --porcelain --untracked-files=all --ignored=matching -- dist)" ]; then
             echo "::error::committed dist/ is stale or missing; run pnpm build and commit dist/"
-            git status --porcelain --untracked-files=all -- dist
+            git status --porcelain --untracked-files=all --ignored=matching -- dist
             exit 1
           fi
 
@@ -93,5 +93,10 @@ jobs:
           if [ -n "$(git status --short --untracked-files=all)" ]; then
             echo "::error::quality checks produced unexpected untracked files"
             git status --short --untracked-files=all
+            exit 1
+          fi
+          if [ -n "$(git status --porcelain --untracked-files=all --ignored=matching -- dist)" ]; then
+            echo "::error::quality checks produced ignored or other dist output"
+            git status --porcelain --untracked-files=all --ignored=matching -- dist
             exit 1
           fi

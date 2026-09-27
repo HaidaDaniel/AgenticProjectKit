@@ -55,7 +55,7 @@ Hooks can be intentionally bypassed for an exceptional commit with `git commit -
 ```text
 pnpm quality
 pnpm test:coverage
-pnpm build
+rm -rf dist && pnpm build
 Verify committed dist is current
 pnpm release:check
 node dist/cli/index.js lint --json
@@ -64,9 +64,9 @@ node dist/cli/index.js audit
 git diff --check && reject tracked/unexpected untracked drift
 ```
 
-The runner is disposable, so report-writing audit output cannot affect a developer checkout. `Verify committed dist is current` rejects tracked or untracked build output after the build and includes recursively copied `.hbs` assets; the final drift check also catches mutations from later release, lint, sync, or audit steps. Hosted CI status and URL, together with exact SHA, may be recorded by Task 0075 as separate release evidence; CI does not satisfy APK verification/review/gate or frozen-candidate proof. No retry, matrix, credentials, publish, deployment, or adopted-repository workflow generation belongs in this check.
+The runner is disposable, so report-writing audit output cannot affect a developer checkout. `Verify committed dist is current` clears generated `dist/` before building, so a successful no-op build cannot pass with stale committed output, and rejects tracked, untracked, or ignored build output after the build. It includes recursively copied `.hbs` assets under `src/core/templates/`; the final drift check also catches mutations from later release, lint, sync, or audit steps, including ignored output under `dist/`. Hosted CI status and URL, together with exact SHA, may be recorded by Task 0075 as separate release evidence; CI does not satisfy APK verification/review/gate or frozen-candidate proof. No retry, matrix, credentials, publish, deployment, or adopted-repository workflow generation belongs in this check.
 
-For downstream repositories, this guard applies only when the package manifest is recognized as shipping `dist` and the changed paths match APK's supported classification: compiled `src/**/*.ts` files (excluding `*.test.ts`) or recursively copied `src/**/*.hbs` assets. It does not discover arbitrary JavaScript, TSX, CSS, Rust, or other build inputs, and it is not a general build-graph analyzer. Within that bounded path surface, task contracts derive the build command from `packageManager` or exactly one supported lockfile (`pnpm`, `npm`, `yarn`, or `bun`); payload detection accounts for `files` globs, `main`/`bin` entrypoints, and the default all-files payload when a `dist` tree exists. Malformed metadata fails closed. The contract requires a usable `scripts.build`, permits `dist/**`, and runs that build before checking tracked and untracked output. A missing build script, unknown manager, or ambiguous lockfiles blocks an active matching source task; docs-only work is unaffected, and the check remains active if a task removes its build script while changing a packaged input.
+For downstream repositories, this guard applies only when the package manifest is recognized as shipping `dist` and changed paths match APK's supported classification: compiled `src/**/*.ts` files (excluding `*.test.ts`) or `.hbs` assets under `src/core/templates/`. It does not discover arbitrary JavaScript, TSX, CSS, Rust, or other build inputs, and it is not a general build-graph analyzer. Within that bounded path surface, task contracts derive the build command from `packageManager` or exactly one supported lockfile (`pnpm`, `npm`, `yarn`, or `bun`); payload detection accounts for `files` globs, `main`/`bin` entrypoints, and the default all-files payload when a `dist` tree exists. Malformed metadata fails closed. The contract requires a usable `scripts.build`, permits `dist/**`, clears generated `dist/` before running that build, and checks tracked, untracked, and ignored output. A missing build script, unknown manager, or ambiguous lockfiles blocks an active matching source task; docs-only work is unaffected, and the check remains active if a task removes its build script while changing a packaged input.
 
 ## Frozen release validation
 

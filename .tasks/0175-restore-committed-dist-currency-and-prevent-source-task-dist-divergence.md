@@ -107,7 +107,7 @@ Restore source-to-package parity on main and add a deterministic task contract t
 - A deterministic regression compares compiled `node dist/cli/index.js --help` byte-for-byte with source CLI help.
 - Running compiled `init` in an isolated temporary project emits the generic downstream requirements starter from the copied template; it does not emit the old APK-specific inline starter. Source and copied template parity is covered deterministically.
 - A current clean package dry run includes the CLI modules and portable template asset, and the committed package executes the current source behavior.
-- Packaged TypeScript source and copied `src/**/*.hbs` assets have a deterministic task contract requiring both `dist/**` scope and a required build-plus-dist-current verification. If an actual source/asset edit is attributed to a task whose contract forbids dist or omits that check, lint or the completion gate reports an actionable blocker before the task can complete.
+- Packaged TypeScript source and copied `src/core/templates/**/*.hbs` assets have a deterministic task contract requiring both `dist/**` scope and a required clean-build-plus-dist-current verification. If an actual source/asset edit is attributed to a task whose contract forbids dist or omits that check, lint or the completion gate reports an actionable blocker before the task can complete.
 - Package payload detection remains active when a task removes `scripts.build` or changes package metadata while `dist` remains included by a broad `files` glob or `main`/`bin`; the changed source task is blocked with a missing-build-script diagnostic. Malformed payload metadata fails closed. npm-managed fixtures receive an `npm run build` check, while the current pnpm package receives `pnpm build`.
 - Regression tests prove stale packaged output blocks, rebuilt and committed output passes, docs-only work does not require build/dist work, source changes with forbidden dist scope are rejected, and a copied template asset receives the same protection as TypeScript source.
 - Existing historical states for Tasks 0151, 0165, and 0167 remain `done`; their evidence/history is not rewritten.
@@ -118,9 +118,9 @@ Restore source-to-package parity on main and add a deterministic task contract t
 
 ## Correctness assumptions
 
-- `src/**/*.ts` files included by the build and `src/**/*.hbs` files copied by the asset script define a deterministic package-source surface.
+- `src/**/*.ts` files included by the build and `src/core/templates/**/*.hbs` files copied by the asset script define a deterministic package-source surface.
 - A task contract can identify packaged paths from its allowed-file patterns without semantic inference.
-- The declared package manager's build command followed by `test -z "$(git status --porcelain --untracked-files=all -- dist)"` is a deterministic proof that committed `dist/**` matches current source and copied assets.
+- Removing generated `dist/**`, running the declared package-manager build command, and checking `git status --porcelain --untracked-files=all --ignored=matching -- dist` is a deterministic proof that committed `dist/**` matches current source and copied assets; the clean build prevents a no-op script from inheriting stale output.
 - Tasks 0158, 0163, and 0168 remain otherwise consistent with their inspected contracts.
 
 ## Invariants
@@ -156,6 +156,9 @@ Restore source-to-package parity on main and add a deterministic task contract t
 - Use `files: ["*"]`, a `main`/`bin` path under `dist`, and malformed package metadata to confirm payload detection cannot be disabled by removing the literal `dist` entry.
 - Exercise an npm-managed package and confirm task creation derives `npm run build`; confirm ambiguous or absent manager metadata blocks check derivation.
 - Rebuild dist, commit it, and ensure the same guard passes.
+- Use a successful no-op build with committed dist and ensure the clean-build guard fails.
+- Produce an ignored file under dist and ensure the current-output guard fails.
+- Change an `.hbs` file outside `src/core/templates/` and ensure it is not classified as a copied package input.
 - Change documentation only and ensure the guard does not request a build.
 - Run compiled CLI help and init against temporary directories to detect stale dispatcher or starter behavior.
 - Keep SECURITY.md absent while completing Tasks 0158/0163/0168; ensure their checks do not fail solely for that absence, while 0173 still waits for 0170.
@@ -166,7 +169,7 @@ Restore source-to-package parity on main and add a deterministic task contract t
 - `{"id":"lint","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm lint"}`
 - `{"id":"tests","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test"}`
 - `{"id":"coverage","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test:coverage","artifact":"coverage/coverage-summary.json"}`
-- `{"id":"build-current","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build && test -z \"$(git status --porcelain --untracked-files=all -- dist)\""}`
+- `{"id":"build-current","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"rm -rf dist && pnpm build && test -z \"$(git status --porcelain --untracked-files=all --ignored=matching -- dist)\""}`
 - `{"id":"release-check","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm release:check"}`
 - `{"id":"apk-lint","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"apk-sync","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk sync"}`

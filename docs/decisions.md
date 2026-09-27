@@ -1452,10 +1452,11 @@ work from documentation-only tasks.
 
 Implementation and invariant:
 
-The `build-current` check runs the package manager's build command followed by an all-path
-tracked/untracked status check under `dist/`. `src/**/*.ts` inputs exclude `*.test.ts`; recursively
-copied `src/**/*.hbs` inputs are included. This deterministic path classification describes APK's
-current packaged source surface; it does not discover arbitrary downstream JavaScript, TSX, CSS,
+The `build-current` check clears generated `dist/`, runs the package manager's build command, and
+checks tracked, untracked, and ignored status under `dist/`. Clearing first makes a successful no-op
+build fail against missing committed output. `src/**/*.ts` inputs exclude `*.test.ts`; recursively
+copied `src/core/templates/**/*.hbs` inputs are included. This deterministic path classification
+describes APK's current packaged source surface; it does not discover arbitrary downstream JavaScript, TSX, CSS,
 Rust, or other build inputs. Downstream repositories receive this guard only for changed paths
 matched by those supported rules and package metadata recognized as shipping `dist`. The rule
 applies even if a task removes `scripts.build`; lint and the gate then report the missing script.

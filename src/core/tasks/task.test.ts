@@ -585,11 +585,15 @@ test("task policy applies deterministic risk defaults", () => {
 test("committed-dist task contract classifies packaged source and copied assets deterministically", async () => {
   assert.equal(isPackagedInputPath("src/cli/index.ts"), true);
   assert.equal(isPackagedInputPath("src/core/templates/minimal-docs/product-requirements.md.hbs"), true);
+  assert.equal(isPackagedInputPath("src/core/tasks/unpackaged-template.hbs"), false);
   assert.equal(isPackagedInputPath("src/cli/cli.test.ts"), false);
   assert.equal(isPackagedInputPath("docs/task-system.md"), false);
   assert.equal(mayIncludePackagedSource("src/core/tasks/*.ts"), true);
   assert.equal(mayIncludePackagedSource("src/**/*.test.ts"), false);
   assert.equal(mayIncludePackagedSource("src/core/templates/**/*.hbs"), true);
+  assert.equal(mayIncludePackagedSource("src/**/*.hbs"), true);
+  assert.equal(mayIncludePackagedSource("src/core/**/*.hbs"), true);
+  assert.equal(mayIncludePackagedSource("src/core/tasks/**/*.hbs"), false);
   assert.equal(mayIncludePackagedSource("docs/**"), false);
   assert.equal(taskPathPatternMayMatchDistOutput("dist/core/tasks/**"), true);
   assert.equal(taskPathPatternMayMatchDistOutput("d*/**"), true);
@@ -3346,6 +3350,45 @@ test("completion gate rejects stale packaged output and accepts the rebuilt cand
     });
     assert.equal(missingBuildGate.passed, false);
     assert.ok(missingBuildGate.blockers.some((blocker) => blocker.includes("no usable scripts.build")));
+  });
+});
+
+test("build-current rejects no-op builds and ignored dist output", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, "src"), { recursive: true });
+    await mkdir(join(directory, "dist"), { recursive: true });
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      files: ["dist"],
+      packageManager: "pnpm@10.28.1",
+      scripts: { build: "node build.mjs" },
+    }), "utf8");
+    await writeFile(join(directory, ".gitignore"), "dist/ignored-output.txt\n", "utf8");
+    await writeFile(join(directory, "src", "index.ts"), "export const value = 1;\n", "utf8");
+    await writeFile(join(directory, "dist", "index.js"), "export const value = 1;\n", "utf8");
+    await writeFile(join(directory, "build.mjs"), "// Deliberately successful no-op build.\n", "utf8");
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial stale-output fixture");
+
+    await assert.rejects(() => execFileAsync("sh", ["-c", packagedDistCheckCommand("pnpm build")], { cwd: directory }));
+    const noOpStatus = await execFileAsync("git", ["status", "--porcelain", "--untracked-files=all", "--ignored=matching", "--", "dist"], { cwd: directory });
+    assert.match(noOpStatus.stdout, /D dist\/index\.js/);
+
+    await writeFile(join(directory, "build.mjs"), [
+      "import { copyFile, mkdir, writeFile } from 'node:fs/promises';",
+      "await mkdir('dist', { recursive: true });",
+      "await copyFile('src/index.ts', 'dist/index.js');",
+      "await writeFile('dist/ignored-output.txt', 'ignored\\n');",
+      "",
+    ].join("\n"), "utf8");
+    await assert.rejects(() => execFileAsync("sh", ["-c", packagedDistCheckCommand("pnpm build")], { cwd: directory }));
+    const ignoredStatus = await execFileAsync("git", ["status", "--porcelain", "--untracked-files=all", "--ignored=matching", "--", "dist"], { cwd: directory });
+    assert.match(ignoredStatus.stdout, /!! dist\/ignored-output\.txt/);
   });
 });
 
