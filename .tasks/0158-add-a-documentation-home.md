@@ -1,7 +1,7 @@
 # Task 0158 - Add a documentation home
 
-State: todo
-Owner: none
+State: done
+Owner: codex-0158
 Mode: product
 Lane: documentation
 Type: docs
@@ -10,6 +10,10 @@ Risk: low
 Parallel: false
 Depends on: 0151,0152,0153,0154,0155,0156,0157,0159,0160,0161,0162,0164,0165,0166,0167,0169,0171
 Tags: docs
+
+## Goal
+
+Create a documentation home that routes users and contributors to one canonical guide for each major question.
 
 ## Context files
 
@@ -42,10 +46,6 @@ Tags: docs
 - .tasks/archive/**
 - docs/releases/**
 - docs/decisions.md
-
-## Goal
-
-Create a documentation home that routes users and contributors to one canonical guide for each major question.
 
 ## Steps
 
@@ -89,6 +89,7 @@ Create a documentation home that routes users and contributors to one canonical 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
 - `{"id":"check-3","type":"manual","required":true,"environment":"local","profile":"report","instruction":"Open each destination linked from docs/index.md and record its path and pass/fail result. Check SECURITY.md only if that file exists.","evidence":"A per-destination path and pass/fail checklist."}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.

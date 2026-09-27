@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Tasks 0175 and 0176 are complete. Task 0158 is in progress to create the documentation home, followed by Tasks 0163 and 0168. Task 0170 follows those prerequisites but remains blocked on the operator's private-reporting route; Task 0173 continues to require it.
+Tasks 0175, 0176, and 0158 are complete. Task 0158's documentation home passed its per-destination link check. Task 0163 is next, followed by Task 0168. Task 0170 remains blocked on the operator's private-reporting route; Task 0173 continues to require it.
 
 ## Known blockers
 
@@ -22,6 +22,7 @@ Complete Tasks 0158, 0163, and 0168 in dependency order. Task 0170 can proceed a
 
 ## Recently completed
 
+- Task 0158 added the canonical documentation home; all 20 destinations and the README install anchor passed the recorded per-link check ([index](index.md), [task](../.tasks/0158-add-a-documentation-home.md)). Candidate commit: `1903e8e`.
 - Task 0176 bounded the remaining public-readiness task scopes, aligned Task 0173 with Task 0175, and made the documentation evidence and Task 0170 handoff explicit ([task](../.tasks/0176-make-remaining-public-readiness-task-contracts-internally-satisfiable.md)). Candidate commit: `fc4873e`.
 - Task 0175 restored committed package parity and added a clean-build guard for packaged source and copied templates; its exact-SHA Quality run and fresh independent review passed ([task](../.tasks/0175-restore-committed-dist-currency-and-prevent-source-task-dist-divergence.md)). Candidate commit: `f95570f`.
 - Task 0172 added isolated, repeatable greenfield, brownfield, and local-first showcase workflows; all three smoke outputs passed on Node `22.22.1` and pnpm `10.28.1`, including brownfield preservation and offline-capable reruns ([examples](examples.md), [task](../.tasks/0172-add-runnable-greenfield-brownfield-and-local-first-showcases.md)). Candidate commit: `4ef89da`.
