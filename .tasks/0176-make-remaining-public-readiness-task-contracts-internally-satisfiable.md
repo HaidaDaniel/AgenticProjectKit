@@ -1,6 +1,6 @@
 # Task 0176 - Make remaining public-readiness task contracts internally satisfiable
 
-State: doing
+State: done
 Owner: codex-0176
 Mode: maintenance
 Lane: planning

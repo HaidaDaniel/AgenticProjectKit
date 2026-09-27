@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0175 is complete: source-to-package parity is restored, and the packaged-source verification guard is in place. Task 0176 is aligning the remaining public-readiness contracts. The sequence is Tasks 0158 -> 0163 -> 0168 -> 0170 -> 0173; Task 0170 remains blocked on the operator's private-reporting route.
+Tasks 0175 and 0176 are complete: packaged-source verification is in place, and the remaining public-readiness contracts now have bounded scopes and a dependency-aware sequence. The next work is Tasks 0158 -> 0163 -> 0168. Task 0170 follows those prerequisites but remains blocked on the operator's private-reporting route; Task 0173 continues to require it.
 
 ## Known blockers
 
@@ -18,10 +18,11 @@ Task 0175 is complete: source-to-package parity is restored, and the packaged-so
 
 ## Next milestone
 
-Complete Tasks 0158, 0163, and 0168 in dependency order; Task 0170 can proceed after them only when the operator confirms a private reporting route. Then run Task 0173 against the exact release candidate. Tasks 0145-0148 are complete correctness prerequisites; optional naming/rebrand work remains separate.
+Complete Tasks 0158, 0163, and 0168 in dependency order. Task 0170 can proceed after them only when the operator confirms a private reporting route; then run Task 0173 against the exact release candidate. Tasks 0145-0148 are complete correctness prerequisites; optional naming/rebrand work remains separate.
 
 ## Recently completed
 
+- Task 0176 bounded the remaining public-readiness task scopes, aligned Task 0173 with Task 0175, and made the documentation evidence and Task 0170 handoff explicit ([task](../.tasks/0176-make-remaining-public-readiness-task-contracts-internally-satisfiable.md)). Candidate commit: `fc4873e`.
 - Task 0175 restored committed package parity and added a clean-build guard for packaged source and copied templates; its exact-SHA Quality run and fresh independent review passed ([task](../.tasks/0175-restore-committed-dist-currency-and-prevent-source-task-dist-divergence.md)). Candidate commit: `f95570f`.
 - Task 0172 added isolated, repeatable greenfield, brownfield, and local-first showcase workflows; all three smoke outputs passed on Node `22.22.1` and pnpm `10.28.1`, including brownfield preservation and offline-capable reruns ([examples](examples.md), [task](../.tasks/0172-add-runnable-greenfield-brownfield-and-local-first-showcases.md)). Candidate commit: `4ef89da`.
 - Task 0171 added a concise changelog entrypoint and a release index that links all 12 current local/remote tags, seven retained versioned notes, four post-tag workflow records, and the gated-workflow evidence; current package version and `v0.4.7` tag agree ([changelog](../CHANGELOG.md), [index](releases/index.md), [task](../.tasks/0171-establish-a-release-changelog-and-index-strategy.md)). Candidate commit: `f96b377`.
