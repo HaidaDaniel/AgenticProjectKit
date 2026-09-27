@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Tasks 0175, 0176, 0158, and 0163 are complete. Task 0168 is next. Task 0170 remains blocked on the operator's private-reporting route; Task 0173 continues to require it.
+Tasks 0175, 0176, 0158, and 0163 are complete. Task 0168 is in progress to add deterministic documentation consistency checks. Task 0170 remains blocked on the operator's private-reporting route; Task 0173 continues to require it.
 
 ## Known blockers
 
@@ -18,7 +18,7 @@ Tasks 0175, 0176, 0158, and 0163 are complete. Task 0168 is next. Task 0170 rema
 
 ## Next milestone
 
-Complete Task 0168 next. Task 0170 can proceed after it only when the operator confirms a private reporting route; then run Task 0173 against the exact release candidate. Tasks 0145-0148 are complete correctness prerequisites; optional naming/rebrand work remains separate.
+Complete Task 0168. Task 0170 can proceed after it only when the operator confirms a private reporting route; then run Task 0173 against the exact release candidate. Tasks 0145-0148 are complete correctness prerequisites; optional naming/rebrand work remains separate.
 
 ## Recently completed
 

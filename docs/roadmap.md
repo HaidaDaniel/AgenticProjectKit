@@ -22,16 +22,37 @@ AgenticProjectKit remains the product identity. The latest validated installable
 
 ## Public Readiness (current work)
 
-Public readiness is the one current planned milestone. Tasks 0145-0148 are already shipped as the v0.4.7 correctness foundation. Product-truth tasks 0151-0157 are being completed before the documentation front door and final release gate. The current task state is recorded in the linked contracts.
+Public readiness is the one current planned milestone. Tasks 0145-0148 are already shipped as the v0.4.7 correctness foundation. Product-truth tasks 0151-0157 are complete; remaining documentation checks and the final release gate are tracked in the task rows below.
 
-| Workstream | Current state | Task contracts |
-| --- | --- | --- |
-| Product and current truth | done | [0151](../.tasks/0151-separate-apk-requirements-from-downstream-project-templates.md), [0152](../.tasks/0152-define-public-maturity-and-compatibility-policy.md), [0153](../.tasks/0153-make-progressmd-a-concise-current-state-document.md), [0154](../.tasks/0154-modernize-scopemd-around-current-and-historical-scope.md), [0155](../.tasks/0155-reframe-roadmapmd-as-shipped-current-planned-and-deferred.md), [0156](../.tasks/0156-mark-old-delivery-milestones-as-historical.md), [0157](../.tasks/0157-clarify-architecture-truth-and-normalize-adr-lifecycle.md) |
-| Documentation front door | todo | [0158](../.tasks/0158-add-a-documentation-home.md), [0159](../.tasks/0159-write-a-canonical-getting-started-guide.md), [0160](../.tasks/0160-explain-apk-core-concepts-and-trust-boundaries.md), [0161](../.tasks/0161-document-safe-brownfield-adoption.md), [0162](../.tasks/0162-document-constrained-and-local-first-execution.md), [0163](../.tasks/0163-redesign-readme-as-the-public-front-door.md), [0164](../.tasks/0164-explain-when-to-use-apk-and-compare-alternatives.md) |
-| CLI consistency | todo | [0165](../.tasks/0165-establish-one-canonical-public-cli-name.md), [0167](../.tasks/0167-keep-cli-reference-aligned-with-the-command-registry.md) |
-| OSS contribution readiness | 0169 and 0171 todo; 0170 blocked | [0169](../.tasks/0169-add-contributor-docs-and-lightweight-github-contribution-ux.md), [0170](../.tasks/0170-publish-a-truthful-security-reporting-policy.md), [0171](../.tasks/0171-establish-a-release-changelog-and-index-strategy.md) |
-| Acquisition and examples | todo | [0166](../.tasks/0166-simplify-first-run-acquisition-while-keeping-exact-pins.md), [0172](../.tasks/0172-add-runnable-greenfield-brownfield-and-local-first-showcases.md) |
-| Documentation consistency and release gate | todo | [0168](../.tasks/0168-add-deterministic-documentation-consistency-checks.md), [0173](../.tasks/0173-validate-the-next-public-readiness-release.md) |
+### Task state rows
+
+Each row repeats its contract's lifecycle state so readers can compare the roadmap with the task source of truth. The documentation consistency check validates every row against task metadata discovered from `.tasks/`.
+
+| Workstream | Task | State | Contract |
+| --- | --- | --- | --- |
+| Product and current truth | 0151 | done | [0151](../.tasks/0151-separate-apk-requirements-from-downstream-project-templates.md) |
+| Product and current truth | 0152 | done | [0152](../.tasks/0152-define-public-maturity-and-compatibility-policy.md) |
+| Product and current truth | 0153 | done | [0153](../.tasks/0153-make-progressmd-a-concise-current-state-document.md) |
+| Product and current truth | 0154 | done | [0154](../.tasks/0154-modernize-scopemd-around-current-and-historical-scope.md) |
+| Product and current truth | 0155 | done | [0155](../.tasks/0155-reframe-roadmapmd-as-shipped-current-planned-and-deferred.md) |
+| Product and current truth | 0156 | done | [0156](../.tasks/0156-mark-old-delivery-milestones-as-historical.md) |
+| Product and current truth | 0157 | done | [0157](../.tasks/0157-clarify-architecture-truth-and-normalize-adr-lifecycle.md) |
+| Documentation front door | 0158 | done | [0158](../.tasks/0158-add-a-documentation-home.md) |
+| Documentation front door | 0159 | done | [0159](../.tasks/0159-write-a-canonical-getting-started-guide.md) |
+| Documentation front door | 0160 | done | [0160](../.tasks/0160-explain-apk-core-concepts-and-trust-boundaries.md) |
+| Documentation front door | 0161 | done | [0161](../.tasks/0161-document-safe-brownfield-adoption.md) |
+| Documentation front door | 0162 | done | [0162](../.tasks/0162-document-constrained-and-local-first-execution.md) |
+| Documentation front door | 0163 | done | [0163](../.tasks/0163-redesign-readme-as-the-public-front-door.md) |
+| Documentation front door | 0164 | done | [0164](../.tasks/0164-explain-when-to-use-apk-and-compare-alternatives.md) |
+| CLI consistency | 0165 | done | [0165](../.tasks/0165-establish-one-canonical-public-cli-name.md) |
+| CLI consistency | 0167 | done | [0167](../.tasks/0167-keep-cli-reference-aligned-with-the-command-registry.md) |
+| OSS contribution readiness | 0169 | done | [0169](../.tasks/0169-add-contributor-docs-and-lightweight-github-contribution-ux.md) |
+| OSS contribution readiness | 0170 | blocked | [0170](../.tasks/0170-publish-a-truthful-security-reporting-policy.md) |
+| OSS contribution readiness | 0171 | done | [0171](../.tasks/0171-establish-a-release-changelog-and-index-strategy.md) |
+| Acquisition and examples | 0166 | done | [0166](../.tasks/0166-simplify-first-run-acquisition-while-keeping-exact-pins.md) |
+| Acquisition and examples | 0172 | done | [0172](../.tasks/0172-add-runnable-greenfield-brownfield-and-local-first-showcases.md) |
+| Documentation consistency and release gate | 0168 | doing | [0168](../.tasks/0168-add-deterministic-documentation-consistency-checks.md) |
+| Documentation consistency and release gate | 0173 | todo | [0173](../.tasks/0173-validate-the-next-public-readiness-release.md) |
 
 Task contracts carry the exact prerequisite graph; use `apk task deps <task-id>` to inspect it. In particular, the documentation home and final release gate wait for their declared guide, CLI, contribution, and consistency prerequisites. Task 0173 validates an exact frozen candidate only after its dependencies pass; it does not assign a version or date in advance.
 

@@ -30,6 +30,7 @@ Use this index to find the canonical guide for starting, understanding, adopting
 
 - [Architecture](architecture.md) — see the current component boundaries and runtime responsibilities.
 - [Decisions and ADRs](decisions.md) — review accepted and superseded architecture decisions.
+- [Documentation Maintenance Checks](engineering/documentation-maintenance.md) — see the exact consistency rules and their limits.
 - [Contributing](../CONTRIBUTING.md) — set up a source checkout, propose bounded changes, and run repository checks.
 
 ## Releases and project history
