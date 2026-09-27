@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Tasks 0175, 0176, 0158, and 0163 are complete. Task 0168 is in progress to add deterministic documentation consistency checks. Task 0170 remains blocked on the operator's private-reporting route; Task 0173 continues to require it.
+Tasks 0175, 0176, 0158, 0163, and 0168 are complete. Task 0170 remains blocked on the operator's private-reporting route; Task 0173 continues to require it.
 
 ## Known blockers
 
@@ -18,12 +18,13 @@ Tasks 0175, 0176, 0158, and 0163 are complete. Task 0168 is in progress to add d
 
 ## Next milestone
 
-Complete Task 0168. Task 0170 can proceed after it only when the operator confirms a private reporting route; then run Task 0173 against the exact release candidate. Tasks 0145-0148 are complete correctness prerequisites; optional naming/rebrand work remains separate.
+Task 0170 can proceed only when the operator confirms a private reporting route; then run Task 0173 against the exact release candidate. Tasks 0145-0148 are complete correctness prerequisites; optional naming/rebrand work remains separate.
 
 ## Recently completed
 
 - Task 0158 added the canonical documentation home; all 20 destinations and the README install anchor passed the recorded per-link check ([index](index.md), [task](../.tasks/0158-add-a-documentation-home.md)). Candidate commit: `1903e8e`.
 - Task 0163 replaced the oversized README with a concise public entrypoint, preserved the install anchor, and checked all 15 local Markdown links. Candidate commit: `de37d4d`. Its public-claim audit maps product identity and boundaries to `docs/product/requirements.md` and `docs/architecture.md`; init/adopt and task/context/evidence capabilities to their CLI and core implementations plus `docs/task-system.md`; instruction generation, lint, reports, and quality inventory to exporter/audit/quality sources; installation and CLI use to `docs/getting-started.md`, `docs/cli-commands.md`, and distribution research; release limits to the maturity policy, v0.4.7 notes, package metadata, and CI; and navigation/open-source links to the documentation index, roadmap, contributor guide, and license.
+- Task 0168 added a deterministic docs checker, nine drift/link/task-state fixtures, local quality and hosted CI integration, and maintainer guidance; it also corrected two broken README-related anchors and synchronized roadmap task states. The four declared checks and gate passed on candidate `a51ccd8`; Task 0170 already requires the exact checker command. See [maintenance rules](engineering/documentation-maintenance.md) and [task](../.tasks/0168-add-deterministic-documentation-consistency-checks.md).
 - Task 0176 bounded the remaining public-readiness task scopes, aligned Task 0173 with Task 0175, and made the documentation evidence and Task 0170 handoff explicit ([task](../.tasks/0176-make-remaining-public-readiness-task-contracts-internally-satisfiable.md)). Candidate commit: `fc4873e`.
 - Task 0175 restored committed package parity and added a clean-build guard for packaged source and copied templates; its exact-SHA Quality run and fresh independent review passed ([task](../.tasks/0175-restore-committed-dist-currency-and-prevent-source-task-dist-divergence.md)). Candidate commit: `f95570f`.
 - Task 0172 added isolated, repeatable greenfield, brownfield, and local-first showcase workflows; all three smoke outputs passed on Node `22.22.1` and pnpm `10.28.1`, including brownfield preservation and offline-capable reruns ([examples](examples.md), [task](../.tasks/0172-add-runnable-greenfield-brownfield-and-local-first-showcases.md)). Candidate commit: `4ef89da`.

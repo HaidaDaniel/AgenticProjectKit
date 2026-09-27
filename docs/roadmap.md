@@ -51,7 +51,7 @@ Each row repeats its contract's lifecycle state so readers can compare the roadm
 | OSS contribution readiness | 0171 | done | [0171](../.tasks/0171-establish-a-release-changelog-and-index-strategy.md) |
 | Acquisition and examples | 0166 | done | [0166](../.tasks/0166-simplify-first-run-acquisition-while-keeping-exact-pins.md) |
 | Acquisition and examples | 0172 | done | [0172](../.tasks/0172-add-runnable-greenfield-brownfield-and-local-first-showcases.md) |
-| Documentation consistency and release gate | 0168 | doing | [0168](../.tasks/0168-add-deterministic-documentation-consistency-checks.md) |
+| Documentation consistency and release gate | 0168 | done | [0168](../.tasks/0168-add-deterministic-documentation-consistency-checks.md) |
 | Documentation consistency and release gate | 0173 | todo | [0173](../.tasks/0173-validate-the-next-public-readiness-release.md) |
 
 Task contracts carry the exact prerequisite graph; use `apk task deps <task-id>` to inspect it. In particular, the documentation home and final release gate wait for their declared guide, CLI, contribution, and consistency prerequisites. Task 0173 validates an exact frozen candidate only after its dependencies pass; it does not assign a version or date in advance.

@@ -1,7 +1,7 @@
 # Task 0168 - Add deterministic documentation consistency checks
 
-State: todo
-Owner: none
+State: done
+Owner: codex-0168
 Mode: maintenance
 Lane: quality
 Type: feature
@@ -10,6 +10,10 @@ Risk: medium
 Parallel: false
 Depends on: 0151,0152,0153,0154,0155,0156,0157,0158,0159,0160,0161,0162,0163,0164,0165,0166,0167,0169,0171
 Tags: feature
+
+## Goal
+
+Add a small deterministic CI check for high-value documentation inconsistencies detectable without semantic guessing.
 
 ## Context files
 
@@ -49,10 +53,6 @@ Tags: feature
 - .tasks/archive/**
 - docs/releases/v*.md
 - docs/decisions.md
-
-## Goal
-
-Add a small deterministic CI check for high-value documentation inconsistencies detectable without semantic guessing.
 
 ## Steps
 
@@ -107,6 +107,7 @@ Add a small deterministic CI check for high-value documentation inconsistencies 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test"}`
 - `{"id":"check-3","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.
