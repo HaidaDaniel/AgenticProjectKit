@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0177 is active to correct the current hosted Quality coverage failure and strengthen local pre-push checks. Tasks 0175, 0176, 0158, 0163, and 0168 are complete. Task 0170 remains blocked on the operator's private-reporting route; Task 0173 continues to require it.
+Tasks 0177, 0175, 0176, 0158, 0163, and 0168 are complete. Task 0170 remains blocked on the operator's private-reporting route; Task 0173 continues to require it.
 
 ## Known blockers
 
@@ -22,6 +22,7 @@ Task 0170 can proceed only when the operator confirms a private reporting route;
 
 ## Recently completed
 
+- Task 0177 corrected hosted Quality run [36316706652](https://github.com/HaidaDaniel/AgenticProjectKit/actions/runs/36316706652): source coverage now runs the 497 TypeScript tests separately from the nine documentation tests, which remain in fast quality; Node 22.22.1 coverage is 92.44% lines/statements, 98.33% functions, and 82.19% branches. Pre-push now runs release checks, built CLI lint, committed-dist currency, and clean-checkout drift checks. `pnpm setup:dev` repairs generated Husky hook permissions; the checkout had non-executable `0644` stubs. Candidate commits: `db00102`, `7fabe09`.
 - Task 0158 added the canonical documentation home; all 20 destinations and the README install anchor passed the recorded per-link check ([index](index.md), [task](../.tasks/0158-add-a-documentation-home.md)). Candidate commit: `1903e8e`.
 - Task 0163 replaced the oversized README with a concise public entrypoint, preserved the install anchor, and checked all 15 local Markdown links. Candidate commit: `de37d4d`. Its public-claim audit maps product identity and boundaries to `docs/product/requirements.md` and `docs/architecture.md`; init/adopt and task/context/evidence capabilities to their CLI and core implementations plus `docs/task-system.md`; instruction generation, lint, reports, and quality inventory to exporter/audit/quality sources; installation and CLI use to `docs/getting-started.md`, `docs/cli-commands.md`, and distribution research; release limits to the maturity policy, v0.4.7 notes, package metadata, and CI; and navigation/open-source links to the documentation index, roadmap, contributor guide, and license.
 - Task 0168 added a deterministic docs checker, nine drift/link/task-state fixtures, local quality and hosted CI integration, and maintainer guidance; it also corrected two broken README-related anchors and synchronized roadmap task states. The four declared checks and gate passed on candidate `a51ccd8`; Task 0170 already requires the exact checker command. See [maintenance rules](engineering/documentation-maintenance.md) and [task](../.tasks/0168-add-deterministic-documentation-consistency-checks.md).

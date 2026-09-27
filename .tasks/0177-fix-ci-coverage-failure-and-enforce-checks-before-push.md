@@ -1,6 +1,6 @@
 # Task 0177 - Fix CI coverage failure and enforce checks before push
 
-State: doing
+State: done
 Owner: codex-ci-0177
 Mode: maintenance
 Lane: quality
