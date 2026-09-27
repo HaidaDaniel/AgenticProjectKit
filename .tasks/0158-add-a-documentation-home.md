@@ -15,14 +15,19 @@ Tags: docs
 
 - AGENTS.md
 - README.md
-- docs/project.md
-- docs/roadmap.md
-- docs/task-system.md
-- docs/context-system.md
-- docs/agent-exporters.md
+- docs/getting-started.md
+- docs/concepts.md
+- docs/guides/brownfield-adoption.md
+- docs/guides/constrained-local-execution.md
 - docs/cli-commands.md
+- docs/product/maturity-and-compatibility.md
+- docs/releases/index.md
+- docs/releases/v0.4.7.md
+- CONTRIBUTING.md
+- CHANGELOG.md
+- docs/architecture.md
 - docs/decisions.md
-- docs/releases/v0.4.6.md
+- docs/roadmap.md
 
 ## Files allowed to edit
 
@@ -68,7 +73,7 @@ Create a documentation home that routes users and contributors to one canonical 
 
 ## Required evidence
 
-- A link-check or equivalent validates each destination.
+- A destination checklist records every link target and a pass/fail result. A bounded manual checklist is acceptable; do not claim an automated link check unless one actually ran.
 
 ## Review questions
 
@@ -83,6 +88,7 @@ Create a documentation home that routes users and contributors to one canonical 
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+- `{"id":"check-3","type":"manual","required":true,"environment":"local","profile":"report","instruction":"Open each destination linked from docs/index.md and record its path and pass/fail result. Check SECURITY.md only if that file exists.","evidence":"A per-destination path and pass/fail checklist."}`
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.

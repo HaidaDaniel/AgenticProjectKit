@@ -8,13 +8,15 @@ Type: docs
 Scope: security,oss,policy,docs
 Risk: medium
 Parallel: true
-Depends on: 0152
+Depends on: 0152,0158,0163,0168
 Tags: docs
 
 ## Context files
 
 - AGENTS.md
 - package.json
+- README.md
+- docs/index.md (future output of prerequisite Task 0158)
 - docs/product/maturity-and-compatibility.md (future output of prerequisite Task 0152)
 - docs/engineering/testing-strategy.md
 - .github/workflows/quality.yml
@@ -23,6 +25,8 @@ Tags: docs
 ## Files allowed to edit
 
 - SECURITY.md
+- README.md
+- docs/index.md
 - docs/progress.md
 
 ## Files forbidden to edit
@@ -43,7 +47,8 @@ Publish truthful vulnerability reporting guidance after the operator selects or 
 1. Remain blocked until the operator confirms an enabled private vulnerability reporting feature or explicitly approved security contact.
 2. Verify the route is visible and usable by an external reporter without public disclosure.
 3. Write SECURITY.md with supported versions, private report instructions, and handling commitments only if explicitly accepted.
-4. Link the policy from public metadata only after the channel is verified.
+4. After the channel is verified, add only a short navigation link to SECURITY.md in README.md and docs/index.md; do not duplicate policy content there.
+5. Run the exact deterministic documentation check `node scripts/check-docs-consistency.mjs` selected by Task 0168.
 
 ## Acceptance criteria
 
@@ -51,6 +56,8 @@ Publish truthful vulnerability reporting guidance after the operator selects or 
 - Supported versions agree with maturity policy.
 - No contact, response time, fix deadline, or bounty is invented.
 - Policy discourages publishing exploit details publicly.
+- README.md and docs/index.md contain only minimal navigation links to the policy after the private route is verified.
+- The exact `node scripts/check-docs-consistency.mjs` check passes after the policy links are added.
 
 ## Correctness assumptions
 
@@ -81,6 +88,7 @@ Publish truthful vulnerability reporting guidance after the operator selects or 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"report","command":"test -s SECURITY.md","artifact":"SECURITY.md"}`
 - `{"id":"check-3","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+- `{"id":"check-4","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node scripts/check-docs-consistency.mjs"}`
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.

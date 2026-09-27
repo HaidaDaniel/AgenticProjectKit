@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0175 is complete: source-to-package parity is restored, and the packaged-source verification guard is in place. Task 0176 is next to finish the remaining public-readiness task-contract corrections. Task 0173 continues to require Task 0170, which remains blocked on the operator's private-reporting route.
+Task 0175 is complete: source-to-package parity is restored, and the packaged-source verification guard is in place. Task 0176 is aligning the remaining public-readiness contracts. The sequence is Tasks 0158 -> 0163 -> 0168 -> 0170 -> 0173; Task 0170 remains blocked on the operator's private-reporting route.
 
 ## Known blockers
 
@@ -18,7 +18,7 @@ Task 0175 is complete: source-to-package parity is restored, and the packaged-so
 
 ## Next milestone
 
-Complete the public-readiness workstreams in the [dependency-aware roadmap](roadmap.md#public-readiness-current-work), then run Task 0173 against the exact release candidate. Tasks 0145-0148 are complete correctness prerequisites; optional naming/rebrand work remains separate.
+Complete Tasks 0158, 0163, and 0168 in dependency order; Task 0170 can proceed after them only when the operator confirms a private reporting route. Then run Task 0173 against the exact release candidate. Tasks 0145-0148 are complete correctness prerequisites; optional naming/rebrand work remains separate.
 
 ## Recently completed
 
