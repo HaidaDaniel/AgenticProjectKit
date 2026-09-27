@@ -8,9 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Tasks 0175, 0176, and 0158 are complete. Task 0163 is in progress to make the README the accurate public front door; Task 0168 follows it. Task 0170 remains blocked on the operator's private-reporting route; Task 0173 continues to require it.
-
-Task 0163 README claim audit: product identity, audience, and repository-local boundaries map to `docs/product/requirements.md` and `docs/architecture.md`; init/adopt map to `src/cli/commands/init.ts`, `src/cli/commands/adopt.ts`, `src/core/init/index.ts`, and `src/core/docs/adopt.ts`; task scope, context, prompts, candidate evidence, and gates map to `docs/task-system.md`, `src/core/docs/context.ts`, `src/core/docs/prompt.ts`, and `src/core/tasks/`; generated instructions, lint, readiness reports, and quality inventory map to `docs/agent-exporters.md`, `src/core/exporters/index.ts`, `src/core/audit/`, and `src/core/quality/index.ts`; install and CLI claims map to `docs/getting-started.md`, `docs/cli-commands.md`, and `docs/research/non-node-apk-installation-and-distribution.md`; release and compatibility claims map to `docs/product/maturity-and-compatibility.md`, `docs/releases/v0.4.7.md`, `package.json`, and `.github/workflows/quality.yml`; navigation and OSS metadata map to `docs/index.md`, `docs/roadmap.md`, `CONTRIBUTING.md`, and `LICENSE`.
+Tasks 0175, 0176, 0158, and 0163 are complete. Task 0168 is next. Task 0170 remains blocked on the operator's private-reporting route; Task 0173 continues to require it.
 
 ## Known blockers
 
@@ -20,11 +18,12 @@ Task 0163 README claim audit: product identity, audience, and repository-local b
 
 ## Next milestone
 
-Complete Tasks 0158, 0163, and 0168 in dependency order. Task 0170 can proceed after them only when the operator confirms a private reporting route; then run Task 0173 against the exact release candidate. Tasks 0145-0148 are complete correctness prerequisites; optional naming/rebrand work remains separate.
+Complete Task 0168 next. Task 0170 can proceed after it only when the operator confirms a private reporting route; then run Task 0173 against the exact release candidate. Tasks 0145-0148 are complete correctness prerequisites; optional naming/rebrand work remains separate.
 
 ## Recently completed
 
 - Task 0158 added the canonical documentation home; all 20 destinations and the README install anchor passed the recorded per-link check ([index](index.md), [task](../.tasks/0158-add-a-documentation-home.md)). Candidate commit: `1903e8e`.
+- Task 0163 replaced the oversized README with a concise public entrypoint, preserved the install anchor, and checked all 15 local Markdown links. Candidate commit: `de37d4d`. Its public-claim audit maps product identity and boundaries to `docs/product/requirements.md` and `docs/architecture.md`; init/adopt and task/context/evidence capabilities to their CLI and core implementations plus `docs/task-system.md`; instruction generation, lint, reports, and quality inventory to exporter/audit/quality sources; installation and CLI use to `docs/getting-started.md`, `docs/cli-commands.md`, and distribution research; release limits to the maturity policy, v0.4.7 notes, package metadata, and CI; and navigation/open-source links to the documentation index, roadmap, contributor guide, and license.
 - Task 0176 bounded the remaining public-readiness task scopes, aligned Task 0173 with Task 0175, and made the documentation evidence and Task 0170 handoff explicit ([task](../.tasks/0176-make-remaining-public-readiness-task-contracts-internally-satisfiable.md)). Candidate commit: `fc4873e`.
 - Task 0175 restored committed package parity and added a clean-build guard for packaged source and copied templates; its exact-SHA Quality run and fresh independent review passed ([task](../.tasks/0175-restore-committed-dist-currency-and-prevent-source-task-dist-divergence.md)). Candidate commit: `f95570f`.
 - Task 0172 added isolated, repeatable greenfield, brownfield, and local-first showcase workflows; all three smoke outputs passed on Node `22.22.1` and pnpm `10.28.1`, including brownfield preservation and offline-capable reruns ([examples](examples.md), [task](../.tasks/0172-add-runnable-greenfield-brownfield-and-local-first-showcases.md)). Candidate commit: `4ef89da`.

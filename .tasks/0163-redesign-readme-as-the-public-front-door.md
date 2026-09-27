@@ -1,7 +1,7 @@
 # Task 0163 - Redesign README as the public front door
 
-State: todo
-Owner: none
+State: done
+Owner: codex-0163
 Mode: product
 Lane: documentation
 Type: docs
@@ -10,6 +10,10 @@ Risk: medium
 Parallel: false
 Depends on: 0151,0152,0158,0159,0160,0161,0162,0164,0165,0166,0169,0171
 Tags: docs
+
+## Goal
+
+Replace the oversized mixed-purpose README with a concise, accurate public front door.
 
 ## Context files
 
@@ -43,10 +47,6 @@ Tags: docs
 - docs/decisions.md
 - package.json
 - pnpm-lock.yaml
-
-## Goal
-
-Replace the oversized mixed-purpose README with a concise, accurate public front door.
 
 ## Steps
 
@@ -90,6 +90,7 @@ Replace the oversized mixed-purpose README with a concise, accurate public front
 
 - `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.
