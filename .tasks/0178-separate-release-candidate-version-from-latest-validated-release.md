@@ -1,6 +1,6 @@
 # Task 0178 - Separate release-candidate version from latest validated release
 
-State: doing
+State: done
 Owner: codex-0178
 Mode: maintenance
 Lane: quality
