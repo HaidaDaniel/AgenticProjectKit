@@ -139,14 +139,13 @@ function checkPrematureValidatedClaim(note, candidateVersion, validatedVersion, 
     }
   }
 
-  const candidate = `v${escapeRegExp(candidateVersion)}`;
+  const candidate = `v?${escapeRegExp(candidateVersion)}`;
   const publishedStatus = String.raw`(?:has\s+(?:(?:(?:already|now|just)\s+)?been\s+)?|is\s+|was\s+)(?:(?:already|currently|now)\s+)?(?:published|released|available|shipped|launched|live)`;
   // Keep the predicate adjacent to its version subject: a nearby stable
   // release's availability must not become a claim about the candidate.
   const publicationClaim = new RegExp(String.raw`\b${candidate}\b(?:\s+release)?\s+${publishedStatus}\b`, "gi");
   for (const match of claimText.matchAll(publicationClaim)) {
-    const lineStart = claimText.lastIndexOf("\n", match.index - 1) + 1;
-    const prefix = claimText.slice(lineStart, match.index);
+    const prefix = claimText.slice(0, match.index);
     // A condition introducing this subject describes a possible future state.
     // This is a bounded prose check, not a general English grammar parser.
     if (/\b(?:once|when|if|after|before|until|unless)\s+(?:the\s+)?(?:release\s+)?$/i.test(prefix)) continue;

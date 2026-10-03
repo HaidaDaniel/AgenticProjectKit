@@ -249,7 +249,7 @@ test("candidate publication predicates preserve conditional and separate stable-
 });
 
 test("candidate version markup cannot bypass affirmative publication or validation checks", async (t) => {
-  for (const version of ["`v0.5.0`", "[v0.5.0](v0.5.0.md)", "[`v0.5.0`](v0.5.0.md)"]) {
+  for (const version of ["`v0.5.0`", "[v0.5.0](v0.5.0.md)", "[`v0.5.0`](v0.5.0.md)", "0.5.0", "`0.5.0`", "[0.5.0](v0.5.0.md)", "[`0.5.0`](v0.5.0.md)"]) {
     for (const claim of [
       `The latest validated tagged release is ${version}.`,
       `The ${version} release is available now.`,
@@ -264,6 +264,14 @@ test("candidate version markup cannot bypass affirmative publication or validati
     const repo = await fixture(t, undefined, { version: "0.5.0", validatedVersion: "0.4.7" });
     await write(repo.root, "docs/releases/v0.5.0.md", `# Agentic Project Kit v0.5.0\n\nOnce ${version} is published, consumers can upgrade. The latest validated tagged release is [v0.4.7](v0.4.7.md).\n`);
     assert.deepEqual(await checkDocumentationConsistency(repo.root, cliReference), [], version);
+  }
+});
+
+test("a conditional publication subject may wrap across Markdown lines", async (t) => {
+  for (const prose of ["Once\nv0.5.0 is published, use its tag.", "When the\n[0.5.0](v0.5.0.md) release is available, consumers can upgrade."]) {
+    const repo = await fixture(t, undefined, { version: "0.5.0", validatedVersion: "0.4.7" });
+    await write(repo.root, "docs/releases/v0.5.0.md", `# Agentic Project Kit v0.5.0\n\n${prose}\n`);
+    assert.deepEqual(await checkDocumentationConsistency(repo.root, cliReference), [], prose);
   }
 });
 

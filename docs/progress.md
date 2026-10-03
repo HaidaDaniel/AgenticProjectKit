@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Tasks 0177, 0175, 0176, 0158, 0163, and 0168 are complete. Task 0178 is active: independent reviews found publication-check false positives for conditional prose and nearby stable-release availability, plus bypasses through ordinary Markdown version wrappers. Reproduced regressions and bounded predicate/markup fixes now pass all 20 documentation tests, pending candidate verification and fresh review. Task 0170 remains blocked on the operator's private-reporting route; Task 0173 waits on that route and the corrective Tasks 0178/0179.
+Tasks 0177, 0175, 0176, 0158, 0163, and 0168 are complete. Task 0178 is active: independent reviews found publication-check false positives for conditional prose and nearby stable-release availability, plus bypasses through Markdown wrappers and numeric subjects without `v`. Reproduced regressions and bounded predicate/markup fixes now pass all 21 documentation tests, including wrapped conditional prefixes, pending candidate verification and fresh review. Task 0170 remains blocked on the operator's private-reporting route; Task 0173 waits on that route and the corrective Tasks 0178/0179.
 
 ## Known blockers
 
