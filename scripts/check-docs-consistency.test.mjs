@@ -248,6 +248,25 @@ test("candidate publication predicates preserve conditional and separate stable-
   }
 });
 
+test("candidate version markup cannot bypass affirmative publication or validation checks", async (t) => {
+  for (const version of ["`v0.5.0`", "[v0.5.0](v0.5.0.md)", "[`v0.5.0`](v0.5.0.md)"]) {
+    for (const claim of [
+      `The latest validated tagged release is ${version}.`,
+      `The ${version} release is available now.`,
+      `${version} has shipped.`,
+    ]) {
+      const repo = await fixture(t, undefined, { version: "0.5.0", validatedVersion: "0.4.7" });
+      await write(repo.root, "docs/releases/v0.5.0.md", `# Agentic Project Kit v0.5.0\n\n${claim}\n`);
+      const issues = await checkDocumentationConsistency(repo.root, cliReference);
+      assert.ok(issues.some((issue) => issue.startsWith("docs/releases/v0.5.0.md:3:") && issue.includes("candidate note claims")), claim);
+    }
+
+    const repo = await fixture(t, undefined, { version: "0.5.0", validatedVersion: "0.4.7" });
+    await write(repo.root, "docs/releases/v0.5.0.md", `# Agentic Project Kit v0.5.0\n\nOnce ${version} is published, consumers can upgrade. The latest validated tagged release is [v0.4.7](v0.4.7.md).\n`);
+    assert.deepEqual(await checkDocumentationConsistency(repo.root, cliReference), [], version);
+  }
+});
+
 test("a post-publication promotion with matching package and validated versions passes", async (t) => {
   const repo = await fixture(t, undefined, { version: "0.5.0", validatedVersion: "0.5.0" });
 

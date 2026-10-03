@@ -15,4 +15,6 @@ The checker applies deterministic rules to these sources:
 - Rows in the roadmap's **Task state rows** table link one task contract each. The checker discovers task IDs and `State` metadata from `.tasks/` (including archived task files) and compares each row without a maintained ID list.
 - The sentinel is tracked data, not proof from a remote API. The checker does not query tags or decide whether external publication or post-tag validation occurred; the release workflow must establish those facts before updating the sentinel. Historical versioned release-note bodies and ADR prose are not scanned for current-value drift.
 
+Publication checks recognize bare numeric versions, inline-code versions, and version labels in Markdown links, including inline code inside a link label. They preserve source line numbers and do not validate the external link's destination.
+
 The rules do not infer product truth from prose, check external links over the network, rewrite documentation, or decide whether an unstructured milestone description is semantically accurate. Keep current task lifecycle state in the structured roadmap table and use review for claims that cannot be decided from exact values. Failures name the source file and line with a concrete correction.

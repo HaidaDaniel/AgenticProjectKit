@@ -128,8 +128,12 @@ async function readReleaseNote(root, version, label, issues) {
 }
 
 function checkPrematureValidatedClaim(note, candidateVersion, validatedVersion, issues) {
+  // Unwrap only numeric version labels in inline code and Markdown links.
+  // Padding preserves offsets and line numbers in the original release note.
+  const claimText = note.replace(/\[`?(v?\d+\.\d+\.\d+)`?\]\([^\r\n)]*\)|`(v?\d+\.\d+\.\d+)`/g,
+    (markup, linkedVersion, codeVersion) => (linkedVersion ?? codeVersion).padEnd(markup.length));
   const pattern = /latest validated tagged release\s*(?:is|:|=)\s*`?v?(\d+\.\d+\.\d+)`?/gi;
-  for (const match of note.matchAll(pattern)) {
+  for (const match of claimText.matchAll(pattern)) {
     if (match[1] !== validatedVersion) {
       report(issues, `docs/releases/v${candidateVersion}.md`, lineNumber(note, match.index), `candidate note claims latest validated tagged release v${match[1]}; canonical validated release is v${validatedVersion}`);
     }
@@ -140,9 +144,9 @@ function checkPrematureValidatedClaim(note, candidateVersion, validatedVersion, 
   // Keep the predicate adjacent to its version subject: a nearby stable
   // release's availability must not become a claim about the candidate.
   const publicationClaim = new RegExp(String.raw`\b${candidate}\b(?:\s+release)?\s+${publishedStatus}\b`, "gi");
-  for (const match of note.matchAll(publicationClaim)) {
-    const lineStart = note.lastIndexOf("\n", match.index - 1) + 1;
-    const prefix = note.slice(lineStart, match.index);
+  for (const match of claimText.matchAll(publicationClaim)) {
+    const lineStart = claimText.lastIndexOf("\n", match.index - 1) + 1;
+    const prefix = claimText.slice(lineStart, match.index);
     // A condition introducing this subject describes a possible future state.
     // This is a bounded prose check, not a general English grammar parser.
     if (/\b(?:once|when|if|after|before|until|unless)\s+(?:the\s+)?(?:release\s+)?$/i.test(prefix)) continue;

@@ -137,6 +137,7 @@ Make documentation consistency distinguish the current package/candidate version
 
 ## Notes
 
+- A second independent inspection on 2026-10-03 reproduced Markdown-wrapper bypasses: a linked candidate version in a latest-validated-tag claim and an inline-code candidate version in an availability claim passed while their bare-version equivalents failed. The new wrapper regression failed before the fix. Bounded numeric-version label unwrapping preserves original diagnostic offsets; all 20 documentation tests pass with affirmative and conditional cases across inline-code, link, and code-in-link forms.
 - Independent review on 2026-10-03 reproduced three truthful-note false positives: `Once v0.5.0 is published, consumers can install its tag.`, `When the v0.5.0 release is available, use that version.`, and `The release v0.5.0 is not yet published; v0.4.7 is available now.` The new regression failed before the fix. Adjacent subject/predicate matching with bounded conditional-prefix exemption now passes the five-case regression and all 19 documentation tests; direct affirmative publication claims remain rejected.
 - Post-publication validated-version promotion belongs to a separate bookkeeping change on `main`; it is not written back into the immutable tagged candidate.
 - Tasks 0149/0150 remain deferred and outside this release path.
