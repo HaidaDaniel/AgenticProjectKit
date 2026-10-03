@@ -344,8 +344,9 @@ pnpm exec apk task decision <task-id> --actor <human-id> --result cancel --reaso
 Semantics and boundaries:
 
 - every decision is an append-only `human-decision` evidence record bound to the exact task candidate (`baseline`/`candidate`/`worktree`/`HEAD`); a decision recorded for candidate A becomes stale and non-resolving after a candidate mutation;
+- gate/status select the latest current decision by timestamp, then evidence ID for ties, regardless of append order. Only when no current decision exists is the latest stale decision displayed as history; stale decisions cannot change grants or blockers;
 - `accept-current` resolves only the structured `review-budget-exhausted` condition. Failed deterministic verification, scope or forbidden-file violations, missing dependencies, missing required evidence or hosted-CI/live evidence, diverse-assurance gaps, and owner-as-reviewer blockers remain hard blockers;
-- `grant-review-passes` extends the effective review budget additively by 1-2 passes without resetting review history; per-candidate total extension is bounded at +2 passes and an `accept-current` decision supersedes an earlier grant;
+- `grant-review-passes` extends the effective review budget additively by 1-2 passes without resetting review history; per-candidate total extension is bounded at +2 passes and only a current `accept-current` decision with the structured `review-budget-exhausted` marker supersedes earlier current grants;
 - `changes-required` records a human demand for more changes, never satisfies the gate, and is surfaced in status, gate, and provenance;
 - `cancel` is routed into the canonical `apk cancel` transition rather than duplicating cancellation logic;
 - provenance honestly labels the trust model as `operator-asserted`. APK does not authenticate humans; the implementation agent may only relay a decision the operator explicitly communicated. An agent cannot record itself as the actor, no automatic fallback generates a decision, and absent an operator decision the task stays blocked;

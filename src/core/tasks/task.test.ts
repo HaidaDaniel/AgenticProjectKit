@@ -6225,6 +6225,138 @@ async function setupDecisionRepo(directory: string): Promise<DecisionHarness> {
   return { directory, changedFile };
 }
 
+// Operator assertions below are isolated test fixtures, never repository authorization.
+for (const staleDecision of ["grant-review-passes", "accept-current", "changes-required"] as const) {
+  test(`current operator grant wins over stale ${staleDecision} history`, async () => {
+    await withTempDirectory(async (directory) => {
+      const repo = await setupDecisionRepo(directory);
+      const options = { rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" };
+      const oldVerification = await verifyTask({ ...options, owner: "codex-owner", runCommand: async () => 0 });
+      for (let index = 0; index < 2; index += 1) {
+        await recordTaskReview({ ...options, reviewer: "codex-reviewer", outcome: "changes_requested", implementationRunId: oldVerification.runId });
+      }
+      const historical = await recordTaskHumanDecision({
+        ...options, recorder: "codex-recorder", actor: "fixture-operator", decision: staleDecision,
+        reason: "Fixture assertion for the earlier candidate.",
+        ...(staleDecision === "grant-review-passes" ? { reviewBudgetGrant: 2 } : {}),
+      });
+      await writeFile(repo.changedFile, "export const version = 2;\n", "utf8");
+      await verifyTask({ ...options, owner: "codex-owner", runCommand: async () => 0 });
+      const current = await recordTaskHumanDecision({
+        ...options, recorder: "codex-recorder", actor: "fixture-operator", decision: "grant-review-passes",
+        reason: "Fixture assertion granting one pass to this candidate.", reviewBudgetGrant: 1,
+      });
+      const gate = await evaluateTaskCompletionGate(options);
+      assert.equal(gate.review.decision?.evidenceId, current.evidence.id);
+      assert.equal(gate.review.decision?.freshness, "current");
+      assert.equal(gate.review.budget?.grantedPasses, 1);
+      assert.equal(gate.review.budget?.effectiveMaxReviewPasses, 3);
+      assert.equal(gate.review.budget?.exhausted, false);
+      assert.equal(gate.passed, false, "a grant cannot replace current independent review");
+      assert.ok(!gate.blockers.some((blocker) => /Human decision changes-required/.test(blocker)));
+      const provenance = await buildTaskProvenance(directory, ".tasks", "0007");
+      assert.equal(provenance.evidence.find((record) => record.id === current.evidence.id)?.freshness, "current");
+      assert.equal(provenance.evidence.find((record) => record.id === historical.evidence.id)?.freshness, "stale");
+      assert.equal((await listTaskHumanDecisions(directory, "0007")).length, 2);
+    });
+  });
+}
+
+for (const equalTimes of [false, true]) {
+  test(`current operator decisions use deterministic ${equalTimes ? "ID tie-breaking" : "chronological ordering"}`, async () => {
+    await withTempDirectory(async (directory) => {
+      await setupDecisionRepo(directory);
+      const options = { rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" };
+      const { subject } = await captureTaskCompletionCandidate(options);
+      // Append newest first to prove file order cannot select the older decision.
+      for (const [id, time, decision] of [
+        ["decision-z", "2026-10-03T10:00:02.000Z", "changes-required"],
+        ["decision-a", equalTimes ? "2026-10-03T10:00:02.000Z" : "2026-10-03T10:00:01.000Z", "grant-review-passes"],
+      ] as const) {
+        await appendTaskEvidence(directory, {
+          id, time, taskId: "0007", runId: id, agent: "codex-recorder", gateEligible: true,
+          type: "human-decision", result: decision === "changes-required" ? "changes_requested" : "pass", subject, decision, actor: "fixture-operator",
+          trustModel: "operator-asserted", ...(decision === "grant-review-passes" ? { reviewBudgetGrant: 1 } : {}),
+        });
+      }
+      const gate = await evaluateTaskCompletionGate(options);
+      assert.equal(gate.review.decision?.evidenceId, "decision-z");
+      assert.equal(gate.review.decision?.decision, "changes-required");
+      assert.equal(gate.review.budget?.grantedPasses, 1);
+      assert.ok(gate.blockers.some((blocker) => blocker.includes("Human decision changes-required")));
+    });
+  });
+}
+
+test("invalid operator acceptance cannot supersede a bounded current grant", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupDecisionRepo(directory);
+    const options = { rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" };
+    const grant = await recordTaskHumanDecision({
+      ...options, recorder: "codex-recorder", actor: "fixture-operator", decision: "grant-review-passes",
+      reason: "Fixture grants two passes.", reviewBudgetGrant: 2,
+    });
+    await assert.rejects(appendTaskEvidence(directory, {
+      taskId: "0007", runId: "legacy-acceptance", agent: "codex-recorder", gateEligible: true,
+      type: "human-decision", result: "pass", subject: grant.evidence.subject,
+      time: "2099-01-01T00:00:00.000Z", decision: "accept-current", actor: "fixture-operator",
+      trustModel: "operator-asserted",
+    }), /Evidence.resolvedBlocker must be review-budget-exhausted/);
+    const gate = await evaluateTaskCompletionGate(options);
+    assert.equal(gate.review.decision?.decision, "grant-review-passes");
+    assert.equal(gate.review.budget?.grantedPasses, 2);
+    assert.equal(gate.passed, false);
+    assert.doesNotMatch(gate.review.reason, /resolved by human decision/);
+  });
+});
+
+test("current structured acceptance supersedes grants while preserving hard blockers", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupDecisionRepo(directory);
+    const options = { rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" };
+    const verification = await verifyTask({ ...options, owner: "codex-owner", runCommand: async () => 1 });
+    for (let index = 0; index < 2; index += 1) {
+      await recordTaskReview({ ...options, reviewer: "codex-reviewer", outcome: "changes_requested", implementationRunId: verification.runId });
+    }
+    await recordTaskHumanDecision({
+      ...options, recorder: "codex-recorder", actor: "fixture-operator", decision: "grant-review-passes",
+      reason: "Fixture grants two passes.", reviewBudgetGrant: 2,
+    });
+    const accepted = await recordTaskHumanDecision({
+      ...options, recorder: "codex-recorder", actor: "fixture-operator", decision: "accept-current",
+      reason: "Fixture accepts the exhausted review condition only.",
+    });
+    const gate = await evaluateTaskCompletionGate(options);
+    assert.equal(gate.review.decision?.evidenceId, accepted.evidence.id);
+    assert.equal(gate.review.budget?.grantedPasses, 0);
+    assert.equal(gate.review.budget?.effectiveMaxReviewPasses, 2);
+    assert.equal(gate.review.budget?.passesUsed, 2);
+    assert.equal(gate.passed, false);
+    assert.match(gate.review.reason, /resolved by human decision/);
+    assert.ok(gate.blockers.some((blocker) => blocker.includes("Required verification check check-1 is fail")));
+    assert.ok(!gate.blockers.some((blocker) => blocker.includes("Review budget exhausted")));
+  });
+});
+
+test("stale changes-required stays visible without blocking a current independent pass", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = await setupDecisionRepo(directory);
+    const options = { rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" };
+    await recordTaskHumanDecision({
+      ...options, recorder: "codex-recorder", actor: "fixture-operator", decision: "changes-required",
+      reason: "Fixture requested changes to the old candidate.",
+    });
+    await writeFile(repo.changedFile, "export const version = 2;\n", "utf8");
+    const verification = await verifyTask({ ...options, owner: "codex-owner", runCommand: async () => 0 });
+    await recordTaskReview({ ...options, reviewer: "codex-reviewer", outcome: "pass", implementationRunId: verification.runId });
+    const gate = await evaluateTaskCompletionGate(options);
+    assert.equal(gate.review.decision?.decision, "changes-required");
+    assert.equal(gate.review.decision?.freshness, "stale");
+    assert.equal(gate.passed, true);
+    assert.doesNotMatch(gate.review.reason, /resolved by human decision/);
+  });
+});
+
 test("accept-current resolves only review-budget exhaustion for the bound candidate", async () => {
   await withTempDirectory(async (directory) => {
     const repo = await setupDecisionRepo(directory);

@@ -1,7 +1,7 @@
 # Task 0181 - Prefer current operator decisions over stale candidate history
 
-State: todo
-Owner: none
+State: review
+Owner: codex-0181
 Mode: maintenance
 Lane: quality
 Type: bugfix
@@ -103,7 +103,9 @@ Select the latest current operator-asserted decision before stale history when d
 ## Documentation updates
 
 - Update docs/progress.md when task state changes.
+- Document current-first selection in docs/task-system.md and ADR-0080; repair the adjacent ADR-0079 index table separator noted by Task 0179 review.
 
 ## Notes
 
 - Observed during Task 0178 on 2026-10-03: current grant evidence-1791017174354-509plw was counted as +2 while the gate displayed stale evidence-1791016635259-l1mbv9. gate.ts sorts current assessments before stale assessments and then selects at(-1); reproduce this before altering code.
+- Reproduced on Node 22.22.1 before implementation: seven isolated decision fixtures, four assertion failures and three passes (`/tmp/apk-0181-repro.log`). Fixture validation errors were corrected before this captured run; no malformed record is admitted. Stale grant/acceptance/changes-required override a current grant; stale changes-required blocks a current independent pass.

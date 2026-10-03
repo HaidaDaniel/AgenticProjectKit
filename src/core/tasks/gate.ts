@@ -389,13 +389,12 @@ export async function evaluateTaskCompletionGate(options: {
     );
     const decisionAssessmentsOrdered = [...decisionAssessments]
       .sort((left, right) => (
-        (left.freshness === "current" ? 0 : 1) - (right.freshness === "current" ? 0 : 1)
-        || left.record.time.localeCompare(right.record.time)
+        left.record.time.localeCompare(right.record.time)
         || left.record.id.localeCompare(right.record.id)
       ));
     const decisionAssessmentsCurrent = decisionAssessmentsOrdered
       .filter((assessment) => assessment.freshness === "current");
-    const latestDecision = decisionAssessmentsOrdered.at(-1);
+    const latestDecision = decisionAssessmentsCurrent.at(-1) ?? decisionAssessmentsOrdered.at(-1);
     if (latestDecision) {
       review.decision = {
         decision: latestDecision.record.decision,
@@ -408,14 +407,18 @@ export async function evaluateTaskCompletionGate(options: {
     }
     const grantedPasses = Math.min(
       Math.max(0, decisionAssessmentsCurrent
-        .filter((assessment) => assessment.record.decision === "grant-review-passes"
-          && !(latestDecision && latestDecision.record.decision === "accept-current" && latestDecision.record.id === assessment.record.id))
+        .filter((assessment) => assessment.record.decision === "grant-review-passes")
         .reduce((sum, assessment) => sum + assessment.grantPasses, 0)),
       MAX_HUMAN_REVIEW_GRANT_PASSES,
     );
-    // accept-current supersedes an earlier grant on the same exhausted candidate.
-    const supersedesGrants = latestDecision?.record.decision === "accept-current";
-    const effectiveGrantPasses = supersedesGrants ? 0 : grantedPasses;
+    // Only a current acceptance of structured exhaustion supersedes current grants.
+    const decisionResolvesExhaustion = Boolean(
+      latestDecision
+      && latestDecision.record.decision === "accept-current"
+      && latestDecision.record.resolvedBlocker === TASK_DECISION_RESOLVED_BLOCKER
+      && latestDecision.freshness === "current",
+    );
+    const effectiveGrantPasses = decisionResolvesExhaustion ? 0 : grantedPasses;
     const reviewBudget = policy.requirements.reviewBudget;
     const effectiveMaxReviewPasses = reviewBudget !== undefined
       ? reviewBudget.maxReviewPasses + effectiveGrantPasses
@@ -492,12 +495,6 @@ export async function evaluateTaskCompletionGate(options: {
       }
     }
 
-    const decisionResolvesExhaustion = Boolean(
-      latestDecision
-      && latestDecision.record.decision === "accept-current"
-      && latestDecision.record.resolvedBlocker === TASK_DECISION_RESOLVED_BLOCKER
-      && latestDecision.freshness === "current",
-    );
     if (decisionResolvesExhaustion) {
       // Remove only the structured exhaustion-condition blockers; hard blockers are untouched.
       const resolved = new Set(exhaustionBlockers.filter((blocker) => blockers.includes(blocker)));
@@ -508,7 +505,7 @@ export async function evaluateTaskCompletionGate(options: {
       }
       review.reason = `${review.reason} resolved by human decision (actor=${latestDecision!.record.actor}; blocker=${TASK_DECISION_RESOLVED_BLOCKER}; trust-model=operator-asserted)`;
     }
-    if (latestDecision?.record.decision === "changes-required") {
+    if (latestDecision?.freshness === "current" && latestDecision.record.decision === "changes-required") {
       blockers.push(
         `Human decision changes-required (actor=${latestDecision.record.actor}) requires further changes; the gate needs an independent review pass.`,
       );

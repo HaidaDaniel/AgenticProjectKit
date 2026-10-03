@@ -87,12 +87,12 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0076](#adr-0076---artifact-is-a-separately-gated-reference-distinct-from-observer-evidence) | accepted | Artifact is a separately gated reference distinct from observer evidence | — |
 | [ADR-0077](#adr-0077---attribute-other-task-commits-only-from-bounded-completion-provenance) | accepted | Attribute other-task commits only from bounded completion provenance | — |
 | [ADR-0078](#adr-0078---packaged-source-tasks-require-current-committed-dist) | accepted | Packaged-source tasks require current committed dist | — |
-
 | [ADR-0079](#adr-0079---ci-environment-requires-external-proof-regardless-of-profile-or-type) | accepted | CI environment requires external proof regardless of profile or type | — |
+| [ADR-0080](#adr-0080---current-operator-decisions-take-precedence-over-stale-history) | accepted | Current operator decisions take precedence over stale history | — |
 
 ### ADR index cross-check
 
-- [x] Each of the 78 index rows matches one retained ADR heading and its title.
+- [x] Each of the 79 index rows matches one retained ADR heading and its title.
 - [x] Each status matches that record's explicit `Status` field.
 - [x] The only supersession link is ADR-0006 -> ADR-0062, recorded by ADR-0006's status and ADR-0062's heading and decision text.
 
@@ -1490,3 +1490,23 @@ Reuse the existing policy, verifier, external recording, append-only evidence st
 Reference:
 
 Task 0179.
+
+## ADR-0080 - Current operator decisions take precedence over stale history
+
+Status: accepted
+
+Decision:
+
+Order operator decision assessments by timestamp and evidence ID, then select the latest current record. Only when none is current, display the latest stale record as non-resolving history. Use the existing current, structured `accept-current` exhaustion predicate for both grant supersession and exhaustion resolution. Apply `changes-required` blockers only for a current decision.
+
+Reason:
+
+Sorting current records before stale records and selecting the last assessment made stale history override a current grant. Unconditional acceptance-based grant supersession could erase current grants; stale changes-required records could block an independently reviewed replacement candidate.
+
+Boundary:
+
+Keep append-only evidence, registered recorders, operator-asserted trust, timestamp/ID ordering, additive grants capped at +2, total review history, and hard blockers unchanged. No operator identity, consent, or review pass is generated. Provenance retains all decisions with their freshness. Invalid unstructured acceptance is still rejected by the existing evidence validator.
+
+Reference:
+
+Task 0181.
