@@ -32,54 +32,54 @@ This page preserves historical delivery plans, dependencies, and rationale. It d
 
 ## Gated-workflow milestone (shipped; historical plan)
 
-Tasks 0057-0081 are done. Task 0075 validated the frozen v0.3.1 candidate `5f65faa6a46c0e48e9586540b943898269fb78f7`; its [release evidence](gated-workflow-release-evidence.md) records the passing checks, dogfood, independent review, gate, and exact-SHA hosted CI. The Task 0075 [contract](../../.tasks/0075-validate-next-agenticprojectkit-release-against-gated-workflow.md) remains the lifecycle source. The milestone numbering below is historical.
+Tasks 0057-0081 are done. Task 0075 validated the frozen v0.3.1 candidate `5f65faa6a46c0e48e9586540b943898269fb78f7`; its [release evidence](gated-workflow-release-evidence.md) records the passing checks, dogfood, independent review, gate, and exact-SHA hosted CI. The Task 0075 [contract](../../.tasks/archive/0075-validate-next-agenticprojectkit-release-against-gated-workflow.md) remains the lifecycle source. The milestone numbering below is historical.
 
 APK remains model-agnostic repository-first control plane. External harnesses own model execution; APK owns task contracts, verification, scope, evidence, review and completion.
 
 ### Milestone 1 - Meaningful Done
 
-- [0057 - Structured task verification contract with backward compatibility](../../.tasks/0057-structured-task-verification-contract-with-backward-compatibility.md)
-- [0058 - Add first-class task evidence records](../../.tasks/0058-add-first-class-task-evidence-records.md)
-- [0059 - Execute task verification profiles and record evidence](../../.tasks/0059-execute-task-verification-profiles-and-record-evidence.md)
-- [0060 - Track task claim baseline and enforce allowed-file scope](../../.tasks/0060-track-task-claim-baseline-and-enforce-allowed-file-scope.md)
-- [0061 - Introduce risk and task-policy requirements](../../.tasks/0061-introduce-risk-and-task-policy-requirements.md)
-- [0063 - Add independent task review and review evidence](../../.tasks/0063-add-independent-task-review-and-review-evidence.md)
-- [0062 - Gate task completion on verification, scope, policy and evidence](../../.tasks/0062-gate-task-completion-on-verification-scope-policy-and-evidence.md)
+- [0057 - Structured task verification contract with backward compatibility](../../.tasks/archive/0057-structured-task-verification-contract-with-backward-compatibility.md)
+- [0058 - Add first-class task evidence records](../../.tasks/archive/0058-add-first-class-task-evidence-records.md)
+- [0059 - Execute task verification profiles and record evidence](../../.tasks/archive/0059-execute-task-verification-profiles-and-record-evidence.md)
+- [0060 - Track task claim baseline and enforce allowed-file scope](../../.tasks/archive/0060-track-task-claim-baseline-and-enforce-allowed-file-scope.md)
+- [0061 - Introduce risk and task-policy requirements](../../.tasks/archive/0061-introduce-risk-and-task-policy-requirements.md)
+- [0063 - Add independent task review and review evidence](../../.tasks/archive/0063-add-independent-task-review-and-review-evidence.md)
+- [0062 - Gate task completion on verification, scope, policy and evidence](../../.tasks/archive/0062-gate-task-completion-on-verification-scope-policy-and-evidence.md)
 
 Policy resolution in 0061 and review capability in 0063 precede final done enforcement in 0062.
 
 #### Reliability / Foundation
 
-- [0076 - Recover stale task mutation locks safely](../../.tasks/0076-recover-stale-task-mutation-locks-safely.md): independent prerequisite for final release; serialize edits to shared workflow files.
-- [0080 - Resolve Task 0073 independent-review reliability findings](../../.tasks/0080-resolve-task-0073-independent-review-reliability-findings.md): bounded P2 follow-up; serialize with 0076 because evidence/workflow files overlap.
+- [0076 - Recover stale task mutation locks safely](../../.tasks/archive/0076-recover-stale-task-mutation-locks-safely.md): independent prerequisite for final release; serialize edits to shared workflow files.
+- [0080 - Resolve Task 0073 independent-review reliability findings](../../.tasks/archive/0080-resolve-task-0073-independent-review-reliability-findings.md): bounded P2 follow-up; serialize with 0076 because evidence/workflow files overlap.
 
 ### Milestone 2 - Independent Correctness
 
-- [0064 - Add correctness assumptions and adversarial review contract](../../.tasks/0064-add-correctness-assumptions-and-adversarial-review-contract.md)
-- [0065 - Add typed task templates with domain-specific guardrails](../../.tasks/0065-add-typed-task-templates-with-domain-specific-guardrails.md)
-- [0066 - Add built-in repository and task-contract linting](../../.tasks/0066-add-built-in-repository-and-task-contract-linting.md)
+- [0064 - Add correctness assumptions and adversarial review contract](../../.tasks/archive/0064-add-correctness-assumptions-and-adversarial-review-contract.md)
+- [0065 - Add typed task templates with domain-specific guardrails](../../.tasks/archive/0065-add-typed-task-templates-with-domain-specific-guardrails.md)
+- [0066 - Add built-in repository and task-contract linting](../../.tasks/archive/0066-add-built-in-repository-and-task-contract-linting.md)
 
 ### Milestone 3 - Efficient Agent Workflow
 
-- [0067 - Generate budgeted task context packs](../../.tasks/0067-generate-budgeted-task-context-packs.md)
-- [0068 - Make context suggestions dependency- and change-aware](../../.tasks/0068-make-context-suggestions-dependency-and-change-aware.md)
-- [0069 - Add bounded agent dogfooding evidence](../../.tasks/0069-add-bounded-agent-dogfooding-evidence.md)
-- [0070 - Add end-to-end task execution provenance](../../.tasks/0070-add-end-to-end-task-execution-provenance.md)
-- [0071 - Expose concise workflow, gate and evidence status](../../.tasks/0071-expose-concise-workflow-gate-and-evidence-status.md)
+- [0067 - Generate budgeted task context packs](../../.tasks/archive/0067-generate-budgeted-task-context-packs.md)
+- [0068 - Make context suggestions dependency- and change-aware](../../.tasks/archive/0068-make-context-suggestions-dependency-and-change-aware.md)
+- [0069 - Add bounded agent dogfooding evidence](../../.tasks/archive/0069-add-bounded-agent-dogfooding-evidence.md)
+- [0070 - Add end-to-end task execution provenance](../../.tasks/archive/0070-add-end-to-end-task-execution-provenance.md)
+- [0071 - Expose concise workflow, gate and evidence status](../../.tasks/archive/0071-expose-concise-workflow-gate-and-evidence-status.md)
 
 ### Milestone 4 - Harness Interoperability
 
-- [0072 - Define model-agnostic worker and harness integration contract](../../.tasks/0072-define-model-agnostic-worker-and-harness-integration-contract.md)
-- [0073 - Compose implementation, review and fixer runs without owning the model runtime](../../.tasks/0073-compose-implementation-review-and-fixer-runs-without-owning-the-model-runtime.md)
-- [0081 - Allow automatic independent review orchestration](../../.tasks/0081-allow-automatic-independent-review-orchestration.md)
+- [0072 - Define model-agnostic worker and harness integration contract](../../.tasks/archive/0072-define-model-agnostic-worker-and-harness-integration-contract.md)
+- [0073 - Compose implementation, review and fixer runs without owning the model runtime](../../.tasks/archive/0073-compose-implementation-review-and-fixer-runs-without-owning-the-model-runtime.md)
+- [0081 - Allow automatic independent review orchestration](../../.tasks/archive/0081-allow-automatic-independent-review-orchestration.md)
 
 ### Milestone 5 - Upgrade, Quality and Release
 
-- [0074 - Provide safe adoption path for the new gated task workflow](../../.tasks/0074-provide-safe-adoption-path-for-the-new-gated-task-workflow.md)
-- [0077 - Add repository quality capability detection and policy contracts](../../.tasks/0077-add-repository-quality-capability-detection-and-policy-contracts.md)
-- [0078 - Add first-class local quality guardrails for AgenticProjectKit itself](../../.tasks/0078-add-first-class-local-quality-guardrails-for-agenticprojectkit-itself.md)
-- [0079 - Add minimal clean-checkout CI and release-quality proof for AgenticProjectKit](../../.tasks/0079-add-minimal-clean-checkout-ci-and-release-quality-proof-for-agenticprojectkit.md)
-- [0075 - Validate next AgenticProjectKit release against gated workflow](../../.tasks/0075-validate-next-agenticprojectkit-release-against-gated-workflow.md)
+- [0074 - Provide safe adoption path for the new gated task workflow](../../.tasks/archive/0074-provide-safe-adoption-path-for-the-new-gated-task-workflow.md)
+- [0077 - Add repository quality capability detection and policy contracts](../../.tasks/archive/0077-add-repository-quality-capability-detection-and-policy-contracts.md)
+- [0078 - Add first-class local quality guardrails for AgenticProjectKit itself](../../.tasks/archive/0078-add-first-class-local-quality-guardrails-for-agenticprojectkit-itself.md)
+- [0079 - Add minimal clean-checkout CI and release-quality proof for AgenticProjectKit](../../.tasks/archive/0079-add-minimal-clean-checkout-ci-and-release-quality-proof-for-agenticprojectkit.md)
+- [0075 - Validate next AgenticProjectKit release against gated workflow](../../.tasks/archive/0075-validate-next-agenticprojectkit-release-against-gated-workflow.md)
 
 ### Dependency map
 
@@ -150,6 +150,6 @@ The recorded implementation order was A -> B -> adaptive assurance, after which 
 
 ## Exporter consolidation (shipped follow-up; historical record)
 
-- [0092 - Consolidate agent instruction exports around canonical `AGENTS.md`](../../.tasks/0092-consolidate-agent-instruction-exports-around-canonical-agentsmd.md)
+- [0092 - Consolidate agent instruction exports around canonical `AGENTS.md`](../../.tasks/archive/0092-consolidate-agent-instruction-exports-around-canonical-agentsmd.md)
 
 This completed follow-up depends on exporter/sync, contract-lint, adoption-compatibility, and generated-policy foundations (`0029`, `0040`, `0066`, `0074`, `0081`). `AGENTS.md` is the only full common-policy export; `CLAUDE.md` and `GEMINI.md` are thin `@AGENTS.md` imports, Codex/OpenCode/Cursor read `AGENTS.md` directly, and obsolete generated files have a conservative report/cleanup migration path. Task 0092 remains the canonical implementation record; current sequencing is maintained by the roadmap.

@@ -570,3 +570,7 @@ Archive rules:
 - `pnpm exec apk task deps` marks archived prerequisites and dependents with `(archived)` tag.
 - `pnpm exec apk task create` includes archived tasks in the id sequence.
 - Archived tasks cannot be overwritten; existing archive paths are refused.
+
+Before choosing `--all`, inspect unfinished task context lists and literal task paths used by source tests or immutable release artifacts. Dependencies resolve by ID across the archive, but explicit `.tasks/<file>.md` context paths do not relocate themselves. Retain those referenced completed contracts at their current paths; archive the remaining eligible tasks individually.
+
+Keep archived contracts byte-identical so lifecycle history and old acceptance criteria remain intact. Update affected current documentation links, then run `apk lint --json`, `apk task deps <active-task-id>`, and `node scripts/check-docs-consistency.mjs`. The docs checker covers only its listed documentation sources; inspect other affected links separately. Archive maintenance belongs to its own scoped task, outside a frozen release candidate: moving files changes the candidate and makes existing evidence stale.

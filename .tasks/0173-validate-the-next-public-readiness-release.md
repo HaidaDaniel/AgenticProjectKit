@@ -8,7 +8,7 @@ Type: release
 Scope: release,public-readiness,distribution,verification
 Risk: high
 Parallel: false
-Depends on: 0145,0146,0147,0148,0151,0152,0153,0154,0155,0156,0157,0158,0159,0160,0161,0162,0163,0164,0165,0166,0167,0168,0169,0170,0171,0172,0175,0178
+Depends on: 0145,0146,0147,0148,0151,0152,0153,0154,0155,0156,0157,0158,0159,0160,0161,0162,0163,0164,0165,0166,0167,0168,0169,0170,0171,0172,0175,0178,0179
 Tags: release
 
 ## Goal
@@ -23,6 +23,7 @@ Validate the next public-readiness release
 - .agentic/config.json
 - docs/product/maturity-and-compatibility.md (future output of prerequisite Task 0152)
 - docs/engineering/testing-strategy.md
+- docs/engineering/apk-upgrade-workflow.md
 - LICENSE
 - docs/research/non-node-apk-installation-and-distribution.md
 - .github/workflows/quality.yml
@@ -54,7 +55,7 @@ Validate the next public-readiness release
 
 1. Resolve the free next SemVer target and confirm existing tags are immutable; never move or rewrite a published tag. Treat `packageVersion` as the package/candidate and `validatedReleaseVersion` as the last published release that passed post-tag validation.
 2. Prepare the candidate release note and any required current documentation truthfully. PRE-TAG, `packageVersion` may be newer than `validatedReleaseVersion`; stable install guidance and latest-validated claims remain on the previous release, with no claim that the candidate tag is already published.
-3. Freeze the exact candidate SHA/tree from a clean checkout and observe every declared PRE-TAG criterion against that exact SHA, including quality/coverage/build/release checks, committed dist currency, APK lint/sync/doctor/audit, package/bin/asset payload, declared compatibility or downstream smoke, and exact-SHA hosted CI.
+3. Freeze the exact candidate SHA/tree from a clean checkout and observe every declared PRE-TAG criterion against that exact SHA, including quality/coverage/build/release checks, committed dist currency, APK lint/sync/doctor/audit, package/bin/asset payload, installed-candidate self-adoption in a disposable copy of the frozen APK tree (preview, apply, diff inspection, and diagnostics), declared compatibility or downstream smoke, and exact-SHA hosted CI.
 4. Create the annotated tag only after all PRE-TAG criteria pass, pointing to the validated candidate SHA, and verify the peeled commit equals that SHA.
 5. Run POST-TAG checks separately: actual immutable-tag cold install, tag-peel verification, released package/bin identity, downstream install from the tag, and post-release self-adoption. Treat the release-note file inside the tag as pre-tag-only and store post-tag observations in a separate artifact.
 6. After successful POST-TAG validation, promote `validatedReleaseVersion` to the published version on `main`. If changing the sentinel/stable docs inside this release task would stale or invalidate candidate-bound evidence/gate proof, create and execute a separate, bounded post-release bookkeeping task after publication. That task must not alter the tag or tagged candidate, and the repository must not remain indefinitely with package ahead of a release that already passed post-tag validation.
@@ -65,6 +66,7 @@ Validate the next public-readiness release
 - PRE-TAG documentation may show `packageVersion` ahead of `validatedReleaseVersion`, while stable install guidance and latest-validated claims continue to identify the prior published release.
 - Every criterion claimed as PRE-TAG evidence actually ran against the exact frozen candidate SHA from a clean checkout before tag creation, including exact-SHA hosted CI.
 - Package payload inspection confirms metadata, canonical and compatibility bins, license, templates, and portable assets are present and internally consistent.
+- Before tagging, the installed candidate passes self-adoption preview/apply and diagnostics in a disposable copy of the frozen APK tree; working main is not automatically adopted. This smoke does not substitute for actual-tag post-release installation and self-adoption.
 - The release is valid under the current AgenticProjectKit product identity and does not require or imply naming/rebrand work; Tasks 0149 and 0150 are not direct or transitive prerequisites.
 - The annotated tag peels to the validated candidate SHA and is never moved or rewritten afterward.
 - POST-TAG evidence (actual-tag cold install, tag peel, released package/bin identity, downstream install, self-adoption) is recorded separately after publication.
@@ -117,6 +119,8 @@ Validate the next public-readiness release
 - `{"id":"check-13","type":"manual","required":true,"environment":"live","profile":"trusted","instruction":"After the immutable annotated tag exists, verify it peels to the frozen candidate SHA, install that exact tag in a fresh consumer with a fresh package store, inspect package metadata, license, bins, and portable assets, and run representative downstream adoption smoke; record separately from tagged release notes.","evidence":"post-tag artifact with tag object, peeled SHA, package identity, and cold-install/adoption transcript"}`
 - `{"id":"check-14","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"check-15","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+- `{"id":"candidate-self-adoption","type":"manual","required":true,"environment":"local","profile":"report","instruction":"Before tagging, install the exact frozen candidate package in a fresh consumer; run preview and apply in a disposable APK copy, inspect diff, then sync, lint, doctor and status. Preserve working main. Record exact SHA and transcript separately from actual-tag post-release checks.","evidence":"candidate SHA, package identity, preview/diff and diagnostics transcript"}`
+
 ## Documentation updates
 
 - Update docs/progress.md when task state changes.

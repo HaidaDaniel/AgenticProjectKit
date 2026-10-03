@@ -14,7 +14,7 @@ Tasks 0057-0081 are complete. Task 0075 validated frozen v0.3.1 candidate `5f65f
 
 ### Resource-aware execution
 
-Tasks 0082-0088 are complete and included in the [v0.4.0 release](releases/v0.4.0.md). The accepted design and current behavior are documented in [execution profiles](execution-profiles.md). Task 0092's canonical instruction-export consolidation is also complete ([contract](../.tasks/0092-consolidate-agent-instruction-exports-around-canonical-agentsmd.md)).
+Tasks 0082-0088 are complete and included in the [v0.4.0 release](releases/v0.4.0.md). The accepted design and current behavior are documented in [execution profiles](execution-profiles.md). Task 0092's canonical instruction-export consolidation is also complete ([contract](../.tasks/archive/0092-consolidate-agent-instruction-exports-around-canonical-agentsmd.md)).
 
 ## Current state
 
@@ -30,38 +30,40 @@ Each row repeats its contract's lifecycle state so readers can compare the roadm
 
 | Workstream | Task | State | Contract |
 | --- | --- | --- | --- |
-| Product and current truth | 0151 | done | [0151](../.tasks/0151-separate-apk-requirements-from-downstream-project-templates.md) |
-| Product and current truth | 0152 | done | [0152](../.tasks/0152-define-public-maturity-and-compatibility-policy.md) |
-| Product and current truth | 0153 | done | [0153](../.tasks/0153-make-progressmd-a-concise-current-state-document.md) |
-| Product and current truth | 0154 | done | [0154](../.tasks/0154-modernize-scopemd-around-current-and-historical-scope.md) |
-| Product and current truth | 0155 | done | [0155](../.tasks/0155-reframe-roadmapmd-as-shipped-current-planned-and-deferred.md) |
-| Product and current truth | 0156 | done | [0156](../.tasks/0156-mark-old-delivery-milestones-as-historical.md) |
-| Product and current truth | 0157 | done | [0157](../.tasks/0157-clarify-architecture-truth-and-normalize-adr-lifecycle.md) |
-| Documentation front door | 0158 | done | [0158](../.tasks/0158-add-a-documentation-home.md) |
-| Documentation front door | 0159 | done | [0159](../.tasks/0159-write-a-canonical-getting-started-guide.md) |
-| Documentation front door | 0160 | done | [0160](../.tasks/0160-explain-apk-core-concepts-and-trust-boundaries.md) |
-| Documentation front door | 0161 | done | [0161](../.tasks/0161-document-safe-brownfield-adoption.md) |
-| Documentation front door | 0162 | done | [0162](../.tasks/0162-document-constrained-and-local-first-execution.md) |
-| Documentation front door | 0163 | done | [0163](../.tasks/0163-redesign-readme-as-the-public-front-door.md) |
-| Documentation front door | 0164 | done | [0164](../.tasks/0164-explain-when-to-use-apk-and-compare-alternatives.md) |
-| CLI consistency | 0165 | done | [0165](../.tasks/0165-establish-one-canonical-public-cli-name.md) |
-| CLI consistency | 0167 | done | [0167](../.tasks/0167-keep-cli-reference-aligned-with-the-command-registry.md) |
-| OSS contribution readiness | 0169 | done | [0169](../.tasks/0169-add-contributor-docs-and-lightweight-github-contribution-ux.md) |
+| Product and current truth | 0151 | done | [0151](../.tasks/archive/0151-separate-apk-requirements-from-downstream-project-templates.md) |
+| Product and current truth | 0152 | done | [0152](../.tasks/archive/0152-define-public-maturity-and-compatibility-policy.md) |
+| Product and current truth | 0153 | done | [0153](../.tasks/archive/0153-make-progressmd-a-concise-current-state-document.md) |
+| Product and current truth | 0154 | done | [0154](../.tasks/archive/0154-modernize-scopemd-around-current-and-historical-scope.md) |
+| Product and current truth | 0155 | done | [0155](../.tasks/archive/0155-reframe-roadmapmd-as-shipped-current-planned-and-deferred.md) |
+| Product and current truth | 0156 | done | [0156](../.tasks/archive/0156-mark-old-delivery-milestones-as-historical.md) |
+| Product and current truth | 0157 | done | [0157](../.tasks/archive/0157-clarify-architecture-truth-and-normalize-adr-lifecycle.md) |
+| Documentation front door | 0158 | done | [0158](../.tasks/archive/0158-add-a-documentation-home.md) |
+| Documentation front door | 0159 | done | [0159](../.tasks/archive/0159-write-a-canonical-getting-started-guide.md) |
+| Documentation front door | 0160 | done | [0160](../.tasks/archive/0160-explain-apk-core-concepts-and-trust-boundaries.md) |
+| Documentation front door | 0161 | done | [0161](../.tasks/archive/0161-document-safe-brownfield-adoption.md) |
+| Documentation front door | 0162 | done | [0162](../.tasks/archive/0162-document-constrained-and-local-first-execution.md) |
+| Documentation front door | 0163 | done | [0163](../.tasks/archive/0163-redesign-readme-as-the-public-front-door.md) |
+| Documentation front door | 0164 | done | [0164](../.tasks/archive/0164-explain-when-to-use-apk-and-compare-alternatives.md) |
+| CLI consistency | 0165 | done | [0165](../.tasks/archive/0165-establish-one-canonical-public-cli-name.md) |
+| CLI consistency | 0167 | done | [0167](../.tasks/archive/0167-keep-cli-reference-aligned-with-the-command-registry.md) |
+| OSS contribution readiness | 0169 | done | [0169](../.tasks/archive/0169-add-contributor-docs-and-lightweight-github-contribution-ux.md) |
 | OSS contribution readiness | 0170 | blocked | [0170](../.tasks/0170-publish-a-truthful-security-reporting-policy.md) |
-| OSS contribution readiness | 0171 | done | [0171](../.tasks/0171-establish-a-release-changelog-and-index-strategy.md) |
-| Acquisition and examples | 0166 | done | [0166](../.tasks/0166-simplify-first-run-acquisition-while-keeping-exact-pins.md) |
-| Acquisition and examples | 0172 | done | [0172](../.tasks/0172-add-runnable-greenfield-brownfield-and-local-first-showcases.md) |
-| Documentation consistency and release gate | 0168 | done | [0168](../.tasks/0168-add-deterministic-documentation-consistency-checks.md) |
-| Documentation consistency and release gate | 0178 | doing | [0178](../.tasks/0178-separate-release-candidate-version-from-latest-validated-release.md) |
+| OSS contribution readiness | 0171 | done | [0171](../.tasks/archive/0171-establish-a-release-changelog-and-index-strategy.md) |
+| Acquisition and examples | 0166 | done | [0166](../.tasks/archive/0166-simplify-first-run-acquisition-while-keeping-exact-pins.md) |
+| Acquisition and examples | 0172 | done | [0172](../.tasks/archive/0172-add-runnable-greenfield-brownfield-and-local-first-showcases.md) |
+| Documentation consistency and release gate | 0168 | done | [0168](../.tasks/archive/0168-add-deterministic-documentation-consistency-checks.md) |
+| Documentation consistency and release gate | 0178 | done | [0178](../.tasks/0178-separate-release-candidate-version-from-latest-validated-release.md) |
+| Documentation consistency and release gate | 0179 | todo | [0179](../.tasks/0179-require-externally-observed-ci-for-every-declared-ci-verification-check.md) |
+| Workflow decision correctness | 0181 | todo | [0181](../.tasks/0181-prefer-current-operator-decisions-over-stale-candidate-history.md) |
 | Documentation consistency and release gate | 0173 | todo | [0173](../.tasks/0173-validate-the-next-public-readiness-release.md) |
 
-Task contracts carry the exact prerequisite graph; use `apk task deps <task-id>` to inspect it. In particular, Task 0173 depends on 0178 as well as its existing guide, CLI, contribution, consistency, and security prerequisites; Task 0179 will be added after 0178 completes. Task 0173 validates an exact frozen candidate only after its dependencies pass; it does not assign a version or date in advance. Its PRE-TAG state may have `packageVersion` ahead of `validatedReleaseVersion`; promotion follows successful post-tag validation in a separate change on `main`.
+Task contracts carry the exact prerequisite graph; use `apk task deps <task-id>` to inspect it. In particular, Task 0173 depends on completed Task 0178, pending Task 0179, and its existing guide, CLI, contribution, consistency, and security prerequisites. Task 0181 follows 0179 to correct current-versus-stale operator decision selection; it is a separate workflow correctness task, not an added release prerequisite. Task 0173 validates an exact frozen candidate only after its dependencies pass; it does not assign a version or date in advance. Its PRE-TAG state may have `packageVersion` ahead of `validatedReleaseVersion`; promotion follows successful post-tag validation in a separate change on `main`.
 
 ## Deep backlog / deferred product identity
 
 Tasks 0149 and 0150 are blocked and deferred identity work, not public-readiness prerequisites. Reconsidering the name requires a new explicit human decision; research does not authorize a rebrand ([0149](../.tasks/0149-research-and-recommend-a-public-project-name.md), [0150](../.tasks/0150-implement-a-human-approved-project-rebrand.md)).
 
-The external-runtime dogfood recorded by Task 0097 is deferred until the APK backlog is complete. It is a validation exercise, not an adapter implementation or dependency ([Task 0097](../.tasks/0097-align-apk-with-external-agent-runtimes-and-persistent-dev-hosts.md), [ADR-0039](decisions.md#adr-0039---apk-is-a-repository-local-semantic-control-plane-not-an-external-runtime)).
+The external-runtime dogfood recorded by Task 0097 is deferred until the APK backlog is complete. It is a validation exercise, not an adapter implementation or dependency ([Task 0097](../.tasks/archive/0097-align-apk-with-external-agent-runtimes-and-persistent-dev-hosts.md), [ADR-0039](decisions.md#adr-0039---apk-is-a-repository-local-semantic-control-plane-not-an-external-runtime)).
 
 ## Blocked work
 

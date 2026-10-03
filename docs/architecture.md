@@ -43,7 +43,7 @@ Semantic attention and isolated workspaces are runtime-neutral: Task 0087 projec
 
 ## Accepted target architecture
 
-The accepted Resource-Aware Execution target ([ADR-0034](decisions.md#adr-0034---execution-profile-is-independent-and-assurance-is-resource-aware), [Task 0082](../.tasks/0082-document-resource-aware-execution-architecture-and-backlog.md)) is implemented and is described above. No accepted, unimplemented architecture target is recorded here. Any new architecture target needs an explicit accepted decision and a task contract before it is treated as planned work.
+The accepted Resource-Aware Execution target ([ADR-0034](decisions.md#adr-0034---execution-profile-is-independent-and-assurance-is-resource-aware), [Task 0082](../.tasks/archive/0082-document-resource-aware-execution-architecture-and-backlog.md)) is implemented and is described above. No accepted, unimplemented architecture target is recorded here. Any new architecture target needs an explicit accepted decision and a task contract before it is treated as planned work.
 
 ## Deferred architecture
 

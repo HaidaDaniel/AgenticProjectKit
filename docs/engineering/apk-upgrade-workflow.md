@@ -12,6 +12,39 @@ The first implementation follow-up should be a reusable, manually invoked upgrad
 
 A new CLI surface is justified only if future dogfood demonstrates a concrete information gap that cannot be assembled reliably from existing commands. The strongest candidate is a **read-only installed/declared-version and compatibility report**, not an imperative migration engine. Do not create that command merely for symmetry.
 
+## Updating APK in its own repository
+
+AgenticProjectKit is APK's source repository, not a downstream repository with a dependency on itself. Its local `node_modules/.bin/apk` launcher runs `dist/cli/index.js`. `pnpm build` refreshes that executable and its copied template assets from the source tree; the committed output must be current before candidate validation. An APK dependency on APK is unnecessary.
+
+Keep these update surfaces separate:
+
+| Surface | Update mechanism | Validation boundary |
+| --- | --- | --- |
+| Development executable | Build source and commit current `dist/` | Task verification and exact-candidate checks before tagging |
+| Repository config and generated instructions | Inspect adoption compatibility and `sync`; apply only scoped, reviewed changes | Before freezing the candidate when that release changes these files |
+| Installed release | Install the exact immutable tag in a fresh consumer | After publication, verifying installed package/bin identity |
+| Self-adoption smoke | Run the candidate or released CLI against a disposable APK checkout | Candidate smoke before tagging; actual-tag smoke after publication |
+
+### Before release
+
+Build the package and run repository quality, coverage, built-CLI lint, check-only sync, and audit under the release contract. Audit writes reports, so use a disposable checkout for non-mutating frozen-candidate validation. Check the packed payload rather than assuming source tests prove the installed CLI or copied assets are current.
+
+Run a candidate self-adoption smoke in a disposable copy of the exact frozen APK tree: inspect `adopt --preview`, apply there, inspect the resulting diff, and run `sync`, `lint`, `doctor`, `status`, and the declared package/workflow checks. Any necessary config or instruction updates in the real development repository belong to preparation before freeze. A tracked change after freeze creates a new candidate and requires fresh verification, CI, and review.
+
+The `release:patch`, `release:minor`, and `release:major` package scripts run checks before changing the package version. Their success therefore does not certify the later version bump, candidate note, or final frozen SHA; validate that resulting candidate again. Keep stable install instructions on the validated-release sentinel until successful post-tag promotion.
+
+### After release
+
+Cold-install the actual immutable tag in a fresh consumer/store, verify package and executable identity, and use that installed CLI for self-adoption in a separate disposable checkout of the tag. Candidate smoke cannot prove acquisition from a tag that did not exist yet. Record these observations in the post-release artifact on `main`, without rewriting the tag or its release note. The [v0.4.7 validation record](../delivery/workflow-v0.4.7-self-dogfood.md#agenticprojectkit-self-adoption) demonstrates this actual-tag path.
+
+Automatically exercising adoption in disposable release-validation checkouts is useful at both boundaries. Automatic adoption of the working `main` checkout is a separate mutation: `adopt` can create documents, reports, and a task, while generated instruction updates can affect customized policy and current candidate evidence. Keep those real changes in a bounded task with diff inspection, rather than making release publication repeatedly adopt the source repository. The existing hosted Quality job builds and checks APK in its own checkout; it does not automatically apply adoption to working `main`.
+
+### Observed development smoke (2026-10-03)
+
+A tarball packed from source SHA `f9a567ce49c5416d5c3d1cd8ce9ea9aec84f36d8` was installed as `agentic-project-kit@0.4.7` in a fresh consumer with a fresh pnpm store (Node `24.21.0`, pnpm `10.28.1`). The installed CLI ran against a separate copy of that source tree. `adopt --preview` preserved all 471 original files; `adopt --apply`, check-only `sync`, `lint --json`, `doctor`, and `status` exited successfully. The working source checkout and HEAD remained unchanged.
+
+This was a diagnostic development-package check, not a new release or evidence for a future release candidate. Task 0173 must repeat candidate smoke against its own frozen SHA, then actual-tag smoke after publication. The local transcript and structured result are `/tmp/apk-self-update-smoke-qghnsyrt/smoke.log` and `/tmp/apk-self-update-smoke-qghnsyrt/report.json`; these temporary files are local observations, not durable hosted artifacts.
+
 ## Why this architecture
 
 APK already exposes most of the primitives needed for a safe upgrade:
