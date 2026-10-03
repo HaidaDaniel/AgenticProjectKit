@@ -137,6 +137,7 @@ Make documentation consistency distinguish the current package/candidate version
 
 ## Notes
 
+- Independent review on 2026-10-03 reproduced three truthful-note false positives: `Once v0.5.0 is published, consumers can install its tag.`, `When the v0.5.0 release is available, use that version.`, and `The release v0.5.0 is not yet published; v0.4.7 is available now.` The new regression failed before the fix. Adjacent subject/predicate matching with bounded conditional-prefix exemption now passes the five-case regression and all 19 documentation tests; direct affirmative publication claims remain rejected.
 - Post-publication validated-version promotion belongs to a separate bookkeeping change on `main`; it is not written back into the immutable tagged candidate.
 - Tasks 0149/0150 remain deferred and outside this release path.
 - Pre-fix candidate-state reproduction: replayed the original checker from baseline `8b21762a1feccec11db1225fd7c723889a3f4a1b` after advancing only `package.json.version` to `0.5.0` and adding a matching candidate note. The checker exited 1 with the captured output below. The first seven diagnostics show stable release claims and the install pin were coupled to the package candidate; the CLI-reference diagnostic is additional baseline drift independent of release-version selection.

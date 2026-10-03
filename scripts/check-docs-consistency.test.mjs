@@ -234,6 +234,20 @@ test("a candidate note may describe future or not-yet-published availability", a
   assert.deepEqual(issues, []);
 });
 
+test("candidate publication predicates preserve conditional and separate stable-release prose", async (t) => {
+  for (const prose of [
+    "Once v0.5.0 is published, consumers can install its tag.",
+    "When the v0.5.0 release is available, use that version.",
+    "If the release v0.5.0 has shipped, consumers can upgrade.",
+    "After v0.5.0 has been published, use the immutable tag.",
+    "The release v0.5.0 is not yet published; v0.4.7 is available now.",
+  ]) {
+    const repo = await fixture(t, undefined, { version: "0.5.0", validatedVersion: "0.4.7" });
+    await write(repo.root, "docs/releases/v0.5.0.md", `# Agentic Project Kit v0.5.0\n\n${prose}\n`);
+    assert.deepEqual(await checkDocumentationConsistency(repo.root, cliReference), [], prose);
+  }
+});
+
 test("a post-publication promotion with matching package and validated versions passes", async (t) => {
   const repo = await fixture(t, undefined, { version: "0.5.0", validatedVersion: "0.5.0" });
 

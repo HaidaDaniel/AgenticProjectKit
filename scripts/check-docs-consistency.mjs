@@ -137,17 +137,16 @@ function checkPrematureValidatedClaim(note, candidateVersion, validatedVersion, 
 
   const candidate = `v${escapeRegExp(candidateVersion)}`;
   const publishedStatus = String.raw`(?:has\s+(?:(?:(?:already|now|just)\s+)?been\s+)?|is\s+|was\s+)(?:(?:already|currently|now)\s+)?(?:published|released|available|shipped|launched|live)`;
-  const publicationClaims = [
-    new RegExp(String.raw`\b${candidate}\b(?:\s+release)?\s+${publishedStatus}\b`, "gi"),
-    new RegExp(String.raw`\brelease\b[^\r\n]{0,40}\b${candidate}\b[^\r\n]{0,40}\b${publishedStatus}\b`, "gi"),
-  ];
-  const reportedOffsets = new Set();
-  for (const publicationClaim of publicationClaims) {
-    for (const match of note.matchAll(publicationClaim)) {
-      if (reportedOffsets.has(match.index)) continue;
-      reportedOffsets.add(match.index);
-      report(issues, `docs/releases/v${candidateVersion}.md`, lineNumber(note, match.index), `candidate note claims release v${candidateVersion} is already published or available; qualify the statement until validation (canonical validated release is v${validatedVersion})`);
-    }
+  // Keep the predicate adjacent to its version subject: a nearby stable
+  // release's availability must not become a claim about the candidate.
+  const publicationClaim = new RegExp(String.raw`\b${candidate}\b(?:\s+release)?\s+${publishedStatus}\b`, "gi");
+  for (const match of note.matchAll(publicationClaim)) {
+    const lineStart = note.lastIndexOf("\n", match.index - 1) + 1;
+    const prefix = note.slice(lineStart, match.index);
+    // A condition introducing this subject describes a possible future state.
+    // This is a bounded prose check, not a general English grammar parser.
+    if (/\b(?:once|when|if|after|before|until|unless)\s+(?:the\s+)?(?:release\s+)?$/i.test(prefix)) continue;
+    report(issues, `docs/releases/v${candidateVersion}.md`, lineNumber(note, match.index), `candidate note claims release v${candidateVersion} is already published or available; qualify the statement until validation (canonical validated release is v${validatedVersion})`);
   }
 }
 
