@@ -1,6 +1,6 @@
 # Task 0179 - Require externally observed CI for every declared CI verification check
 
-State: review
+State: done
 Owner: codex-0179
 Mode: maintenance
 Lane: quality
