@@ -3046,6 +3046,15 @@ test("recorded live evidence satisfies a required manual/live check and its live
     assert.equal(recorded.type, "live");
     assert.equal(recorded.gateEligible, true);
 
+    const pendingCi = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(pendingCi.passed, false);
+    assert.ok(pendingCi.blockers.some((blocker) => blocker.includes("release-report")));
+    await recordManualVerification({
+      rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a",
+      checkId: "release-report", result: "pass",
+      evidence: "https://ci.example.test/runs/release-report status=success sha=def",
+    });
+
     const after = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
     assert.equal(after.passed, true, after.blockers.join("; "));
   });
@@ -4530,6 +4539,12 @@ test("completion gate does not block on optional workflow review for non-release
     });
     assert.equal(verification.passed, true);
     assert.equal(verification.checkResults.find((result) => result.id === "workflow-review")?.status, "unavailable");
+
+    await recordManualVerification({
+      rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a",
+      checkId: "release-check", result: "pass",
+      evidence: "https://ci.example.test/runs/release-check status=success sha=candidate",
+    });
 
     const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
     assert.equal(gate.passed, false);
