@@ -225,6 +225,8 @@ function evidenceCategoryMatches(
   if (category === "artifact") return Boolean(record.artifact && requiredArtifactReferences.has(record.artifact));
   if (category === "evidence") return Boolean(record.evidence);
   if (category === "manual") return record.type === "manual";
+  if (category === "report") return record.type === "report"
+    || (record.type === "ci" && record.profile === "report");
   return record.type === category;
 }
 
@@ -303,6 +305,7 @@ export async function evaluateTaskCompletionGate(options: {
       record.type !== "completion" &&
       isGateEligibleEvidence(record, registeredAgents) &&
       record.checkId === check.id &&
+      (check.environment !== "ci" || record.type === "ci") &&
       (check.evidenceType !== "benchmark" || record.type === "benchmark") &&
       (!check.artifact || record.artifact === check.artifact)
     ));

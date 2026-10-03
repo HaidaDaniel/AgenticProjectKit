@@ -2026,6 +2026,11 @@ function verificationEvidenceType(check, externallyObserved = false) {
     if (check.evidenceType === "benchmark") {
         return "benchmark";
     }
+    if (check.environment === "ci") {
+        // CI is an observation boundary regardless of manual type or report profile.
+        // Local runs remain diagnostic; only external recording emits hosted proof.
+        return externallyObserved ? "ci" : "automated-test";
+    }
     if (check.profile === "report") {
         return "report";
     }
@@ -2035,20 +2040,11 @@ function verificationEvidenceType(check, externallyObserved = false) {
     if (check.type === "manual") {
         return "manual";
     }
-    if (check.environment === "ci") {
-        // A local execution of an `environment: ci` check is automated/local
-        // diagnostic evidence. Only an externally observed hosted result is `ci`.
-        return externallyObserved ? "ci" : "automated-test";
-    }
     return "automated-test";
 }
-/**
- * A locally executed `environment: ci` check is hosted-CI diagnostic only when
- * its externally observed record would be typed `ci`. Report, live, and manual
- * checks keep their own external category and gate-eligibility.
- */
+/** Every CI declaration requires an externally observed result. */
 function isHostedCiCheck(check) {
-    return verificationEvidenceType(check, true) === "ci";
+    return check.environment === "ci";
 }
 function verificationRunId() {
     return `verify-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

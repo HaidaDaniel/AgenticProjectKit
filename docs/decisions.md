@@ -88,9 +88,11 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0077](#adr-0077---attribute-other-task-commits-only-from-bounded-completion-provenance) | accepted | Attribute other-task commits only from bounded completion provenance | — |
 | [ADR-0078](#adr-0078---packaged-source-tasks-require-current-committed-dist) | accepted | Packaged-source tasks require current committed dist | — |
 
+| [ADR-0079](#adr-0079---ci-environment-requires-external-proof-regardless-of-profile-or-type) | accepted | CI environment requires external proof regardless of profile or type | — |
+
 ### ADR index cross-check
 
-- [x] Each of the 77 index rows matches one retained ADR heading and its title.
+- [x] Each of the 78 index rows matches one retained ADR heading and its title.
 - [x] Each status matches that record's explicit `Status` field.
 - [x] The only supersession link is ADR-0006 -> ADR-0062, recorded by ADR-0006's status and ADR-0062's heading and decision text.
 
@@ -1468,3 +1470,23 @@ engine is introduced.
 Reference:
 
 Task 0175.
+
+## ADR-0079 - CI environment requires external proof regardless of profile or type
+
+Status: accepted
+
+Decision:
+
+Treat `environment: ci` as an observation boundary before report-profile or manual-type classification. Local verification may run automated CI commands diagnostically, but every local CI record is non-gating and is never typed `ci`. Explicit external recording emits `ci` with the declared profile and artifact metadata. Policy declares `ci` for required CI checks; a report-profile CI check also declares `report`, and its externally recorded CI report satisfies both categories. The per-check completion gate requires a current, registered, gate-eligible `ci` record for that exact check ID and any declared artifact.
+
+Reason:
+
+Profile/type precedence let report CI commands satisfy completion locally and hid manual CI declarations behind manual/report categories. Category-level CI evidence alone cannot prove every required CI check ran. Prior lower-type records remain history and cannot satisfy a CI check under the corrected rules.
+
+Boundary:
+
+Reuse the existing policy, verifier, external recording, append-only evidence store, and gate. Report profile remains metadata on hosted CI proof; artifact and observer references keep their separate meanings. Non-CI and optional-check behavior remains compatible. External recording is an observer assertion, not provider authentication; no runtime, GitHub credential, evidence rewriting, or second policy engine is added.
+
+Reference:
+
+Task 0179.

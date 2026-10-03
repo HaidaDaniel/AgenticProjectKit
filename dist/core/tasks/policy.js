@@ -126,19 +126,23 @@ function declaredEvidenceCategories(task, requiredOnly = false) {
             continue;
         // An explicit evidence type is the check's canonical result category and
         // overrides profile/environment defaults. Otherwise a single check
-        // declares the type its verifier emits (report > live > manual > ci).
+        // declares the type its verifier emits (ci > report > live > manual).
         // Artifact and evidence references add their own categories independently
         // of that result type.
         if (check.evidenceType)
             categories.add(check.evidenceType);
+        else if (check.environment === "ci") {
+            categories.add("ci");
+            // Hosted report records retain their profile and satisfy both categories.
+            if (check.profile === "report")
+                categories.add("report");
+        }
         else if (check.profile === "report")
             categories.add("report");
         else if (check.environment === "live")
             categories.add("live");
         else if (check.type === "manual")
             categories.add("manual");
-        else if (check.environment === "ci")
-            categories.add("ci");
         if (check.artifact)
             categories.add("artifact");
         if (check.evidence)

@@ -941,7 +941,7 @@ test("optional checks never cancel tag evidence requirements", () => {
   });
   assert.equal(release.requirements.evidenceRequired, true);
   assert.deepEqual(release.requirements.evidenceCategories, ["live", "report"]);
-  assert.deepEqual(release.declaredEvidenceCategories, ["artifact", "evidence", "report"]);
+  assert.deepEqual(release.declaredEvidenceCategories, ["artifact", "ci", "evidence", "report"]);
   assert.deepEqual(release.blockers, ["Evidence category live is required but not declared."]);
 });
 
@@ -3143,7 +3143,12 @@ test("recordManualVerification rejects automated checks, missing evidence, forei
   });
 });
 
-async function setupHostedCiRepo(directory: string): Promise<void> {
+async function setupHostedCiRepo(
+  directory: string,
+  verification: ProjectTask["verification"] = [
+    { id: "hosted-ci", type: "automated", required: true, environment: "ci", profile: "deterministic", command: "pass" },
+  ],
+): Promise<void> {
   const git = async (...args: string[]) => {
     await execFileAsync("git", args, { cwd: directory });
   };
@@ -3162,9 +3167,7 @@ async function setupHostedCiRepo(directory: string): Promise<void> {
     allowedFiles: ["src/core/tasks/**"],
     forbiddenFiles: [],
     verificationCommands: [],
-    verification: [
-      { id: "hosted-ci", type: "automated", required: true, environment: "ci", profile: "deterministic", command: "pass" },
-    ],
+    verification,
   });
   await git("add", ".");
   await git("commit", "--quiet", "-m", "initial");
@@ -3845,6 +3848,96 @@ test("ordinary benchmark-like command text remains automated-test evidence", asy
     assert.equal(verification.checkResults[0].evidenceType, undefined);
     assert.equal(evidence[0].type, "automated-test");
     assert.equal(gate.passed, true, gate.blockers.join("; "));
+  });
+});
+
+for (const profile of ["deterministic", "integration", "trusted", "report"] as const) {
+  for (const type of ["automated", "manual"] as const) {
+    test(`CI classification cannot be bypassed by ${type}/${profile}`, async () => {
+      await withTempDirectory(async (directory) => {
+        await setupHostedCiRepo(directory, [{
+          id: "hosted-ci", type, profile, required: true, environment: "ci",
+          ...(type === "automated" ? { command: "pass" } : { instruction: "Observe hosted CI." }),
+          artifact: "reports/hosted.json",
+          evidence: "hosted run URL/status/SHA",
+        }, { id: "local-unit", type: "automated", required: true, environment: "local", profile: "deterministic", command: "local-pass" }]);
+        const options = { rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a" };
+        const local = await verifyTask({ ...options, runCommand: async () => 0 });
+        assert.equal(local.checkResults[0].status, type === "automated" ? "pass" : "unavailable");
+        const localRecords = (await readTaskEvidence(directory, "0007")).filter((record) => record.checkId === "hosted-ci");
+        assert.ok(localRecords.every((record) => record.gateEligible === false), "local CI observations are diagnostic only");
+        let gate = await evaluateTaskCompletionGate(options);
+        assert.equal(gate.passed, false);
+        assert.ok(gate.policy.declaredEvidenceCategories.includes("ci"));
+        if (profile === "report") assert.ok(gate.policy.declaredEvidenceCategories.includes("report"));
+
+        const recorded = await recordManualVerification({
+          ...options, checkId: "hosted-ci", result: "pass",
+          evidence: "https://ci.example.test/runs/matrix status=success sha=candidate",
+        });
+        assert.equal(recorded.type, "ci");
+        assert.equal(recorded.record.profile, profile);
+        assert.equal(recorded.record.artifact, "reports/hosted.json");
+        gate = await evaluateTaskCompletionGate(options);
+        assert.equal(gate.passed, true, gate.blockers.join("; "));
+
+        // A later failed local command or unavailable manual check cannot shadow hosted proof.
+        await verifyTask({ ...options, runCommand: async (command) => command === "local-pass" ? 0 : 1 });
+        gate = await evaluateTaskCompletionGate(options);
+        assert.equal(gate.passed, true, gate.blockers.join("; "));
+        assert.equal(gate.verification[0].evidenceId, recorded.record.id);
+        await recordManualVerification({
+          ...options, checkId: "hosted-ci", result: "fail",
+          evidence: "https://ci.example.test/runs/matrix status=failure sha=candidate",
+        });
+        assert.equal((await evaluateTaskCompletionGate(options)).passed, false);
+      });
+    });
+  }
+}
+
+test("CI per-check matching rejects historical lower types and unrelated hosted passes", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupHostedCiRepo(directory, [{
+      id: "hosted-ci", type: "automated", required: true, environment: "ci", profile: "report", command: "pass",
+    }]);
+    const options = { rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a" };
+    const diagnostic = await verifyTask({ ...options, runCommand: async () => 0 });
+    for (const type of ["report", "manual", "automated-test"] as const) {
+      await appendTaskEvidence(directory, {
+        taskId: "0007", agent: "codex-a", gateEligible: true, runId: "historical-local-" + type,
+        type, result: "pass", subject: diagnostic.subject, checkId: "hosted-ci", profile: "report",
+      });
+    }
+    await appendTaskEvidence(directory, {
+      taskId: "0007", agent: "codex-a", gateEligible: true, runId: "unrelated-hosted",
+      type: "ci", result: "pass", subject: diagnostic.subject, checkId: "another-ci", profile: "report",
+    });
+    const gate = await evaluateTaskCompletionGate(options);
+    assert.equal(gate.passed, false, "a category pass cannot substitute for this check's hosted result");
+    assert.equal(gate.verification[0].result, "missing");
+  });
+});
+
+test("hosted report evidence coherently satisfies report and artifact categories", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupHostedCiRepo(directory, [{
+      id: "hosted-ci", type: "manual", required: true, environment: "ci", profile: "report",
+      instruction: "Observe hosted CI.", artifact: "reports/release.json",
+    }]);
+    const taskPath = join(directory, ".tasks", "0007-hosted-task.md");
+    const { task } = await loadTaskFile(taskPath);
+    await writeTaskFile(taskPath, { ...task, tags: ["security"] });
+    const options = { rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "codex-a" };
+    const recorded = await recordManualVerification({
+      ...options, checkId: "hosted-ci", result: "pass",
+      evidence: "https://ci.example.test/runs/report status=success sha=candidate",
+    });
+    const gate = await evaluateTaskCompletionGate(options);
+    assert.deepEqual(gate.policy.declaredEvidenceCategories, ["artifact", "ci", "report"]);
+    assert.equal(gate.verification[0].result, "pass");
+    assert.ok(gate.evidenceIds.includes(recorded.record.id));
+    assert.ok(!gate.blockers.some((blocker) => /Missing current (report|ci|artifact) evidence/.test(blocker)));
   });
 });
 
