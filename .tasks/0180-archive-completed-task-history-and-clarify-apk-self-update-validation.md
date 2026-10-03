@@ -1,6 +1,6 @@
 # Task 0180 - Archive completed task history and clarify APK self-update validation
 
-State: doing
+State: done
 Owner: codex-maintenance-20261003
 Mode: maintenance
 Lane: maintenance
