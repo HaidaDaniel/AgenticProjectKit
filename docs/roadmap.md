@@ -53,7 +53,7 @@ Each row repeats its contract's lifecycle state so readers can compare the roadm
 | Acquisition and examples | 0172 | done | [0172](../.tasks/archive/0172-add-runnable-greenfield-brownfield-and-local-first-showcases.md) |
 | Documentation consistency and release gate | 0168 | done | [0168](../.tasks/archive/0168-add-deterministic-documentation-consistency-checks.md) |
 | Documentation consistency and release gate | 0178 | done | [0178](../.tasks/0178-separate-release-candidate-version-from-latest-validated-release.md) |
-| Documentation consistency and release gate | 0179 | doing | [0179](../.tasks/0179-require-externally-observed-ci-for-every-declared-ci-verification-check.md) |
+| Documentation consistency and release gate | 0179 | review | [0179](../.tasks/0179-require-externally-observed-ci-for-every-declared-ci-verification-check.md) |
 | Workflow decision correctness | 0181 | todo | [0181](../.tasks/0181-prefer-current-operator-decisions-over-stale-candidate-history.md) |
 | Documentation consistency and release gate | 0173 | todo | [0173](../.tasks/0173-validate-the-next-public-readiness-release.md) |
 
