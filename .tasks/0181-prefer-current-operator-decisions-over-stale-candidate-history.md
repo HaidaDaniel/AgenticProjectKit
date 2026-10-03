@@ -1,6 +1,6 @@
 # Task 0181 - Prefer current operator decisions over stale candidate history
 
-State: review
+State: done
 Owner: codex-0181
 Mode: maintenance
 Lane: quality
