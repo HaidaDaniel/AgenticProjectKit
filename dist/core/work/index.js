@@ -7,7 +7,7 @@ import { buildTaskPromptInput, renderTaskPrompt } from "../docs/prompt.js";
 import { appendTaskEvidence, readTaskEvidence } from "../tasks/evidence.js";
 import { captureTaskCompletionCandidate, evaluateTaskCompletionGate } from "../tasks/gate.js";
 import { resolveTaskPolicy } from "../tasks/policy.js";
-import { cleanupPreparedWorkerReview, prepareTaskReview, recordTaskReview, } from "../tasks/review.js";
+import { cleanupPreparedWorkerReview, prepareTaskReview, recordTaskReview, withTaskReviewBudgetLock, } from "../tasks/review.js";
 import { claimTask, reviewTask } from "../tasks/workflow.js";
 import { findTaskFile, loadTaskFile } from "../tasks/index.js";
 import { createWorkerPackage, parseWorkerPackage, parseWorkerResult, serializeWorkerPackage, validateWorkerRunId, WORKER_PROTOCOL, } from "./contract.js";
@@ -443,7 +443,27 @@ async function sameWorktreeWarnings(rootDirectory, taskId, locationId) {
     }
     return [...new Set(warnings)];
 }
+/**
+ * Serialize review issuance with review evidence recording for one task. The
+ * inner implementation re-reads the task after the lock is acquired so a
+ * concurrent caller cannot issue against stale budget or candidate state.
+ */
 export async function startWork(options) {
+    if (options.role !== "review") {
+        const config = await readAgenticConfigFile(options.rootDirectory);
+        const taskFile = await findTaskFile(options.rootDirectory, options.taskId, config.taskDirectory);
+        const { task } = await loadTaskFile(taskFile);
+        const role = options.role ?? await resolveWorkRole(options.rootDirectory, task);
+        if (role !== "review")
+            return startWorkUnlocked(options);
+        return withTaskReviewBudgetLock(options.rootDirectory, task.id, () => startWorkUnlocked(options));
+    }
+    const config = await readAgenticConfigFile(options.rootDirectory);
+    const taskFile = await findTaskFile(options.rootDirectory, options.taskId, config.taskDirectory);
+    const { task } = await loadTaskFile(taskFile);
+    return withTaskReviewBudgetLock(options.rootDirectory, task.id, () => startWorkUnlocked(options));
+}
+async function startWorkUnlocked(options) {
     const config = await readAgenticConfigFile(options.rootDirectory);
     const selectedResource = options.resourceId
         ? config.resources?.workers.find((worker) => worker.id === options.resourceId)

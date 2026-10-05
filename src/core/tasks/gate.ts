@@ -40,8 +40,7 @@ import {
   packagedDistTaskContractBlockers,
   repositoryPackagedDistContract,
 } from "./package-contract.js";
-import { readAgenticConfigFile } from "../config/file.js";
-import type { ResourceCostClass, WorkerResource } from "../resources/index.js";
+import type { ResourceCostClass } from "../resources/index.js";
 import { listWorkerSessions, readActiveWorkerSession } from "../work/session.js";
 
 export interface TaskCompletionCandidate {
@@ -265,8 +264,7 @@ interface FrontierUsageCount {
 }
 
 function recordedResourceCostClass(record: TaskReviewRecord): ResourceCostClass | undefined {
-  const match = record.summary?.match(/\[resource-cost-class=(local-free|cheap|standard|scarce-frontier)\]/);
-  return match?.[1] as ResourceCostClass | undefined;
+  return record.resourceCostClass;
 }
 
 async function sessionResourceCostClass(
@@ -283,9 +281,11 @@ async function sessionResourceCostClass(
 
 /**
  * Count recorded scarce/frontier consumption for the task from existing
- * evidence: task-bound review records with a durable scarce-frontier class or
- * a current registry match, plus activated worker sessions with the same
- * durable package provenance. Usage is task-bound and append-only; stale,
+ * evidence: task-bound review records with a durable scarce-frontier class,
+ * plus activated worker sessions with the same durable package provenance.
+ * Legacy resource-bound history is unknown and therefore counted
+ * conservatively as frontier spend; current registry reclassification cannot
+ * erase historical consumption. Usage is task-bound and append-only; stale,
  * other-candidate, or non-gate-eligible records remain counted history.
  */
 async function countFrontierUsage(
@@ -293,17 +293,7 @@ async function countFrontierUsage(
   taskId: string,
   reviewRecords: readonly TaskReviewRecord[],
 ): Promise<FrontierUsageCount> {
-  let registryWorkers: WorkerResource[] = [];
   const diagnostics: string[] = [];
-  try {
-    const config = await readAgenticConfigFile(rootDirectory);
-    registryWorkers = config.resources?.workers ?? [];
-  } catch (error: unknown) {
-    diagnostics.push(
-      `Resource registry could not be loaded; resource-bound history is counted conservatively: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-  const resourceCosts = new Map(registryWorkers.map((worker) => [worker.id, worker.costClass]));
   let sessions: Awaited<ReturnType<typeof listWorkerSessions>>;
   try {
     sessions = await listWorkerSessions(rootDirectory);
@@ -324,22 +314,26 @@ async function countFrontierUsage(
   }
   const isFrontierReview = (record: TaskReviewRecord): boolean => {
     if (record.resourceId === undefined) return false;
-    const durableCost = recordedResourceCostClass(record)
-      ?? sessionCosts.get(`${taskId}\0${record.runId}`)
-      ?? resourceCosts.get(record.resourceId);
-    // A resource-bound record whose classification is no longer available is
-    // historical spend of unknown cost; fail closed instead of letting a
-    // removed or reclassified frontier resource disappear from the ledger.
-    return durableCost === "scarce-frontier"
-      || (durableCost === undefined && !resourceCosts.has(record.resourceId));
+    const sessionKey = `${taskId}\0${record.runId}`;
+    const durableCost = recordedResourceCostClass(record);
+    if (durableCost !== undefined) return durableCost === "scarce-frontier";
+    if (sessionCosts.has(sessionKey)) {
+      // A legacy session without a durable class is unknown historical spend;
+      // do not inherit the current registry's cheaper classification.
+      return sessionCosts.get(sessionKey) === undefined
+        || sessionCosts.get(sessionKey) === "scarce-frontier";
+    }
+    // Legacy resource-bound review evidence has no durable cost class. It is
+    // conservatively treated as frontier spend so reclassification/removal
+    // cannot reopen an allowance.
+    return true;
   };
   const frontierPasses = reviewRecords.filter(isFrontierReview).length;
   let frontierRuns = 0;
   for (const session of sessions) {
     if (session.taskId !== taskId || !session.activated || session.resourceId === undefined) continue;
-    const durableCost = sessionCosts.get(`${session.taskId}\0${session.runId}`)
-      ?? resourceCosts.get(session.resourceId);
-    if (durableCost === "scarce-frontier" || (durableCost === undefined && !resourceCosts.has(session.resourceId))) {
+    const durableCost = sessionCosts.get(`${session.taskId}\0${session.runId}`);
+    if (durableCost === undefined || durableCost === "scarce-frontier") {
       frontierRuns += 1;
     }
   }

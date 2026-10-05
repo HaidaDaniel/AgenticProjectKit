@@ -13,6 +13,7 @@ import {
   cleanupPreparedWorkerReview,
   prepareTaskReview,
   recordTaskReview,
+  withTaskReviewBudgetLock,
   type TaskReviewOutcome,
   type TaskReviewPreparation,
 } from "../tasks/review.js";
@@ -610,7 +611,35 @@ async function sameWorktreeWarnings(
   return [...new Set(warnings)];
 }
 
+/**
+ * Serialize review issuance with review evidence recording for one task. The
+ * inner implementation re-reads the task after the lock is acquired so a
+ * concurrent caller cannot issue against stale budget or candidate state.
+ */
 export async function startWork(options: WorkOptions): Promise<WorkResult> {
+  if (options.role !== "review") {
+    const config = await readAgenticConfigFile(options.rootDirectory);
+    const taskFile = await findTaskFile(options.rootDirectory, options.taskId, config.taskDirectory);
+    const { task } = await loadTaskFile(taskFile);
+    const role = options.role ?? await resolveWorkRole(options.rootDirectory, task);
+    if (role !== "review") return startWorkUnlocked(options);
+    return withTaskReviewBudgetLock(
+      options.rootDirectory,
+      task.id,
+      () => startWorkUnlocked(options),
+    );
+  }
+  const config = await readAgenticConfigFile(options.rootDirectory);
+  const taskFile = await findTaskFile(options.rootDirectory, options.taskId, config.taskDirectory);
+  const { task } = await loadTaskFile(taskFile);
+  return withTaskReviewBudgetLock(
+    options.rootDirectory,
+    task.id,
+    () => startWorkUnlocked(options),
+  );
+}
+
+async function startWorkUnlocked(options: WorkOptions): Promise<WorkResult> {
   const config = await readAgenticConfigFile(options.rootDirectory);
   const selectedResource = options.resourceId
     ? config.resources?.workers.find((worker) => worker.id === options.resourceId)

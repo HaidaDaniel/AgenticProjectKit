@@ -7,6 +7,7 @@ import { TASK_DECISION_TRUST_MODEL, TASK_HUMAN_DECISIONS, TASK_REVIEW_EXHAUSTION
 import { isSafeRunId } from "../work/contract.js";
 import { resolveTaskPolicy } from "./policy.js";
 import { readActiveWorkerSession, withWorkerReviewLifecycleLock, } from "../work/session.js";
+import { withLocalMutationLock } from "./lock.js";
 export const TASK_REVIEW_OUTCOMES = ["pass", "changes_requested", "fail"];
 /** Structured blocker condition id resolved by a human accept-current decision. */
 export const TASK_DECISION_RESOLVED_BLOCKER = TASK_REVIEW_EXHAUSTION_BLOCKER;
@@ -16,6 +17,16 @@ function reviewRunId() {
     return `review-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 export const TASK_REVIEW_SESSIONS_PATH = ".agentic/reviews";
+/** Serialize review-budget consumption with scarce worker issuance per task. */
+export async function withTaskReviewBudgetLock(rootDirectory, taskId, run) {
+    return withLocalMutationLock({
+        path: join(rootDirectory, TASK_REVIEW_SESSIONS_PATH, ".budget-locks", `${taskId}.lock`),
+        kind: "task-review-budget",
+        command: "task review budget",
+        taskId,
+        timeoutMs: 10_000,
+    }, run);
+}
 function reviewSessionPath(rootDirectory, taskId, id) {
     return join(rootDirectory, TASK_REVIEW_SESSIONS_PATH, taskId, `${id}.json`);
 }
@@ -117,13 +128,10 @@ async function resolveReviewResourceCostClass(options) {
     const config = await readAgenticConfigFile(options.rootDirectory);
     return config.resources?.workers.find((worker) => worker.id === options.resourceId)?.costClass;
 }
-function reviewSummary(outcome, findings, resourceCostClass) {
-    const base = outcome === "pass"
+function reviewSummary(outcome, findings) {
+    return outcome === "pass"
         ? "Independent review passed."
         : findings.join("; ") || `Independent review ${outcome}.`;
-    return resourceCostClass === undefined
-        ? base
-        : `${base} [resource-cost-class=${resourceCostClass}]`;
 }
 async function assertReviewBudgetAllowsRecord(options) {
     // Keep the canonical gate as the budget authority without introducing a
@@ -373,33 +381,36 @@ export async function recordTaskReview(options) {
     }
     const runId = prepared.reviewRunId;
     const findings = normalizedFindings(options.findings);
-    await assertReviewBudgetAllowsRecord({
-        rootDirectory: options.rootDirectory,
-        taskDirectory: options.taskDirectory,
-        taskId: prepared.task.id,
-        resourceCostClass,
-    });
-    const evidence = await appendTaskEvidence(options.rootDirectory, {
-        taskId: prepared.task.id,
-        runId,
-        agent: prepared.reviewer,
-        type: "review",
-        result: options.outcome,
-        gateEligible: true,
-        subject: prepared.subject,
-        reviewer: prepared.reviewer,
-        implementationRunId: options.implementationRunId,
-        workerProtocol: options.workerProtocol,
-        workerRole: options.workerRole,
-        workerStatus: options.workerStatus,
-        assuranceLevel: options.assuranceLevel ?? resolveTaskPolicy(prepared.task).requirements.assurance,
-        resourceId: options.resourceId,
-        resourceFamily: options.resourceFamily,
-        findings,
-        summary: reviewSummary(options.outcome, findings, resourceCostClass),
-    }, {
-        conflictsWith: (record) => record.type === "review" && record.runId === runId,
-        conflictMessage: `Review run already has a result: ${runId}.`,
+    const evidence = await withTaskReviewBudgetLock(options.rootDirectory, prepared.task.id, async () => {
+        await assertReviewBudgetAllowsRecord({
+            rootDirectory: options.rootDirectory,
+            taskDirectory: options.taskDirectory,
+            taskId: prepared.task.id,
+            resourceCostClass,
+        });
+        return appendTaskEvidence(options.rootDirectory, {
+            taskId: prepared.task.id,
+            runId,
+            agent: prepared.reviewer,
+            type: "review",
+            result: options.outcome,
+            gateEligible: true,
+            subject: prepared.subject,
+            reviewer: prepared.reviewer,
+            implementationRunId: options.implementationRunId,
+            workerProtocol: options.workerProtocol,
+            workerRole: options.workerRole,
+            workerStatus: options.workerStatus,
+            assuranceLevel: options.assuranceLevel ?? resolveTaskPolicy(prepared.task).requirements.assurance,
+            resourceId: options.resourceId,
+            resourceCostClass,
+            resourceFamily: options.resourceFamily,
+            findings,
+            summary: reviewSummary(options.outcome, findings),
+        }, {
+            conflictsWith: (record) => record.type === "review" && record.runId === runId,
+            conflictMessage: `Review run already has a result: ${runId}.`,
+        });
     });
     const reviewRecord = asTaskReviewRecord(evidence);
     if (!reviewRecord) {

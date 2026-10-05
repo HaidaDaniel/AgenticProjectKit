@@ -20,6 +20,7 @@ export const TASK_HUMAN_DECISIONS = [
     "grant-review-passes",
     "changes-required",
 ];
+const TASK_RESOURCE_COST_CLASSES = ["local-free", "cheap", "standard", "scarce-frontier"];
 /** Every human/operator decision is an explicit out-of-band operator assertion. */
 export const TASK_DECISION_TRUST_MODEL = "operator-asserted";
 /** Structured blocker condition id resolved by a human accept-current decision. */
@@ -189,6 +190,9 @@ function normalizeEvidenceRecord(value, lineNumber) {
         workerStatus: optionalText(value.workerStatus, `${prefix}.workerStatus`, issues, 40),
         assuranceLevel: optionalText(value.assuranceLevel, `${prefix}.assuranceLevel`, issues, 40),
         resourceId: optionalText(value.resourceId, `${prefix}.resourceId`, issues, 160),
+        resourceCostClass: value.resourceCostClass === undefined
+            ? undefined
+            : oneOf(value.resourceCostClass, TASK_RESOURCE_COST_CLASSES, `${prefix}.resourceCostClass`, issues),
         resourceFamily: optionalText(value.resourceFamily, `${prefix}.resourceFamily`, issues, 160),
         decision: value.decision === undefined
             ? undefined

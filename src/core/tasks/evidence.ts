@@ -2,6 +2,7 @@ import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { withLocalMutationLock } from "./lock.js";
+import type { ResourceCostClass } from "../resources/index.js";
 
 export const TASK_EVIDENCE_PATH = ".agentic/evidence.jsonl";
 export const TASK_EVIDENCE_LOCK_PATH = ".agentic/evidence.append.lock";
@@ -26,6 +27,8 @@ export const TASK_HUMAN_DECISIONS = [
   "changes-required",
 ] as const;
 export type TaskHumanDecisionKind = (typeof TASK_HUMAN_DECISIONS)[number];
+
+const TASK_RESOURCE_COST_CLASSES = ["local-free", "cheap", "standard", "scarce-frontier"] as const;
 
 /** Every human/operator decision is an explicit out-of-band operator assertion. */
 export const TASK_DECISION_TRUST_MODEL = "operator-asserted" as const;
@@ -90,6 +93,8 @@ export interface TaskEvidenceRecord {
   workerStatus?: string;
   assuranceLevel?: string;
   resourceId?: string;
+  /** Cost class captured when a resource-backed record was produced. */
+  resourceCostClass?: ResourceCostClass;
   resourceFamily?: string;
   /** Human-decision records: the bounded decision, operator actor, resolved blocker condition, and trust model. */
   decision?: string;
@@ -137,6 +142,7 @@ export interface AddTaskEvidenceInput {
   workerStatus?: string;
   assuranceLevel?: string;
   resourceId?: string;
+  resourceCostClass?: ResourceCostClass;
   resourceFamily?: string;
   decision?: TaskHumanDecisionKind;
   actor?: string;
@@ -398,6 +404,9 @@ function normalizeEvidenceRecord(
     workerStatus: optionalText(value.workerStatus, `${prefix}.workerStatus`, issues, 40),
     assuranceLevel: optionalText(value.assuranceLevel, `${prefix}.assuranceLevel`, issues, 40),
     resourceId: optionalText(value.resourceId, `${prefix}.resourceId`, issues, 160),
+    resourceCostClass: value.resourceCostClass === undefined
+      ? undefined
+      : oneOf(value.resourceCostClass, TASK_RESOURCE_COST_CLASSES, `${prefix}.resourceCostClass`, issues),
     resourceFamily: optionalText(value.resourceFamily, `${prefix}.resourceFamily`, issues, 160),
     decision: value.decision === undefined
       ? undefined
