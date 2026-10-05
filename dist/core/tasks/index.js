@@ -1851,13 +1851,24 @@ async function readGitCommitNode(rootDirectory, sha, parents) {
 async function listGitDagCommits(rootDirectory, fromSha, toSha) {
     if (fromSha === toSha)
         return { commits: [] };
-    // Include the baseline itself in this bounded proof: a range of 128 commits
-    // has 129 reachable nodes when the baseline is counted.
-    const boundedToAncestors = await boundedGitAncestorGraph(rootDirectory, toSha, MAX_TASK_ATTRIBUTION_COMMITS + 1, MAX_TASK_ATTRIBUTION_COMMITS);
-    if (boundedToAncestors.diagnostic) {
-        return { diagnostic: boundedToAncestors.diagnostic };
+    let ancestryPathLines;
+    try {
+        ancestryPathLines = (await gitOutput(rootDirectory, [
+            "rev-list",
+            "--topo-order",
+            "--ancestry-path",
+            `--max-count=${MAX_TASK_ATTRIBUTION_COMMITS + 1}`,
+            "--parents",
+            `${fromSha}..${toSha}`,
+        ])).split(/\r?\n/).filter((line) => line.length > 0);
     }
-    if (!boundedToAncestors.nodes.has(fromSha)) {
+    catch (error) {
+        return { diagnostic: `Git comparison failed while proving history from ${shortenSha(fromSha)} to ${shortenSha(toSha)} (${error instanceof Error ? error.message : String(error)}).` };
+    }
+    if (ancestryPathLines.length > MAX_TASK_ATTRIBUTION_COMMITS) {
+        return { diagnostic: `Git commit range exceeds the ${MAX_TASK_ATTRIBUTION_COMMITS}-commit attribution limit.` };
+    }
+    if (!ancestryPathLines.some((line) => line.split(" ")[0] === toSha)) {
         return {
             diagnostic: `Git comparison failed: history from ${shortenSha(fromSha)} to ${shortenSha(toSha)} is not a proven descendant chain within the bounded attribution graph.`,
         };
