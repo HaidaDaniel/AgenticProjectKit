@@ -1408,11 +1408,12 @@ export async function recordTaskHandoff(rootDirectory, taskId, owner, taskFile, 
 function shortenSha(sha) {
     return sha ? sha.slice(0, 12) : "none";
 }
-function lineageFailure(message, status = "intervening", provenOtherTaskCommits) {
+function lineageFailure(message, status = "intervening", provenOtherTaskCommits, mergeCommits) {
     return {
         lineageStatus: status,
         lineageDiagnostic: message.slice(0, 480),
         ...(provenOtherTaskCommits ? { provenOtherTaskCommits } : {}),
+        ...(mergeCommits && mergeCommits.length > 0 ? { mergeCommits } : {}),
     };
 }
 function boundCommitAttributions(proofs) {
@@ -1628,7 +1629,75 @@ export async function startTaskVerificationEpoch(options) {
     });
     return next;
 }
-async function listLinearGitCommits(rootDirectory, fromSha, toSha) {
+async function readGitCommitNode(rootDirectory, sha, parents) {
+    if (parents.length > 2) {
+        throw new Error(`Octopus merge ${shortenSha(sha)} has ${parents.length} parents; bounded DAG attribution supports at most two.`);
+    }
+    let files = [];
+    if (parents.length === 0) {
+        files = await gitPaths(rootDirectory, ["diff-tree", "--root", "--no-commit-id", "--name-only", "--no-renames", "-r", "-z", sha]);
+    }
+    else if (parents.length === 1) {
+        files = await gitPaths(rootDirectory, ["diff-tree", "--no-commit-id", "--name-only", "--no-renames", "-r", "-z", sha]);
+    }
+    else {
+        const parentPaths = await Promise.all(parents.map((parent) => gitPaths(rootDirectory, [
+            "diff", "--name-only", "--no-renames", "-z", parent, sha,
+        ])));
+        files = [...new Set(parentPaths.flat().map(normalizeGitPath))].sort();
+    }
+    if (files.length > MAX_TASK_ATTRIBUTION_FILES) {
+        throw new Error(`Commit ${shortenSha(sha)} exceeds the ${MAX_TASK_ATTRIBUTION_FILES}-file attribution limit.`);
+    }
+    const normalizedFiles = [...new Set(files.map(normalizeGitPath))].sort();
+    if (parents.length < 2 || normalizedFiles.length === 0) {
+        return { sha, parents: [...parents], files: normalizedFiles };
+    }
+    const mergeResolutionFiles = [];
+    const inheritedFrom = new Set();
+    let mergeBase;
+    try {
+        mergeBase = (await gitOutput(rootDirectory, ["merge-base", parents[0], parents[1]])).trim();
+        if (!mergeBase)
+            throw new Error("merge-base returned no commit");
+    }
+    catch {
+        return {
+            sha,
+            parents: [...parents],
+            files: normalizedFiles,
+            mergeResolutionFiles: normalizedFiles,
+        };
+    }
+    for (const path of normalizedFiles) {
+        const resultFingerprint = await gitFileFingerprint(rootDirectory, sha, path);
+        const baseFingerprint = await gitFileFingerprint(rootDirectory, mergeBase, path);
+        const parentFingerprints = await Promise.all(parents.map((parent) => gitFileFingerprint(rootDirectory, parent, path)));
+        const changedParents = parentFingerprints.filter((fingerprint) => (resultFingerprint === "unreadable"
+            || fingerprint === "unreadable"
+            || fingerprint !== baseFingerprint));
+        const resultMatchesParent = parentFingerprints
+            .map((fingerprint, index) => fingerprint === resultFingerprint ? parents[index] : undefined)
+            .filter((parent) => parent !== undefined);
+        if (resultFingerprint === "unreadable"
+            || baseFingerprint === "unreadable"
+            || changedParents.length === parents.length
+            || resultMatchesParent.length === 0) {
+            mergeResolutionFiles.push(path);
+            continue;
+        }
+        for (const parent of resultMatchesParent)
+            inheritedFrom.add(parent);
+    }
+    return {
+        sha,
+        parents: [...parents],
+        files: normalizedFiles,
+        ...(mergeResolutionFiles.length > 0 ? { mergeResolutionFiles: mergeResolutionFiles.sort() } : {}),
+        ...(inheritedFrom.size > 0 ? { inheritedFrom: [...inheritedFrom].sort() } : {}),
+    };
+}
+async function listGitDagCommits(rootDirectory, fromSha, toSha) {
     if (fromSha === toSha)
         return { commits: [] };
     try {
@@ -1652,36 +1721,33 @@ async function listLinearGitCommits(rootDirectory, fromSha, toSha) {
         return { diagnostic: `Git commit range exceeds the ${MAX_TASK_ATTRIBUTION_COMMITS}-commit attribution limit.` };
     }
     const commits = [];
-    let previous = fromSha;
     for (const line of lines) {
         const [sha, ...parents] = line.split(" ");
-        if (!sha || parents.length !== 1 || parents[0] !== previous) {
+        if (!sha || parents.length === 0 || parents.length > 2) {
             return {
-                diagnostic: `Nonlinear or merge history at commit ${shortenSha(sha)} between ${shortenSha(fromSha)} and ${shortenSha(toSha)} is unsupported and scope fails closed.`,
+                diagnostic: `Unsupported Git DAG node ${shortenSha(sha)} between ${shortenSha(fromSha)} and ${shortenSha(toSha)}; octopus/root traversal is outside the bounded attribution contract.`,
             };
         }
-        let files;
         try {
-            files = await gitPaths(rootDirectory, ["diff-tree", "--no-commit-id", "--name-only", "--no-renames", "-r", "-z", sha]);
-        }
-        catch (error) {
-            return { diagnostic: `Changed paths for commit ${shortenSha(sha)} are unreadable (${error instanceof Error ? error.message : String(error)}).` };
-        }
-        if (files.length > MAX_TASK_ATTRIBUTION_FILES) {
-            return { diagnostic: `Commit ${shortenSha(sha)} exceeds the ${MAX_TASK_ATTRIBUTION_FILES}-file attribution limit.` };
-        }
-        try {
-            commits.push({ sha, parents, files: [...new Set(files.map(normalizeGitPath))].sort() });
+            commits.push(await readGitCommitNode(rootDirectory, sha, parents));
         }
         catch (error) {
             return {
-                diagnostic: `Changed paths for commit ${shortenSha(sha)} cannot be represented safely (${error instanceof Error ? error.message : String(error)}).`,
+                diagnostic: `Changed paths for commit ${shortenSha(sha)} are unreadable (${error instanceof Error ? error.message : String(error)}).`,
             };
         }
-        previous = sha;
     }
-    if (previous !== toSha) {
-        return { diagnostic: `Git did not produce a complete linear range ending at ${shortenSha(toSha)}.` };
+    const commitIndexBySha = new Map(commits.map((commit, index) => [commit.sha, index]));
+    for (const [index, commit] of commits.entries()) {
+        for (const parent of commit.parents) {
+            const parentIndex = commitIndexBySha.get(parent);
+            if (parentIndex !== undefined && parentIndex >= index) {
+                return { diagnostic: `Git DAG ordering is not parent-before-child at ${shortenSha(commit.sha)} (${shortenSha(parent)}); scope fails closed.` };
+            }
+        }
+    }
+    if (!commits.some((commit) => commit.sha === toSha)) {
+        return { diagnostic: `Git did not produce a complete DAG ending at ${shortenSha(toSha)}.` };
     }
     return { commits };
 }
@@ -1863,10 +1929,10 @@ async function resolveTaskBaselineLineage(rootDirectory, authoritative, taskReco
     catch (error) {
         return lineageFailure(`Current Git HEAD is unreadable (${error instanceof Error ? error.message : String(error)}).`, "unresolved");
     }
-    const range = await listLinearGitCommits(rootDirectory, authoritative.headSha, currentHead);
+    const range = await listGitDagCommits(rootDirectory, authoritative.headSha, currentHead);
     if (!range.commits)
         return lineageFailure(range.diagnostic ?? "Git lineage cannot be established.");
-    const linearCommits = range.commits;
+    const dagCommits = range.commits;
     let baselineRecords;
     let taskFiles;
     let evidenceRecords;
@@ -1886,15 +1952,14 @@ async function resolveTaskBaselineLineage(rootDirectory, authoritative, taskReco
         if (existing)
             return existing;
         const operation = (async () => {
-            let commit = linearCommits.find((entry) => entry.sha === sha);
+            let commit = dagCommits.find((entry) => entry.sha === sha);
             if (!commit) {
                 try {
                     const line = (await gitOutput(rootDirectory, ["rev-list", "--parents", "-n", "1", sha])).trim();
                     const [commitSha, ...parents] = line.split(" ");
                     if (!commitSha)
                         return undefined;
-                    const files = await gitPaths(rootDirectory, ["diff-tree", "--no-commit-id", "--name-only", "--no-renames", "-r", "-z", sha]);
-                    commit = { sha: commitSha, parents, files: [...new Set(files.map(normalizeGitPath))].sort() };
+                    commit = await readGitCommitNode(rootDirectory, commitSha, parents);
                 }
                 catch {
                     return undefined;
@@ -1906,7 +1971,7 @@ async function resolveTaskBaselineLineage(rootDirectory, authoritative, taskReco
         return operation;
     };
     const proofByCommit = new Map();
-    for (const commit of linearCommits) {
+    for (const commit of dagCommits) {
         const candidateProof = await proofForCandidate(commit.sha);
         if (candidateProof) {
             proofByCommit.set(commit.sha, candidateProof);
@@ -1922,6 +1987,54 @@ async function resolveTaskBaselineLineage(rootDirectory, authoritative, taskReco
         || provenPathCount > MAX_TASK_ATTRIBUTION_OUTPUT_FILES) {
         return lineageFailure(`Proven task attribution exceeds the bounded output limit (${MAX_TASK_ATTRIBUTION_OUTPUT_COMMITS} commits / ${MAX_TASK_ATTRIBUTION_OUTPUT_FILES} files); scope fails closed.`, "intervening", boundCommitAttributions(proven));
     }
+    const commitBySha = new Map(dagCommits.map((commit) => [commit.sha, commit]));
+    const acceptedMergeCommits = new Set();
+    const mergeAttributions = [];
+    const branchAncestors = (parent) => {
+        const ancestors = new Set();
+        const pending = [parent];
+        while (pending.length > 0) {
+            const sha = pending.pop();
+            if (!sha || ancestors.has(sha))
+                continue;
+            ancestors.add(sha);
+            const commit = commitBySha.get(sha);
+            if (commit)
+                pending.push(...commit.parents);
+        }
+        return ancestors;
+    };
+    for (const merge of dagCommits.filter((commit) => commit.parents.length === 2)) {
+        if (merge.mergeResolutionFiles && merge.mergeResolutionFiles.length > 0) {
+            return lineageFailure(`Merge commit ${shortenSha(merge.sha)} (parents ${merge.parents.map(shortenSha).join(", ")}) contains unresolved merge-resolution paths: ${merge.mergeResolutionFiles.join(", ")}; scope fails closed.`, "intervening", proven, mergeAttributions);
+        }
+        const ancestors = new Set();
+        for (const parent of merge.parents.slice(1)) {
+            for (const ancestor of branchAncestors(parent))
+                ancestors.add(ancestor);
+        }
+        const unproven = dagCommits.find((commit) => (ancestors.has(commit.sha)
+            && ((commit.parents.length === 2 && !acceptedMergeCommits.has(commit.sha))
+                || (commit.parents.length === 1
+                    && commit.files.some((path) => !isBookkeepingPath(path, authoritative))
+                    && !proofByCommit.has(commit.sha)))));
+        if (unproven) {
+            const path = unproven.files.find((entry) => !isBookkeepingPath(entry, authoritative)) ?? "no non-bookkeeping path";
+            return lineageFailure(`Merge commit ${shortenSha(merge.sha)} (parents ${merge.parents.map(shortenSha).join(", ")}) includes unproven branch commit ${shortenSha(unproven.sha)} (${path}); merge attribution fails closed.`, "intervening", proven, mergeAttributions);
+        }
+        const mergeFileCount = mergeAttributions.reduce((count, attribution) => count + attribution.files.length, 0) + merge.files.length;
+        if (mergeAttributions.length + 1 > MAX_TASK_ATTRIBUTION_OUTPUT_COMMITS
+            || mergeFileCount > MAX_TASK_ATTRIBUTION_OUTPUT_FILES) {
+            return lineageFailure(`Merge attribution for ${shortenSha(merge.sha)} (parents ${merge.parents.map(shortenSha).join(", ")}) exceeds the bounded output limit (${MAX_TASK_ATTRIBUTION_OUTPUT_COMMITS} merge commits / ${MAX_TASK_ATTRIBUTION_OUTPUT_FILES} files); scope fails closed.`, "intervening", proven, mergeAttributions);
+        }
+        acceptedMergeCommits.add(merge.sha);
+        mergeAttributions.push({
+            sha: merge.sha,
+            parents: [...merge.parents],
+            files: [...merge.files],
+            inheritedFrom: [...(merge.inheritedFrom ?? [])],
+        });
+    }
     const taskTimeline = taskRecords.filter((record) => record.taskId === authoritative.taskId);
     const claims = taskTimeline.filter((record) => (record.phase ?? "claim") === "claim");
     for (let index = 1; index < claims.length; index += 1) {
@@ -1936,14 +2049,6 @@ async function resolveTaskBaselineLineage(rootDirectory, authoritative, taskReco
             return lineageFailure(`Claim baseline advanced from ${shortenSha(claims[index - 1].headSha)} to ${shortenSha(claims[index].headSha)} without a recorded release/block handoff; legacy lineage fails closed.`, "intervening", proven);
         }
     }
-    const recordIndexes = new Map(linearCommits.map((commit, index) => [commit.sha, index]));
-    const intervalCommits = (fromSha, toSha) => {
-        const fromIndex = fromSha === authoritative.headSha ? -1 : recordIndexes.get(fromSha);
-        const toIndex = toSha === authoritative.headSha ? -1 : recordIndexes.get(toSha);
-        if (fromIndex === undefined || toIndex === undefined || toIndex < fromIndex)
-            return undefined;
-        return linearCommits.slice(fromIndex + 1, toIndex + 1);
-    };
     for (let index = 0; index < taskTimeline.length; index += 1) {
         const record = taskTimeline[index];
         if (record.phase !== "release" && record.phase !== "block")
@@ -1954,24 +2059,28 @@ async function resolveTaskBaselineLineage(rootDirectory, authoritative, taskReco
         if (!record.headSha || !nextClaim.headSha) {
             return lineageFailure("Release/reclaim records do not contain Git HEAD; scope lineage fails closed.", "intervening", proven);
         }
-        const commits = intervalCommits(record.headSha, nextClaim.headSha);
-        if (!commits) {
-            return lineageFailure(`Release/reclaim range ${shortenSha(record.headSha)}..${shortenSha(nextClaim.headSha)} is outside the authoritative linear history.`, "intervening", proven);
+        const interval = await listGitDagCommits(rootDirectory, record.headSha, nextClaim.headSha);
+        if (!interval.commits) {
+            return lineageFailure(`Release/reclaim range ${shortenSha(record.headSha)}..${shortenSha(nextClaim.headSha)} cannot be traversed as a bounded DAG: ${interval.diagnostic ?? "unknown history error"}`, "intervening", proven, mergeAttributions);
         }
         const dirtyFile = snapshotDirtyDifference(record, nextClaim);
         if (dirtyFile) {
             return lineageFailure(`Working-tree file ${dirtyFile} changed while the task was released; ownership is ambiguous and scope fails closed.`, "intervening", proven);
         }
-        for (const commit of commits) {
+        for (const commit of interval.commits) {
+            if (commit.parents.length === 2 && acceptedMergeCommits.has(commit.sha))
+                continue;
             if (!proofByCommit.has(commit.sha)) {
                 const file = commit.files[0] ?? "no changed path";
-                return lineageFailure(`Intervening commit ${shortenSha(commit.sha)} (${file}) has no canonical completed-task candidate provenance; scope fails closed.`, "intervening", proven);
+                return lineageFailure(`Intervening commit ${shortenSha(commit.sha)} (${file}) has no canonical completed-task provenance in the merge DAG; scope fails closed.`, "intervening", proven, mergeAttributions);
             }
         }
     }
     const taskOwnedCommitFiles = new Set();
-    for (const commit of linearCommits) {
+    for (const commit of dagCommits) {
         if (proofByCommit.has(commit.sha))
+            continue;
+        if (commit.parents.length === 2 && acceptedMergeCommits.has(commit.sha))
             continue;
         for (const path of commit.files) {
             if (!isBookkeepingPath(path, authoritative))
@@ -2036,6 +2145,7 @@ async function resolveTaskBaselineLineage(rootDirectory, authoritative, taskReco
         lineageStatus: proven.length > 0 ? "attributed" : "clean",
         lineageHeadSha: currentHead,
         ...(proven.length > 0 ? { provenOtherTaskCommits: proven } : {}),
+        ...(mergeAttributions.length > 0 ? { mergeCommits: mergeAttributions } : {}),
     };
 }
 export async function readTaskBaseline(rootDirectory, taskId) {
@@ -2277,6 +2387,7 @@ export async function verifyTaskFileScopeSinceBaseline(rootDirectory, task, chan
             excludedFiles,
             excludedCommits,
             lineageStatus: baseline.lineageStatus ?? "clean",
+            ...(baseline.mergeCommits && baseline.mergeCommits.length > 0 ? { mergeCommits: baseline.mergeCommits } : {}),
             diagnostics: [
                 ...baseline.diagnostics,
                 ...(baseline.lineageDiagnostic ? [baseline.lineageDiagnostic] : []),
@@ -2620,6 +2731,9 @@ export function renderTaskVerifyResult(result) {
         lines.push(`Scope attribution: baseline=${result.attribution.baselineId} lineage=${result.attribution.lineageStatus}`);
         for (const commit of result.attribution.excludedCommits) {
             lines.push(`  - excluded commit ${shortenSha(commit.sha)} task=${commit.taskId} kind=${commit.kind} files=${commit.files.join(",") || "none"}`);
+        }
+        for (const merge of result.attribution.mergeCommits ?? []) {
+            lines.push(`  - merge ${shortenSha(merge.sha)} parents=${merge.parents.map(shortenSha).join(",")} inherited-from=${merge.inheritedFrom.map(shortenSha).join(",") || "none"} files=${merge.files.join(",") || "none"}`);
         }
     }
     if (result.outOfScopeFiles.length > 0) {

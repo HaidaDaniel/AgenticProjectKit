@@ -413,6 +413,7 @@ export function renderTaskProvenance(provenance) {
         ...(provenance.scopeAttribution ? [
             `Scope attribution: baseline=${provenance.scopeAttribution.baselineId} lineage=${provenance.scopeAttribution.lineageStatus}`,
             ...provenance.scopeAttribution.excludedCommits.map((commit) => `  - excluded commit ${commit.sha.slice(0, 12)} task=${commit.taskId} kind=${commit.kind} files=${commit.files.join(",") || "none"}`),
+            ...(provenance.scopeAttribution.mergeCommits ?? []).map((merge) => `  - merge ${merge.sha.slice(0, 12)} parents=${merge.parents.map((parent) => parent.slice(0, 12)).join(",")} inherited-from=${merge.inheritedFrom.map((parent) => parent.slice(0, 12)).join(",") || "none"} files=${merge.files.join(",") || "none"}`),
         ] : []),
         "Participants:",
         ...(provenance.participants.length > 0

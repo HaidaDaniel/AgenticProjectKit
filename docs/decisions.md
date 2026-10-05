@@ -90,10 +90,11 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0079](#adr-0079---ci-environment-requires-external-proof-regardless-of-profile-or-type) | accepted | CI environment requires external proof regardless of profile or type | — |
 | [ADR-0080](#adr-0080---current-operator-decisions-take-precedence-over-stale-history) | accepted | Current operator decisions take precedence over stale history | — |
 | [ADR-0081](#adr-0081---verification-epochs-refresh-stale-baselines-without-scope-laundering) | accepted | Verification epochs refresh stale baselines without scope laundering | — |
+| [ADR-0082](#adr-0082---bounded-git-dag-lineage-preserves-clean-merge-attribution-and-fails-closed-on-ambiguity) | accepted | Bounded Git DAG lineage preserves clean merge attribution and fails closed on ambiguity | — |
 
 ### ADR index cross-check
 
-- [x] Each of the 80 index rows matches one retained ADR heading and its title.
+- [x] Each of the 81 index rows matches one retained ADR heading and its title.
 - [x] Each status matches that record's explicit `Status` field.
 - [x] The only supersession link is ADR-0006 -> ADR-0062, recorded by ADR-0006's status and ADR-0062's heading and decision text.
 
@@ -1416,7 +1417,7 @@ Decision:
 
 Keep the earliest claim as the unfinished task's authoritative scope baseline. Recompute commit attribution from Git history and existing APK task, baseline, evidence, and run-log records; do not persist a second ownership ledger. Parse Git path lists as NUL-delimited names without trimming or rewriting; invalid UTF-8 and literal backslash paths fail closed. Bind each successful lineage result to the HEAD it evaluated, and recheck that endpoint plus excluded-path working-tree overlap during scope and candidate capture. Exclude a commit from the active task only when it is a direct child of another task's recorded Git baseline, the other task is currently `done`, its PASS completion evidence binds that exact commit and baseline, all evidence IDs selected by the completion record are present and pass for the same candidate, the matching successful `done` run event exists, the other task's contract matches the candidate tree, and the commit's non-bookkeeping paths satisfy that task's allowed and non-forbidden scope. A single direct child may then contain only that task file's transition to `done` with unchanged contract content; it is classified as completion bookkeeping.
 
-For each recorded release/block-to-claim interval, every commit must have the preceding bounded task-candidate proof and the handoff's non-bookkeeping dirty fingerprints must match the next claim. While the task remains claimed, only commits with that same other-task proof are excluded; all other paths remain in the active task's scope. An excluded commit that overlaps task-attributed history, pre-existing or handoff-dirty work, or current dirty work makes ownership ambiguous and blocks comparison. Git history must be a bounded linear parent chain. Missing or malformed provenance, author/message-only clues, changed dirty state, same-file overlap, merges, rewrites, and over-limit histories fail closed. Verify, gate, and provenance expose the same attribution result and diagnostics; candidate subject and evidence/review freshness rules do not change.
+For each recorded release/block-to-claim interval, every commit must have the preceding bounded task-candidate proof and the handoff's non-bookkeeping dirty fingerprints must match the next claim. While the task remains claimed, only commits with that same other-task proof are excluded; all other paths remain in the active task's scope. An excluded commit that overlaps task-attributed history, pre-existing or handoff-dirty work, or current dirty work makes ownership ambiguous and blocks comparison. Git history must be a bounded two-parent DAG. A clean merge can be attributed only when its changed paths inherit from already-proven parent branches; unproven branch commits, same-file changes on both branches, conflict-resolution paths, octopus merges, malformed provenance, author/message-only clues, changed dirty state, rewrites, and over-limit histories fail closed. Verify, gate, and provenance expose the same attribution result and diagnostics; candidate subject and evidence/review freshness rules do not change.
 
 Reason:
 
@@ -1424,7 +1425,7 @@ The earliest baseline is required to preserve Task 0116's anti-laundering behavi
 
 Implementation and invariant:
 
-The attribution is derived on read and is not an authority to expand allowed paths. The other task's completion record must be tied to the exact child HEAD and its baseline must equal the child's direct parent. The candidate commit's changed files are separately checked against that task's contract; a terminal bookkeeping child may touch only that task's file and may change only lifecycle state/owner. A release gap containing any unproven commit, changed handoff dirty file, nonlinear history, or same-file overlap makes scope unknown and blocks verify/gate. Proven files are excluded from the active task candidate file set, but the current HEAD remains in its subject, so prior verification and review evidence still becomes stale when HEAD advances.
+The attribution is derived on read and is not an authority to expand allowed paths. The other task's completion record must be tied to the exact child HEAD and its baseline must equal the child's direct parent. The candidate commit's changed files are separately checked against that task's contract; a terminal bookkeeping child may touch only that task's file and may change only lifecycle state/owner. A release gap containing any unproven commit, changed handoff dirty file, nonlinear history, ambiguous merge parent/path, or same-file overlap makes scope unknown and blocks verify/gate. Proven files are excluded from the active task candidate file set, but the current HEAD remains in its subject, so prior verification and review evidence still becomes stale when HEAD advances. Merge attribution is recorded as bounded parent/file provenance and never turns a conflict-resolution path into a parent-owned change.
 
 Reference:
 
@@ -1528,8 +1529,30 @@ The bounded linear attribution walk can fail closed after a long-lived task accu
 
 Boundary:
 
-Epoch start requires active ownership, task contract/path continuity, a Git anchor, an explicit reason, and a bounded carried set. The predecessor must be a current ancestor through a bounded single-parent history; recovery unions every historically touched path with newly changed current paths so deleted/restored paths cannot disappear while unchanged pre-existing files remain pre-existing on a clean lineage. Known lineage carries attributed paths in addition to that historical union; stale lineage carries every discoverable non-bookkeeping predecessor path so omission cannot hide a violation. Carried paths remain task-attributed at the new anchor, and missing/forbidden/out-of-scope paths remain blockers. A carried path overlapping a proven other-task commit is ambiguous and is never excluded. The working-tree/HEAD snapshot is validated before the append becomes current, and epoch baselines are accepted as exact parent anchors for later completed-task attribution. Legacy records continue to use earliest-claim behavior. Epochs do not add a second gate, evidence store, Git DAG/merge attribution model, operator identity system, or generic force/reset path.
+Epoch start requires active ownership, task contract/path continuity, a Git anchor, an explicit reason, and a bounded carried set. The predecessor must be a current ancestor through a bounded single-parent history; recovery unions every historically touched path with newly changed current paths so deleted/restored paths cannot disappear while unchanged pre-existing files remain pre-existing on a clean lineage. Known lineage carries attributed paths in addition to that historical union; stale lineage carries every discoverable non-bookkeeping predecessor path so omission cannot hide a violation. Carried paths remain task-attributed at the new anchor, and missing/forbidden/out-of-scope paths remain blockers. A carried path overlapping a proven other-task commit is ambiguous and is never excluded. The working-tree/HEAD snapshot is validated before the append becomes current, and epoch baselines are accepted as exact parent anchors for later completed-task attribution. Legacy records continue to use earliest-claim behavior. Epochs do not add a second gate, evidence store, or operator identity system; their recovery walk remains single-parent while later scope lineage may use the bounded DAG/merge attribution model.
 
 Reference:
 
 Task 0183.
+
+## ADR-0082 - Bounded Git DAG lineage preserves clean merge attribution and fails closed on ambiguity
+
+Status: accepted
+
+Decision:
+
+Walk at most 128 commits in a two-parent Git DAG from the authoritative task baseline. Preserve linear history behavior, and allow a merge node to remain outside the active task's scope only when every changed path is inherited from a parent branch whose commits already have canonical completed-task provenance. Record the merge SHA, both parents, changed paths, and inherited parent identities in the shared scope attribution consumed by verify, gate, and provenance.
+
+Any octopus node, unproven branch commit, same-file change on both branches, unreadable merge base/path, or result that cannot be attributed to a parent is ambiguous and fails closed. Conflict-resolution paths are never silently assigned to a parent. Bounded traversal, output limits, release/reclaim interval checks, dirty overlap checks, and the existing epoch candidate/evidence binding remain authoritative.
+
+Reason:
+
+Rejecting every merge made unrelated independently proven task history block an active task, while accepting a merge by first-parent or result-tree heuristics could hide branch work or conflict edits. Parent-relative path fingerprints identify clean inheritance; branch proofs and common-ancestor comparison preserve conservative same-file ownership and conflict behavior.
+
+Boundary:
+
+This changes only Git lineage attribution. It does not create an ownership ledger, alter task allowed files, relax candidate/evidence/review freshness, support octopus merges, infer ownership from author/message, or make an unresolved merge gate-eligible. Epoch recovery remains single-parent and continues to use its own carried-path safeguards.
+
+Reference:
+
+Task 0184.

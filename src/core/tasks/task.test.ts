@@ -2759,7 +2759,73 @@ test("merge history between release and reclaim has a bounded fail-closed diagno
 
     const baseline = await readTaskBaseline(directory, "0007");
     assert.equal(baseline?.lineageStatus, "intervening");
-    assert.match(baseline?.lineageDiagnostic ?? "", /merge history.*fails closed/i);
+    assert.match(baseline?.lineageDiagnostic ?? "", /merge|unproven|proven.*fails closed/i);
+    const result = await verifyScopedTask(directory);
+    assert.equal(result.passed, false);
+    assert.equal(result.attribution?.lineageStatus, "intervening");
+  });
+});
+
+test("a clean merge of independently proven task history is attributed without blocking scope", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const baseBranch = (await execFileAsync("git", ["branch", "--show-current"], { cwd: directory })).stdout.trim();
+    await execFileAsync("git", ["checkout", "--quiet", "-b", "proven-side"], { cwd: directory });
+    const completed = await completeBoundedTaskB(directory);
+    await execFileAsync("git", ["checkout", "--quiet", baseBranch], { cwd: directory });
+    await execFileAsync("git", ["merge", "--quiet", "--no-ff", "proven-side", "-m", "merge proven task"], { cwd: directory });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.equal(baseline?.lineageStatus, "attributed");
+    assert.deepEqual(baseline?.provenOtherTaskCommits?.map(({ sha, taskId, kind }) => ({ sha, taskId, kind })), [
+      { sha: completed.candidateSha, taskId: "0008", kind: "task-candidate" },
+      { sha: completed.bookkeepingSha, taskId: "0008", kind: "completion-bookkeeping" },
+    ]);
+    assert.equal(baseline?.mergeCommits?.length, 1);
+    assert.equal(baseline?.mergeCommits?.[0]?.parents.length, 2);
+    assert.ok(baseline?.mergeCommits?.[0]?.files.includes(completed.file));
+
+    const verified = await verifyScopedTask(directory);
+    assert.equal(verified.passed, true, verified.diagnostics.join("; "));
+    assert.deepEqual(verified.changedFiles, []);
+    assert.deepEqual(verified.attribution?.mergeCommits, baseline?.mergeCommits);
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    const provenance = await buildTaskProvenance(directory, ".tasks", "0007");
+    assert.deepEqual(gate.attribution?.mergeCommits, baseline?.mergeCommits);
+    assert.deepEqual(provenance.scopeAttribution?.mergeCommits, baseline?.mergeCommits);
+    assert.match(renderTaskVerifyResult(verified), /merge .*parents=.*inherited-from=/i);
+    assert.match(renderTaskCompletionGate(gate), /merge .*parents=.*inherited-from=/i);
+    assert.match(renderTaskProvenance(provenance), /merge .*parents=.*inherited-from=/i);
+  });
+});
+
+test("a conflict-resolved merge path remains ambiguous and fails scope closed", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const baseBranch = (await execFileAsync("git", ["branch", "--show-current"], { cwd: directory })).stdout.trim();
+    await execFileAsync("git", ["checkout", "--quiet", "-b", "conflict-side"], { cwd: directory });
+    await writeFile(join(directory, "src", "core", "tasks", "conflict.ts"), "side\n", "utf8");
+    await execFileAsync("git", ["add", "src/core/tasks/conflict.ts"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "conflict side"], { cwd: directory });
+    await execFileAsync("git", ["checkout", "--quiet", baseBranch], { cwd: directory });
+    await mkdir(join(directory, "src", "core", "tasks"), { recursive: true });
+    await writeFile(join(directory, "src", "core", "tasks", "conflict.ts"), "main\n", "utf8");
+    await execFileAsync("git", ["add", "src/core/tasks/conflict.ts"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "conflict main"], { cwd: directory });
+    await assert.rejects(
+      () => execFileAsync("git", ["merge", "--no-ff", "conflict-side", "-m", "conflict merge"], { cwd: directory }),
+    );
+    await writeFile(join(directory, "src", "core", "tasks", "conflict.ts"), "resolved\n", "utf8");
+    await execFileAsync("git", ["add", "src/core/tasks/conflict.ts"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "conflict merge"], { cwd: directory });
+
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.equal(baseline?.lineageStatus, "intervening");
+    assert.match(baseline?.lineageDiagnostic ?? "", /merge-resolution.*conflict\.ts|conflict\.ts.*merge-resolution/i);
     const result = await verifyScopedTask(directory);
     assert.equal(result.passed, false);
     assert.equal(result.attribution?.lineageStatus, "intervening");

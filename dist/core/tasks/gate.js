@@ -521,6 +521,7 @@ export function renderTaskCompletionGate(result) {
         ...(result.attribution ? [
             `Scope attribution: baseline=${result.attribution.baselineId} lineage=${result.attribution.lineageStatus}`,
             ...result.attribution.excludedCommits.map((commit) => `  - excluded commit ${commit.sha.slice(0, 12)} task=${commit.taskId} kind=${commit.kind} files=${commit.files.join(",") || "none"}`),
+            ...(result.attribution.mergeCommits ?? []).map((merge) => `  - merge ${merge.sha.slice(0, 12)} parents=${merge.parents.map((parent) => parent.slice(0, 12)).join(",")} inherited-from=${merge.inheritedFrom.map((parent) => parent.slice(0, 12)).join(",") || "none"} files=${merge.files.join(",") || "none"}`),
         ] : []),
         `Dependencies: ${result.dependencies.length > 0 ? result.dependencies.join(",") : "none"}`,
         `Policy blockers: ${result.policy.blockers.length}`,

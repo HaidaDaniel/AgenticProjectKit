@@ -10,7 +10,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 Task 0192 is complete: local pre-push feedback now runs fast deterministic checks while full CI and release validation remain authoritative.
 
-Task 0183 is complete: append-only verification epochs now let a long-lived task recover a stale baseline without laundering prior paths or invalidating historical evidence. Task 0184 is the next unblocked workflow task; Task 0173 remains blocked behind Task 0170 and is not skipped as completed work.
+Task 0183 is complete: append-only verification epochs now let a long-lived task recover a stale baseline without laundering prior paths or invalidating historical evidence. Task 0184 is in progress: bounded two-parent Git DAG traversal now attributes clean merges from proven task branches and fails closed on ambiguous or conflict-resolved paths. Task 0173 remains blocked behind Task 0170 and is not skipped as completed work.
 
 Tasks 0178, 0179, and [0181](../.tasks/0181-prefer-current-operator-decisions-over-stale-candidate-history.md) are complete after exact-candidate verification, successful hosted CI, and independent review. Task 0181 now selects the latest current operator decision before stale history; stale decisions cannot change grants or blockers. Task 0170 remains blocked on the operator's private-reporting route; Task 0173 waits on that route and its completed correctness prerequisites.
 

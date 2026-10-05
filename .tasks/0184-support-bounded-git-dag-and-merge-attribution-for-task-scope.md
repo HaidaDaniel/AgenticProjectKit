@@ -1,7 +1,7 @@
 # Task 0184 - Support bounded Git DAG and merge attribution for task scope
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-continue-20261005-2055
 Mode: product
 Lane: workflow
 Type: refactor
