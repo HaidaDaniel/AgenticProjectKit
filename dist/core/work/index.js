@@ -5,7 +5,7 @@ import { appendRunLog, requireAgent } from "../agents/index.js";
 import { readAgenticConfigFile } from "../config/index.js";
 import { buildTaskPromptInput, renderTaskPrompt } from "../docs/prompt.js";
 import { appendTaskEvidence, readTaskEvidence } from "../tasks/evidence.js";
-import { captureTaskCompletionCandidate, evaluateTaskCompletionGate } from "../tasks/gate.js";
+import { captureTaskCompletionCandidate, evaluateTaskCompletionGate, readTaskFrontierUsage, } from "../tasks/gate.js";
 import { resolveTaskPolicy } from "../tasks/policy.js";
 import { cleanupPreparedWorkerReview, prepareTaskReview, recordTaskReview, withTaskReviewBudgetLock, } from "../tasks/review.js";
 import { claimTask, reviewTask } from "../tasks/workflow.js";
@@ -449,18 +449,16 @@ async function sameWorktreeWarnings(rootDirectory, taskId, locationId) {
  * concurrent caller cannot issue against stale budget or candidate state.
  */
 export async function startWork(options) {
-    if (options.role !== "review") {
-        const config = await readAgenticConfigFile(options.rootDirectory);
-        const taskFile = await findTaskFile(options.rootDirectory, options.taskId, config.taskDirectory);
-        const { task } = await loadTaskFile(taskFile);
-        const role = options.role ?? await resolveWorkRole(options.rootDirectory, task);
-        if (role !== "review")
-            return startWorkUnlocked(options);
-        return withTaskReviewBudgetLock(options.rootDirectory, task.id, () => startWorkUnlocked(options));
-    }
     const config = await readAgenticConfigFile(options.rootDirectory);
     const taskFile = await findTaskFile(options.rootDirectory, options.taskId, config.taskDirectory);
     const { task } = await loadTaskFile(taskFile);
+    const role = options.role ?? await resolveWorkRole(options.rootDirectory, task);
+    const selectedResource = options.resourceId
+        ? config.resources?.workers.find((worker) => worker.id === options.resourceId)
+        : undefined;
+    const needsBudgetLock = role === "review" || selectedResource?.costClass === "scarce-frontier";
+    if (!needsBudgetLock)
+        return startWorkUnlocked(options);
     return withTaskReviewBudgetLock(options.rootDirectory, task.id, () => startWorkUnlocked(options));
 }
 async function startWorkUnlocked(options) {
@@ -504,6 +502,18 @@ async function startWorkUnlocked(options) {
     const handoff = role === "fix"
         ? await resolveLatestHandoff(options.rootDirectory, task.id)
         : undefined;
+    if (selectedResource?.costClass === "scarce-frontier") {
+        const budget = resolveTaskPolicy(task).requirements.reviewBudget;
+        if (budget) {
+            const frontierUsage = await readTaskFrontierUsage(options.rootDirectory, task.id);
+            if (frontierUsage.frontierRunsUsed >= budget.maxFrontierRuns) {
+                throw new Error(`Frontier run budget exhausted for task ${task.id}; no additional scarce-frontier run may be issued.`);
+            }
+            if (role === "review" && frontierUsage.frontierPassesUsed >= budget.maxFrontierReviewPasses) {
+                throw new Error(`Frontier review budget exhausted for task ${task.id}; no additional scarce-frontier review run may be issued.`);
+            }
+        }
+    }
     if (role === "review") {
         const gate = await evaluateTaskCompletionGate({
             rootDirectory: options.rootDirectory,
@@ -513,14 +523,6 @@ async function startWorkUnlocked(options) {
         const budget = gate.review.budget;
         if (budget && budget.passesUsed >= budget.effectiveMaxReviewPasses) {
             throw new Error(`Review budget exhausted for task ${task.id}; an explicit human decision is required before another review run.`);
-        }
-        if (budget && selectedResource?.costClass === "scarce-frontier") {
-            if (budget.frontierPassesUsed >= budget.maxFrontierReviewPasses) {
-                throw new Error(`Frontier review budget exhausted for task ${task.id}; no additional scarce-frontier review run may be issued.`);
-            }
-            if (budget.frontierRunsUsed >= budget.maxFrontierRuns) {
-                throw new Error(`Frontier run budget exhausted for task ${task.id}; no additional scarce-frontier run may be issued.`);
-            }
         }
         if (gate.verification.some((check) => check.result !== "pass" || check.freshness !== "current")) {
             throw new Error(`Canonical verification is not current for task ${task.id}; run pnpm exec apk task verify ${task.id} --owner ${task.owner} before issuing a review worker package.`);

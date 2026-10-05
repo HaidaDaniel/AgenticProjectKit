@@ -29,7 +29,7 @@ import type {
 } from "../../core/execution/index.js";
 import type { AssuranceLevel } from "../../core/tasks/policy.js";
 import { detectResourceInventory } from "../../core/resources/detect.js";
-import { evaluateTaskCompletionGate } from "../../core/tasks/gate.js";
+import { readTaskFrontierUsage } from "../../core/tasks/gate.js";
 import { findTaskFile, loadTaskFile } from "../../core/tasks/index.js";
 import { resolveTaskPolicy } from "../../core/tasks/policy.js";
 
@@ -161,19 +161,11 @@ export async function runExecutionCommand(argv: string[]): Promise<number> {
       }
       : undefined;
 
-    const gateForRouting = roleValue === "review" && policy.independentReview
-      ? await evaluateTaskCompletionGate({
-        rootDirectory,
-        taskDirectory: config.taskDirectory,
-        taskId: positional[0],
-      })
-      : undefined;
-    const frontierUsage = gateForRouting?.review.budget
-      ? {
-        reviewPassesUsed: gateForRouting.review.budget.frontierPassesUsed,
-        runsUsed: gateForRouting.review.budget.frontierRunsUsed,
-      }
-      : undefined;
+    const recordedFrontierUsage = await readTaskFrontierUsage(rootDirectory, positional[0]);
+    const frontierUsage = {
+      reviewPassesUsed: recordedFrontierUsage.frontierPassesUsed,
+      runsUsed: recordedFrontierUsage.frontierRunsUsed,
+    };
 
     const route = resolveExecutionRoute({
       profile: effectiveProfile,

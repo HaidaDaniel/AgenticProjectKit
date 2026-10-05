@@ -3,7 +3,7 @@ import { DEFAULT_EXECUTION_PROFILE, emptyResourceRegistry, parseExecutionOverrid
 import { readAgenticConfigFile } from "../../core/config/index.js";
 import { applyExecutionCalibration, buildCalibrationPackage, renderCalibrationPackage, renderCalibrationValidation, validateCalibrationRecommendation, ASSURANCE_LEVELS, } from "../../core/execution/calibrate.js";
 import { detectResourceInventory } from "../../core/resources/detect.js";
-import { evaluateTaskCompletionGate } from "../../core/tasks/gate.js";
+import { readTaskFrontierUsage } from "../../core/tasks/gate.js";
 import { findTaskFile, loadTaskFile } from "../../core/tasks/index.js";
 import { resolveTaskPolicy } from "../../core/tasks/policy.js";
 const HELP_TEXT = [
@@ -130,19 +130,11 @@ export async function runExecutionCommand(argv) {
                     : "stale inventory fingerprint; calibration ignored for effective routing",
             }
             : undefined;
-        const gateForRouting = roleValue === "review" && policy.independentReview
-            ? await evaluateTaskCompletionGate({
-                rootDirectory,
-                taskDirectory: config.taskDirectory,
-                taskId: positional[0],
-            })
-            : undefined;
-        const frontierUsage = gateForRouting?.review.budget
-            ? {
-                reviewPassesUsed: gateForRouting.review.budget.frontierPassesUsed,
-                runsUsed: gateForRouting.review.budget.frontierRunsUsed,
-            }
-            : undefined;
+        const recordedFrontierUsage = await readTaskFrontierUsage(rootDirectory, positional[0]);
+        const frontierUsage = {
+            reviewPassesUsed: recordedFrontierUsage.frontierPassesUsed,
+            runsUsed: recordedFrontierUsage.frontierRunsUsed,
+        };
         const route = resolveExecutionRoute({
             profile: effectiveProfile,
             profileSource,

@@ -404,6 +404,20 @@ test("frontier review caps remain independent from total review headroom", () =>
   assert.equal(localFallback.assurance?.budget.maxFrontierReviewPasses, 1);
   assert.equal(localFallback.assurance?.budget.maxFrontierRuns, 1);
 
+  const blockedImplementation = resolveExecutionRoute({
+    profile: "constrained",
+    role: "implementation",
+    complexity: "complex",
+    policy,
+    registry: frontierOnly,
+    frontierUsage: { runsUsed: 1 },
+  });
+  assert.equal(blockedImplementation.kind, "needs-human");
+  assert.match(
+    blockedImplementation.candidates[0]?.reasons.join(" ") ?? "",
+    /recorded frontier review\/run budget is exhausted/,
+  );
+
   for (const override of [
     { resourceId: "frontier-review" },
     { resourceId: "frontier-review", allowProfileBypass: true },
@@ -2624,6 +2638,54 @@ test("CLI work persists the exact issued worker package and metadata", async () 
     assert.equal(metadata.resourceId, "worker-a");
     assert.equal(metadata.role, "implement");
     assert.equal(typeof metadata.packageHash, "string");
+  });
+});
+
+test("CLI work blocks non-review scarce-frontier issuance after the task run cap", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({
+      schemaVersion: 2,
+      taskDirectory: ".tasks",
+      resources: {
+        models: [{ id: "frontier-model", roles: ["implement"] }],
+        harnesses: [{ id: "frontier-harness", workerProtocols: ["apk-worker-v1"] }],
+        workers: [{
+          id: "frontier-implementation",
+          modelId: "frontier-model",
+          harnessId: "frontier-harness",
+          location: "remote",
+          billingMode: "subscription",
+          costClass: "scarce-frontier",
+          availability: "available",
+          capacity: 1,
+          occupied: 0,
+          capabilities: { roles: ["implement"], workerProtocols: ["apk-worker-v1"] },
+        }],
+      },
+    }, null, 2), "utf8");
+    await writeFile(join(directory, ".tasks", "0001-frontier-run-cap.md"), buildTaskMarkdown("0001", "Frontier Run Cap", "todo"), "utf8");
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await runCli(["agent", "register", "--id", "codex-owner", "--platform", "codex", "--model", "gpt-5"], directory);
+
+    const first = await runCli([
+      "work", "0001", "--owner", "codex-owner", "--target", "codex", "--role", "implement", "--resource", "frontier-implementation",
+    ], directory);
+    assert.equal(first.exitCode, 0, `${first.stdout}${first.stderr}`);
+
+    const second = await runCli([
+      "work", "0001", "--owner", "codex-owner", "--target", "codex", "--role", "implement", "--resource", "frontier-implementation",
+    ], directory);
+    assert.equal(second.exitCode, 1);
+    assert.match(second.stderr + second.stdout, /Frontier run budget exhausted/);
   });
 });
 

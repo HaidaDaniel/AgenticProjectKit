@@ -181,6 +181,16 @@ async function countFrontierUsage(rootDirectory, taskId, reviewRecords) {
     }
     return { frontierPasses, frontierRuns, diagnostics };
 }
+/** Read task-bound scarce/frontier consumption for any worker role. */
+export async function readTaskFrontierUsage(rootDirectory, taskId) {
+    const reviewRecords = await listTaskReviews(rootDirectory, taskId);
+    const usage = await countFrontierUsage(rootDirectory, taskId, reviewRecords);
+    return {
+        frontierPassesUsed: usage.frontierPasses,
+        frontierRunsUsed: usage.frontierRuns,
+        diagnostics: usage.diagnostics,
+    };
+}
 export async function evaluateTaskCompletionGate(options) {
     const candidate = await captureTaskCompletionCandidate(options);
     const { task, scope, subject } = candidate;
@@ -296,9 +306,21 @@ export async function evaluateTaskCompletionGate(options) {
             ? `Evidence category ${category} belongs to another candidate revision.`
             : `Missing current ${category} evidence.`);
     }
+    const reviewBudget = policy.requirements.reviewBudget;
+    const allReviewRecords = await listTaskReviews(options.rootDirectory, task.id);
+    // Frontier run usage is a task-level resource limit, including when the
+    // current role is implementation, fix, verification, or another worker
+    // role rather than semantic review.
+    const frontierUsage = await countFrontierUsage(options.rootDirectory, task.id, allReviewRecords);
+    for (const diagnostic of frontierUsage.diagnostics) {
+        diagnostics.push(diagnostic);
+    }
+    if (reviewBudget && !policy.requirements.independentReview
+        && frontierUsage.frontierRuns > reviewBudget.maxFrontierRuns) {
+        blockers.push(`Frontier run budget overrun: ${frontierUsage.frontierRuns} scarce-frontier worker runs recorded against a maximum of ${reviewBudget.maxFrontierRuns}; more frontier work requires an explicit policy change.`);
+    }
     const review = { freshness: "missing", reason: "independent review is not required" };
     if (policy.requirements.independentReview) {
-        const allReviewRecords = await listTaskReviews(options.rootDirectory, task.id);
         const reviewRecords = allReviewRecords.filter((record) => isGateEligibleEvidence(record, registeredAgents));
         const decisionAssessments = assessTaskHumanDecisions((await listTaskHumanDecisions(options.rootDirectory, task.id))
             .filter((record) => isGateEligibleEvidence(record, registeredAgents)), subject);
@@ -327,7 +349,6 @@ export async function evaluateTaskCompletionGate(options) {
             && latestDecision.record.resolvedBlocker === TASK_DECISION_RESOLVED_BLOCKER
             && latestDecision.freshness === "current");
         const effectiveGrantPasses = decisionResolvesExhaustion ? 0 : grantedPasses;
-        const reviewBudget = policy.requirements.reviewBudget;
         // Operator grants extend the budget additively but can never raise the
         // effective total review headroom above the hard cap.
         const effectiveMaxReviewPasses = reviewBudget !== undefined
@@ -341,10 +362,6 @@ export async function evaluateTaskCompletionGate(options) {
         // Frontier consumption is resource spend, not completion proof: stale,
         // historical, or otherwise non-gate-eligible review records still count
         // against the task-bound scarce budget.
-        const frontierUsage = await countFrontierUsage(options.rootDirectory, task.id, allReviewRecords);
-        for (const diagnostic of frontierUsage.diagnostics) {
-            diagnostics.push(diagnostic);
-        }
         const frontierReviewExhausted = reviewBudget !== undefined
             && frontierUsage.frontierPasses >= reviewBudget.maxFrontierReviewPasses;
         const frontierRunsExhausted = reviewBudget !== undefined
