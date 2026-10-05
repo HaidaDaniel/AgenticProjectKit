@@ -8,6 +8,8 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
+Task 0192 is in progress to make local pre-push feedback fast while preserving full CI and release validation.
+
 Tasks 0178, 0179, and [0181](../.tasks/0181-prefer-current-operator-decisions-over-stale-candidate-history.md) are complete after exact-candidate verification, successful hosted CI, and independent review. Task 0181 now selects the latest current operator decision before stale history; stale decisions cannot change grants or blockers. Task 0170 remains blocked on the operator's private-reporting route; Task 0173 waits on that route and its completed correctness prerequisites.
 
 Repository maintenance is tracked by [Task 0180](../.tasks/0180-archive-completed-task-history-and-clarify-apk-self-update-validation.md), whose contract supplies its lifecycle state. Its archive pass moved 149 byte-identical done contracts and retained 21 completed contracts required by unfinished task context or source fixtures. With three new contracts, the top-level task directory now has 32 files. The [APK upgrade guide](engineering/apk-upgrade-workflow.md#updating-apk-in-its-own-repository) distinguishes development builds, candidate self-adoption, and actual-tag post-release checks.

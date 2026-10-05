@@ -2,8 +2,10 @@ set -eu
 
 initial_status="$(git status --porcelain --untracked-files=all)"
 
-pnpm release:check
-node dist/cli/index.js lint --json
+# Keep local feedback fast. Full quality, coverage, build, sync, audit, and
+# task-contract validation remain authoritative in CI and release workflows.
+pnpm typecheck
+pnpm lint
 
 git diff --check
 

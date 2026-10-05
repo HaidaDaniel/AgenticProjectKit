@@ -556,6 +556,8 @@ Decision:
 Use ESLint with `typescript-eslint` for real TypeScript source lint, c8 for deterministic V8 coverage, and Husky with lint-staged for local hooks in AgenticProjectKit. Rename the repository's compiler-only `lint` behavior to `typecheck`; keep `lint` source-focused. `quality` composes typecheck, lint, and tests; `release:check` additionally runs coverage, build, and APK-specific sync/audit through the built CLI.
 Declare Node.js `>=22.22.1` for this repository so the local ESLint/c8/Husky/lint-staged toolchain has an explicit supported runtime.
 
+The repository pre-push hook is intentionally a fast, bypassable developer-feedback layer: it runs typecheck, source lint, diff validation, committed-`dist` drift checks, and clean-tree drift checks. Full quality, coverage, build, sync, audit, and task-contract validation remain in CI and release workflows; a successful local push is not release proof.
+
 Measured baseline and thresholds:
 
 - Baseline before guardrails: 267 deterministic tests; 91.72% lines/statements, 96.50% functions, 80.00% branches.
