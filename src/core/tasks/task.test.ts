@@ -6380,6 +6380,38 @@ test("the gate counts task-bound frontier review passes and activated runs", asy
   });
 });
 
+test("malformed activated frontier metadata is counted conservatively", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupDecisionRepo(directory, {
+      resources: {
+        models: [{ id: "frontier-model", roles: ["review"] }],
+        harnesses: [{ id: "frontier-harness", sessionIsolation: true, workerProtocols: ["apk-worker-v1"] }],
+        workers: [{
+          id: "frontier-review",
+          modelId: "frontier-model",
+          harnessId: "frontier-harness",
+          location: "remote",
+          billingMode: "subscription",
+          costClass: "scarce-frontier",
+          availability: "available",
+          capacity: 1,
+          capabilities: { roles: ["review"], workerProtocols: ["apk-worker-v1"] },
+        }],
+      },
+      frontierRuns: 1,
+    });
+    const metadataPath = join(directory, ".agentic", "sessions", "work", "0007", "frontier-run-1", "metadata.json");
+    const metadata = JSON.parse(await readFile(metadataPath, "utf8")) as Record<string, unknown>;
+    delete metadata.resourceId;
+    await writeFile(metadataPath, `${JSON.stringify(metadata)}\n`, "utf8");
+
+    const options = { rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" };
+    const gate = await evaluateTaskCompletionGate(options);
+    assert.equal(gate.review.budget?.frontierRunsUsed, 1);
+    assert.equal(gate.review.budget?.frontierExhausted, true);
+  });
+});
+
 test("frontier review history keeps its recorded cost when the registry changes", async () => {
   await withTempDirectory(async (directory) => {
     await setupDecisionRepo(directory, {

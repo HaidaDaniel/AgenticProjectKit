@@ -315,7 +315,7 @@ async function countFrontierUsage(
   }
   const sessionCosts = new Map<string, ResourceCostClass | undefined>();
   for (const session of sessions) {
-    if (!session.activated || session.resourceId === undefined) continue;
+    if (!session.activated) continue;
     sessionCosts.set(`${session.taskId}\0${session.runId}`, await sessionResourceCostClass(rootDirectory, session));
   }
   const isFrontierReview = (record: TaskReviewRecord): boolean => {
@@ -337,9 +337,14 @@ async function countFrontierUsage(
   const frontierPasses = reviewRecords.filter(isFrontierReview).length;
   let frontierRuns = 0;
   for (const session of sessions) {
-    if (session.taskId !== taskId || !session.activated || session.resourceId === undefined) continue;
+    if (session.taskId !== taskId || !session.activated) continue;
     const durableCost = sessionCosts.get(`${session.taskId}\0${session.runId}`);
-    if (durableCost === undefined || durableCost === "scarce-frontier") {
+    // An activated session with malformed or incomplete discovery metadata is
+    // still task-bound spend. The canonical package may carry a resource that
+    // discovery could not recover, so fail closed instead of treating it as
+    // free capacity.
+    if (session.state === "malformed" || session.resourceId === undefined
+      || durableCost === undefined || durableCost === "scarce-frontier") {
       frontierRuns += 1;
     }
   }
