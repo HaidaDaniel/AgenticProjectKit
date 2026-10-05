@@ -2858,6 +2858,65 @@ test("verification epoch preserves a carried forbidden path as a blocker", async
   });
 });
 
+test("verification epoch carries paths that history later deletes", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const taskPath = join(directory, ".tasks", "0007-scoped-task.md");
+    const task = (await loadTaskFile(taskPath)).task;
+    const restoredPath = "src/core/tasks/restored.ts";
+    await writeFile(join(directory, restoredPath), "temporary candidate\n", "utf8");
+    await execFileAsync("git", ["add", restoredPath], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "temporary candidate"], { cwd: directory });
+    await rm(join(directory, restoredPath));
+    await execFileAsync("git", ["add", "--all", restoredPath], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "restore tree"], { cwd: directory });
+
+    const epoch = await startTaskEpoch({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "agent-a",
+      reason: "retain historical paths even when the endpoint tree no longer contains them",
+    });
+    assert.ok(epoch.carriedForwardFiles?.some(({ path, sha256 }) => path === restoredPath && sha256 === "missing"));
+    const current = await readTaskBaseline(directory, "0007");
+    const scope = await captureTaskScope({ rootDirectory: directory, task, taskPath, baseline: current });
+    assert.ok(scope.attribution?.carriedForwardFiles.includes(restoredPath));
+  });
+});
+
+test("verification epoch rejects merge ancestry instead of resetting scope", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const branch = (await execFileAsync("git", ["branch", "--show-current"], { cwd: directory })).stdout.trim();
+    await execFileAsync("git", ["checkout", "--quiet", "-b", "epoch-side"], { cwd: directory });
+    await writeFile(join(directory, "src/core/tasks/side.ts"), "side\n", "utf8");
+    await execFileAsync("git", ["add", "src/core/tasks/side.ts"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "side history"], { cwd: directory });
+    await execFileAsync("git", ["checkout", "--quiet", branch], { cwd: directory });
+    await mkdir(join(directory, "src/core/tasks"), { recursive: true });
+    await writeFile(join(directory, "src/core/tasks/main.ts"), "main\n", "utf8");
+    await execFileAsync("git", ["add", "src/core/tasks/main.ts"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "main history"], { cwd: directory });
+    await execFileAsync("git", ["merge", "--quiet", "--no-ff", "epoch-side", "-m", "merge history"], { cwd: directory });
+
+    await assert.rejects(
+      () => startTaskEpoch({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        owner: "agent-a",
+        reason: "do not recover through unsupported merge ancestry",
+      }),
+      /merge|unsupported|ancestor/i,
+    );
+    const current = await readTaskBaseline(directory, "0007");
+    assert.equal(current?.phase, "claim");
+  });
+});
+
 test("verification epoch makes predecessor evidence stale and exposes epoch provenance", async () => {
   await withTempDirectory(async (directory) => {
     await setupReclaimRepo(directory);

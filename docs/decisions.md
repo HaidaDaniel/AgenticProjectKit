@@ -1528,7 +1528,7 @@ The bounded linear attribution walk can fail closed after a long-lived task accu
 
 Boundary:
 
-Epoch start requires active ownership, task contract/path continuity, a Git anchor, an explicit reason, and a bounded carried set. Known lineage carries attributed paths; stale lineage carries every discoverable non-bookkeeping predecessor path so omission cannot hide a violation. Carried paths remain task-attributed at the new anchor, and missing/forbidden/out-of-scope paths remain blockers. Legacy records continue to use earliest-claim behavior. Epochs do not add a second gate, evidence store, Git DAG/merge attribution model, operator identity system, or generic force/reset path.
+Epoch start requires active ownership, task contract/path continuity, a Git anchor, an explicit reason, and a bounded carried set. The predecessor must be a current ancestor through a bounded single-parent history; recovery unions every historically touched path with current paths so deleted/restored paths cannot disappear. Known lineage carries attributed paths in addition to that historical union; stale lineage carries every discoverable non-bookkeeping predecessor path so omission cannot hide a violation. Carried paths remain task-attributed at the new anchor, and missing/forbidden/out-of-scope paths remain blockers. A carried path overlapping a proven other-task commit is ambiguous and is never excluded. The working-tree/HEAD snapshot is validated before the append becomes current. Legacy records continue to use earliest-claim behavior. Epochs do not add a second gate, evidence store, Git DAG/merge attribution model, operator identity system, or generic force/reset path.
 
 Reference:
 

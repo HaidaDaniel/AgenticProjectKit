@@ -714,12 +714,21 @@ async function runEpochSubcommand(argv) {
         return 0;
     }
     const allowedFlags = new Set(["--owner", "--reason"]);
-    for (const arg of argv) {
-        if (arg.startsWith("-") && !allowedFlags.has(arg)) {
+    const positional = [];
+    for (let index = 0; index < argv.length; index += 1) {
+        const arg = argv[index];
+        if (!arg.startsWith("-")) {
+            positional.push(arg);
+            continue;
+        }
+        if (!allowedFlags.has(arg)) {
             throw new Error(`Unknown option: ${arg}`);
         }
+        if (index === argv.length - 1 || argv[index + 1].startsWith("-")) {
+            throw new Error(`${arg} requires a value.`);
+        }
+        index += 1;
     }
-    const positional = argv.filter((arg) => !arg.startsWith("-"));
     if (positional.length !== 1) {
         throw new Error(TASK_EPOCH_HELP_TEXT);
     }

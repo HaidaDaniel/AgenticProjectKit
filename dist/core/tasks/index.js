@@ -12,6 +12,7 @@ const DEFAULT_TASK_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 const TASK_VERIFICATION_REFERENCE_MAX_LENGTH = 240;
 const MAX_TASK_ATTRIBUTION_COMMITS = 128;
 const MAX_TASK_ATTRIBUTION_FILES = 512;
+const MAX_TASK_EPOCH_COMMITS = 4096;
 const MAX_TASK_ATTRIBUTION_OUTPUT_COMMITS = 16;
 const MAX_TASK_ATTRIBUTION_OUTPUT_FILES = 128;
 export const TASK_STATES = [
@@ -1329,7 +1330,7 @@ function normalizeBaseline(value, lineNumber) {
     }
     return baseline;
 }
-export async function captureTaskBaseline(rootDirectory, taskId, owner, taskFile, phase = "claim", epoch) {
+export async function captureTaskBaseline(rootDirectory, taskId, owner, taskFile, phase = "claim", epoch, validation) {
     let changedFiles = [];
     const diagnostics = [];
     try {
@@ -1349,6 +1350,15 @@ export async function captureTaskBaseline(rootDirectory, taskId, owner, taskFile
     const repository = headSha ? "git" : "none";
     if (repository !== "git") {
         diagnostics.push("Git HEAD unavailable; dirty-file attribution is limited to explicit current paths.");
+    }
+    if (validation) {
+        const expectedChangedFiles = [...new Set(validation.changedFiles.map(normalizeRepoPath))].sort();
+        const observedDirtyFiles = Object.fromEntries(fingerprints.map(({ path, sha256 }) => [path, sha256]));
+        if (headSha !== validation.headSha
+            || JSON.stringify(changedFiles) !== JSON.stringify(expectedChangedFiles)
+            || JSON.stringify(observedDirtyFiles) !== JSON.stringify(validation.dirtyFiles)) {
+            throw new Error("Git HEAD or working-tree paths changed while the verification epoch snapshot was being validated; retry.");
+        }
     }
     const time = new Date().toISOString();
     const bookkeepingPaths = [...DEFAULT_BOOKKEEPING_PATHS];
@@ -1524,7 +1534,7 @@ export async function startTaskVerificationEpoch(options) {
     }
     let allChanged;
     try {
-        allChanged = await listTaskChangedFilesSinceBaseline(options.rootDirectory, current);
+        allChanged = await listTaskEpochChangedFilesSinceBaseline(options.rootDirectory, current);
     }
     catch (error) {
         throw new Error(`Epoch recovery cannot enumerate the predecessor delta: ${error instanceof Error ? error.message : String(error)}`);
@@ -1543,7 +1553,10 @@ export async function startTaskVerificationEpoch(options) {
             baseline: current,
         });
         if (scope.comparisonKnown && scope.attribution) {
-            carriedForwardFiles = [...new Set(scope.attribution.attributedFiles)].sort();
+            carriedForwardFiles = [...new Set([
+                    ...carriedForwardFiles,
+                    ...scope.attribution.attributedFiles,
+                ])].sort();
             try {
                 predecessorCandidateId = (await captureTaskEvidenceSubject(options.rootDirectory, options.task, scope.changedFiles, current)).candidateId;
             }
@@ -1574,6 +1587,13 @@ export async function startTaskVerificationEpoch(options) {
         headSha: currentHeadSha,
         carriedForwardFiles: carriedFingerprints,
     })}`;
+    const validationChangedFiles = await listGitChangedFiles(options.rootDirectory);
+    const validationDirtyFiles = Object.fromEntries((await fingerprintChangedFiles(options.rootDirectory, validationChangedFiles))
+        .map(({ path, sha256 }) => [path, sha256]));
+    const validationHeadSha = (await gitOutput(options.rootDirectory, ["rev-parse", "HEAD"])).trim();
+    if (validationHeadSha !== currentHeadSha) {
+        throw new Error("Git HEAD changed while the verification epoch snapshot was being prepared; retry.");
+    }
     const next = await captureTaskBaseline(options.rootDirectory, options.task.id, options.owner, predecessor.taskFile, "epoch", {
         epochId,
         predecessorBaselineId: predecessor.baselineId,
@@ -1582,10 +1602,11 @@ export async function startTaskVerificationEpoch(options) {
         carriedForwardFiles: carriedFingerprints,
         carriedForwardCandidateId,
         taskContractHash: contractHash,
+    }, {
+        headSha: validationHeadSha,
+        changedFiles: validationChangedFiles,
+        dirtyFiles: validationDirtyFiles,
     });
-    if (next.headSha !== currentHeadSha) {
-        throw new Error("Git HEAD changed while the verification epoch was being appended; retry and inspect the append-only record.");
-    }
     return next;
 }
 async function listLinearGitCommits(rootDirectory, fromSha, toSha) {
@@ -2031,6 +2052,58 @@ export async function listTaskChangedFilesSinceBaseline(rootDirectory, baseline)
     }
     throw new TaskGitComparisonError(["baseline"], new Error("task baseline has no resolvable Git HEAD; current paths must be supplied explicitly"));
 }
+/**
+ * Epoch recovery must inspect history, not only the endpoint tree. A path that
+ * was created and deleted (or modified and restored) still belongs to the
+ * predecessor interval and must remain visible at the new anchor.
+ */
+async function listTaskEpochChangedFilesSinceBaseline(rootDirectory, baseline) {
+    if (baseline.repository !== "git" || !baseline.headSha) {
+        throw new TaskGitComparisonError(["baseline"], new Error("epoch recovery requires a resolvable Git HEAD"));
+    }
+    const currentHead = (await gitOutput(rootDirectory, ["rev-parse", "HEAD"])).trim();
+    const paths = new Set();
+    if (currentHead !== baseline.headSha) {
+        try {
+            await gitOutput(rootDirectory, ["merge-base", "--is-ancestor", baseline.headSha, currentHead]);
+        }
+        catch (error) {
+            throw new Error(`Epoch recovery requires the predecessor HEAD to be an ancestor of current HEAD; unsupported history fails closed (${error instanceof Error ? error.message : String(error)}).`);
+        }
+        const lines = (await gitOutput(rootDirectory, [
+            "rev-list", "--reverse", "--topo-order", "--parents", `${baseline.headSha}..${currentHead}`,
+        ])).split(/\r?\n/).filter((line) => line.length > 0);
+        if (lines.length > MAX_TASK_EPOCH_COMMITS) {
+            throw new Error(`Epoch recovery history exceeds the ${MAX_TASK_EPOCH_COMMITS}-commit safety bound.`);
+        }
+        let previous = baseline.headSha;
+        for (const line of lines) {
+            const [sha, ...parents] = line.split(" ");
+            if (!sha || parents.length !== 1 || parents[0] !== previous) {
+                throw new Error(`Epoch recovery found merge or rewritten ancestry at ${shortenSha(sha)}; unsupported history fails closed.`);
+            }
+            const commitFiles = await gitPaths(rootDirectory, [
+                "diff-tree", "--no-commit-id", "--name-only", "--no-renames", "-r", "-z", sha,
+            ]);
+            if (commitFiles.length > MAX_TASK_ATTRIBUTION_FILES) {
+                throw new Error(`Epoch recovery commit ${shortenSha(sha)} exceeds the ${MAX_TASK_ATTRIBUTION_FILES}-file safety bound.`);
+            }
+            for (const path of commitFiles)
+                paths.add(normalizeGitPath(path));
+            previous = sha;
+        }
+        if (previous !== currentHead) {
+            throw new Error("Epoch recovery could not prove a complete linear predecessor history; scope fails closed.");
+        }
+    }
+    const workingTreePaths = await gitPaths(rootDirectory, [
+        "diff", "--name-only", "--no-renames", "-z", baseline.headSha,
+    ]);
+    const untracked = await gitPaths(rootDirectory, ["ls-files", "--others", "--exclude-standard", "-z"]);
+    for (const path of [...workingTreePaths, ...untracked])
+        paths.add(normalizeGitPath(path));
+    return [...paths].sort();
+}
 async function taskBaselineSnapshotDiagnostic(rootDirectory, baseline) {
     if (!baseline
         || baseline.repository !== "git"
@@ -2109,6 +2182,10 @@ export async function captureTaskScope(options) {
         : verifyTaskFileScope(options.task, normalizedTaskPath
             ? rawChangedFiles.filter((path) => !isDefaultBookkeepingPath(normalizeRepoPath(path), normalizedTaskPath))
             : rawChangedFiles);
+    if (scope.attribution?.diagnostics.some((diagnostic) => diagnostic.startsWith("Carried-forward path "))) {
+        comparisonKnown = false;
+        diagnostics.push("A carried-forward path overlaps another task's excluded commit; ownership is ambiguous and scope fails closed.");
+    }
     const lineage = options.baseline?.lineageStatus;
     if (options.baseline?.repository === "git"
         && lineage !== undefined
@@ -2136,13 +2213,15 @@ export async function verifyTaskFileScopeSinceBaseline(rootDirectory, task, chan
         .filter((file) => file.length > 0)
         .sort();
     const excludedCommits = baseline.provenOtherTaskCommits ?? [];
-    const excludedFileSet = new Set(excludedCommits.flatMap((commit) => commit.files.map(normalizeRepoPath)));
+    const carriedForwardSet = new Set(carriedForwardPaths);
+    const allExcludedFileSet = new Set(excludedCommits.flatMap((commit) => commit.files.map(normalizeRepoPath)));
+    const ambiguousCarriedFiles = allNormalizedChanged.filter((file) => (carriedForwardSet.has(file) && allExcludedFileSet.has(file)));
+    const excludedFileSet = new Set([...allExcludedFileSet].filter((file) => !carriedForwardSet.has(file)));
     const excludedFiles = allNormalizedChanged.filter((file) => excludedFileSet.has(file));
     const normalizedChanged = allNormalizedChanged.filter((file) => !excludedFileSet.has(file));
     const fingerprints = Object.fromEntries((await fingerprintChangedFiles(rootDirectory, normalizedChanged))
         .map(({ path, sha256 }) => [path, sha256]));
     const attributedFiles = [];
-    const carriedForwardSet = new Set(carriedForwardPaths);
     const preExistingFiles = [];
     const bookkeepingFiles = [];
     for (const file of normalizedChanged) {
@@ -2176,6 +2255,7 @@ export async function verifyTaskFileScopeSinceBaseline(rootDirectory, task, chan
             diagnostics: [
                 ...baseline.diagnostics,
                 ...(baseline.lineageDiagnostic ? [baseline.lineageDiagnostic] : []),
+                ...ambiguousCarriedFiles.map((file) => (`Carried-forward path ${file} overlaps another task's excluded commit; ownership is ambiguous and scope fails closed.`)),
             ],
         },
     };
