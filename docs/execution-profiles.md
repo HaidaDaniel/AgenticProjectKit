@@ -232,7 +232,7 @@ Execution policy supports bounded resource controls such as:
 
 - `maxReviewPasses`;
 - `maxFrontierReviewPasses`;
-- `maxFrontierRunsPerTask`;
+- `maxFrontierRuns`;
 - paid-escalation policy and human approval boundary.
 
 The constrained baseline uses `maxFrontierReviewPasses = 1` and `maxFrontierRuns = 1` for ordinary tasks. A further frontier review requires an explicit policy change; a total-review grant cannot authorize it. The gate and execution path count task-bound scarce-frontier review records and activated worker sessions, including stale history, so a cap reached on a non-passing review blocks further frontier work even while local/cheap review headroom remains. Explicit resource overrides and calibration routes cannot bypass an exhausted frontier cap. A current passing review recorded at the cap is accepted, and deterministic re-verification still precedes any review.
