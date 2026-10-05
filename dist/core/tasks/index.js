@@ -1650,16 +1650,26 @@ async function readGitCommitNode(rootDirectory, sha, parents) {
         throw new Error(`Commit ${shortenSha(sha)} exceeds the ${MAX_TASK_ATTRIBUTION_FILES}-file attribution limit.`);
     }
     const normalizedFiles = [...new Set(files.map(normalizeGitPath))].sort();
-    if (parents.length < 2 || normalizedFiles.length === 0) {
+    if (parents.length < 2) {
         return { sha, parents: [...parents], files: normalizedFiles };
     }
     const mergeResolutionFiles = [];
     const inheritedFrom = new Set();
     let mergeBase;
     try {
-        mergeBase = (await gitOutput(rootDirectory, ["merge-base", parents[0], parents[1]])).trim();
-        if (!mergeBase)
-            throw new Error("merge-base returned no commit");
+        const mergeBases = (await gitOutput(rootDirectory, ["merge-base", "--all", parents[0], parents[1]]))
+            .split(/\s+/)
+            .filter((entry) => entry.length > 0);
+        if (mergeBases.length !== 1) {
+            return {
+                sha,
+                parents: [...parents],
+                files: normalizedFiles,
+                mergeResolutionFiles: normalizedFiles,
+                mergeAmbiguity: `Merge commit ${shortenSha(sha)} has ${mergeBases.length} merge bases for parents ${parents.map(shortenSha).join(", ")}; criss-cross ancestry is ambiguous.`,
+            };
+        }
+        mergeBase = mergeBases[0];
     }
     catch {
         return {
@@ -1667,12 +1677,23 @@ async function readGitCommitNode(rootDirectory, sha, parents) {
             parents: [...parents],
             files: normalizedFiles,
             mergeResolutionFiles: normalizedFiles,
+            mergeAmbiguity: `Merge commit ${shortenSha(sha)} has an unreadable merge base for parents ${parents.map(shortenSha).join(", ")}.`,
         };
     }
-    for (const path of normalizedFiles) {
-        const resultFingerprint = await gitFileFingerprint(rootDirectory, sha, path);
-        const baseFingerprint = await gitFileFingerprint(rootDirectory, mergeBase, path);
-        const parentFingerprints = await Promise.all(parents.map((parent) => gitFileFingerprint(rootDirectory, parent, path)));
+    const parentChangedPaths = await Promise.all(parents.map((parent) => gitPaths(rootDirectory, [
+        "diff", "--name-only", "--no-renames", "-z", mergeBase, parent,
+    ])));
+    const mergePaths = [...new Set([
+            ...normalizedFiles,
+            ...parentChangedPaths.flat().map(normalizeGitPath),
+        ])].sort();
+    if (mergePaths.length > MAX_TASK_ATTRIBUTION_FILES) {
+        throw new Error(`Merge commit ${shortenSha(sha)} exceeds the ${MAX_TASK_ATTRIBUTION_FILES}-file attribution limit.`);
+    }
+    for (const path of mergePaths) {
+        const resultFingerprint = await gitTreeEntryFingerprint(rootDirectory, sha, path);
+        const baseFingerprint = await gitTreeEntryFingerprint(rootDirectory, mergeBase, path);
+        const parentFingerprints = await Promise.all(parents.map((parent) => gitTreeEntryFingerprint(rootDirectory, parent, path)));
         const changedParents = parentFingerprints.filter((fingerprint) => (resultFingerprint === "unreadable"
             || fingerprint === "unreadable"
             || fingerprint !== baseFingerprint));
@@ -1692,7 +1713,7 @@ async function readGitCommitNode(rootDirectory, sha, parents) {
     return {
         sha,
         parents: [...parents],
-        files: normalizedFiles,
+        files: mergePaths,
         ...(mergeResolutionFiles.length > 0 ? { mergeResolutionFiles: mergeResolutionFiles.sort() } : {}),
         ...(inheritedFrom.size > 0 ? { inheritedFrom: [...inheritedFrom].sort() } : {}),
     };
@@ -1710,7 +1731,7 @@ async function listGitDagCommits(rootDirectory, fromSha, toSha) {
     }
     let lines;
     try {
-        lines = (await gitOutput(rootDirectory, ["rev-list", "--reverse", "--topo-order", "--parents", `${fromSha}..${toSha}`]))
+        lines = (await gitOutput(rootDirectory, ["rev-list", "--reverse", "--topo-order", `--max-count=${MAX_TASK_ATTRIBUTION_COMMITS + 1}`, "--parents", `${fromSha}..${toSha}`]))
             .split(/\r?\n/)
             .filter((line) => line.length > 0);
     }
@@ -1780,6 +1801,38 @@ async function gitFileFingerprint(rootDirectory, revision, path) {
         catch {
             return "unreadable";
         }
+    }
+}
+async function gitTreeEntryFingerprint(rootDirectory, revision, path) {
+    try {
+        const result = await execFileAsync("git", ["ls-tree", "-z", revision, "--", path], {
+            cwd: rootDirectory,
+            encoding: "buffer",
+            maxBuffer: 8 * 1024 * 1024,
+            windowsHide: true,
+        });
+        const output = result.stdout;
+        let start = 0;
+        for (let index = 0; index < output.length; index += 1) {
+            if (output[index] !== 0)
+                continue;
+            const record = output.subarray(start, index);
+            const separator = record.indexOf(9);
+            if (separator < 0)
+                return "unreadable";
+            const entryPath = record.subarray(separator + 1).toString("utf8");
+            if (!Buffer.from(entryPath, "utf8").equals(record.subarray(separator + 1)))
+                return "unreadable";
+            if (entryPath === path)
+                return `entry:${record.subarray(0, separator).toString("utf8")}`;
+            start = index + 1;
+        }
+        if (start !== output.length)
+            return "unreadable";
+        return "missing";
+    }
+    catch {
+        return "unreadable";
     }
 }
 async function resolveTaskCandidateCommit(rootDirectory, taskFiles, baselineRecords, evidenceRecords, runEvents, activeTaskId, commit) {
@@ -2004,6 +2057,10 @@ async function resolveTaskBaselineLineage(rootDirectory, authoritative, taskReco
         }
         return ancestors;
     };
+    const ambiguousMerge = dagCommits.find((commit) => commit.parents.length === 2 && commit.mergeAmbiguity);
+    if (ambiguousMerge?.mergeAmbiguity) {
+        return lineageFailure(`${ambiguousMerge.mergeAmbiguity} Changed paths: ${ambiguousMerge.mergeResolutionFiles?.join(", ") || "unknown"}; scope fails closed.`, "intervening", proven, mergeAttributions);
+    }
     for (const merge of dagCommits.filter((commit) => commit.parents.length === 2)) {
         if (merge.mergeResolutionFiles && merge.mergeResolutionFiles.length > 0) {
             return lineageFailure(`Merge commit ${shortenSha(merge.sha)} (parents ${merge.parents.map(shortenSha).join(", ")}) contains unresolved merge-resolution paths: ${merge.mergeResolutionFiles.join(", ")}; scope fails closed.`, "intervening", proven, mergeAttributions);

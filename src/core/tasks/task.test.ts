@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -2367,6 +2367,26 @@ async function completeBoundedTaskB(
   return { candidateSha, bookkeepingSha, file };
 }
 
+async function completeTypeOnlyTaskB(directory: string, file: string): Promise<void> {
+  const owner = "agent-b";
+  await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner });
+  await rm(join(directory, file));
+  await symlink("target", join(directory, file));
+  await execFileAsync("git", ["add", file], { cwd: directory });
+  await execFileAsync("git", ["commit", "--quiet", "-m", "type-only candidate"], { cwd: directory });
+  const verification = await verifyTask({
+    rootDirectory: directory,
+    taskDirectory: ".tasks",
+    taskId: "0008",
+    owner,
+    runCommand: async () => 0,
+  });
+  assert.equal(verification.passed, true, verification.diagnostics.join("; "));
+  await doneTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner });
+  await execFileAsync("git", ["add", ".tasks/0008-bounded-task.md"], { cwd: directory });
+  await execFileAsync("git", ["commit", "--quiet", "-m", "type-only completion bookkeeping"], { cwd: directory });
+}
+
 test("claim re-render preserves multiline prose contract text", async () => {
   await withTempDirectory(async (directory) => {
     await setupReclaimRepo(directory);
@@ -2829,6 +2849,80 @@ test("a conflict-resolved merge path remains ambiguous and fails scope closed", 
     const result = await verifyScopedTask(directory);
     assert.equal(result.passed, false);
     assert.equal(result.attribution?.lineageStatus, "intervening");
+  });
+});
+
+test("DAG enumeration stops at the bounded commit cap", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    for (let index = 0; index < 129; index += 1) {
+      await execFileAsync("git", ["commit", "--quiet", "--allow-empty", "-m", `bounded history ${index}`], { cwd: directory });
+    }
+
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.equal(baseline?.lineageStatus, "intervening");
+    assert.match(baseline?.lineageDiagnostic ?? "", /128-commit attribution limit/i);
+  });
+});
+
+test("criss-cross merge bases fail closed with a merge diagnostic", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const baseBranch = (await execFileAsync("git", ["branch", "--show-current"], { cwd: directory })).stdout.trim();
+    await execFileAsync("git", ["checkout", "--quiet", "-b", "criss-a"], { cwd: directory });
+    await writeFile(join(directory, "src/core/tasks/criss-a.ts"), "a\n", "utf8");
+    await execFileAsync("git", ["add", "src/core/tasks/criss-a.ts"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "criss a1"], { cwd: directory });
+    const a1 = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: directory })).stdout.trim();
+    await execFileAsync("git", ["checkout", "--quiet", baseBranch], { cwd: directory });
+    await execFileAsync("git", ["checkout", "--quiet", "-b", "criss-b"], { cwd: directory });
+    await mkdir(join(directory, "src/core/tasks"), { recursive: true });
+    await writeFile(join(directory, "src/core/tasks/criss-b.ts"), "b\n", "utf8");
+    await execFileAsync("git", ["add", "src/core/tasks/criss-b.ts"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "criss b1"], { cwd: directory });
+    const b1 = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: directory })).stdout.trim();
+    await execFileAsync("git", ["merge", "--quiet", "--no-ff", a1, "-m", "criss b2"], { cwd: directory });
+    await execFileAsync("git", ["checkout", "--quiet", "criss-a"], { cwd: directory });
+    await execFileAsync("git", ["merge", "--quiet", "--no-ff", b1, "-m", "criss a2"], { cwd: directory });
+    await execFileAsync("git", ["checkout", "--quiet", "criss-b"], { cwd: directory });
+    await execFileAsync("git", ["merge", "--quiet", "--no-ff", "criss-a", "-m", "criss final"], { cwd: directory });
+
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.equal(baseline?.lineageStatus, "intervening");
+    assert.match(baseline?.lineageDiagnostic ?? "", /criss-cross|merge bases|merge-resolution/i);
+  });
+});
+
+test("file-type-only changes on both merge parents fail closed", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    const file = "docs/task-b/mode.txt";
+    await writeFile(join(directory, file), "target", "utf8");
+    await execFileAsync("git", ["add", file], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "seed mode fixture"], { cwd: directory });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const baseBranch = (await execFileAsync("git", ["branch", "--show-current"], { cwd: directory })).stdout.trim();
+    await execFileAsync("git", ["checkout", "--quiet", "-b", "mode-side"], { cwd: directory });
+    await completeTypeOnlyTaskB(directory, file);
+    await execFileAsync("git", ["checkout", "--quiet", baseBranch], { cwd: directory });
+    await rm(join(directory, file));
+    await symlink("target", join(directory, file));
+    await execFileAsync("git", ["add", file], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "active type change"], { cwd: directory });
+    try {
+      await execFileAsync("git", ["merge", "--quiet", "--no-ff", "mode-side", "-m", "mode merge"], { cwd: directory });
+    } catch {
+      await rm(join(directory, file), { force: true });
+      await symlink("target", join(directory, file));
+      await execFileAsync("git", ["add", file], { cwd: directory });
+      await execFileAsync("git", ["commit", "--quiet", "-m", "type merge"], { cwd: directory });
+    }
+
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.equal(baseline?.lineageStatus, "intervening");
+    assert.match(baseline?.lineageDiagnostic ?? "", /merge-resolution.*mode\.txt|mode\.txt.*merge-resolution/i);
   });
 });
 
