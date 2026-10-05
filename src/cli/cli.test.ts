@@ -2689,6 +2689,25 @@ test("CLI work coordinates implementation, review, fixer, and gate roles", async
     await git("config", "user.name", "Codex");
     const tasksDir = join(directory, ".tasks");
     await mkdir(tasksDir, { recursive: true });
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({
+      schemaVersion: 2,
+      resources: {
+        models: [{ id: "review-model", roles: ["review"] }],
+        harnesses: [{ id: "review-harness", workerProtocols: ["apk-worker-v1"] }],
+        workers: [{
+          id: "frontier-review",
+          modelId: "review-model",
+          harnessId: "review-harness",
+          location: "remote",
+          billingMode: "subscription",
+          costClass: "scarce-frontier",
+          availability: "available",
+          capacity: 1,
+          capabilities: { roles: ["review"], workerProtocols: ["apk-worker-v1"] },
+        }],
+      },
+    }), "utf8");
     const task = buildTaskMarkdown("0001", "Worker Cycle", "todo")
       .replace("Risk: low", "Risk: medium")
       .replace("Tags: none", "Tags: worker")
@@ -3011,15 +3030,23 @@ test("CLI work coordinates implementation, review, fixer, and gate roles", async
     const verification = await runCli(["task", "verify", "0001", "--owner", "codex-owner"], directory);
     assert.equal(verification.exitCode, 0);
     const finalReviewWork = await runCli([
-      "work", "0001", "--owner", "codex-reviewer", "--target", "opencode",
+      "work", "0001", "--owner", "codex-reviewer", "--target", "opencode", "--resource", "frontier-review",
     ], directory);
     const finalReviewRunId = finalReviewWork.stdout.match(/Run: (work-[^\n]+)/)?.[1];
     assert.ok(finalReviewRunId);
     const finalReview = await runCli([
-      "work", "result", "0001", "--owner", "codex-reviewer", "--run-id", finalReviewRunId,
-      "--role", "review", "--status", "completed",
+      "review", "0001", "--reviewer", "codex-reviewer", "--review-run", finalReviewRunId,
+      "--result", "pass",
     ], directory);
     assert.equal(finalReview.exitCode, 0);
+    const finalReviewEvidence = (await readFile(join(directory, ".agentic", "evidence.jsonl"), "utf8"))
+      .trim().split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line) as {
+        runId: string;
+        resourceId?: string;
+        resourceCostClass?: string;
+      }).find((record) => record.runId === finalReviewRunId);
+    assert.equal(finalReviewEvidence?.resourceId, "frontier-review");
+    assert.equal(finalReviewEvidence?.resourceCostClass, "scarce-frontier");
     const gate = await runCli(["task", "gate", "0001"], directory);
     assert.equal(gate.exitCode, 0, `${gate.stdout}${gate.stderr}`);
     assert.match(gate.stdout, /Gate: pass/);

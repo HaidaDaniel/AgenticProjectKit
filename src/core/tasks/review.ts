@@ -479,7 +479,8 @@ function asTaskReviewRecord(record: TaskEvidenceRecord): TaskReviewRecord | unde
 }
 
 export async function recordTaskReview(options: TaskReviewOptions): Promise<TaskReviewResult> {
-  const resourceCostClass = await resolveReviewResourceCostClass(options);
+  let resourceId = options.resourceId;
+  let resourceCostClass = options.resourceCostClass;
   let prepared: TaskReviewPreparation;
   if (options.reviewRunId) {
     const stored = await readPreparedReview(
@@ -514,6 +515,14 @@ export async function recordTaskReview(options: TaskReviewOptions): Promise<Task
       ) {
         throw new Error(`Worker-bound review run ${stored.reviewRunId} does not match an active worker session.`);
       }
+      // Worker-bound evidence must inherit the immutable issuance provenance.
+      // Do not consult the current registry: a reclassification must not alter
+      // the historical cost class, and an old package without one remains
+      // unknown for the gate's fail-closed accounting.
+      resourceId = activeSession.workerPackage.provenance.resourceId;
+      resourceCostClass = activeSession.workerPackage.provenance.resourceCostClass;
+    } else {
+      resourceCostClass = await resolveReviewResourceCostClass(options);
     }
     const baseline = await readTaskBaseline(options.rootDirectory, task.id);
     const snapshot = await captureTaskScope({
@@ -554,6 +563,7 @@ export async function recordTaskReview(options: TaskReviewOptions): Promise<Task
       preparedAt: stored.preparedAt,
     };
   } else {
+    resourceCostClass = await resolveReviewResourceCostClass(options);
     prepared = await prepareTaskReview({
       ...options,
       reviewRunId: reviewRunId(),
@@ -589,7 +599,7 @@ export async function recordTaskReview(options: TaskReviewOptions): Promise<Task
       workerRole: options.workerRole,
       workerStatus: options.workerStatus,
       assuranceLevel: options.assuranceLevel ?? resolveTaskPolicy(prepared.task).requirements.assurance,
-      resourceId: options.resourceId,
+      resourceId,
       resourceCostClass,
       resourceFamily: options.resourceFamily,
       findings,

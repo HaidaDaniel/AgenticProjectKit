@@ -917,7 +917,10 @@ export async function recordWorkerResult(options: {
     const resourceFamily = resource
       ? resourceConfig?.resources?.models.find((model) => model.id === resource.modelId)?.family
       : undefined;
-    const resourceCostClass = issued.workerPackage.provenance.resourceCostClass ?? resource?.costClass;
+    // The worker package is the issuance-time source of truth. A missing class
+    // stays unknown so gate accounting fails closed instead of reclassifying
+    // historical spend from the current registry.
+    const resourceCostClass = issued.workerPackage.provenance.resourceCostClass;
     const review = await recordTaskReview({
       rootDirectory: options.rootDirectory,
       taskDirectory: options.taskDirectory,
