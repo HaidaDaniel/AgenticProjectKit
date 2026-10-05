@@ -305,3 +305,18 @@ export async function readActiveWorkerSession(rootDirectory, taskId, runId) {
         activation: activation,
     };
 }
+/**
+ * Read the issued package provenance without trusting mutable session metadata.
+ * Frontier accounting uses this fallback when metadata is damaged but the
+ * activated package remains available, so a missing metadata resource cannot
+ * hide a scarce-frontier issuance.
+ */
+export async function readWorkerSessionPackage(rootDirectory, taskId, runId) {
+    validateWorkerRunId(runId);
+    const packageValue = await readFile(join(sessionDirectory(rootDirectory, taskId, runId), "package.json"), "utf8");
+    const workerPackage = parseWorkerPackage(packageValue);
+    if (workerPackage.task.id !== taskId || workerPackage.provenance.runId !== runId) {
+        throw new Error(`Worker run ${runId} package binding is malformed.`);
+    }
+    return workerPackage;
+}

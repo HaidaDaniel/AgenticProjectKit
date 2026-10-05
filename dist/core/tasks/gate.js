@@ -4,7 +4,7 @@ import { compareTaskEvidenceFreshness, readTaskEvidence, } from "./evidence.js";
 import { assessTaskHumanDecisions, assessTaskReviews, listTaskHumanDecisions, listTaskReviews, MAX_HUMAN_REVIEW_GRANT_PASSES, TASK_DECISION_RESOLVED_BLOCKER, } from "./review.js";
 import { MAX_EFFECTIVE_REVIEW_PASSES, resolveTaskPolicy, } from "./policy.js";
 import { isPackagedInputPath, packagedDistTaskContractBlockers, repositoryPackagedDistContract, } from "./package-contract.js";
-import { listWorkerSessions, readActiveWorkerSession } from "../work/session.js";
+import { listWorkerSessions, readActiveWorkerSession, readWorkerSessionPackage, } from "../work/session.js";
 export class TaskCompletionGateError extends Error {
     gate;
     constructor(gate) {
@@ -113,13 +113,31 @@ function reviewAssessment(assessments, subject) {
 function recordedResourceCostClass(record) {
     return record.resourceCostClass;
 }
-async function sessionResourceCostClass(rootDirectory, session) {
+async function sessionResourceProvenance(rootDirectory, session) {
     try {
         const active = await readActiveWorkerSession(rootDirectory, session.taskId, session.runId);
-        return active.workerPackage.provenance.resourceCostClass;
+        return {
+            ...(active.workerPackage.provenance.resourceId ? { resourceId: active.workerPackage.provenance.resourceId } : {}),
+            ...(active.workerPackage.provenance.resourceCostClass
+                ? { resourceCostClass: active.workerPackage.provenance.resourceCostClass }
+                : {}),
+            packageReadable: true,
+        };
     }
     catch {
-        return undefined;
+        try {
+            const workerPackage = await readWorkerSessionPackage(rootDirectory, session.taskId, session.runId);
+            return {
+                ...(workerPackage.provenance.resourceId ? { resourceId: workerPackage.provenance.resourceId } : {}),
+                ...(workerPackage.provenance.resourceCostClass
+                    ? { resourceCostClass: workerPackage.provenance.resourceCostClass }
+                    : {}),
+                packageReadable: true,
+            };
+        }
+        catch {
+            return { packageReadable: false };
+        }
     }
 }
 /**
@@ -145,11 +163,11 @@ async function countFrontierUsage(rootDirectory, taskId, reviewRecords) {
             diagnostics,
         };
     }
-    const sessionCosts = new Map();
+    const sessionProvenance = new Map();
     for (const session of sessions) {
         if (!session.activated)
             continue;
-        sessionCosts.set(`${session.taskId}\0${session.runId}`, await sessionResourceCostClass(rootDirectory, session));
+        sessionProvenance.set(`${session.taskId}\0${session.runId}`, await sessionResourceProvenance(rootDirectory, session));
     }
     const isFrontierReview = (record) => {
         if (record.resourceId === undefined)
@@ -158,11 +176,13 @@ async function countFrontierUsage(rootDirectory, taskId, reviewRecords) {
         const durableCost = recordedResourceCostClass(record);
         if (durableCost !== undefined)
             return durableCost === "scarce-frontier";
-        if (sessionCosts.has(sessionKey)) {
+        const provenance = sessionProvenance.get(sessionKey);
+        if (provenance) {
             // A legacy session without a durable class is unknown historical spend;
             // do not inherit the current registry's cheaper classification.
-            return sessionCosts.get(sessionKey) === undefined
-                || sessionCosts.get(sessionKey) === "scarce-frontier";
+            return !provenance.packageReadable
+                || (provenance.resourceId !== undefined && provenance.resourceCostClass === undefined)
+                || provenance.resourceCostClass === "scarce-frontier";
         }
         // Legacy resource-bound review evidence has no durable cost class. It is
         // conservatively treated as frontier spend so reclassification/removal
@@ -174,13 +194,14 @@ async function countFrontierUsage(rootDirectory, taskId, reviewRecords) {
     for (const session of sessions) {
         if (session.taskId !== taskId || !session.activated)
             continue;
-        const durableCost = sessionCosts.get(`${session.taskId}\0${session.runId}`);
+        const provenance = sessionProvenance.get(`${session.taskId}\0${session.runId}`);
         // An activated session with malformed or incomplete discovery metadata is
         // still task-bound spend. The canonical package may carry a resource that
         // discovery could not recover, so fail closed instead of treating it as
         // free capacity.
-        if (session.state === "malformed" || session.resourceId === undefined
-            || durableCost === undefined || durableCost === "scarce-frontier") {
+        if (!provenance?.packageReadable
+            || provenance.resourceCostClass === "scarce-frontier"
+            || (provenance.resourceId !== undefined && provenance.resourceCostClass === undefined)) {
             frontierRuns += 1;
         }
     }
