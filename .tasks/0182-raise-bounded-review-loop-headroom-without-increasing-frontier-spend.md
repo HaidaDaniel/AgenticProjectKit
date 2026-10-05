@@ -37,6 +37,7 @@ Use a simple bounded policy rather than a new complexity estimator: total review
 - src/core/tasks/policy.ts
 - src/core/tasks/gate.ts
 - src/core/tasks/review.ts
+- src/core/tasks/evidence.ts
 - src/core/tasks/*.test.ts
 - src/core/execution/*.ts
 - src/cli/commands/execution.ts
