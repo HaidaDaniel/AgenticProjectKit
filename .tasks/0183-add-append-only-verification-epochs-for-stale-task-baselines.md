@@ -1,6 +1,6 @@
 # Task 0183 - Add append-only verification epochs for stale task baselines
 
-State: doing
+State: done
 Owner: codex-continue-20261005-2055
 Mode: product
 Lane: workflow
