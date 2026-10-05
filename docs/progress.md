@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0192 is in progress to make local pre-push feedback fast while preserving full CI and release validation.
+Task 0192 is complete: local pre-push feedback now runs fast deterministic checks while full CI and release validation remain authoritative.
 
 Tasks 0178, 0179, and [0181](../.tasks/0181-prefer-current-operator-decisions-over-stale-candidate-history.md) are complete after exact-candidate verification, successful hosted CI, and independent review. Task 0181 now selects the latest current operator decision before stale history; stale decisions cannot change grants or blockers. Task 0170 remains blocked on the operator's private-reporting route; Task 0173 waits on that route and its completed correctness prerequisites.
 

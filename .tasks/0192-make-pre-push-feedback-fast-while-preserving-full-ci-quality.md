@@ -1,6 +1,6 @@
 # Task 0192 - Make pre-push feedback fast while preserving full CI quality
 
-State: doing
+State: done
 Owner: codex-diagnose-push
 Mode: maintenance
 Lane: quality
