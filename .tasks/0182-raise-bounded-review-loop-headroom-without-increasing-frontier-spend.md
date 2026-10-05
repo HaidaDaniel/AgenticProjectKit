@@ -117,7 +117,7 @@ Use a simple bounded policy rather than a new complexity estimator: total review
 
 ## Verification
 
-- `{"id":"quality","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm quality"}`
+- `{"id":"quality","type":"automated","required":true,"environment":"local","profile":"report","command":"pnpm quality","evidence":"quality output summary"}`
 - `{"id":"coverage","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test:coverage"}`
 - `{"id":"task-lint","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"build-current","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"rm -rf dist && pnpm build && test -z \"$(git status --porcelain --untracked-files=all --ignored=matching -- dist)\""}`
