@@ -89,10 +89,11 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0078](#adr-0078---packaged-source-tasks-require-current-committed-dist) | accepted | Packaged-source tasks require current committed dist | — |
 | [ADR-0079](#adr-0079---ci-environment-requires-external-proof-regardless-of-profile-or-type) | accepted | CI environment requires external proof regardless of profile or type | — |
 | [ADR-0080](#adr-0080---current-operator-decisions-take-precedence-over-stale-history) | accepted | Current operator decisions take precedence over stale history | — |
+| [ADR-0081](#adr-0081---verification-epochs-refresh-stale-baselines-without-scope-laundering) | accepted | Verification epochs refresh stale baselines without scope laundering | — |
 
 ### ADR index cross-check
 
-- [x] Each of the 79 index rows matches one retained ADR heading and its title.
+- [x] Each of the 80 index rows matches one retained ADR heading and its title.
 - [x] Each status matches that record's explicit `Status` field.
 - [x] The only supersession link is ADR-0006 -> ADR-0062, recorded by ADR-0006's status and ADR-0062's heading and decision text.
 
@@ -1512,3 +1513,23 @@ Keep append-only evidence, registered recorders, operator-asserted trust, timest
 Reference:
 
 Task 0181.
+
+## ADR-0081 - Verification epochs refresh stale baselines without scope laundering
+
+Status: accepted
+
+Decision:
+
+Allow an active task owner to append a verification epoch when the predecessor baseline is no longer practically attributable. The epoch gets a fresh Git anchor, stable identity, predecessor links, an explicit reason, and carried-forward candidate/path identity. Current verification, scope, review, gate, status, and provenance select the latest epoch suffix; prior records remain append-only history and become stale through the existing subject comparison.
+
+Reason:
+
+The bounded linear attribution walk can fail closed after a long-lived task accumulates more repository history than the safety limit. Requiring a duplicate successor task preserves safety but loses the logical task identity. A silent baseline replacement would instead let prior task-owned or forbidden changes become pre-existing. An explicit epoch preserves one task ID while making the recovery boundary visible and carrying the complete discoverable predecessor path set conservatively.
+
+Boundary:
+
+Epoch start requires active ownership, task contract/path continuity, a Git anchor, an explicit reason, and a bounded carried set. Known lineage carries attributed paths; stale lineage carries every discoverable non-bookkeeping predecessor path so omission cannot hide a violation. Carried paths remain task-attributed at the new anchor, and missing/forbidden/out-of-scope paths remain blockers. Legacy records continue to use earliest-claim behavior. Epochs do not add a second gate, evidence store, Git DAG/merge attribution model, operator identity system, or generic force/reset path.
+
+Reference:
+
+Task 0183.

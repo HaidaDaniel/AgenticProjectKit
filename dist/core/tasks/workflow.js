@@ -3,7 +3,7 @@ import { dirname, join, relative } from "node:path";
 import { appendRunLog, durationSinceLastClaim, normalizeReasonText, REASON_STORAGE_LIMIT, requireAgent, } from "../agents/index.js";
 import { appendTaskEvidence } from "./evidence.js";
 import { captureTaskCompletionCandidate, evaluateTaskCompletionGate, TaskCompletionGateError, } from "./gate.js";
-import { findTaskFile, ensureTaskBaseline, loadTaskFile, recordTaskHandoff, writeTaskFile, } from "./index.js";
+import { findTaskFile, ensureTaskBaseline, loadTaskFile, recordTaskHandoff, startTaskVerificationEpoch, writeTaskFile, } from "./index.js";
 import { withLocalMutationLock } from "./lock.js";
 async function withTaskLock(rootDirectory, taskDirectory, command, taskId, run) {
     const lockPath = join(rootDirectory, taskDirectory, ".apk.lock");
@@ -70,6 +70,31 @@ export async function claimTask(options) {
             state: "doing",
             owner: options.owner,
         };
+    });
+}
+export async function startTaskEpoch(options) {
+    return withTaskLock(options.rootDirectory, options.taskDirectory, "epoch", options.taskId, async () => {
+        const agent = await requireAgent(options.rootDirectory, options.owner);
+        const taskPath = await findTaskFile(options.rootDirectory, options.taskId, options.taskDirectory);
+        const { task } = await loadTaskFile(taskPath);
+        requireOwner(task, options.owner);
+        requireState(task, ["doing", "review"]);
+        const baseline = await startTaskVerificationEpoch({
+            rootDirectory: options.rootDirectory,
+            task,
+            taskPath,
+            owner: agent.id,
+            reason: options.reason,
+        });
+        await appendRunLog(options.rootDirectory, {
+            event: "work",
+            agent,
+            task: task.id,
+            state: task.state,
+            outcome: "ok",
+            reason: normalizeReasonText(`verification epoch ${baseline.epochId ?? baseline.baselineId}: ${options.reason}`),
+        });
+        return baseline;
     });
 }
 export async function releaseTask(options) {

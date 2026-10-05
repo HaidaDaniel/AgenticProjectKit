@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { listAgents, readRunLog, } from "../agents/index.js";
 import { captureTaskCompletionCandidate, } from "./gate.js";
+import { readTaskBaselineHistory, } from "./index.js";
 import { compareTaskEvidenceFreshness, readTaskEvidence, } from "./evidence.js";
 import { isSafeRunId } from "../work/contract.js";
 import { readActiveWorkerSession } from "../work/session.js";
@@ -254,6 +255,9 @@ function renderBaseline(baseline) {
         `Baseline HEAD: ${baseline.headSha ?? "none"}`,
         `Baseline repository: ${baseline.repository}`,
         `Baseline dirty files: ${baseline.dirtyFiles.length}`,
+        ...(baseline.epochId ? [`Baseline epoch: ${baseline.epochId}`] : []),
+        ...(baseline.predecessorBaselineId ? [`Epoch predecessor: ${baseline.predecessorBaselineId}`] : []),
+        ...(baseline.carriedForwardFiles ? [`Epoch carried paths: ${baseline.carriedForwardFiles.length}`] : []),
     ].join("\n");
 }
 export async function buildTaskProvenance(rootDirectory, taskDirectory, taskId) {
@@ -262,6 +266,7 @@ export async function buildTaskProvenance(rootDirectory, taskDirectory, taskId) 
         taskDirectory,
         taskId,
     });
+    const baselineHistory = await readTaskBaselineHistory(rootDirectory, taskId);
     const records = await readTaskEvidence(rootDirectory, taskId);
     const completion = completionRecord(records);
     const evidence = evidenceWithProvenance(records, candidate.subject, completion);
@@ -296,8 +301,28 @@ export async function buildTaskProvenance(rootDirectory, taskDirectory, taskId) 
             taskFile: candidate.baseline.taskFile,
             dirtyFiles: Object.keys(candidate.baseline.dirtyFiles).sort(),
             bookkeepingPaths: [...candidate.baseline.bookkeepingPaths].sort(),
+            ...(candidate.baseline.epochId ? { epochId: candidate.baseline.epochId } : {}),
+            ...(candidate.baseline.predecessorBaselineId ? { predecessorBaselineId: candidate.baseline.predecessorBaselineId } : {}),
+            ...(candidate.baseline.predecessorEpochId ? { predecessorEpochId: candidate.baseline.predecessorEpochId } : {}),
+            ...(candidate.baseline.epochReason ? { epochReason: candidate.baseline.epochReason } : {}),
+            ...(candidate.baseline.carriedForwardFiles ? { carriedForwardFiles: candidate.baseline.carriedForwardFiles.map(({ path }) => path).sort() } : {}),
+            ...(candidate.baseline.carriedForwardCandidateId ? { carriedForwardCandidateId: candidate.baseline.carriedForwardCandidateId } : {}),
         }
         : undefined;
+    const currentEpochId = candidate.baseline?.epochId;
+    const epochs = baselineHistory
+        .filter((record) => record.phase === "epoch" && record.epochId)
+        .map((record) => ({
+        epochId: record.epochId,
+        baselineId: record.baselineId,
+        ...(record.predecessorBaselineId ? { predecessorBaselineId: record.predecessorBaselineId } : {}),
+        ...(record.predecessorEpochId ? { predecessorEpochId: record.predecessorEpochId } : {}),
+        reason: record.epochReason ?? "unspecified",
+        ...(record.headSha ? { headSha: record.headSha } : {}),
+        carriedForwardFiles: (record.carriedForwardFiles ?? []).map(({ path }) => path).sort(),
+        ...(record.carriedForwardCandidateId ? { carriedForwardCandidateId: record.carriedForwardCandidateId } : {}),
+        current: record.epochId === currentEpochId,
+    }));
     const diagnostics = [...candidate.diagnostics];
     const workerRuns = await readWorkerRuns(rootDirectory, taskId, records, diagnostics);
     let workspaces = [];
@@ -348,6 +373,7 @@ export async function buildTaskProvenance(rootDirectory, taskDirectory, taskId) 
         changedFiles: [...candidate.changedFiles].sort(),
         ...(candidate.scope.attribution ? { scopeAttribution: candidate.scope.attribution } : {}),
         ...(baseline ? { baseline } : {}),
+        epochs,
         taskAttributedFiles,
         repositoryActivity,
         commits: repositoryActivity.commits,
@@ -379,6 +405,10 @@ export function renderTaskProvenance(provenance) {
         `Current candidate: ${provenance.currentSubject.candidateId}`,
         `Current worktree: ${provenance.currentSubject.worktreeId}`,
         renderBaseline(provenance.baseline),
+        ...(provenance.epochs.length > 0 ? [
+            "Verification epochs:",
+            ...provenance.epochs.map((epoch) => `  - ${epoch.epochId} baseline=${epoch.baselineId} current=${epoch.current ? "yes" : "no"} predecessor=${epoch.predecessorBaselineId ?? "legacy"} carried=${epoch.carriedForwardFiles.length}${epoch.reason ? ` reason=${epoch.reason}` : ""}`),
+        ] : []),
         `Changed files: ${provenance.changedFiles.length > 0 ? provenance.changedFiles.join(", ") : "none"}`,
         ...(provenance.scopeAttribution ? [
             `Scope attribution: baseline=${provenance.scopeAttribution.baselineId} lineage=${provenance.scopeAttribution.lineageStatus}`,

@@ -21,6 +21,8 @@ import {
   ensureTaskBaseline,
   loadTaskFile,
   recordTaskHandoff,
+  startTaskVerificationEpoch,
+  type TaskClaimBaseline,
   writeTaskFile,
   type ProjectTask,
   type TaskState,
@@ -33,6 +35,10 @@ export interface TaskTransitionOptions {
   taskId: string;
   owner: string;
   reason?: string;
+}
+
+export interface TaskEpochOptions extends TaskTransitionOptions {
+  reason: string;
 }
 
 async function withTaskLock<T>(
@@ -133,6 +139,36 @@ export async function claimTask(options: TaskTransitionOptions): Promise<Project
       state: "doing",
       owner: options.owner,
     };
+  });
+}
+
+export async function startTaskEpoch(options: TaskEpochOptions): Promise<TaskClaimBaseline> {
+  return withTaskLock(options.rootDirectory, options.taskDirectory, "epoch", options.taskId, async () => {
+    const agent = await requireAgent(options.rootDirectory, options.owner);
+    const taskPath = await findTaskFile(
+      options.rootDirectory,
+      options.taskId,
+      options.taskDirectory,
+    );
+    const { task } = await loadTaskFile(taskPath);
+    requireOwner(task, options.owner);
+    requireState(task, ["doing", "review"]);
+    const baseline = await startTaskVerificationEpoch({
+      rootDirectory: options.rootDirectory,
+      task,
+      taskPath,
+      owner: agent.id,
+      reason: options.reason,
+    });
+    await appendRunLog(options.rootDirectory, {
+      event: "work",
+      agent,
+      task: task.id,
+      state: task.state,
+      outcome: "ok",
+      reason: normalizeReasonText(`verification epoch ${baseline.epochId ?? baseline.baselineId}: ${options.reason}`),
+    });
+    return baseline;
   });
 }
 

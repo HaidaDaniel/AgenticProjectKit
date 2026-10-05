@@ -1230,13 +1230,63 @@ function normalizeBaseline(value, lineNumber) {
         : [];
     let phase = "claim";
     if (raw.phase !== undefined) {
-        if (raw.phase === "claim" || raw.phase === "release" || raw.phase === "block") {
+        if (raw.phase === "claim" || raw.phase === "release" || raw.phase === "block" || raw.phase === "epoch") {
             phase = raw.phase;
         }
         else {
-            issues.push(`Baseline line ${lineNumber}.phase must be claim, release, or block.`);
+            issues.push(`Baseline line ${lineNumber}.phase must be claim, release, block, or epoch.`);
         }
     }
+    const optionalBaselineText = (field, max = 240) => {
+        if (raw[field] === undefined)
+            return undefined;
+        if (typeof raw[field] !== "string" || raw[field].trim().length === 0) {
+            issues.push(`Baseline line ${lineNumber}.${field} must be a non-empty string when provided.`);
+            return undefined;
+        }
+        if (raw[field].length > max) {
+            issues.push(`Baseline line ${lineNumber}.${field} must be at most ${max} characters.`);
+        }
+        if (raw[field].includes("\n") || raw[field].includes("\r")) {
+            issues.push(`Baseline line ${lineNumber}.${field} must be single-line.`);
+        }
+        return raw[field];
+    };
+    let carriedForwardFiles;
+    if (raw.carriedForwardFiles !== undefined) {
+        if (!Array.isArray(raw.carriedForwardFiles)) {
+            issues.push(`Baseline line ${lineNumber}.carriedForwardFiles must be an array when provided.`);
+        }
+        else {
+            if (raw.carriedForwardFiles.length > MAX_TASK_ATTRIBUTION_FILES) {
+                issues.push(`Baseline line ${lineNumber}.carriedForwardFiles must contain at most ${MAX_TASK_ATTRIBUTION_FILES} files.`);
+            }
+            carriedForwardFiles = [];
+            for (const [index, item] of raw.carriedForwardFiles.entries()) {
+                if (!item || typeof item !== "object" || Array.isArray(item)) {
+                    issues.push(`Baseline line ${lineNumber}.carriedForwardFiles[${index}] must be an object.`);
+                    continue;
+                }
+                const entry = item;
+                if (typeof entry.path !== "string" || entry.path.trim().length === 0) {
+                    issues.push(`Baseline line ${lineNumber}.carriedForwardFiles[${index}].path must be a non-empty string.`);
+                    continue;
+                }
+                if (typeof entry.sha256 !== "string" || entry.sha256.trim().length === 0) {
+                    issues.push(`Baseline line ${lineNumber}.carriedForwardFiles[${index}].sha256 must be a non-empty string.`);
+                    continue;
+                }
+                carriedForwardFiles.push({ path: normalizeRepoPath(entry.path), sha256: entry.sha256 });
+            }
+            carriedForwardFiles.sort((left, right) => left.path.localeCompare(right.path));
+        }
+    }
+    const epochId = optionalBaselineText("epochId");
+    const predecessorBaselineId = optionalBaselineText("predecessorBaselineId");
+    const predecessorEpochId = optionalBaselineText("predecessorEpochId");
+    const epochReason = optionalBaselineText("epochReason", 2048);
+    const carriedForwardCandidateId = optionalBaselineText("carriedForwardCandidateId");
+    const taskContractHash = optionalBaselineText("taskContractHash");
     const baseline = {
         baselineId: text("baselineId", 240),
         taskId: text("taskId"),
@@ -1249,16 +1299,37 @@ function normalizeBaseline(value, lineNumber) {
         bookkeepingPaths,
         diagnostics,
         phase,
+        ...(epochId ? { epochId } : {}),
+        ...(predecessorBaselineId ? { predecessorBaselineId } : {}),
+        ...(predecessorEpochId ? { predecessorEpochId } : {}),
+        ...(epochReason ? { epochReason } : {}),
+        ...(carriedForwardFiles ? { carriedForwardFiles } : {}),
+        ...(carriedForwardCandidateId ? { carriedForwardCandidateId } : {}),
+        ...(taskContractHash ? { taskContractHash } : {}),
     };
     if (baseline.repository === "git" && !baseline.headSha) {
         issues.push(`Baseline line ${lineNumber}.headSha is required for git baselines.`);
+    }
+    if (phase === "epoch") {
+        if (!epochId)
+            issues.push(`Baseline line ${lineNumber}.epochId is required for epoch records.`);
+        if (!predecessorBaselineId)
+            issues.push(`Baseline line ${lineNumber}.predecessorBaselineId is required for epoch records.`);
+        if (!epochReason)
+            issues.push(`Baseline line ${lineNumber}.epochReason is required for epoch records.`);
+        if (!carriedForwardFiles)
+            issues.push(`Baseline line ${lineNumber}.carriedForwardFiles is required for epoch records.`);
+        if (!carriedForwardCandidateId)
+            issues.push(`Baseline line ${lineNumber}.carriedForwardCandidateId is required for epoch records.`);
+        if (!taskContractHash)
+            issues.push(`Baseline line ${lineNumber}.taskContractHash is required for epoch records.`);
     }
     if (issues.length > 0) {
         throw new TaskBaselineFormatError(issues);
     }
     return baseline;
 }
-export async function captureTaskBaseline(rootDirectory, taskId, owner, taskFile, phase = "claim") {
+export async function captureTaskBaseline(rootDirectory, taskId, owner, taskFile, phase = "claim", epoch) {
     let changedFiles = [];
     const diagnostics = [];
     try {
@@ -1294,6 +1365,13 @@ export async function captureTaskBaseline(rootDirectory, taskId, owner, taskFile
         bookkeepingPaths,
         diagnostics,
         phase,
+        ...(epoch?.epochId ? { epochId: epoch.epochId } : {}),
+        ...(epoch?.predecessorBaselineId ? { predecessorBaselineId: epoch.predecessorBaselineId } : {}),
+        ...(epoch?.predecessorEpochId ? { predecessorEpochId: epoch.predecessorEpochId } : {}),
+        ...(epoch?.epochReason ? { epochReason: epoch.epochReason } : {}),
+        ...(epoch?.carriedForwardFiles ? { carriedForwardFiles: epoch.carriedForwardFiles } : {}),
+        ...(epoch?.carriedForwardCandidateId ? { carriedForwardCandidateId: epoch.carriedForwardCandidateId } : {}),
+        ...(epoch?.taskContractHash ? { taskContractHash: epoch.taskContractHash } : {}),
     };
     const path = join(rootDirectory, TASK_BASELINES_PATH);
     await mkdir(dirname(path), { recursive: true });
@@ -1307,11 +1385,15 @@ export async function captureTaskBaseline(rootDirectory, taskId, owner, taskFile
  * never rebases the authoritative baseline.
  */
 export async function ensureTaskBaseline(rootDirectory, taskId, owner, taskFile) {
-    return captureTaskBaseline(rootDirectory, taskId, owner, taskFile, "claim");
+    const records = await readAllTaskBaselineRecords(rootDirectory);
+    const epoch = latestTaskEpoch(records.filter((record) => record.taskId === taskId));
+    return captureTaskBaseline(rootDirectory, taskId, owner, taskFile, "claim", epoch ?? undefined);
 }
 /** Record a release/block handoff snapshot used to detect intervening work. */
 export async function recordTaskHandoff(rootDirectory, taskId, owner, taskFile, phase) {
-    return captureTaskBaseline(rootDirectory, taskId, owner, taskFile, phase);
+    const records = await readAllTaskBaselineRecords(rootDirectory);
+    const epoch = latestTaskEpoch(records.filter((record) => record.taskId === taskId));
+    return captureTaskBaseline(rootDirectory, taskId, owner, taskFile, phase, epoch ?? undefined);
 }
 function shortenSha(sha) {
     return sha ? sha.slice(0, 12) : "none";
@@ -1362,6 +1444,149 @@ async function readAllTaskBaselineRecords(rootDirectory) {
         records.push(normalizeBaseline(value, index + 1));
     }
     return records;
+}
+function latestTaskEpoch(records) {
+    return [...records]
+        .reverse()
+        .find((record) => record.phase === "epoch" && record.epochId);
+}
+export async function readTaskBaselineHistory(rootDirectory, taskId) {
+    const records = await readAllTaskBaselineRecords(rootDirectory);
+    return taskId === undefined ? records : records.filter((record) => record.taskId === taskId);
+}
+/**
+ * Append a fresh scope anchor without replacing the original claim history.
+ *
+ * A stale predecessor is recoverable only by carrying every discoverable
+ * non-bookkeeping path forward. This is deliberately conservative: an
+ * unrelated path may remain a scope violation, but it can never disappear by
+ * omission at the epoch boundary.
+ */
+export async function startTaskVerificationEpoch(options) {
+    const reason = options.reason.replace(/\s+/g, " ").trim();
+    if (reason.length === 0)
+        throw new Error("Epoch start requires an explicit reason.");
+    if (reason.length > 2048)
+        throw new Error("Epoch reason must be at most 2048 characters.");
+    if (options.task.owner !== options.owner) {
+        throw new Error(`Task ${options.task.id} is owned by ${options.task.owner}, not ${options.owner}.`);
+    }
+    if (options.task.state !== "doing" && options.task.state !== "review") {
+        throw new Error(`Task ${options.task.id} is ${options.task.state}; an epoch can only start for doing or review.`);
+    }
+    const records = await readAllTaskBaselineRecords(options.rootDirectory);
+    const taskRecords = records.filter((record) => record.taskId === options.task.id);
+    const predecessor = latestTaskEpoch(taskRecords)
+        ?? taskRecords.find((record) => (record.phase ?? "claim") === "claim")
+        ?? taskRecords[0];
+    if (!predecessor) {
+        throw new Error(`Task ${options.task.id} has no claim baseline to recover.`);
+    }
+    if (predecessor.phase === "release" || predecessor.phase === "block") {
+        throw new Error(`Task ${options.task.id} has no active baseline; claim it before starting an epoch.`);
+    }
+    if (predecessor.taskFile !== normalizeRepoPath(relative(options.rootDirectory, options.taskPath))) {
+        throw new Error("Task contract path changed; epoch continuity cannot be proven.");
+    }
+    const contractHash = hashCandidatePart(comparableTaskContract(options.task));
+    if (predecessor.taskContractHash && predecessor.taskContractHash !== contractHash) {
+        throw new Error("Task contract changed since the predecessor epoch; epoch recovery fails closed.");
+    }
+    if (!predecessor.taskContractHash && predecessor.repository !== "git") {
+        throw new Error("Legacy non-Git baseline has no durable task contract anchor; epoch recovery fails closed.");
+    }
+    if (!predecessor.taskContractHash && predecessor.headSha) {
+        try {
+            const historical = parseTaskMarkdown(await gitOutput(options.rootDirectory, ["show", `${predecessor.headSha}:${predecessor.taskFile}`]));
+            if (comparableTaskContract(historical) !== comparableTaskContract(options.task)) {
+                throw new Error("Task contract changed since the predecessor baseline; epoch recovery fails closed.");
+            }
+        }
+        catch (error) {
+            if (error instanceof Error && error.message.includes("epoch recovery fails closed"))
+                throw error;
+            throw new Error(`Task contract at predecessor baseline is unreadable; epoch recovery fails closed.`);
+        }
+    }
+    const current = await readTaskBaseline(options.rootDirectory, options.task.id);
+    if (!current || current.baselineId !== predecessor.baselineId) {
+        throw new Error("Task baseline changed while epoch eligibility was evaluated; retry from the current epoch.");
+    }
+    if (current.repository !== "git" || !current.headSha) {
+        throw new Error("Epoch recovery requires a Git HEAD so the carried-forward path set can be proven.");
+    }
+    let currentHeadSha;
+    try {
+        currentHeadSha = (await gitOutput(options.rootDirectory, ["rev-parse", "HEAD"])).trim();
+    }
+    catch (error) {
+        throw new Error(`Epoch recovery cannot read the current Git HEAD: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    let allChanged;
+    try {
+        allChanged = await listTaskChangedFilesSinceBaseline(options.rootDirectory, current);
+    }
+    catch (error) {
+        throw new Error(`Epoch recovery cannot enumerate the predecessor delta: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const nonBookkeepingChanged = [...new Set([
+            ...allChanged.map(normalizeRepoPath),
+            ...(current.carriedForwardFiles ?? []).map(({ path }) => normalizeRepoPath(path)),
+        ].filter((path) => !isBookkeepingPath(path, current)))].sort();
+    let carriedForwardFiles = nonBookkeepingChanged;
+    let predecessorCandidateId;
+    if (current.lineageStatus === "clean" || current.lineageStatus === "attributed") {
+        const scope = await captureTaskScope({
+            rootDirectory: options.rootDirectory,
+            task: options.task,
+            taskPath: options.taskPath,
+            baseline: current,
+        });
+        if (scope.comparisonKnown && scope.attribution) {
+            carriedForwardFiles = [...new Set(scope.attribution.attributedFiles)].sort();
+            try {
+                predecessorCandidateId = (await captureTaskEvidenceSubject(options.rootDirectory, options.task, scope.changedFiles, current)).candidateId;
+            }
+            catch {
+                // The conservative path-set carry remains valid even if candidate
+                // identity cannot be recaptured during this diagnostic pass.
+            }
+        }
+    }
+    if (carriedForwardFiles.length > MAX_TASK_ATTRIBUTION_FILES) {
+        throw new Error(`Epoch recovery path set exceeds the ${MAX_TASK_ATTRIBUTION_FILES}-file safety bound.`);
+    }
+    const carriedFingerprints = await fingerprintChangedFiles(options.rootDirectory, carriedForwardFiles);
+    const time = new Date().toISOString();
+    const carriedForwardCandidateId = predecessorCandidateId
+        ?? `candidate:carried:${hashCandidatePart({
+            taskId: options.task.id,
+            predecessorBaselineId: predecessor.baselineId,
+            carriedForwardFiles: carriedFingerprints,
+        })}`;
+    const epochId = `epoch:${hashCandidatePart({
+        taskId: options.task.id,
+        predecessorBaselineId: predecessor.baselineId,
+        predecessorEpochId: predecessor.epochId,
+        owner: options.owner,
+        reason,
+        time,
+        headSha: currentHeadSha,
+        carriedForwardFiles: carriedFingerprints,
+    })}`;
+    const next = await captureTaskBaseline(options.rootDirectory, options.task.id, options.owner, predecessor.taskFile, "epoch", {
+        epochId,
+        predecessorBaselineId: predecessor.baselineId,
+        ...(predecessor.epochId ? { predecessorEpochId: predecessor.epochId } : {}),
+        epochReason: reason,
+        carriedForwardFiles: carriedFingerprints,
+        carriedForwardCandidateId,
+        taskContractHash: contractHash,
+    });
+    if (next.headSha !== currentHeadSha) {
+        throw new Error("Git HEAD changed while the verification epoch was being appended; retry and inspect the append-only record.");
+    }
+    return next;
 }
 async function listLinearGitCommits(rootDirectory, fromSha, toSha) {
     if (fromSha === toSha)
@@ -1776,15 +2001,20 @@ export async function readTaskBaseline(rootDirectory, taskId) {
     if (records.length === 0) {
         return undefined;
     }
-    const claims = records.filter((record) => (record.phase ?? "claim") === "claim");
-    const authoritative = claims[0] ?? records[0];
-    const lastRecord = records[records.length - 1];
+    const epoch = latestTaskEpoch(records);
+    const epochIndex = epoch ? records.lastIndexOf(epoch) : -1;
+    // Once an epoch exists, only its append-only suffix is current. Older
+    // evidence remains readable history, but cannot affect current attribution.
+    const currentRecords = epoch ? records.slice(epochIndex) : records;
+    const claims = currentRecords.filter((record) => (record.phase ?? "claim") === "claim");
+    const authoritative = epoch ?? claims[0] ?? currentRecords[0] ?? records[0];
+    const lastRecord = currentRecords[currentRecords.length - 1];
     // A task still released has no active candidate to attribute. Its next claim
     // will validate the complete release interval against the recorded handoff.
     if (lastRecord.phase === "release" || lastRecord.phase === "block") {
         return { ...authoritative, lineageStatus: "clean" };
     }
-    const lineage = await resolveTaskBaselineLineage(rootDirectory, authoritative, allRecords);
+    const lineage = await resolveTaskBaselineLineage(rootDirectory, authoritative, currentRecords);
     return { ...authoritative, ...lineage };
 }
 export async function listTaskChangedFilesSinceBaseline(rootDirectory, baseline) {
@@ -1898,7 +2128,11 @@ export async function captureTaskScope(options) {
     };
 }
 export async function verifyTaskFileScopeSinceBaseline(rootDirectory, task, changedFiles, baseline) {
-    const allNormalizedChanged = [...new Set(changedFiles.map(normalizeRepoPath))]
+    const carriedForwardPaths = (baseline.carriedForwardFiles ?? []).map(({ path }) => normalizeRepoPath(path));
+    const allNormalizedChanged = [...new Set([
+            ...changedFiles.map(normalizeRepoPath),
+            ...carriedForwardPaths,
+        ])]
         .filter((file) => file.length > 0)
         .sort();
     const excludedCommits = baseline.provenOtherTaskCommits ?? [];
@@ -1908,11 +2142,17 @@ export async function verifyTaskFileScopeSinceBaseline(rootDirectory, task, chan
     const fingerprints = Object.fromEntries((await fingerprintChangedFiles(rootDirectory, normalizedChanged))
         .map(({ path, sha256 }) => [path, sha256]));
     const attributedFiles = [];
+    const carriedForwardSet = new Set(carriedForwardPaths);
     const preExistingFiles = [];
     const bookkeepingFiles = [];
     for (const file of normalizedChanged) {
         if (isBookkeepingPath(file, baseline)) {
             bookkeepingFiles.push(file);
+        }
+        else if (carriedForwardSet.has(file)) {
+            // A carried path is deliberately never reclassified as pre-existing at
+            // the new anchor. Its current content remains part of task scope.
+            attributedFiles.push(file);
         }
         else if (baseline.dirtyFiles[file] !== undefined && baseline.dirtyFiles[file] === fingerprints[file]) {
             preExistingFiles.push(file);
@@ -1927,6 +2167,7 @@ export async function verifyTaskFileScopeSinceBaseline(rootDirectory, task, chan
         attribution: {
             baselineId: baseline.baselineId,
             attributedFiles,
+            carriedForwardFiles: carriedForwardPaths.filter((file) => !excludedFileSet.has(file)).sort(),
             preExistingFiles,
             bookkeepingFiles,
             excludedFiles,

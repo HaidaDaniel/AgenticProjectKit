@@ -104,6 +104,7 @@ import {
   doneTask,
   releaseTask,
   reviewTask,
+  startTaskEpoch,
 } from "./workflow.js";
 import { getTaskTemplate, resolveTaskTemplateType } from "../templates/task-templates.js";
 
@@ -2779,6 +2780,110 @@ test("legacy multiple-claim baseline history selects the earliest authoritative 
     assert.equal(result.passed, false);
     assert.deepEqual(result.outOfScopeFiles, ["src/bootstrap/setup.ts"]);
     assert.deepEqual(result.attribution?.preExistingFiles, []);
+  });
+});
+
+test("verification epoch recovers a stale baseline and carries the full discoverable path set", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const taskPath = join(directory, ".tasks", "0007-scoped-task.md");
+    const task = (await loadTaskFile(taskPath)).task;
+    await writeFile(join(directory, "src", "core", "tasks", "owned.ts"), "owned\n", "utf8");
+    await execFileAsync("git", ["add", "src/core/tasks/owned.ts"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "owned candidate"], { cwd: directory });
+    for (let index = 0; index < 130; index += 1) {
+      const path = join(directory, "src", "core", "tasks", `history-${index}.ts`);
+      await writeFile(path, `${index}\n`, "utf8");
+      await execFileAsync("git", ["add", `src/core/tasks/history-${index}.ts`], { cwd: directory });
+      await execFileAsync("git", ["commit", "--quiet", "-m", `history ${index}`], { cwd: directory });
+    }
+
+    const stale = await readTaskBaseline(directory, "0007");
+    assert.equal(stale?.lineageStatus, "intervening");
+    const epoch = await startTaskEpoch({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "agent-a",
+      reason: "recover the bounded stale baseline after verified repository history growth",
+    });
+    assert.equal(epoch.phase, "epoch");
+    assert.ok(epoch.epochId);
+    assert.equal(epoch.predecessorBaselineId, stale?.baselineId);
+    assert.ok(epoch.carriedForwardFiles?.some(({ path }) => path === "src/core/tasks/owned.ts"));
+    assert.ok((epoch.carriedForwardFiles?.length ?? 0) >= 131);
+
+    const current = await readTaskBaseline(directory, "0007");
+    assert.equal(current?.epochId, epoch.epochId);
+    assert.equal(current?.lineageStatus, "clean");
+    const scope = await captureTaskScope({ rootDirectory: directory, task, taskPath, baseline: current });
+    assert.equal(scope.comparisonKnown, true);
+    assert.equal(scope.outOfScopeFiles.length, 0);
+    assert.equal(scope.forbiddenTouchedFiles.length, 0);
+    assert.ok(scope.attribution?.carriedForwardFiles.includes("src/core/tasks/owned.ts"));
+  });
+});
+
+test("verification epoch preserves a carried forbidden path as a blocker", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const taskPath = join(directory, ".tasks", "0007-scoped-task.md");
+    const task = (await loadTaskFile(taskPath)).task;
+    await writeFile(join(directory, "secrets", "leak.txt"), "must remain visible\n", "utf8");
+    await execFileAsync("git", ["add", "secrets/leak.txt"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "forbidden candidate"], { cwd: directory });
+    for (let index = 0; index < 129; index += 1) {
+      const path = join(directory, "src", "core", "tasks", `history-${index}.ts`);
+      await writeFile(path, `${index}\n`, "utf8");
+      await execFileAsync("git", ["add", `src/core/tasks/history-${index}.ts`], { cwd: directory });
+      await execFileAsync("git", ["commit", "--quiet", "-m", `history ${index}`], { cwd: directory });
+    }
+
+    const epoch = await startTaskEpoch({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "agent-a",
+      reason: "recover stale baseline while preserving every discoverable path",
+    });
+    const current = await readTaskBaseline(directory, "0007");
+    const scope = await captureTaskScope({ rootDirectory: directory, task, taskPath, baseline: current });
+    assert.equal(current?.epochId, epoch.epochId);
+    assert.equal(scope.comparisonKnown, true);
+    assert.ok(scope.outOfScopeFiles.includes("secrets/leak.txt"));
+    assert.ok(scope.forbiddenTouchedFiles.includes("secrets/leak.txt"));
+    assert.ok(scope.attribution?.carriedForwardFiles.includes("secrets/leak.txt"));
+  });
+});
+
+test("verification epoch makes predecessor evidence stale and exposes epoch provenance", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "agent-a",
+      runCommand: async () => 0,
+    });
+    assert.equal(verification.passed, true);
+    const epoch = await startTaskEpoch({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "agent-a",
+      reason: "refresh the verification subject after the old baseline became stale",
+    });
+    const provenance = await buildTaskProvenance(directory, ".tasks", "0007");
+    const prior = provenance.evidence.find((record) => record.runId === verification.runId);
+    assert.equal(prior?.freshness, "stale");
+    assert.equal(provenance.epochs.length, 1);
+    assert.equal(provenance.epochs[0]?.epochId, epoch.epochId);
+    assert.equal(provenance.epochs[0]?.current, true);
+    assert.match(renderTaskProvenance(provenance), /Verification epochs:/);
   });
 });
 

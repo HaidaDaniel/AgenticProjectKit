@@ -12,7 +12,10 @@ import {
 import {
   captureTaskCompletionCandidate,
 } from "./gate.js";
-import type { TaskScopeAttribution } from "./index.js";
+import {
+  readTaskBaselineHistory,
+  type TaskScopeAttribution,
+} from "./index.js";
 import {
   compareTaskEvidenceFreshness,
   readTaskEvidence,
@@ -39,6 +42,24 @@ export interface TaskProvenanceBaseline {
   taskFile: string;
   dirtyFiles: string[];
   bookkeepingPaths: string[];
+  epochId?: string;
+  predecessorBaselineId?: string;
+  predecessorEpochId?: string;
+  epochReason?: string;
+  carriedForwardFiles?: string[];
+  carriedForwardCandidateId?: string;
+}
+
+export interface TaskProvenanceEpoch {
+  epochId: string;
+  baselineId: string;
+  predecessorBaselineId?: string;
+  predecessorEpochId?: string;
+  reason: string;
+  headSha?: string;
+  carriedForwardFiles: string[];
+  carriedForwardCandidateId?: string;
+  current: boolean;
 }
 
 export interface TaskProvenanceCommit {
@@ -117,6 +138,7 @@ export interface TaskProvenance {
   currentSubject: TaskEvidenceCandidateSubject;
   changedFiles: string[];
   baseline?: TaskProvenanceBaseline;
+  epochs: TaskProvenanceEpoch[];
   taskAttributedFiles: string[];
   scopeAttribution?: TaskScopeAttribution;
   repositoryActivity: TaskRepositoryActivity;
@@ -385,6 +407,9 @@ function renderBaseline(baseline: TaskProvenanceBaseline | undefined): string {
     `Baseline HEAD: ${baseline.headSha ?? "none"}`,
     `Baseline repository: ${baseline.repository}`,
     `Baseline dirty files: ${baseline.dirtyFiles.length}`,
+    ...(baseline.epochId ? [`Baseline epoch: ${baseline.epochId}`] : []),
+    ...(baseline.predecessorBaselineId ? [`Epoch predecessor: ${baseline.predecessorBaselineId}`] : []),
+    ...(baseline.carriedForwardFiles ? [`Epoch carried paths: ${baseline.carriedForwardFiles.length}`] : []),
   ].join("\n");
 }
 
@@ -398,6 +423,7 @@ export async function buildTaskProvenance(
     taskDirectory,
     taskId,
   });
+  const baselineHistory = await readTaskBaselineHistory(rootDirectory, taskId);
   const records = await readTaskEvidence(rootDirectory, taskId);
   const completion = completionRecord(records);
   const evidence = evidenceWithProvenance(records, candidate.subject, completion);
@@ -433,8 +459,28 @@ export async function buildTaskProvenance(
       taskFile: candidate.baseline.taskFile,
       dirtyFiles: Object.keys(candidate.baseline.dirtyFiles).sort(),
       bookkeepingPaths: [...candidate.baseline.bookkeepingPaths].sort(),
+      ...(candidate.baseline.epochId ? { epochId: candidate.baseline.epochId } : {}),
+      ...(candidate.baseline.predecessorBaselineId ? { predecessorBaselineId: candidate.baseline.predecessorBaselineId } : {}),
+      ...(candidate.baseline.predecessorEpochId ? { predecessorEpochId: candidate.baseline.predecessorEpochId } : {}),
+      ...(candidate.baseline.epochReason ? { epochReason: candidate.baseline.epochReason } : {}),
+      ...(candidate.baseline.carriedForwardFiles ? { carriedForwardFiles: candidate.baseline.carriedForwardFiles.map(({ path }) => path).sort() } : {}),
+      ...(candidate.baseline.carriedForwardCandidateId ? { carriedForwardCandidateId: candidate.baseline.carriedForwardCandidateId } : {}),
     }
     : undefined;
+  const currentEpochId = candidate.baseline?.epochId;
+  const epochs = baselineHistory
+    .filter((record) => record.phase === "epoch" && record.epochId)
+    .map((record): TaskProvenanceEpoch => ({
+      epochId: record.epochId!,
+      baselineId: record.baselineId,
+      ...(record.predecessorBaselineId ? { predecessorBaselineId: record.predecessorBaselineId } : {}),
+      ...(record.predecessorEpochId ? { predecessorEpochId: record.predecessorEpochId } : {}),
+      reason: record.epochReason ?? "unspecified",
+      ...(record.headSha ? { headSha: record.headSha } : {}),
+      carriedForwardFiles: (record.carriedForwardFiles ?? []).map(({ path }) => path).sort(),
+      ...(record.carriedForwardCandidateId ? { carriedForwardCandidateId: record.carriedForwardCandidateId } : {}),
+      current: record.epochId === currentEpochId,
+    }));
   const diagnostics: string[] = [...candidate.diagnostics];
   const workerRuns = await readWorkerRuns(rootDirectory, taskId, records, diagnostics);
   let workspaces: WorkspaceStatusEntry[] = [];
@@ -484,6 +530,7 @@ export async function buildTaskProvenance(
     changedFiles: [...candidate.changedFiles].sort(),
     ...(candidate.scope.attribution ? { scopeAttribution: candidate.scope.attribution } : {}),
     ...(baseline ? { baseline } : {}),
+    epochs,
     taskAttributedFiles,
     repositoryActivity,
     commits: repositoryActivity.commits,
@@ -516,6 +563,10 @@ export function renderTaskProvenance(provenance: TaskProvenance): string {
     `Current candidate: ${provenance.currentSubject.candidateId}`,
     `Current worktree: ${provenance.currentSubject.worktreeId}`,
     renderBaseline(provenance.baseline),
+    ...(provenance.epochs.length > 0 ? [
+      "Verification epochs:",
+      ...provenance.epochs.map((epoch) => `  - ${epoch.epochId} baseline=${epoch.baselineId} current=${epoch.current ? "yes" : "no"} predecessor=${epoch.predecessorBaselineId ?? "legacy"} carried=${epoch.carriedForwardFiles.length}${epoch.reason ? ` reason=${epoch.reason}` : ""}`),
+    ] : []),
     `Changed files: ${provenance.changedFiles.length > 0 ? provenance.changedFiles.join(", ") : "none"}`,
     ...(provenance.scopeAttribution ? [
       `Scope attribution: baseline=${provenance.scopeAttribution.baselineId} lineage=${provenance.scopeAttribution.lineageStatus}`,

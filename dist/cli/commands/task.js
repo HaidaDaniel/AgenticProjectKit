@@ -1,7 +1,7 @@
 import { join, relative, resolve } from "node:path";
 import { readAgenticConfigFile } from "../../core/config/index.js";
 import { getTaskTemplate, resolveTaskTemplateType, TASK_TEMPLATE_TYPES, } from "../../core/templates/task-templates.js";
-import { TASK_HUMAN_DECISIONS, MAX_HUMAN_REVIEW_GRANT_PASSES, recordTaskHumanDecision, renderTaskHumanDecisionResult, cancelTask, } from "../../core/tasks/index.js";
+import { TASK_HUMAN_DECISIONS, MAX_HUMAN_REVIEW_GRANT_PASSES, recordTaskHumanDecision, renderTaskHumanDecisionResult, cancelTask, startTaskEpoch, } from "../../core/tasks/index.js";
 import { archiveAllTasks, archiveTask, buildTaskProvenance, buildTaskDeps, createTask, evaluateTaskCompletionGate, findTaskFile, listArchivedTaskFiles, listTaskFiles, loadTaskFile, readTaskEvidence, renderTaskPolicy, renderTaskDeps, renderTaskEvidence, renderTaskCompletionGate, renderTaskProvenance, renderTaskVerifyResult, renderRecordManualVerificationResult, recordManualVerification, renderDogfoodResult, renderDogfoodSession, recordDogfoodResult, resolveTaskPolicy, startDogfoodSession, TASK_MODES, TASK_RISKS, TASK_VERIFICATION_PROFILES, PACKAGED_DIST_CHECK_ID, mayIncludePackagedSource, repositoryPackagedDistContract, normalizeVerificationCommands, taskPathPatternMayMatchDistOutput, verifyTask, } from "../../core/tasks/index.js";
 import { TASK_EVIDENCE_LOCK_PATH } from "../../core/tasks/evidence.js";
 import { inspectLocalMutationLock, recoverLocalLock, renderLocalLockInspection, } from "../../core/tasks/lock.js";
@@ -16,6 +16,7 @@ const TASK_HELP_TEXT = [
     "  apk task lock recover --kind <task|evidence> [--force]",
     "  apk task policy <task-id>",
     "  apk task gate <task-id>",
+    "  apk task epoch <task-id> --owner <agent-id> --reason <text>",
     "  apk task decision <task-id> --actor <human-id> --result <decision> --reason <text> [--passes <1-2>] [--owner <agent-id>]",
     "  apk task provenance <task-id> [--json]",
     "  apk task dogfood start <task-id> --owner <agent-id> --tool <tool> --scenario <text>",
@@ -31,6 +32,7 @@ const TASK_HELP_TEXT = [
     "  lock    Inspect or explicitly recover local mutation locks.",
     "  policy  Resolve deterministic risk and tag requirements.",
     "  gate    Preview completion blockers for the current candidate.",
+    "  epoch   Start an append-only verification epoch with carried-forward scope.",
     "  decision Record an operator-asserted human decision for review-budget exhaustion.",
     "  provenance Show bounded task/run/evidence provenance.",
     "  dogfood Start a bounded agent usability session or record its result.",
@@ -81,6 +83,15 @@ const TASK_GATE_HELP_TEXT = [
     "",
     "Preview verification, scope, dependency, policy, evidence, and review gates.",
     "The command is read-only and reports blockers for the current candidate.",
+].join("\n");
+const TASK_EPOCH_HELP_TEXT = [
+    "Agentic Project Kit",
+    "",
+    "Usage:",
+    "  apk task epoch <task-id> --owner <agent-id> --reason <text>",
+    "",
+    "Start a fresh verification baseline without deleting the predecessor history.",
+    "The full discoverable predecessor delta is carried forward conservatively; scope violations remain visible.",
 ].join("\n");
 const TASK_PROVENANCE_HELP_TEXT = [
     "Agentic Project Kit",
@@ -697,6 +708,44 @@ async function runGateSubcommand(argv) {
     console.log(renderTaskCompletionGate(result));
     return result.passed ? 0 : 1;
 }
+async function runEpochSubcommand(argv) {
+    if (hasHelpFlag(argv)) {
+        console.log(TASK_EPOCH_HELP_TEXT);
+        return 0;
+    }
+    const allowedFlags = new Set(["--owner", "--reason"]);
+    for (const arg of argv) {
+        if (arg.startsWith("-") && !allowedFlags.has(arg)) {
+            throw new Error(`Unknown option: ${arg}`);
+        }
+    }
+    const positional = argv.filter((arg) => !arg.startsWith("-"));
+    if (positional.length !== 1) {
+        throw new Error(TASK_EPOCH_HELP_TEXT);
+    }
+    const owner = parseFlag(argv, "--owner");
+    const reason = parseFlag(argv, "--reason");
+    if (!owner || !reason) {
+        throw new Error(TASK_EPOCH_HELP_TEXT);
+    }
+    const rootDirectory = resolve(process.cwd());
+    const config = await readAgenticConfigFile(rootDirectory);
+    const baseline = await startTaskEpoch({
+        rootDirectory,
+        taskDirectory: config.taskDirectory,
+        taskId: positional[0],
+        owner,
+        reason,
+    });
+    console.log([
+        `Task: ${baseline.taskId}`,
+        `Epoch: ${baseline.epochId ?? "unknown"}`,
+        `Baseline: ${baseline.baselineId}`,
+        `Predecessor: ${baseline.predecessorBaselineId ?? "legacy"}`,
+        `Carried paths: ${baseline.carriedForwardFiles?.length ?? 0}`,
+    ].join("\n"));
+    return 0;
+}
 async function runVerifySubcommand(argv) {
     if (hasHelpFlag(argv)) {
         console.log(TASK_VERIFY_HELP_TEXT);
@@ -859,7 +908,7 @@ async function runDecisionSubcommand(argv) {
 export async function runTaskCommand(argv) {
     try {
         if (argv.length === 0) {
-            console.error("Error: Usage: apk task <archive|deps|evidence|lock|policy|gate|dogfood|verify|create>");
+            console.error("Error: Usage: apk task <archive|deps|evidence|lock|policy|gate|epoch|dogfood|verify|create>");
             return 1;
         }
         const [subcommand, ...subArgs] = argv;
@@ -893,6 +942,9 @@ export async function runTaskCommand(argv) {
         }
         if (subcommand === "gate") {
             return await runGateSubcommand(subArgs);
+        }
+        if (subcommand === "epoch") {
+            return await runEpochSubcommand(subArgs);
         }
         if (subcommand === "decision") {
             return await runDecisionSubcommand(subArgs);
