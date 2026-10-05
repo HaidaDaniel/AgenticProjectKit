@@ -29,6 +29,7 @@ import type {
 } from "../../core/execution/index.js";
 import type { AssuranceLevel } from "../../core/tasks/policy.js";
 import { detectResourceInventory } from "../../core/resources/detect.js";
+import { evaluateTaskCompletionGate } from "../../core/tasks/gate.js";
 import { findTaskFile, loadTaskFile } from "../../core/tasks/index.js";
 import { resolveTaskPolicy } from "../../core/tasks/policy.js";
 
@@ -160,6 +161,20 @@ export async function runExecutionCommand(argv: string[]): Promise<number> {
       }
       : undefined;
 
+    const gateForRouting = roleValue === "review" && policy.independentReview
+      ? await evaluateTaskCompletionGate({
+        rootDirectory,
+        taskDirectory: config.taskDirectory,
+        taskId: positional[0],
+      })
+      : undefined;
+    const frontierUsage = gateForRouting?.review.budget
+      ? {
+        reviewPassesUsed: gateForRouting.review.budget.frontierPassesUsed,
+        runsUsed: gateForRouting.review.budget.frontierRunsUsed,
+      }
+      : undefined;
+
     const route = resolveExecutionRoute({
       profile: effectiveProfile,
       profileSource,
@@ -170,6 +185,7 @@ export async function runExecutionCommand(argv: string[]): Promise<number> {
       ...(override === undefined ? {} : { override }),
       ...(currentCalibration && calibrationRoute ? { calibrationRoute } : {}),
       ...(currentCalibration && assuranceFloor ? { assuranceFloor } : {}),
+      ...(frontierUsage ? { frontierUsage } : {}),
       ...(calibrationInfluence ? { calibration: calibrationInfluence } : {}),
     });
     const json = argv.includes("--json");

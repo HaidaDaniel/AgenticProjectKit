@@ -116,6 +116,12 @@ function parsePackage(value) {
         provenance: {
             runId: validateWorkerRunId(text(provenance.runId, "worker package.provenance.runId", 120)),
             ...(optionalText(provenance.resourceId, "worker package.provenance.resourceId", 160) ? { resourceId: provenance.resourceId } : {}),
+            ...(provenance.resourceCostClass === "local-free"
+                || provenance.resourceCostClass === "cheap"
+                || provenance.resourceCostClass === "standard"
+                || provenance.resourceCostClass === "scarce-frontier"
+                ? { resourceCostClass: provenance.resourceCostClass }
+                : {}),
             ...(provenance.repository === "git" || provenance.repository === "none" ? { repository: provenance.repository } : {}),
             ...(optionalText(provenance.headSha, "worker package.provenance.headSha", 160) ? { headSha: provenance.headSha } : {}),
             ...(optionalText(provenance.baselineId, "worker package.provenance.baselineId", 240) ? { baselineId: provenance.baselineId } : {}),
@@ -194,6 +200,12 @@ function parseResult(value) {
         const provenance = objectValue(raw.provenance, "worker result.provenance");
         result.provenance = {
             ...(optionalText(provenance.resourceId, "worker result.provenance.resourceId", 160) ? { resourceId: provenance.resourceId } : {}),
+            ...(provenance.resourceCostClass === "local-free"
+                || provenance.resourceCostClass === "cheap"
+                || provenance.resourceCostClass === "standard"
+                || provenance.resourceCostClass === "scarce-frontier"
+                ? { resourceCostClass: provenance.resourceCostClass }
+                : {}),
             ...(provenance.repository === "git" || provenance.repository === "none" ? { repository: provenance.repository } : {}),
             ...(optionalText(provenance.headSha, "worker result.provenance.headSha", 160) ? { headSha: provenance.headSha } : {}),
             ...(optionalText(provenance.baselineId, "worker result.provenance.baselineId", 240) ? { baselineId: provenance.baselineId } : {}),
@@ -247,6 +259,7 @@ export function createWorkerPackage(task, context, options) {
         provenance: {
             runId: options.runId,
             ...(options.resourceId ? { resourceId: options.resourceId } : {}),
+            ...(options.resourceCostClass ? { resourceCostClass: options.resourceCostClass } : {}),
             ...(options.repository ? { repository: options.repository } : {}),
             ...(options.headSha ? { headSha: options.headSha } : {}),
             ...(options.baselineId ? { baselineId: options.baselineId } : {}),

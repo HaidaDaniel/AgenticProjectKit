@@ -6297,9 +6297,46 @@ for (const [risk, maximum] of [["medium", 8], ["critical", 10]] as const) {
       assert.equal(gate.review.budget?.exhausted, true);
       assert.equal(gate.review.outcome, "pass");
       assert.ok(!gate.blockers.some((blocker) => blocker.includes("Review budget exhausted")));
+      await assert.rejects(
+        () => recordTaskReview({
+          ...options,
+          reviewer: "codex-reviewer",
+          outcome: "pass",
+          implementationRunId: verification.runId,
+        }),
+        /Review budget exhausted/,
+      );
     });
   });
 }
+
+test("the gate blocks a current pass recorded after the total review budget overrun", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupDecisionRepo(directory);
+    const options = { rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" };
+    const verification = await verifyTask({ ...options, owner: "codex-owner", runCommand: async () => 0 });
+    const candidate = await captureTaskCompletionCandidate(options);
+    for (let index = 1; index <= 9; index += 1) {
+      await appendTaskEvidence(directory, {
+        taskId: "0007",
+        runId: `overrun-review-${index}`,
+        agent: "codex-reviewer",
+        gateEligible: true,
+        type: "review",
+        result: index === 9 ? "pass" : "changes_requested",
+        subject: candidate.subject,
+        reviewer: "codex-reviewer",
+        implementationRunId: verification.runId,
+        summary: index === 9 ? "Independent review passed." : `Finding ${index}.`,
+      });
+    }
+    const gate = await evaluateTaskCompletionGate(options);
+    assert.equal(gate.review.budget?.passesUsed, 9);
+    assert.equal(gate.review.outcome, "pass");
+    assert.equal(gate.passed, false);
+    assert.ok(gate.blockers.some((blocker) => blocker.includes("Review budget overrun")));
+  });
+});
 
 test("the gate counts task-bound frontier review passes and activated runs", async () => {
   await withTempDirectory(async (directory) => {
@@ -6340,6 +6377,43 @@ test("the gate counts task-bound frontier review passes and activated runs", asy
     assert.equal(gate.review.budget?.frontierExhausted, true);
     assert.ok(gate.blockers.some((blocker) => blocker.includes("Frontier review budget exhausted")));
     assert.ok(gate.blockers.some((blocker) => blocker.includes("Frontier run budget exhausted")));
+  });
+});
+
+test("frontier review history keeps its recorded cost when the registry changes", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupDecisionRepo(directory, {
+      resources: {
+        models: [{ id: "frontier-model", roles: ["review"] }],
+        harnesses: [{ id: "frontier-harness", sessionIsolation: true, workerProtocols: ["apk-worker-v1"] }],
+        workers: [{
+          id: "frontier-review",
+          modelId: "frontier-model",
+          harnessId: "frontier-harness",
+          location: "remote",
+          billingMode: "subscription",
+          costClass: "scarce-frontier",
+          availability: "available",
+          capacity: 1,
+          capabilities: { roles: ["review"], workerProtocols: ["apk-worker-v1"] },
+        }],
+      },
+    });
+    const options = { rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" };
+    const verification = await verifyTask({ ...options, owner: "codex-owner", runCommand: async () => 0 });
+    await recordTaskReview({
+      ...options,
+      reviewer: "codex-reviewer",
+      outcome: "changes_requested",
+      implementationRunId: verification.runId,
+      resourceId: "frontier-review",
+    });
+    const configPath = join(directory, ".agentic", "config.json");
+    const config = JSON.parse(await readFile(configPath, "utf8")) as { resources: { workers: Array<{ costClass: string }> } };
+    config.resources.workers[0].costClass = "cheap";
+    await writeFile(configPath, `${JSON.stringify(config)}\n`, "utf8");
+    const gate = await evaluateTaskCompletionGate(options);
+    assert.equal(gate.review.budget?.frontierPassesUsed, 1);
   });
 });
 

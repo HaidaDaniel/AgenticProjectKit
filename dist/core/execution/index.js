@@ -177,6 +177,13 @@ function candidateReasons(worker, request, profile, complexity) {
         reasons.push(`capacity busy ${worker.occupied}/${worker.capacity}`);
     if (!profileAllows(profile, worker, request, complexity))
         reasons.push(`${profile} profile excludes this resource for ${complexity} ${request.role}`);
+    const budget = request.policy.reviewBudget ?? DEFAULT_REVIEW_BUDGET;
+    const frontierExhausted = request.role === "review"
+        && worker.costClass === "scarce-frontier"
+        && ((request.frontierUsage?.reviewPassesUsed ?? 0) >= budget.maxFrontierReviewPasses
+            || (request.frontierUsage?.runsUsed ?? 0) >= budget.maxFrontierRuns);
+    if (frontierExhausted)
+        reasons.push("recorded frontier review/run budget is exhausted");
     if (request.contextLimit !== undefined) {
         const limit = worker.capabilities.contextLimit ?? request.registry.models.find((model) => model.id === worker.modelId)?.contextLimit;
         if (limit !== undefined && limit < request.contextLimit)

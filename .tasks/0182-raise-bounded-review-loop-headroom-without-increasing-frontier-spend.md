@@ -38,6 +38,7 @@ Use a simple bounded policy rather than a new complexity estimator: total review
 - src/core/tasks/review.ts
 - src/core/tasks/*.test.ts
 - src/core/execution/*.ts
+- src/cli/commands/execution.ts
 - src/core/work/**
 - src/core/resources/**
 - src/core/status/**
@@ -127,5 +128,5 @@ Use a simple bounded policy rather than a new complexity estimator: total review
 ## Notes
 
 - Before this change, the default total review max was 2, critical max was 3, and MAX_HUMAN_REVIEW_GRANT_PASSES was 2. Gate counts append-only review records across the task, so repeated changes_requested cycles could exhaust the task before a weaker implementation/reviewer loop converged.
-- The implementation now keeps one canonical 8/10 total-budget definition, caps effective grants at 10, and counts task-bound scarce-frontier review records plus activated worker sessions independently of total review headroom. Historical frontier review records remain spend history even when they are not current completion proof.
+- The implementation now keeps one canonical 8/10 total-budget definition, caps effective grants at 10, and counts task-bound scarce-frontier review records plus activated worker sessions independently of total review headroom. Issued worker provenance and review summaries retain the recorded cost class; unknown historical resource-bound usage fails closed as frontier spend. Historical frontier review records remain spend history even when they are not current completion proof.
 - This task intentionally follows 0181 because both touch gate/review decision semantics. Do not start it against the pre-0181 implementation.

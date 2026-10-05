@@ -445,7 +445,10 @@ async function sameWorktreeWarnings(rootDirectory, taskId, locationId) {
 }
 export async function startWork(options) {
     const config = await readAgenticConfigFile(options.rootDirectory);
-    if (options.resourceId && !config.resources?.workers.some((worker) => worker.id === options.resourceId)) {
+    const selectedResource = options.resourceId
+        ? config.resources?.workers.find((worker) => worker.id === options.resourceId)
+        : undefined;
+    if (options.resourceId && !selectedResource) {
         throw new Error(`Unknown worker resource: ${options.resourceId}. Configure a validated resource before issuing work.`);
     }
     const agent = await requireAgent(options.rootDirectory, options.owner);
@@ -487,6 +490,18 @@ export async function startWork(options) {
             taskDirectory: config.taskDirectory,
             taskId: task.id,
         });
+        const budget = gate.review.budget;
+        if (budget && budget.passesUsed >= budget.effectiveMaxReviewPasses) {
+            throw new Error(`Review budget exhausted for task ${task.id}; an explicit human decision is required before another review run.`);
+        }
+        if (budget && selectedResource?.costClass === "scarce-frontier") {
+            if (budget.frontierPassesUsed >= budget.maxFrontierReviewPasses) {
+                throw new Error(`Frontier review budget exhausted for task ${task.id}; no additional scarce-frontier review run may be issued.`);
+            }
+            if (budget.frontierRunsUsed >= budget.maxFrontierRuns) {
+                throw new Error(`Frontier run budget exhausted for task ${task.id}; no additional scarce-frontier run may be issued.`);
+            }
+        }
         if (gate.verification.some((check) => check.result !== "pass" || check.freshness !== "current")) {
             throw new Error(`Canonical verification is not current for task ${task.id}; run pnpm exec apk task verify ${task.id} --owner ${task.owner} before issuing a review worker package.`);
         }
@@ -502,6 +517,8 @@ export async function startWork(options) {
                 reviewRunId: runId,
                 origin: "worker",
                 workerRunId: runId,
+                ...(options.resourceId ? { resourceId: options.resourceId } : {}),
+                ...(selectedResource ? { resourceCostClass: selectedResource.costClass } : {}),
             })
             : undefined;
         if (reviewPreparation && options.afterReviewPreparation) {
@@ -513,6 +530,7 @@ export async function startWork(options) {
             role,
             runId,
             ...(options.resourceId ? { resourceId: options.resourceId } : {}),
+            ...(selectedResource ? { resourceCostClass: selectedResource.costClass } : {}),
             repository: subject.repository,
             ...(subject.headSha ? { headSha: subject.headSha } : {}),
             baselineId: subject.baselineId,
@@ -682,6 +700,7 @@ export async function recordWorkerResult(options) {
         const resourceFamily = resource
             ? resourceConfig?.resources?.models.find((model) => model.id === resource.modelId)?.family
             : undefined;
+        const resourceCostClass = issued.workerPackage.provenance.resourceCostClass ?? resource?.costClass;
         const review = await recordTaskReview({
             rootDirectory: options.rootDirectory,
             taskDirectory: options.taskDirectory,
@@ -703,6 +722,7 @@ export async function recordWorkerResult(options) {
             workerRole: result.role,
             workerStatus: result.status,
             resourceId,
+            resourceCostClass,
             resourceFamily,
         });
         evidence = review.evidence;

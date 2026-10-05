@@ -403,6 +403,36 @@ test("frontier review caps remain independent from total review headroom", () =>
   assert.equal(localFallback.assurance?.budget.maxReviewPasses, 8);
   assert.equal(localFallback.assurance?.budget.maxFrontierReviewPasses, 1);
   assert.equal(localFallback.assurance?.budget.maxFrontierRuns, 1);
+
+  for (const override of [
+    { resourceId: "frontier-review" },
+    { resourceId: "frontier-review", allowProfileBypass: true },
+  ]) {
+    const blockedOverride = resolveExecutionRoute({
+      profile: "balanced",
+      role: "review",
+      policy,
+      registry: { models: [], harnesses: [], workers: [frontierReview, cheapReview] },
+      frontierUsage: { reviewPassesUsed: 1, runsUsed: 1 },
+      override,
+    });
+    assert.notEqual(blockedOverride.kind, "worker");
+    assert.match(
+      blockedOverride.candidates.find((candidate) => candidate.resourceId === "frontier-review")?.reasons.join(" ") ?? "",
+      /recorded frontier review\/run budget is exhausted/,
+    );
+  }
+
+  const blockedCalibration = resolveExecutionRoute({
+    profile: "balanced",
+    role: "review",
+    policy,
+    registry: { models: [], harnesses: [], workers: [frontierReview, cheapReview] },
+    frontierUsage: { reviewPassesUsed: 1, runsUsed: 1 },
+    calibrationRoute: "frontier-review",
+  });
+  assert.equal(blockedCalibration.resourceId, "cheap-review");
+  assert.equal(blockedCalibration.routeSource, "resolver");
 });
 
 test("CLI resources renders a stable read-only registry in human and JSON forms", async () => {

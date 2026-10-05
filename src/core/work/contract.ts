@@ -1,5 +1,6 @@
 import type { TaskContextSelection } from "../docs/context.js";
 import type { ProjectTask } from "../tasks/index.js";
+import type { ResourceCostClass } from "../resources/index.js";
 
 export const WORKER_PROTOCOL = "apk-worker-v1" as const;
 
@@ -22,6 +23,8 @@ export function isSafeRunId(value: string): boolean {
 export interface WorkerProvenance {
   /** Optional validated executable resource identity; never a model/vendor routing key. */
   resourceId?: string;
+  /** Durable cost classification captured when the worker package is issued. */
+  resourceCostClass?: ResourceCostClass;
   repository?: "git" | "none";
   headSha?: string;
   baselineId?: string;
@@ -227,6 +230,12 @@ function parsePackage(value: unknown): WorkerPackage {
     provenance: {
       runId: validateWorkerRunId(text(provenance.runId, "worker package.provenance.runId", 120)),
       ...(optionalText(provenance.resourceId, "worker package.provenance.resourceId", 160) ? { resourceId: provenance.resourceId as string } : {}),
+      ...(provenance.resourceCostClass === "local-free"
+        || provenance.resourceCostClass === "cheap"
+        || provenance.resourceCostClass === "standard"
+        || provenance.resourceCostClass === "scarce-frontier"
+        ? { resourceCostClass: provenance.resourceCostClass }
+        : {}),
       ...(provenance.repository === "git" || provenance.repository === "none" ? { repository: provenance.repository } : {}),
       ...(optionalText(provenance.headSha, "worker package.provenance.headSha", 160) ? { headSha: provenance.headSha as string } : {}),
       ...(optionalText(provenance.baselineId, "worker package.provenance.baselineId", 240) ? { baselineId: provenance.baselineId as string } : {}),
@@ -310,6 +319,12 @@ function parseResult(value: unknown): WorkerResult {
     const provenance = objectValue(raw.provenance, "worker result.provenance");
     result.provenance = {
       ...(optionalText(provenance.resourceId, "worker result.provenance.resourceId", 160) ? { resourceId: provenance.resourceId as string } : {}),
+      ...(provenance.resourceCostClass === "local-free"
+        || provenance.resourceCostClass === "cheap"
+        || provenance.resourceCostClass === "standard"
+        || provenance.resourceCostClass === "scarce-frontier"
+        ? { resourceCostClass: provenance.resourceCostClass }
+        : {}),
       ...(provenance.repository === "git" || provenance.repository === "none" ? { repository: provenance.repository } : {}),
       ...(optionalText(provenance.headSha, "worker result.provenance.headSha", 160) ? { headSha: provenance.headSha as string } : {}),
       ...(optionalText(provenance.baselineId, "worker result.provenance.baselineId", 240) ? { baselineId: provenance.baselineId as string } : {}),
@@ -335,6 +350,7 @@ export function createWorkerPackage(
     role: WorkerRole;
     runId: string;
     resourceId?: string;
+    resourceCostClass?: ResourceCostClass;
     repository?: "git" | "none";
     headSha?: string;
     baselineId?: string;
@@ -381,6 +397,7 @@ export function createWorkerPackage(
     provenance: {
       runId: options.runId,
       ...(options.resourceId ? { resourceId: options.resourceId } : {}),
+      ...(options.resourceCostClass ? { resourceCostClass: options.resourceCostClass } : {}),
       ...(options.repository ? { repository: options.repository } : {}),
       ...(options.headSha ? { headSha: options.headSha } : {}),
       ...(options.baselineId ? { baselineId: options.baselineId } : {}),

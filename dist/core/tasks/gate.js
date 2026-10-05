@@ -5,7 +5,7 @@ import { assessTaskHumanDecisions, assessTaskReviews, listTaskHumanDecisions, li
 import { MAX_EFFECTIVE_REVIEW_PASSES, resolveTaskPolicy, } from "./policy.js";
 import { isPackagedInputPath, packagedDistTaskContractBlockers, repositoryPackagedDistContract, } from "./package-contract.js";
 import { readAgenticConfigFile } from "../config/file.js";
-import { listWorkerSessions } from "../work/session.js";
+import { listWorkerSessions, readActiveWorkerSession } from "../work/session.js";
 export class TaskCompletionGateError extends Error {
     gate;
     constructor(gate) {
@@ -111,40 +111,79 @@ function reviewAssessment(assessments, subject) {
     const otherCandidate = assessments.find((assessment) => isOtherCandidate(assessment.record, subject));
     return otherCandidate;
 }
+function recordedResourceCostClass(record) {
+    const match = record.summary?.match(/\[resource-cost-class=(local-free|cheap|standard|scarce-frontier)\]/);
+    return match?.[1];
+}
+async function sessionResourceCostClass(rootDirectory, session) {
+    try {
+        const active = await readActiveWorkerSession(rootDirectory, session.taskId, session.runId);
+        return active.workerPackage.provenance.resourceCostClass;
+    }
+    catch {
+        return undefined;
+    }
+}
 /**
  * Count recorded scarce/frontier consumption for the task from existing
- * evidence: task-bound review records whose resourceId resolves to a
- * scarce-frontier worker in the authored registry, plus activated worker
- * sessions bound to such a resource. Usage is task-bound and append-only;
- * stale, other-candidate, or non-gate-eligible records remain counted history.
+ * evidence: task-bound review records with a durable scarce-frontier class or
+ * a current registry match, plus activated worker sessions with the same
+ * durable package provenance. Usage is task-bound and append-only; stale,
+ * other-candidate, or non-gate-eligible records remain counted history.
  */
 async function countFrontierUsage(rootDirectory, taskId, reviewRecords) {
-    let registryWorkers;
+    let registryWorkers = [];
+    const diagnostics = [];
     try {
         const config = await readAgenticConfigFile(rootDirectory);
         registryWorkers = config.resources?.workers ?? [];
     }
     catch (error) {
+        diagnostics.push(`Resource registry could not be loaded; resource-bound history is counted conservatively: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const resourceCosts = new Map(registryWorkers.map((worker) => [worker.id, worker.costClass]));
+    let sessions;
+    try {
+        sessions = await listWorkerSessions(rootDirectory);
+    }
+    catch (error) {
+        diagnostics.push(`Worker-session history could not be loaded; frontier run usage is blocked conservatively: ${error instanceof Error ? error.message : String(error)}`);
         return {
-            frontierPasses: 0,
-            frontierRuns: 0,
-            diagnostics: [
-                `Resource registry could not be loaded; recorded frontier usage is not counted: ${error instanceof Error ? error.message : String(error)}`,
-            ],
+            frontierPasses: reviewRecords.some((record) => record.resourceId !== undefined) ? Number.MAX_SAFE_INTEGER : 0,
+            frontierRuns: Number.MAX_SAFE_INTEGER,
+            diagnostics,
         };
     }
-    const frontierWorkerIds = new Set(registryWorkers.filter((worker) => worker.costClass === "scarce-frontier").map((worker) => worker.id));
-    const frontierPasses = reviewRecords
-        .filter((record) => record.resourceId !== undefined && frontierWorkerIds.has(record.resourceId))
-        .length;
-    const sessions = await listWorkerSessions(rootDirectory);
-    const frontierRuns = sessions
-        .filter((session) => (session.taskId === taskId
-        && session.activated
-        && session.resourceId !== undefined
-        && frontierWorkerIds.has(session.resourceId)))
-        .length;
-    return { frontierPasses, frontierRuns, diagnostics: [] };
+    const sessionCosts = new Map();
+    for (const session of sessions) {
+        if (!session.activated || session.resourceId === undefined)
+            continue;
+        sessionCosts.set(`${session.taskId}\0${session.runId}`, await sessionResourceCostClass(rootDirectory, session));
+    }
+    const isFrontierReview = (record) => {
+        if (record.resourceId === undefined)
+            return false;
+        const durableCost = recordedResourceCostClass(record)
+            ?? sessionCosts.get(`${taskId}\0${record.runId}`)
+            ?? resourceCosts.get(record.resourceId);
+        // A resource-bound record whose classification is no longer available is
+        // historical spend of unknown cost; fail closed instead of letting a
+        // removed or reclassified frontier resource disappear from the ledger.
+        return durableCost === "scarce-frontier"
+            || (durableCost === undefined && !resourceCosts.has(record.resourceId));
+    };
+    const frontierPasses = reviewRecords.filter(isFrontierReview).length;
+    let frontierRuns = 0;
+    for (const session of sessions) {
+        if (session.taskId !== taskId || !session.activated || session.resourceId === undefined)
+            continue;
+        const durableCost = sessionCosts.get(`${session.taskId}\0${session.runId}`)
+            ?? resourceCosts.get(session.resourceId);
+        if (durableCost === "scarce-frontier" || (durableCost === undefined && !resourceCosts.has(session.resourceId))) {
+            frontierRuns += 1;
+        }
+    }
+    return { frontierPasses, frontierRuns, diagnostics };
 }
 export async function evaluateTaskCompletionGate(options) {
     const candidate = await captureTaskCompletionCandidate(options);
@@ -301,6 +340,8 @@ export async function evaluateTaskCompletionGate(options) {
         const passesUsed = reviewRecords.length;
         const budgetExhausted = effectiveMaxReviewPasses !== undefined
             && passesUsed >= effectiveMaxReviewPasses;
+        const budgetOverrun = effectiveMaxReviewPasses !== undefined
+            && passesUsed > effectiveMaxReviewPasses;
         // Frontier consumption is resource spend, not completion proof: stale,
         // historical, or otherwise non-gate-eligible review records still count
         // against the task-bound scarce budget.
@@ -331,6 +372,9 @@ export async function evaluateTaskCompletionGate(options) {
         const assessments = assessTaskReviews(reviewRecords, subject);
         const selected = reviewAssessment(assessments, subject);
         const currentPassingReview = selected?.freshness === "current" && selected.record.result === "pass";
+        if (reviewBudget && budgetOverrun) {
+            blockers.push(`Review budget overrun: ${passesUsed} review passes recorded against an effective maximum of ${effectiveMaxReviewPasses}; an explicit policy change is required.`);
+        }
         // Frontier caps stop further frontier work at the configured count. A
         // current passing review recorded at the cap is still a valid completion;
         // an overrun remains a hard blocker even when the overrun eventually

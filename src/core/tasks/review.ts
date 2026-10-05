@@ -1,6 +1,7 @@
 import { appendRunLog, requireAgent } from "../agents/index.js";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
+import { readAgenticConfigFile } from "../config/file.js";
 import {
   captureTaskEvidenceSubject,
   findTaskFile,
@@ -23,6 +24,7 @@ import {
 } from "./evidence.js";
 import { isSafeRunId } from "../work/contract.js";
 import { resolveTaskPolicy, type AssuranceLevel } from "./policy.js";
+import type { ResourceCostClass } from "../resources/index.js";
 import {
   readActiveWorkerSession,
   withWorkerReviewLifecycleLock,
@@ -72,6 +74,7 @@ export interface TaskReviewOptions {
   workerStatus?: string;
   assuranceLevel?: AssuranceLevel;
   resourceId?: string;
+  resourceCostClass?: ResourceCostClass;
   resourceFamily?: string;
   expectedSubject?: TaskEvidenceCandidateSubject;
   expectedChangedFiles?: readonly string[];
@@ -230,6 +233,59 @@ function reviewSubject(
   return baselineId ? { ...subject, baselineId } : subject;
 }
 
+async function resolveReviewResourceCostClass(options: {
+  rootDirectory: string;
+  resourceId?: string;
+  resourceCostClass?: ResourceCostClass;
+}): Promise<ResourceCostClass | undefined> {
+  if (options.resourceCostClass !== undefined) return options.resourceCostClass;
+  if (options.resourceId === undefined) return undefined;
+  const config = await readAgenticConfigFile(options.rootDirectory);
+  return config.resources?.workers.find((worker) => worker.id === options.resourceId)?.costClass;
+}
+
+function reviewSummary(
+  outcome: TaskReviewOutcome,
+  findings: readonly string[],
+  resourceCostClass: ResourceCostClass | undefined,
+): string {
+  const base = outcome === "pass"
+    ? "Independent review passed."
+    : findings.join("; ") || `Independent review ${outcome}.`;
+  return resourceCostClass === undefined
+    ? base
+    : `${base} [resource-cost-class=${resourceCostClass}]`;
+}
+
+async function assertReviewBudgetAllowsRecord(options: {
+  rootDirectory: string;
+  taskDirectory: string;
+  taskId: string;
+  resourceCostClass?: ResourceCostClass;
+}): Promise<void> {
+  // Keep the canonical gate as the budget authority without introducing a
+  // second grant/decision implementation in the review recorder.
+  const { evaluateTaskCompletionGate } = await import("./gate.js");
+  const gate = await evaluateTaskCompletionGate({
+    rootDirectory: options.rootDirectory,
+    taskDirectory: options.taskDirectory,
+    taskId: options.taskId,
+  });
+  const budget = gate.review.budget;
+  if (!budget) return;
+  if (budget.passesUsed >= budget.effectiveMaxReviewPasses) {
+    throw new Error(
+      `Review budget exhausted for task ${options.taskId}; an explicit human decision is required before another review record.`,
+    );
+  }
+  if (options.resourceCostClass === "scarce-frontier"
+    && budget.frontierPassesUsed >= budget.maxFrontierReviewPasses) {
+    throw new Error(
+      `Frontier review budget exhausted for task ${options.taskId}; no additional scarce-frontier review record may be appended.`,
+    );
+  }
+}
+
 function sameReviewSubject(
   left: TaskEvidenceCandidateSubject,
   right: TaskEvidenceCandidateSubject,
@@ -319,12 +375,21 @@ export async function prepareTaskReview(
     reviewRunId?: string;
     origin?: TaskReviewOrigin;
     workerRunId?: string;
+    resourceId?: string;
+    resourceCostClass?: ResourceCostClass;
   },
 ): Promise<TaskReviewPreparation> {
   const reviewer = await requireAgent(options.rootDirectory, options.reviewer);
   const taskPath = await findTaskFile(options.rootDirectory, options.taskId, options.taskDirectory);
   const { task } = await loadTaskFile(taskPath);
   requireReviewableTask(task, reviewer.id);
+  const resourceCostClass = await resolveReviewResourceCostClass(options);
+  await assertReviewBudgetAllowsRecord({
+    rootDirectory: options.rootDirectory,
+    taskDirectory: options.taskDirectory,
+    taskId: task.id,
+    resourceCostClass,
+  });
   const baseline = await readTaskBaseline(options.rootDirectory, task.id);
   const taskRelativePath = relative(options.rootDirectory, taskPath).replace(/\\/g, "/");
   const snapshot = await captureTaskScope({
@@ -402,6 +467,7 @@ function asTaskReviewRecord(record: TaskEvidenceRecord): TaskReviewRecord | unde
 }
 
 export async function recordTaskReview(options: TaskReviewOptions): Promise<TaskReviewResult> {
+  const resourceCostClass = await resolveReviewResourceCostClass(options);
   let prepared: TaskReviewPreparation;
   if (options.reviewRunId) {
     const stored = await readPreparedReview(
@@ -479,6 +545,7 @@ export async function recordTaskReview(options: TaskReviewOptions): Promise<Task
     prepared = await prepareTaskReview({
       ...options,
       reviewRunId: reviewRunId(),
+      resourceCostClass,
     });
   }
   if (options.expectedSubject && !sameReviewSubject(options.expectedSubject, prepared.subject)) {
@@ -489,6 +556,12 @@ export async function recordTaskReview(options: TaskReviewOptions): Promise<Task
   }
   const runId = prepared.reviewRunId;
   const findings = normalizedFindings(options.findings);
+  await assertReviewBudgetAllowsRecord({
+    rootDirectory: options.rootDirectory,
+    taskDirectory: options.taskDirectory,
+    taskId: prepared.task.id,
+    resourceCostClass,
+  });
   const evidence = await appendTaskEvidence(options.rootDirectory, {
     taskId: prepared.task.id,
     runId,
@@ -506,7 +579,7 @@ export async function recordTaskReview(options: TaskReviewOptions): Promise<Task
     resourceId: options.resourceId,
     resourceFamily: options.resourceFamily,
     findings,
-    summary: options.outcome === "pass" ? "Independent review passed." : findings.join("; ") || `Independent review ${options.outcome}.`,
+    summary: reviewSummary(options.outcome, findings, resourceCostClass),
   }, {
     conflictsWith: (record) => record.type === "review" && record.runId === runId,
     conflictMessage: `Review run already has a result: ${runId}.`,
