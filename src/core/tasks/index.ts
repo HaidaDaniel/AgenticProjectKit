@@ -3030,6 +3030,48 @@ async function resolveTaskBaselineLineage(
     });
   }
 
+  // A merge must not make a forbidden or out-of-scope first-parent change
+  // disappear merely because a later commit reverted its tree effect. Proven
+  // task commits are excluded by their canonical proof; all other historical
+  // first-parent paths remain part of the merge safety decision.
+  if (mergeAttributions.length > 0) {
+    const activeTask = taskFiles.find(({ task }) => task.id === authoritative.taskId)?.task;
+    if (!activeTask) {
+      return lineageFailure(
+        `Active task ${authoritative.taskId} is missing from canonical task files; first-parent merge scope cannot be proven.`,
+        "unresolved",
+        proven,
+        mergeAttributions,
+      );
+    }
+    let firstParentSha = currentHead;
+    while (firstParentSha !== authoritative.headSha) {
+      const firstParentCommit = commitBySha.get(firstParentSha);
+      if (!firstParentCommit || firstParentCommit.parents.length === 0) {
+        return lineageFailure(
+          `Merge first-parent history from ${shortenSha(currentHead)} does not reach baseline ${shortenSha(authoritative.headSha)} inside the bounded DAG; scope fails closed.`,
+          "intervening",
+          proven,
+          mergeAttributions,
+        );
+      }
+      if (firstParentCommit.parents.length === 1 && !proofByCommit.has(firstParentCommit.sha)) {
+        const historicalFiles = firstParentCommit.files.filter((path) => !isBookkeepingPath(path, authoritative));
+        const historicalScope = verifyTaskFileScope(activeTask, historicalFiles);
+        const problematicPath = historicalScope.forbiddenTouchedFiles[0] ?? historicalScope.outOfScopeFiles[0];
+        if (problematicPath) {
+          return lineageFailure(
+            `Merge first-parent history includes commit ${shortenSha(firstParentCommit.sha)} with forbidden or out-of-scope path ${problematicPath}; merge scope fails closed.`,
+            "intervening",
+            proven,
+            mergeAttributions,
+          );
+        }
+      }
+      firstParentSha = firstParentCommit.parents[0];
+    }
+  }
+
   const taskTimeline = taskRecords.filter((record) => record.taskId === authoritative.taskId);
   const claims = taskTimeline.filter((record) => (record.phase ?? "claim") === "claim");
   for (let index = 1; index < claims.length; index += 1) {

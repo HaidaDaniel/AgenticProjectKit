@@ -2822,6 +2822,31 @@ test("a clean merge of independently proven task history is attributed without b
   });
 });
 
+test("a merge cannot hide a reverted first-parent forbidden change", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const baseBranch = (await execFileAsync("git", ["branch", "--show-current"], { cwd: directory })).stdout.trim();
+    await execFileAsync("git", ["checkout", "--quiet", "-b", "proven-side"], { cwd: directory });
+    await execFileAsync("git", ["checkout", "--quiet", baseBranch], { cwd: directory });
+    await writeFile(join(directory, "secrets", "hidden-merge-leak.txt"), "secret\n", "utf8");
+    await execFileAsync("git", ["add", "secrets/hidden-merge-leak.txt"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "forbidden first-parent change"], { cwd: directory });
+    await execFileAsync("git", ["revert", "--quiet", "--no-edit", "HEAD"], { cwd: directory });
+    await execFileAsync("git", ["checkout", "--quiet", "proven-side"], { cwd: directory });
+    await completeBoundedTaskB(directory);
+    await execFileAsync("git", ["checkout", "--quiet", baseBranch], { cwd: directory });
+    await execFileAsync("git", ["merge", "--quiet", "--no-ff", "proven-side", "-m", "merge proven task"], { cwd: directory });
+
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.equal(baseline?.lineageStatus, "intervening");
+    assert.match(baseline?.lineageDiagnostic ?? "", /first-parent.*hidden-merge-leak\.txt|hidden-merge-leak\.txt.*first-parent/i);
+    const result = await verifyScopedTask(directory);
+    assert.equal(result.passed, false);
+    assert.equal(result.attribution?.lineageStatus, "intervening");
+  });
+});
+
 test("a conflict-resolved merge path remains ambiguous and fails scope closed", async () => {
   await withTempDirectory(async (directory) => {
     await setupReclaimRepo(directory);
