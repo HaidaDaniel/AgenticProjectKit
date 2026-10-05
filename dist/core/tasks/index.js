@@ -1,4 +1,4 @@
-import { exec, execFile } from "node:child_process";
+import { exec, execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFile, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
@@ -1123,6 +1123,88 @@ async function gitPaths(rootDirectory, args) {
     }
     return paths;
 }
+/** Read only enough Git path output to establish that the attribution limit is exceeded. */
+async function gitPathsBounded(rootDirectory, args, maxPaths) {
+    return new Promise((resolve, reject) => {
+        const child = spawn("git", args, {
+            cwd: rootDirectory,
+            stdio: ["ignore", "pipe", "pipe"],
+            windowsHide: true,
+        });
+        const paths = [];
+        let pending = Buffer.alloc(0);
+        let stderr = "";
+        let pathLimitExceeded = false;
+        let outputLimitExceeded = false;
+        let settled = false;
+        const finish = (error) => {
+            if (settled)
+                return;
+            settled = true;
+            if (error)
+                reject(error);
+            else
+                resolve(paths);
+        };
+        child.stdout.on("data", (chunk) => {
+            if (settled || pathLimitExceeded || outputLimitExceeded)
+                return;
+            pending = Buffer.concat([pending, chunk]);
+            if (pending.length > 8 * 1024 * 1024) {
+                outputLimitExceeded = true;
+                child.kill("SIGTERM");
+                return;
+            }
+            let separator = pending.indexOf(0);
+            while (separator >= 0) {
+                if (separator === 0) {
+                    finish(new Error("Git returned an empty path in NUL-delimited output."));
+                    child.kill("SIGTERM");
+                    return;
+                }
+                const bytes = pending.subarray(0, separator);
+                const path = bytes.toString("utf8");
+                if (!Buffer.from(path, "utf8").equals(bytes)) {
+                    finish(new Error("Git returned a path that is not valid UTF-8; attribution fails closed."));
+                    child.kill("SIGTERM");
+                    return;
+                }
+                paths.push(path);
+                pending = pending.subarray(separator + 1);
+                if (paths.length > maxPaths) {
+                    pathLimitExceeded = true;
+                    child.kill("SIGTERM");
+                    return;
+                }
+                separator = pending.indexOf(0);
+            }
+        });
+        child.stderr.on("data", (chunk) => {
+            if (stderr.length < 4096)
+                stderr += chunk.toString("utf8");
+        });
+        child.on("error", (error) => finish(error));
+        child.on("close", (code, signal) => {
+            if (settled)
+                return;
+            if (pathLimitExceeded) {
+                finish(new Error(`Git path output exceeds the ${maxPaths}-file attribution limit.`));
+            }
+            else if (outputLimitExceeded) {
+                finish(new Error("Git path output exceeds the 8 MiB attribution safety limit."));
+            }
+            else if (code !== 0) {
+                finish(new Error(`Git path command failed${signal ? ` with ${signal}` : ` with exit code ${code}`}${stderr ? `: ${stderr.trim()}` : ""}.`));
+            }
+            else if (pending.length > 0) {
+                finish(new Error("Git path output is not NUL-terminated; attribution fails closed."));
+            }
+            else {
+                finish();
+            }
+        });
+    });
+}
 function normalizeGitPath(path) {
     if (path.includes("\\")) {
         throw new Error("Git path contains a backslash and cannot be attributed safely.");
@@ -1408,6 +1490,62 @@ export async function recordTaskHandoff(rootDirectory, taskId, owner, taskFile, 
 function shortenSha(sha) {
     return sha ? sha.slice(0, 12) : "none";
 }
+async function boundedGitAncestorGraph(rootDirectory, sha, maxNodes = MAX_TASK_ATTRIBUTION_COMMITS, diagnosticLimit = maxNodes) {
+    try {
+        const lines = (await gitOutput(rootDirectory, [
+            "rev-list",
+            "--topo-order",
+            `--max-count=${maxNodes + 1}`,
+            "--parents",
+            sha,
+        ])).split(/\r?\n/).filter((line) => line.length > 0);
+        if (lines.length > maxNodes) {
+            return { nodes: new Map(), diagnostic: `Git ancestry at ${shortenSha(sha)} exceeds the ${diagnosticLimit}-commit attribution limit.` };
+        }
+        const nodes = new Map();
+        for (const line of lines) {
+            const [nodeSha, ...parents] = line.split(" ");
+            if (!nodeSha || parents.length > 2) {
+                return { nodes: new Map(), diagnostic: `Git ancestry at ${shortenSha(sha)} contains an unsupported octopus node.` };
+            }
+            nodes.set(nodeSha, parents);
+        }
+        return { nodes };
+    }
+    catch (error) {
+        return { nodes: new Map(), diagnostic: `Git comparison failed while reading ancestry at ${shortenSha(sha)} (${error instanceof Error ? error.message : String(error)}).` };
+    }
+}
+async function boundedMergeBase(rootDirectory, parents) {
+    const [left, right] = await Promise.all(parents.map((parent) => boundedGitAncestorGraph(rootDirectory, parent)));
+    if (left.diagnostic || right.diagnostic) {
+        return { diagnostic: left.diagnostic ?? right.diagnostic };
+    }
+    const common = [...left.nodes.keys()].filter((sha) => right.nodes.has(sha));
+    if (common.length === 0) {
+        return { diagnostic: `Merge commit parents ${parents.map(shortenSha).join(", ")} have no common ancestor inside the bounded attribution graph.` };
+    }
+    const graph = new Map([...left.nodes, ...right.nodes]);
+    const isAncestor = (ancestor, descendant) => {
+        const pending = [descendant];
+        const visited = new Set();
+        while (pending.length > 0) {
+            const current = pending.pop();
+            if (!current || visited.has(current))
+                continue;
+            if (current === ancestor)
+                return true;
+            visited.add(current);
+            pending.push(...(graph.get(current) ?? []));
+        }
+        return false;
+    };
+    const mergeBases = common.filter((candidate) => !common.some((other) => (candidate !== other && isAncestor(candidate, other))));
+    if (mergeBases.length !== 1) {
+        return { diagnostic: `Merge commit parents ${parents.map(shortenSha).join(", ")} have ${mergeBases.length} bounded merge bases; criss-cross ancestry is ambiguous.` };
+    }
+    return { mergeBase: mergeBases[0] };
+}
 function lineageFailure(message, status = "intervening", provenOtherTaskCommits, mergeCommits) {
     return {
         lineageStatus: status,
@@ -1633,17 +1771,31 @@ async function readGitCommitNode(rootDirectory, sha, parents) {
     if (parents.length > 2) {
         throw new Error(`Octopus merge ${shortenSha(sha)} has ${parents.length} parents; bounded DAG attribution supports at most two.`);
     }
+    let mergeBase;
+    if (parents.length === 2) {
+        const boundedBase = await boundedMergeBase(rootDirectory, parents);
+        if (!boundedBase.mergeBase) {
+            return {
+                sha,
+                parents: [...parents],
+                files: [],
+                mergeResolutionFiles: [],
+                mergeAmbiguity: `Merge commit ${shortenSha(sha)} (parents ${parents.map(shortenSha).join(", ")}) cannot establish a unique bounded merge base: ${boundedBase.diagnostic ?? "unknown ancestry error"}`,
+            };
+        }
+        mergeBase = boundedBase.mergeBase;
+    }
     let files = [];
     if (parents.length === 0) {
-        files = await gitPaths(rootDirectory, ["diff-tree", "--root", "--no-commit-id", "--name-only", "--no-renames", "-r", "-z", sha]);
+        files = await gitPathsBounded(rootDirectory, ["diff-tree", "--root", "--no-commit-id", "--name-only", "--no-renames", "-r", "-z", sha], MAX_TASK_ATTRIBUTION_FILES);
     }
     else if (parents.length === 1) {
-        files = await gitPaths(rootDirectory, ["diff-tree", "--no-commit-id", "--name-only", "--no-renames", "-r", "-z", sha]);
+        files = await gitPathsBounded(rootDirectory, ["diff-tree", "--no-commit-id", "--name-only", "--no-renames", "-r", "-z", sha], MAX_TASK_ATTRIBUTION_FILES);
     }
     else {
-        const parentPaths = await Promise.all(parents.map((parent) => gitPaths(rootDirectory, [
+        const parentPaths = await Promise.all(parents.map((parent) => gitPathsBounded(rootDirectory, [
             "diff", "--name-only", "--no-renames", "-z", parent, sha,
-        ])));
+        ], MAX_TASK_ATTRIBUTION_FILES)));
         files = [...new Set(parentPaths.flat().map(normalizeGitPath))].sort();
     }
     if (files.length > MAX_TASK_ATTRIBUTION_FILES) {
@@ -1655,34 +1807,12 @@ async function readGitCommitNode(rootDirectory, sha, parents) {
     }
     const mergeResolutionFiles = [];
     const inheritedFrom = new Set();
-    let mergeBase;
-    try {
-        const mergeBases = (await gitOutput(rootDirectory, ["merge-base", "--all", parents[0], parents[1]]))
-            .split(/\s+/)
-            .filter((entry) => entry.length > 0);
-        if (mergeBases.length !== 1) {
-            return {
-                sha,
-                parents: [...parents],
-                files: normalizedFiles,
-                mergeResolutionFiles: normalizedFiles,
-                mergeAmbiguity: `Merge commit ${shortenSha(sha)} has ${mergeBases.length} merge bases for parents ${parents.map(shortenSha).join(", ")}; criss-cross ancestry is ambiguous.`,
-            };
-        }
-        mergeBase = mergeBases[0];
-    }
-    catch {
-        return {
-            sha,
-            parents: [...parents],
-            files: normalizedFiles,
-            mergeResolutionFiles: normalizedFiles,
-            mergeAmbiguity: `Merge commit ${shortenSha(sha)} has an unreadable merge base for parents ${parents.map(shortenSha).join(", ")}.`,
-        };
-    }
-    const parentChangedPaths = await Promise.all(parents.map((parent) => gitPaths(rootDirectory, [
-        "diff", "--name-only", "--no-renames", "-z", mergeBase, parent,
-    ])));
+    const mergeBaseSha = mergeBase;
+    if (!mergeBaseSha)
+        throw new Error(`Merge commit ${shortenSha(sha)} has no bounded merge base.`);
+    const parentChangedPaths = await Promise.all(parents.map((parent) => gitPathsBounded(rootDirectory, [
+        "diff", "--name-only", "--no-renames", "-z", mergeBaseSha, parent,
+    ], MAX_TASK_ATTRIBUTION_FILES)));
     const mergePaths = [...new Set([
             ...normalizedFiles,
             ...parentChangedPaths.flat().map(normalizeGitPath),
@@ -1692,7 +1822,7 @@ async function readGitCommitNode(rootDirectory, sha, parents) {
     }
     for (const path of mergePaths) {
         const resultFingerprint = await gitTreeEntryFingerprint(rootDirectory, sha, path);
-        const baseFingerprint = await gitTreeEntryFingerprint(rootDirectory, mergeBase, path);
+        const baseFingerprint = await gitTreeEntryFingerprint(rootDirectory, mergeBaseSha, path);
         const parentFingerprints = await Promise.all(parents.map((parent) => gitTreeEntryFingerprint(rootDirectory, parent, path)));
         const changedParents = parentFingerprints.filter((fingerprint) => (resultFingerprint === "unreadable"
             || fingerprint === "unreadable"
@@ -1721,12 +1851,15 @@ async function readGitCommitNode(rootDirectory, sha, parents) {
 async function listGitDagCommits(rootDirectory, fromSha, toSha) {
     if (fromSha === toSha)
         return { commits: [] };
-    try {
-        await gitOutput(rootDirectory, ["merge-base", "--is-ancestor", fromSha, toSha]);
+    // Include the baseline itself in this bounded proof: a range of 128 commits
+    // has 129 reachable nodes when the baseline is counted.
+    const boundedToAncestors = await boundedGitAncestorGraph(rootDirectory, toSha, MAX_TASK_ATTRIBUTION_COMMITS + 1, MAX_TASK_ATTRIBUTION_COMMITS);
+    if (boundedToAncestors.diagnostic) {
+        return { diagnostic: boundedToAncestors.diagnostic };
     }
-    catch (error) {
+    if (!boundedToAncestors.nodes.has(fromSha)) {
         return {
-            diagnostic: `Git history from ${shortenSha(fromSha)} to ${shortenSha(toSha)} is not a proven descendant chain (${error instanceof Error ? error.message : String(error)}).`,
+            diagnostic: `Git comparison failed: history from ${shortenSha(fromSha)} to ${shortenSha(toSha)} is not a proven descendant chain within the bounded attribution graph.`,
         };
     }
     let lines;
