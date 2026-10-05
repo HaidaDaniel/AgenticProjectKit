@@ -38,6 +38,9 @@ Use a simple bounded policy rather than a new complexity estimator: total review
 - src/core/tasks/review.ts
 - src/core/tasks/*.test.ts
 - src/core/execution/*.ts
+- src/core/work/**
+- src/core/resources/**
+- src/core/status/**
 - src/cli/commands/task.ts
 - src/cli/cli.test.ts
 - dist/**
@@ -60,11 +63,12 @@ Use a simple bounded policy rather than a new complexity estimator: total review
 
 1. Reproduce the current two-pass exhaustion behavior with repeated changes_requested reviews across successive candidate fixes.
 2. Remove duplicated review-budget defaults so policy and execution cannot silently drift.
-3. Set the normal total review budget to 8 and the critical total review budget to 10.
-4. Keep scarce/frontier budgets independently bounded at their existing conservative defaults unless an existing explicit policy already raises them; increasing total local/cheap review headroom must not authorize extra paid/frontier runs.
-5. Preserve the current +1/+2 operator grant mechanism, but cap the effective total review budget at 10.
-6. Verify that a passing current review on the final allowed pass succeeds, a non-passing review at exhaustion still blocks, and old/stale reviews remain historical without resetting usage.
-7. Update policy/status documentation and regenerate committed dist.
+3. Audit end-to-end consumption of maxFrontierReviewPasses/maxFrontierRuns. If the current implementation only exposes those numbers without counting actual frontier review usage, add candidate/task-bound accounting from existing review/session/resource evidence so the documented frontier caps are real.
+4. Set the normal total review budget to 8 and the critical total review budget to 10.
+5. Keep scarce/frontier budgets independently bounded at their existing conservative defaults unless an existing explicit policy already raises them; increasing total local/cheap review headroom must not authorize extra paid/frontier runs.
+6. Preserve the current +1/+2 operator grant mechanism, but cap the effective total review budget at 10.
+7. Verify that a passing current review on the final allowed pass succeeds, a non-passing review at exhaustion still blocks, and old/stale reviews remain historical without resetting usage.
+8. Update policy/status documentation and regenerate committed dist.
 
 ## Acceptance criteria
 
@@ -72,6 +76,7 @@ Use a simple bounded policy rather than a new complexity estimator: total review
 - A critical task has 10 total review attempts.
 - A normal task can receive at most enough current operator-granted passes to reach an effective total of 10; grant history remains append-only and Task 0181 current-first semantics stay intact.
 - Total review headroom and scarce/frontier review budgets are distinct. Raising the former does not silently raise maxFrontierReviewPasses, maxFrontierRuns, paidEscalation, or resource cost permissions.
+- Frontier review/run caps are enforced against actual recorded usage, not merely printed as policy metadata or checked as a nonzero permission bit.
 - There is one canonical default-budget definition consumed by task policy and execution routing, or an equivalently tested single source of truth.
 - A current PASS on pass 8/10 is accepted; exhaustion only blocks when the required current passing review is still absent.
 - Review freshness, exact candidate binding, separate reviewer identity, diverse-assurance requirements, deterministic verification, scope, CI/live evidence, and all non-review hard blockers are unchanged.
@@ -92,7 +97,7 @@ Use a simple bounded policy rather than a new complexity estimator: total review
 ## Required evidence
 
 - Regression showing current 2-pass behavior before the change and 8/10 bounded behavior after it.
-- Tests proving frontier limits remain unchanged when total review headroom increases.
+- Tests proving frontier limits remain unchanged when total review headroom increases, including exhaustion after the configured number of recorded scarce/frontier passes/runs.
 
 ## Review questions
 
@@ -105,6 +110,7 @@ Use a simple bounded policy rather than a new complexity estimator: total review
 - Eight changes_requested results followed by a pass.
 - Exhaustion with no current review, stale review, owner self-review, diverse assurance, and failed deterministic checks.
 - A constrained profile with only a scarce-frontier reviewer.
+- Repeated frontier reviews that exceed maxFrontierReviewPasses/maxFrontierRuns while total review headroom remains available.
 
 ## Verification
 
@@ -120,5 +126,6 @@ Use a simple bounded policy rather than a new complexity estimator: total review
 
 ## Notes
 
-- Current main has DEFAULT_TASK_POLICY review max=2, critical max=3, and MAX_HUMAN_REVIEW_GRANT_PASSES=2. Gate counts append-only review records across the task, so repeated changes_requested cycles can exhaust the task before a weaker implementation/reviewer loop converges.
+- Current main has default total review max=2, critical max=3, and MAX_HUMAN_REVIEW_GRANT_PASSES=2. Gate counts append-only review records across the task, so repeated changes_requested cycles can exhaust the task before a weaker implementation/reviewer loop converges.
+- Current source exposes maxFrontierReviewPasses/maxFrontierRuns in policy/execution planning, but the review/gate path must explicitly prove that actual consumption is enforced before the total budget is raised.
 - This task intentionally follows 0181 because both touch gate/review decision semantics. Do not start it against the pre-0181 implementation.
