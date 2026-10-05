@@ -2,8 +2,10 @@ import { listAgents, } from "../agents/index.js";
 import { allTaskFiles, captureTaskScope, captureTaskEvidenceSubject, findTaskFile, getTaskVerification, loadTaskFile, readTaskBaseline, } from "./index.js";
 import { compareTaskEvidenceFreshness, readTaskEvidence, } from "./evidence.js";
 import { assessTaskHumanDecisions, assessTaskReviews, listTaskHumanDecisions, listTaskReviews, MAX_HUMAN_REVIEW_GRANT_PASSES, TASK_DECISION_RESOLVED_BLOCKER, } from "./review.js";
-import { resolveTaskPolicy, } from "./policy.js";
+import { MAX_EFFECTIVE_REVIEW_PASSES, resolveTaskPolicy, } from "./policy.js";
 import { isPackagedInputPath, packagedDistTaskContractBlockers, repositoryPackagedDistContract, } from "./package-contract.js";
+import { readAgenticConfigFile } from "../config/file.js";
+import { listWorkerSessions } from "../work/session.js";
 export class TaskCompletionGateError extends Error {
     gate;
     constructor(gate) {
@@ -108,6 +110,41 @@ function reviewAssessment(assessments, subject) {
     }
     const otherCandidate = assessments.find((assessment) => isOtherCandidate(assessment.record, subject));
     return otherCandidate;
+}
+/**
+ * Count recorded scarce/frontier consumption for the task from existing
+ * evidence: task-bound review records whose resourceId resolves to a
+ * scarce-frontier worker in the authored registry, plus activated worker
+ * sessions bound to such a resource. Usage is task-bound and append-only;
+ * stale, other-candidate, or non-gate-eligible records remain counted history.
+ */
+async function countFrontierUsage(rootDirectory, taskId, reviewRecords) {
+    let registryWorkers;
+    try {
+        const config = await readAgenticConfigFile(rootDirectory);
+        registryWorkers = config.resources?.workers ?? [];
+    }
+    catch (error) {
+        return {
+            frontierPasses: 0,
+            frontierRuns: 0,
+            diagnostics: [
+                `Resource registry could not be loaded; recorded frontier usage is not counted: ${error instanceof Error ? error.message : String(error)}`,
+            ],
+        };
+    }
+    const frontierWorkerIds = new Set(registryWorkers.filter((worker) => worker.costClass === "scarce-frontier").map((worker) => worker.id));
+    const frontierPasses = reviewRecords
+        .filter((record) => record.resourceId !== undefined && frontierWorkerIds.has(record.resourceId))
+        .length;
+    const sessions = await listWorkerSessions(rootDirectory);
+    const frontierRuns = sessions
+        .filter((session) => (session.taskId === taskId
+        && session.activated
+        && session.resourceId !== undefined
+        && frontierWorkerIds.has(session.resourceId)))
+        .length;
+    return { frontierPasses, frontierRuns, diagnostics: [] };
 }
 export async function evaluateTaskCompletionGate(options) {
     const candidate = await captureTaskCompletionCandidate(options);
@@ -226,8 +263,8 @@ export async function evaluateTaskCompletionGate(options) {
     }
     const review = { freshness: "missing", reason: "independent review is not required" };
     if (policy.requirements.independentReview) {
-        const reviewRecords = (await listTaskReviews(options.rootDirectory, task.id))
-            .filter((record) => isGateEligibleEvidence(record, registeredAgents));
+        const allReviewRecords = await listTaskReviews(options.rootDirectory, task.id);
+        const reviewRecords = allReviewRecords.filter((record) => isGateEligibleEvidence(record, registeredAgents));
         const decisionAssessments = assessTaskHumanDecisions((await listTaskHumanDecisions(options.rootDirectory, task.id))
             .filter((record) => isGateEligibleEvidence(record, registeredAgents)), subject);
         const decisionAssessmentsOrdered = [...decisionAssessments]
@@ -256,21 +293,55 @@ export async function evaluateTaskCompletionGate(options) {
             && latestDecision.freshness === "current");
         const effectiveGrantPasses = decisionResolvesExhaustion ? 0 : grantedPasses;
         const reviewBudget = policy.requirements.reviewBudget;
+        // Operator grants extend the budget additively but can never raise the
+        // effective total review headroom above the hard cap.
         const effectiveMaxReviewPasses = reviewBudget !== undefined
-            ? reviewBudget.maxReviewPasses + effectiveGrantPasses
+            ? Math.min(reviewBudget.maxReviewPasses + effectiveGrantPasses, MAX_EFFECTIVE_REVIEW_PASSES)
             : undefined;
         const passesUsed = reviewRecords.length;
         const budgetExhausted = effectiveMaxReviewPasses !== undefined
             && passesUsed >= effectiveMaxReviewPasses;
+        // Frontier consumption is resource spend, not completion proof: stale,
+        // historical, or otherwise non-gate-eligible review records still count
+        // against the task-bound scarce budget.
+        const frontierUsage = await countFrontierUsage(options.rootDirectory, task.id, allReviewRecords);
+        for (const diagnostic of frontierUsage.diagnostics) {
+            diagnostics.push(diagnostic);
+        }
+        const frontierReviewExhausted = reviewBudget !== undefined
+            && frontierUsage.frontierPasses >= reviewBudget.maxFrontierReviewPasses;
+        const frontierRunsExhausted = reviewBudget !== undefined
+            && frontierUsage.frontierRuns >= reviewBudget.maxFrontierRuns;
+        const frontierReviewOverrun = reviewBudget !== undefined
+            && frontierUsage.frontierPasses > reviewBudget.maxFrontierReviewPasses;
+        const frontierRunsOverrun = reviewBudget !== undefined
+            && frontierUsage.frontierRuns > reviewBudget.maxFrontierRuns;
         review.budget = {
             maxReviewPasses: reviewBudget?.maxReviewPasses ?? 0,
             passesUsed,
             grantedPasses: effectiveGrantPasses,
             effectiveMaxReviewPasses: effectiveMaxReviewPasses ?? passesUsed,
             exhausted: budgetExhausted,
+            maxFrontierReviewPasses: reviewBudget?.maxFrontierReviewPasses ?? 0,
+            frontierPassesUsed: frontierUsage.frontierPasses,
+            maxFrontierRuns: reviewBudget?.maxFrontierRuns ?? 0,
+            frontierRunsUsed: frontierUsage.frontierRuns,
+            frontierExhausted: frontierReviewExhausted || frontierRunsExhausted,
         };
         const assessments = assessTaskReviews(reviewRecords, subject);
         const selected = reviewAssessment(assessments, subject);
+        const currentPassingReview = selected?.freshness === "current" && selected.record.result === "pass";
+        // Frontier caps stop further frontier work at the configured count. A
+        // current passing review recorded at the cap is still a valid completion;
+        // an overrun remains a hard blocker even when the overrun eventually
+        // produced a pass. Total-review grants and accept-current never lift the
+        // frontier caps.
+        if (reviewBudget && (frontierReviewOverrun || (frontierReviewExhausted && !currentPassingReview))) {
+            blockers.push(`Frontier review budget exhausted: ${frontierUsage.frontierPasses} scarce-frontier review passes recorded against a maximum of ${reviewBudget.maxFrontierReviewPasses}; more frontier review requires an explicit policy change.`);
+        }
+        if (reviewBudget && (frontierRunsOverrun || (frontierRunsExhausted && !currentPassingReview))) {
+            blockers.push(`Frontier run budget exhausted: ${frontierUsage.frontierRuns} scarce-frontier worker runs recorded against a maximum of ${reviewBudget.maxFrontierRuns}; more frontier work requires an explicit policy change.`);
+        }
         // Blockers that belong to the structured review-budget-exhaustion condition; only a
         // current accept-current decision resolving that condition may remove them.
         const exhaustionBlockers = [];
@@ -384,7 +455,7 @@ export function renderTaskCompletionGate(result) {
             ? result.verification.map((check) => `  - ${check.checkId}: ${check.result} (${check.freshness})${check.evidenceType ? ` evidenceType=${check.evidenceType}` : ""}${check.artifact ? ` artifact=${check.artifact}` : ""}${check.evidenceId ? ` evidence=${check.evidenceId}` : ""}`)
             : ["  - none"]),
         `Review: ${result.review.reason}${result.review.evidenceId ? ` evidence=${result.review.evidenceId}` : ""}`,
-        ...(result.review.budget ? [`Review budget: max=${result.review.budget.maxReviewPasses}; used=${result.review.budget.passesUsed}; granted=${result.review.budget.grantedPasses}; effective=${result.review.budget.effectiveMaxReviewPasses}; exhausted=${result.review.budget.exhausted}`] : []),
+        ...(result.review.budget ? [`Review budget: max=${result.review.budget.maxReviewPasses}; used=${result.review.budget.passesUsed}; granted=${result.review.budget.grantedPasses}; effective=${result.review.budget.effectiveMaxReviewPasses}; exhausted=${result.review.budget.exhausted}; frontier=${result.review.budget.frontierPassesUsed}/${result.review.budget.maxFrontierReviewPasses} passes, ${result.review.budget.frontierRunsUsed}/${result.review.budget.maxFrontierRuns} runs`] : []),
         ...(result.review.decision ? [`Human decision: ${result.review.decision.decision}; actor=${result.review.decision.actor}; freshness=${result.review.decision.freshness}; evidence=${result.review.decision.evidenceId}${result.review.decision.resolvedBlocker ? `; resolves=${result.review.decision.resolvedBlocker}` : ""}`] : []),
         `Evidence set: ${result.evidenceIds.length > 0 ? result.evidenceIds.join(",") : "none"}`,
     ];

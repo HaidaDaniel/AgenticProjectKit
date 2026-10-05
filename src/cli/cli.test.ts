@@ -338,6 +338,73 @@ test("ordinary medium task does not spend constrained scarce-frontier review cap
   assert.deepEqual(assurance.resourceIds, []);
 });
 
+test("frontier review caps remain independent from total review headroom", () => {
+  const frontierReview = {
+    id: "frontier-review",
+    modelId: "frontier-model",
+    harnessId: "frontier-harness",
+    location: "remote" as const,
+    billingMode: "subscription" as const,
+    costClass: "scarce-frontier" as const,
+    availability: "available" as const,
+    capacity: 1,
+    occupied: 0,
+    capabilities: { roles: ["review"], tools: [], workspaceModes: [], workerProtocols: ["apk-worker-v1"] },
+  };
+  const cheapReview = {
+    ...frontierReview,
+    id: "cheap-review",
+    modelId: "cheap-model",
+    harnessId: "cheap-harness",
+    location: "local" as const,
+    billingMode: "free" as const,
+    costClass: "cheap" as const,
+  };
+  const policy = {
+    automatedVerification: true,
+    scope: true,
+    independentReview: true,
+    reviewLevel: "independent" as const,
+    assurance: "independent" as const,
+    evidenceRequired: false,
+    evidenceCategories: [],
+    reviewBudget: { maxReviewPasses: 8, maxFrontierReviewPasses: 1, maxFrontierRuns: 1, paidEscalation: false },
+  };
+  const frontierOnly = { models: [], harnesses: [], workers: [frontierReview] };
+  const initial = resolveAssurancePlan({ policy, registry: frontierOnly, frontierUsage: { reviewPassesUsed: 0, runsUsed: 0 } });
+  assert.equal(initial.status, "ready");
+  assert.equal(initial.budget.maxReviewPasses, 8);
+  assert.equal(initial.budget.maxFrontierReviewPasses, 1);
+
+  for (const frontierUsage of [
+    { reviewPassesUsed: 1, runsUsed: 0 },
+    { reviewPassesUsed: 0, runsUsed: 1 },
+  ]) {
+    const exhausted = resolveExecutionRoute({
+      profile: "balanced",
+      role: "review",
+      policy,
+      registry: frontierOnly,
+      frontierUsage,
+    });
+    assert.equal(exhausted.kind, "needs-human");
+    assert.match(exhausted.explanation, /Frontier review budget exhausted/);
+  }
+
+  const localFallback = resolveExecutionRoute({
+    profile: "balanced",
+    role: "review",
+    policy,
+    registry: { models: [], harnesses: [], workers: [frontierReview, cheapReview] },
+    frontierUsage: { reviewPassesUsed: 1, runsUsed: 1 },
+  });
+  assert.equal(localFallback.kind, "worker");
+  assert.equal(localFallback.resourceId, "cheap-review");
+  assert.equal(localFallback.assurance?.budget.maxReviewPasses, 8);
+  assert.equal(localFallback.assurance?.budget.maxFrontierReviewPasses, 1);
+  assert.equal(localFallback.assurance?.budget.maxFrontierRuns, 1);
+});
+
 test("CLI resources renders a stable read-only registry in human and JSON forms", async () => {
   await withTempDirectory(async (directory) => {
     await mkdir(join(directory, ".agentic"), { recursive: true });

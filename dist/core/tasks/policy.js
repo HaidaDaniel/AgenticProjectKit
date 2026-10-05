@@ -27,12 +27,27 @@ const ASSURANCE_RANK = {
     independent: 3,
     diverse: 4,
 };
-const DEFAULT_REVIEW_BUDGET = {
-    maxReviewPasses: 2,
+/**
+ * Canonical bounded review budgets. Task policy and execution routing both
+ * consume these definitions so the defaults cannot drift apart. The total
+ * review headroom is deliberately larger than the scarce/frontier budgets:
+ * ordinary fix -> re-review loops should run on local or cheap reviewers,
+ * while frontier cost stays independently bounded.
+ */
+export const DEFAULT_REVIEW_BUDGET = {
+    maxReviewPasses: 8,
     maxFrontierReviewPasses: 1,
     maxFrontierRuns: 1,
     paidEscalation: false,
 };
+export const CRITICAL_REVIEW_BUDGET = {
+    maxReviewPasses: 10,
+    maxFrontierReviewPasses: 2,
+    maxFrontierRuns: 2,
+    paidEscalation: true,
+};
+/** Hard cap on the effective total review budget (base passes + operator grants). */
+export const MAX_EFFECTIVE_REVIEW_PASSES = 10;
 function maxAssurance(current, next) {
     return ASSURANCE_RANK[next] > ASSURANCE_RANK[current] ? next : current;
 }
@@ -165,8 +180,7 @@ export function resolveTaskPolicy(task, options = {}) {
     for (const trigger of triggers)
         assurance = maxAssurance(assurance, trigger.raisesTo);
     const reviewBudget = {
-        ...DEFAULT_REVIEW_BUDGET,
-        ...(task.risk === "critical" ? { maxReviewPasses: 3, maxFrontierReviewPasses: 2, maxFrontierRuns: 2, paidEscalation: true } : {}),
+        ...(task.risk === "critical" ? CRITICAL_REVIEW_BUDGET : DEFAULT_REVIEW_BUDGET),
     };
     requirements.assuranceTriggers = triggers;
     requirements.reviewBudget = reviewBudget;

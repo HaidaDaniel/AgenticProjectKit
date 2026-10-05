@@ -1,7 +1,7 @@
 # Task 0182 - Raise bounded review-loop headroom without increasing frontier spend
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-continue-20261005-1842
 Mode: maintenance
 Lane: quality
 Type: bugfix
@@ -126,6 +126,6 @@ Use a simple bounded policy rather than a new complexity estimator: total review
 
 ## Notes
 
-- Current main has default total review max=2, critical max=3, and MAX_HUMAN_REVIEW_GRANT_PASSES=2. Gate counts append-only review records across the task, so repeated changes_requested cycles can exhaust the task before a weaker implementation/reviewer loop converges.
-- Current source exposes maxFrontierReviewPasses/maxFrontierRuns in policy/execution planning, but the review/gate path must explicitly prove that actual consumption is enforced before the total budget is raised.
+- Before this change, the default total review max was 2, critical max was 3, and MAX_HUMAN_REVIEW_GRANT_PASSES was 2. Gate counts append-only review records across the task, so repeated changes_requested cycles could exhaust the task before a weaker implementation/reviewer loop converged.
+- The implementation now keeps one canonical 8/10 total-budget definition, caps effective grants at 10, and counts task-bound scarce-frontier review records plus activated worker sessions independently of total review headroom. Historical frontier review records remain spend history even when they are not current completion proof.
 - This task intentionally follows 0181 because both touch gate/review decision semantics. Do not start it against the pre-0181 implementation.

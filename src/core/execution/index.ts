@@ -1,4 +1,9 @@
-import type { AssuranceLevel, ReviewBudget, TaskPolicyRequirements } from "../tasks/policy.js";
+import {
+  DEFAULT_REVIEW_BUDGET,
+  type AssuranceLevel,
+  type ReviewBudget,
+  type TaskPolicyRequirements,
+} from "../tasks/policy.js";
 import {
   RESOURCE_COST_CLASSES,
   RESOURCE_LOCATIONS,
@@ -70,7 +75,15 @@ export interface ExecutionRouteRequest {
   calibrationRoute?: string;
   /** Raise-only calibration assurance preference. */
   assuranceFloor?: AssuranceLevel;
+  /** Recorded frontier consumption for the task; exhausted budgets exclude frontier reviewers. */
+  frontierUsage?: FrontierUsage;
   calibration?: ExecutionCalibrationInfluence;
+}
+
+/** Recorded scarce/frontier consumption for the task, from existing review/session evidence. */
+export interface FrontierUsage {
+  reviewPassesUsed?: number;
+  runsUsed?: number;
 }
 
 export interface AssurancePlanRequest {
@@ -80,6 +93,8 @@ export interface AssurancePlanRequest {
   role?: ExecutionRole;
   /** Raise-only calibration assurance preference; canonical policy is never lowered. */
   assuranceFloor?: AssuranceLevel;
+  /** Recorded frontier consumption; exhausted frontier budgets exclude frontier reviewers. */
+  frontierUsage?: FrontierUsage;
 }
 
 export interface AssurancePlan {
@@ -148,12 +163,6 @@ const ROLE_ALIASES: Record<ExecutionRole, readonly string[]> = {
 };
 
 const DEFAULT_PROFILE: ExecutionProfile = "constrained";
-const DEFAULT_ASSURANCE_BUDGET: ReviewBudget = {
-  maxReviewPasses: 2,
-  maxFrontierReviewPasses: 1,
-  maxFrontierRuns: 1,
-  paidEscalation: false,
-};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -223,15 +232,21 @@ export function resolveAssurancePlan(request: AssurancePlanRequest): AssurancePl
   const calibration = request.assuranceFloor && assuranceRank(request.assuranceFloor) > assuranceRank(canonicalRequired)
     ? { calibrationPreference: request.assuranceFloor }
     : {};
-  const budget = request.policy.reviewBudget ?? DEFAULT_ASSURANCE_BUDGET;
+  const budget = request.policy.reviewBudget ?? DEFAULT_REVIEW_BUDGET;
   if (budget.maxReviewPasses <= 0 || (assuranceRank(required) >= assuranceRank("fresh-context") && budget.maxFrontierRuns <= 0)) {
     return { required, canonicalRequired, ...calibration, selected: required, status: "budget-exhausted", budget, resourceIds: [], reason: "Review budget does not permit the required assurance." };
   }
   if (assuranceRank(required) <= assuranceRank("self-check")) {
     return { required, canonicalRequired, ...calibration, selected: required, status: "ready", budget, resourceIds: [], reason: `${required} assurance is satisfied by the implementation context and deterministic checks.` };
   }
+  // Recorded frontier consumption is enforced against the bounded frontier
+  // budgets: once either cap is reached, scarce-frontier reviewers are no
+  // longer eligible, independent of remaining total review headroom.
+  const frontierExhausted = (request.frontierUsage?.reviewPassesUsed ?? 0) >= budget.maxFrontierReviewPasses
+    || (request.frontierUsage?.runsUsed ?? 0) >= budget.maxFrontierRuns;
   const reviewWorkers = request.registry.workers.filter((worker) => {
     if (!supportsRole(worker, "review") || worker.availability !== "available" || worker.occupied >= worker.capacity) return false;
+    if (frontierExhausted && worker.costClass === "scarce-frontier") return false;
     const harness = request.registry.harnesses.find((item) => item.id === worker.harnessId);
     return required === "fresh-context" ? Boolean(harness?.sessionIsolation) : true;
   });
@@ -242,7 +257,16 @@ export function resolveAssurancePlan(request: AssurancePlanRequest): AssurancePl
     }
   }
   if (reviewWorkers.length === 0) {
-    return { required, canonicalRequired, ...calibration, selected: required, status: "unavailable", budget, resourceIds: [], reason: required === "fresh-context" ? "No available review resource proves an isolated session." : "No available review resource can satisfy the required assurance." };
+    const frontierExcluded = frontierExhausted
+      && request.registry.workers.some((worker) => {
+        if (!supportsRole(worker, "review") || worker.availability !== "available" || worker.occupied >= worker.capacity) return false;
+        if (worker.costClass !== "scarce-frontier") return false;
+        const harness = request.registry.harnesses.find((item) => item.id === worker.harnessId);
+        return required === "fresh-context" ? Boolean(harness?.sessionIsolation) : true;
+      });
+    return { required, canonicalRequired, ...calibration, selected: required, status: "unavailable", budget, resourceIds: [], reason: frontierExcluded
+      ? "Frontier review budget exhausted for the recorded usage; no available non-frontier review resource satisfies the required assurance."
+      : required === "fresh-context" ? "No available review resource proves an isolated session." : "No available review resource can satisfy the required assurance." };
   }
   return {
     required,
@@ -367,6 +391,7 @@ export function resolveExecutionRoute(request: ExecutionRouteRequest): Execution
     registry: request.registry,
     role: request.role,
     ...(request.assuranceFloor ? { assuranceFloor: request.assuranceFloor } : {}),
+    ...(request.frontierUsage ? { frontierUsage: request.frontierUsage } : {}),
   }) : undefined;
   if (assurance && assurance.status !== "ready") {
     return {

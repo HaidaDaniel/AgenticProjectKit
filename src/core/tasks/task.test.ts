@@ -738,7 +738,7 @@ test("review fields are a coherent projection of canonical assurance", () => {
   assert.equal(medium.requirements.independentReview, false);
   assert.equal(medium.requirements.reviewLevel, "none");
   assert.deepEqual(medium.requirements.reviewBudget, {
-    maxReviewPasses: 2,
+    maxReviewPasses: 8,
     maxFrontierReviewPasses: 1,
     maxFrontierRuns: 1,
     paidEscalation: false,
@@ -996,7 +996,7 @@ test("task policy raises assurance for critical and stable escalation triggers",
     "critical-risk",
   ]);
   assert.deepEqual(critical.requirements.reviewBudget, {
-    maxReviewPasses: 3,
+    maxReviewPasses: 10,
     maxFrontierReviewPasses: 2,
     maxFrontierRuns: 2,
     paidEscalation: true,
@@ -6195,7 +6195,20 @@ interface DecisionHarness {
   changedFile: string;
 }
 
-async function setupDecisionRepo(directory: string): Promise<DecisionHarness> {
+interface DecisionRepoOptions {
+  risk?: ProjectTask["risk"];
+  resources?: {
+    models: unknown[];
+    harnesses: unknown[];
+    workers: unknown[];
+  };
+  frontierRuns?: number;
+}
+
+async function setupDecisionRepo(
+  directory: string,
+  options: DecisionRepoOptions = {},
+): Promise<DecisionHarness> {
   const git = async (...args: string[]) => {
     await execFileAsync("git", args, { cwd: directory });
   };
@@ -6204,13 +6217,44 @@ async function setupDecisionRepo(directory: string): Promise<DecisionHarness> {
   await git("config", "user.name", "Codex");
   await mkdir(join(directory, ".tasks"), { recursive: true });
   await mkdir(join(directory, "src", "core", "tasks"), { recursive: true });
+  if (options.resources || options.frontierRuns) {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+  }
+  if (options.resources) {
+    await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({ resources: options.resources }), "utf8");
+  }
+  for (let index = 1; index <= (options.frontierRuns ?? 0); index += 1) {
+    const runDirectory = join(directory, ".agentic", "sessions", "work", "0007", `frontier-run-${index}`);
+    await mkdir(runDirectory, { recursive: true });
+    await writeFile(join(runDirectory, "metadata.json"), JSON.stringify({
+      protocol: "apk-worker-v1",
+      taskId: "0007",
+      runId: `frontier-run-${index}`,
+      owner: "codex-reviewer",
+      resourceId: "frontier-review",
+      role: "review",
+      packageHash: "fixture",
+    }), "utf8");
+    await writeFile(join(runDirectory, "activation.json"), JSON.stringify({
+      protocol: "apk-worker-v1",
+      taskId: "0007",
+      runId: `frontier-run-${index}`,
+      packageHash: "fixture",
+      activatedAt: "2026-10-05T00:00:00.000Z",
+    }), "utf8");
+  }
   await writeTaskFile(join(directory, ".tasks", "0007-decision-task.md"), {
     ...TASK,
     state: "todo",
     owner: "none",
+    risk: options.risk ?? "medium",
     tags: [...TASK.tags, "large"],
     dependsOn: [],
-    allowedFiles: ["src/core/tasks/**"],
+    allowedFiles: [
+      "src/core/tasks/**",
+      ...(options.resources ? [".agentic/config.json"] : []),
+      ...(options.frontierRuns ? [".agentic/sessions/**"] : []),
+    ],
     forbiddenFiles: [],
     verificationCommands: ["pass"],
   });
@@ -6224,6 +6268,80 @@ async function setupDecisionRepo(directory: string): Promise<DecisionHarness> {
   await writeFile(changedFile, "export const version = 1;\n", "utf8");
   return { directory, changedFile };
 }
+
+for (const [risk, maximum] of [["medium", 8], ["critical", 10]] as const) {
+  test(`a current passing review on the final ${risk} budget pass is accepted`, async () => {
+    await withTempDirectory(async (directory) => {
+      await setupDecisionRepo(directory, { risk });
+      const options = { rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" };
+      const verification = await verifyTask({ ...options, owner: "codex-owner", runCommand: async () => 0 });
+      for (let index = 1; index < maximum; index += 1) {
+        await recordTaskReview({
+          ...options,
+          reviewer: "codex-reviewer",
+          outcome: "changes_requested",
+          findings: [`Finding ${index}.`],
+          implementationRunId: verification.runId,
+        });
+      }
+      await recordTaskReview({
+        ...options,
+        reviewer: "codex-reviewer",
+        outcome: "pass",
+        implementationRunId: verification.runId,
+      });
+      const gate = await evaluateTaskCompletionGate(options);
+      assert.equal(gate.passed, true);
+      assert.equal(gate.review.budget?.maxReviewPasses, maximum);
+      assert.equal(gate.review.budget?.passesUsed, maximum);
+      assert.equal(gate.review.budget?.exhausted, true);
+      assert.equal(gate.review.outcome, "pass");
+      assert.ok(!gate.blockers.some((blocker) => blocker.includes("Review budget exhausted")));
+    });
+  });
+}
+
+test("the gate counts task-bound frontier review passes and activated runs", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupDecisionRepo(directory, {
+      resources: {
+        models: [{ id: "frontier-model", roles: ["review"] }],
+        harnesses: [{ id: "frontier-harness", sessionIsolation: true, workerProtocols: ["apk-worker-v1"] }],
+        workers: [{
+          id: "frontier-review",
+          modelId: "frontier-model",
+          harnessId: "frontier-harness",
+          location: "remote",
+          billingMode: "subscription",
+          costClass: "scarce-frontier",
+          availability: "available",
+          capacity: 1,
+          capabilities: { roles: ["review"], workerProtocols: ["apk-worker-v1"] },
+        }],
+      },
+      frontierRuns: 1,
+    });
+    const options = { rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" };
+    const verification = await verifyTask({ ...options, owner: "codex-owner", runCommand: async () => 0 });
+    await recordTaskReview({
+      ...options,
+      reviewer: "codex-reviewer",
+      outcome: "changes_requested",
+      implementationRunId: verification.runId,
+      resourceId: "frontier-review",
+    });
+    const gate = await evaluateTaskCompletionGate(options);
+    assert.equal(gate.review.budget?.maxReviewPasses, 8);
+    assert.equal(gate.review.budget?.passesUsed, 1);
+    assert.equal(gate.review.budget?.frontierPassesUsed, 1);
+    assert.equal(gate.review.budget?.maxFrontierReviewPasses, 1);
+    assert.equal(gate.review.budget?.frontierRunsUsed, 1);
+    assert.equal(gate.review.budget?.maxFrontierRuns, 1);
+    assert.equal(gate.review.budget?.frontierExhausted, true);
+    assert.ok(gate.blockers.some((blocker) => blocker.includes("Frontier review budget exhausted")));
+    assert.ok(gate.blockers.some((blocker) => blocker.includes("Frontier run budget exhausted")));
+  });
+});
 
 // Operator assertions below are isolated test fixtures, never repository authorization.
 for (const staleDecision of ["grant-review-passes", "accept-current", "changes-required"] as const) {
@@ -6250,7 +6368,8 @@ for (const staleDecision of ["grant-review-passes", "accept-current", "changes-r
       assert.equal(gate.review.decision?.evidenceId, current.evidence.id);
       assert.equal(gate.review.decision?.freshness, "current");
       assert.equal(gate.review.budget?.grantedPasses, 1);
-      assert.equal(gate.review.budget?.effectiveMaxReviewPasses, 3);
+      assert.equal(gate.review.budget?.effectiveMaxReviewPasses, 9);
+      assert.equal(gate.review.budget?.passesUsed, 2, "stale review history remains counted and is not reset for the new candidate");
       assert.equal(gate.review.budget?.exhausted, false);
       assert.equal(gate.passed, false, "a grant cannot replace current independent review");
       assert.ok(!gate.blockers.some((blocker) => /Human decision changes-required/.test(blocker)));
@@ -6329,7 +6448,7 @@ test("current structured acceptance supersedes grants while preserving hard bloc
     const gate = await evaluateTaskCompletionGate(options);
     assert.equal(gate.review.decision?.evidenceId, accepted.evidence.id);
     assert.equal(gate.review.budget?.grantedPasses, 0);
-    assert.equal(gate.review.budget?.effectiveMaxReviewPasses, 2);
+    assert.equal(gate.review.budget?.effectiveMaxReviewPasses, 8);
     assert.equal(gate.review.budget?.passesUsed, 2);
     assert.equal(gate.passed, false);
     assert.match(gate.review.reason, /resolved by human decision/);
@@ -6368,7 +6487,7 @@ test("accept-current resolves only review-budget exhaustion for the bound candid
       runCommand: async () => 0,
     });
     assert.equal(verification.passed, true);
-    for (let index = 1; index <= 2; index += 1) {
+    for (let index = 1; index <= 8; index += 1) {
       await recordTaskReview({
         rootDirectory: directory,
         taskDirectory: ".tasks",
@@ -6475,22 +6594,17 @@ test("accept-current on a scope-violated candidate records no gate-eligible reso
       owner: "codex-owner",
       runCommand: async () => 0,
     });
-    await recordTaskReview({
-      rootDirectory: directory,
-      taskDirectory: ".tasks",
-      taskId: "0007",
-      reviewer: "codex-reviewer",
-      outcome: "changes_requested",
-      implementationRunId: verification.runId,
-    });
-    await recordTaskReview({
-      rootDirectory: directory,
-      taskDirectory: ".tasks",
-      taskId: "0007",
-      reviewer: "codex-reviewer",
-      outcome: "changes_requested",
-      implementationRunId: verification.runId,
-    });
+    for (let index = 1; index <= 8; index += 1) {
+      await recordTaskReview({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        reviewer: "codex-reviewer",
+        outcome: "changes_requested",
+        findings: [`Finding ${index}.`],
+        implementationRunId: verification.runId,
+      });
+    }
     const before = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
     assert.ok(before.blockers.some((blocker) => blocker.includes("Review budget exhausted")));
     await writeFile(join(directory, "out-of-scope.md"), "outside\n", "utf8");
@@ -6522,22 +6636,17 @@ test("grant-review-passes extends the budget once and exhausts again after one m
       owner: "codex-owner",
       runCommand: async () => 0,
     });
-    await recordTaskReview({
-      rootDirectory: directory,
-      taskDirectory: ".tasks",
-      taskId: "0007",
-      reviewer: "codex-reviewer",
-      outcome: "changes_requested",
-      implementationRunId: verification.runId,
-    });
-    await recordTaskReview({
-      rootDirectory: directory,
-      taskDirectory: ".tasks",
-      taskId: "0007",
-      reviewer: "codex-reviewer",
-      outcome: "changes_requested",
-      implementationRunId: verification.runId,
-    });
+    for (let index = 1; index <= 8; index += 1) {
+      await recordTaskReview({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        reviewer: "codex-reviewer",
+        outcome: "changes_requested",
+        findings: [`Finding ${index}.`],
+        implementationRunId: verification.runId,
+      });
+    }
     const exhausted = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
     assert.ok(exhausted.review.budget?.exhausted);
 
@@ -6554,7 +6663,7 @@ test("grant-review-passes extends the budget once and exhausts again after one m
     const granted = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
     assert.equal(granted.review.budget?.exhausted, false);
     assert.equal(granted.review.budget?.grantedPasses, 1);
-    assert.equal(granted.review.budget?.effectiveMaxReviewPasses, 3);
+    assert.equal(granted.review.budget?.effectiveMaxReviewPasses, 9);
     assert.ok(granted.blockers.some((blocker) => blocker.includes("Independent review is changes_requested")));
     assert.ok(granted.blockers.every((blocker) => !blocker.includes("Review budget exhausted")));
 
@@ -6583,22 +6692,17 @@ test("changes-required decisions never satisfy the gate", async () => {
       owner: "codex-owner",
       runCommand: async () => 0,
     });
-    await recordTaskReview({
-      rootDirectory: directory,
-      taskDirectory: ".tasks",
-      taskId: "0007",
-      reviewer: "codex-reviewer",
-      outcome: "changes_requested",
-      implementationRunId: verification.runId,
-    });
-    await recordTaskReview({
-      rootDirectory: directory,
-      taskDirectory: ".tasks",
-      taskId: "0007",
-      reviewer: "codex-reviewer",
-      outcome: "changes_requested",
-      implementationRunId: verification.runId,
-    });
+    for (let index = 1; index <= 8; index += 1) {
+      await recordTaskReview({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        reviewer: "codex-reviewer",
+        outcome: "changes_requested",
+        findings: [`Finding ${index}.`],
+        implementationRunId: verification.runId,
+      });
+    }
     await recordTaskHumanDecision({
       rootDirectory: directory,
       taskDirectory: ".tasks",
