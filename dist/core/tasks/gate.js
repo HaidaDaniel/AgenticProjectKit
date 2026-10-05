@@ -4,7 +4,7 @@ import { compareTaskEvidenceFreshness, readTaskEvidence, } from "./evidence.js";
 import { assessTaskHumanDecisions, assessTaskReviews, listTaskHumanDecisions, listTaskReviews, MAX_HUMAN_REVIEW_GRANT_PASSES, TASK_DECISION_RESOLVED_BLOCKER, } from "./review.js";
 import { MAX_EFFECTIVE_REVIEW_PASSES, resolveTaskPolicy, } from "./policy.js";
 import { isPackagedInputPath, packagedDistTaskContractBlockers, repositoryPackagedDistContract, } from "./package-contract.js";
-import { listWorkerSessions, readActiveWorkerSession, readWorkerSessionPackage, } from "../work/session.js";
+import { listWorkerSessions, readActiveWorkerSession } from "../work/session.js";
 export class TaskCompletionGateError extends Error {
     gate;
     constructor(gate) {
@@ -125,19 +125,10 @@ async function sessionResourceProvenance(rootDirectory, session) {
         };
     }
     catch {
-        try {
-            const workerPackage = await readWorkerSessionPackage(rootDirectory, session.taskId, session.runId);
-            return {
-                ...(workerPackage.provenance.resourceId ? { resourceId: workerPackage.provenance.resourceId } : {}),
-                ...(workerPackage.provenance.resourceCostClass
-                    ? { resourceCostClass: workerPackage.provenance.resourceCostClass }
-                    : {}),
-                packageReadable: true,
-            };
-        }
-        catch {
-            return { packageReadable: false };
-        }
+        // An activation marker alone is not enough to prove issuance provenance.
+        // Any package/metadata/hash mismatch therefore consumes the frontier
+        // allowance conservatively instead of reopening it.
+        return { packageReadable: false };
     }
 }
 /**
@@ -199,7 +190,7 @@ async function countFrontierUsage(rootDirectory, taskId, reviewRecords) {
         // still task-bound spend. The canonical package may carry a resource that
         // discovery could not recover, so fail closed instead of treating it as
         // free capacity.
-        if (!provenance?.packageReadable
+        if (session.state === "malformed" || !provenance?.packageReadable
             || provenance.resourceCostClass === "scarce-frontier"
             || (provenance.resourceId !== undefined && provenance.resourceCostClass === undefined)) {
             frontierRuns += 1;
