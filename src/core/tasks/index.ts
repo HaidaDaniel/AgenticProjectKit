@@ -2200,18 +2200,26 @@ export async function startTaskVerificationEpoch(
     throw new Error(`Epoch recovery cannot read the current Git HEAD: ${error instanceof Error ? error.message : String(error)}`);
   }
 
-  let allChanged: string[];
+  let predecessorDelta: { all: string[]; historical: string[]; workingTree: string[] };
   try {
-    allChanged = await listTaskEpochChangedFilesSinceBaseline(options.rootDirectory, current);
+    predecessorDelta = await listTaskEpochChangedFilesSinceBaseline(options.rootDirectory, current);
   } catch (error: unknown) {
     throw new Error(`Epoch recovery cannot enumerate the predecessor delta: ${error instanceof Error ? error.message : String(error)}`);
   }
-  const nonBookkeepingChanged = [...new Set([
-    ...allChanged.map(normalizeRepoPath),
+  const historicalNonBookkeeping = [...new Set([
+    ...predecessorDelta.historical.map(normalizeRepoPath),
     ...(current.carriedForwardFiles ?? []).map(({ path }) => normalizeRepoPath(path)),
   ].filter((path) => !isBookkeepingPath(path, current)))].sort();
+  const workingTreeNonBookkeeping = predecessorDelta.workingTree
+    .map(normalizeRepoPath)
+    .filter((path) => !isBookkeepingPath(path, current));
 
-  let carriedForwardFiles = nonBookkeepingChanged;
+  let carriedForwardFiles = [
+    ...historicalNonBookkeeping,
+    ...(current.lineageStatus === "clean" || current.lineageStatus === "attributed"
+      ? []
+      : workingTreeNonBookkeeping),
+  ].sort();
   let predecessorCandidateId: string | undefined;
   if (current.lineageStatus === "clean" || current.lineageStatus === "attributed") {
     const scope = await captureTaskScope({
@@ -2242,6 +2250,25 @@ export async function startTaskVerificationEpoch(
     throw new Error(`Epoch recovery path set exceeds the ${MAX_TASK_ATTRIBUTION_FILES}-file safety bound.`);
   }
 
+  const validationChangedFiles = await listGitChangedFiles(options.rootDirectory);
+  const validationDirtyFiles = Object.fromEntries(
+    (await fingerprintChangedFiles(options.rootDirectory, validationChangedFiles))
+      .map(({ path, sha256 }) => [path, sha256]),
+  );
+  const validationNonBookkeeping = validationChangedFiles
+    .map(normalizeRepoPath)
+    .filter((path) => !isBookkeepingPath(path, current));
+  carriedForwardFiles = [...new Set([
+    ...carriedForwardFiles,
+    ...validationNonBookkeeping.filter((path) => (
+      current.dirtyFiles[path] === undefined
+      || current.dirtyFiles[path] !== validationDirtyFiles[path]
+    )),
+  ])].sort();
+  if (carriedForwardFiles.length > MAX_TASK_ATTRIBUTION_FILES) {
+    throw new Error(`Epoch recovery path set exceeds the ${MAX_TASK_ATTRIBUTION_FILES}-file safety bound.`);
+  }
+
   const carriedFingerprints = await fingerprintChangedFiles(options.rootDirectory, carriedForwardFiles);
   const time = new Date().toISOString();
   const carriedForwardCandidateId = predecessorCandidateId
@@ -2260,11 +2287,6 @@ export async function startTaskVerificationEpoch(
     headSha: currentHeadSha,
     carriedForwardFiles: carriedFingerprints,
   })}`;
-  const validationChangedFiles = await listGitChangedFiles(options.rootDirectory);
-  const validationDirtyFiles = Object.fromEntries(
-    (await fingerprintChangedFiles(options.rootDirectory, validationChangedFiles))
-      .map(({ path, sha256 }) => [path, sha256]),
-  );
   const validationHeadSha = (await gitOutput(options.rootDirectory, ["rev-parse", "HEAD"])).trim();
   if (validationHeadSha !== currentHeadSha) {
     throw new Error("Git HEAD changed while the verification epoch snapshot was being prepared; retry.");
@@ -2409,11 +2431,16 @@ async function resolveTaskCandidateCommit(
     if (task.id === activeTaskId || task.state !== "done") continue;
     const relativeTaskFile = normalizeRepoPath(relative(rootDirectory, taskFile.path));
     const taskBaselines = baselineRecords.filter((record) => record.taskId === task.id);
-    const authoritative = taskBaselines.find((record) => (record.phase ?? "claim") === "claim");
+    const authoritative = [...taskBaselines]
+      .filter((record) => (
+        record.repository === "git"
+        && record.headSha === parentSha
+        && ((record.phase ?? "claim") === "claim" || record.phase === "epoch")
+      ))
+      .at(-1);
     if (
       !authoritative
       || authoritative.repository !== "git"
-      || authoritative.headSha !== parentSha
       || authoritative.taskFile !== relativeTaskFile
     ) continue;
 
@@ -2821,7 +2848,7 @@ export async function listTaskChangedFilesSinceBaseline(
 async function listTaskEpochChangedFilesSinceBaseline(
   rootDirectory: string,
   baseline: TaskClaimBaseline,
-): Promise<string[]> {
+): Promise<{ all: string[]; historical: string[]; workingTree: string[] }> {
   if (baseline.repository !== "git" || !baseline.headSha) {
     throw new TaskGitComparisonError(
       ["baseline"],
@@ -2830,7 +2857,7 @@ async function listTaskEpochChangedFilesSinceBaseline(
   }
 
   const currentHead = (await gitOutput(rootDirectory, ["rev-parse", "HEAD"])).trim();
-  const paths = new Set<string>();
+  const historicalPaths = new Set<string>();
   if (currentHead !== baseline.headSha) {
     try {
       await gitOutput(rootDirectory, ["merge-base", "--is-ancestor", baseline.headSha, currentHead]);
@@ -2857,7 +2884,7 @@ async function listTaskEpochChangedFilesSinceBaseline(
       if (commitFiles.length > MAX_TASK_ATTRIBUTION_FILES) {
         throw new Error(`Epoch recovery commit ${shortenSha(sha)} exceeds the ${MAX_TASK_ATTRIBUTION_FILES}-file safety bound.`);
       }
-      for (const path of commitFiles) paths.add(normalizeGitPath(path));
+      for (const path of commitFiles) historicalPaths.add(normalizeGitPath(path));
       previous = sha;
     }
     if (previous !== currentHead) {
@@ -2869,8 +2896,12 @@ async function listTaskEpochChangedFilesSinceBaseline(
     "diff", "--name-only", "--no-renames", "-z", baseline.headSha,
   ]);
   const untracked = await gitPaths(rootDirectory, ["ls-files", "--others", "--exclude-standard", "-z"]);
-  for (const path of [...workingTreePaths, ...untracked]) paths.add(normalizeGitPath(path));
-  return [...paths].sort();
+  const workingTree = [...new Set([...workingTreePaths, ...untracked].map(normalizeGitPath))].sort();
+  return {
+    all: [...new Set([...historicalPaths, ...workingTree])].sort(),
+    historical: [...historicalPaths].sort(),
+    workingTree,
+  };
 }
 
 async function taskBaselineSnapshotDiagnostic(

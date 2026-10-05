@@ -71,6 +71,8 @@ import {
   readTaskEvidence,
   readTaskBaseline,
   listTaskChangedFilesSinceBaseline,
+  readTaskBaselineHistory,
+  listGitChangedFiles,
   renderTasksTable,
   resolveTaskPolicy,
   selectNextTask,
@@ -2787,6 +2789,8 @@ test("verification epoch recovers a stale baseline and carries the full discover
   await withTempDirectory(async (directory) => {
     await setupReclaimRepo(directory);
     await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
     const taskPath = join(directory, ".tasks", "0007-scoped-task.md");
     const task = (await loadTaskFile(taskPath)).task;
     await writeFile(join(directory, "src", "core", "tasks", "owned.ts"), "owned\n", "utf8");
@@ -2822,6 +2826,37 @@ test("verification epoch recovers a stale baseline and carries the full discover
     assert.equal(scope.outOfScopeFiles.length, 0);
     assert.equal(scope.forbiddenTouchedFiles.length, 0);
     assert.ok(scope.attribution?.carriedForwardFiles.includes("src/core/tasks/owned.ts"));
+  });
+});
+
+test("epoch snapshot validation rejects a newly dirty path before append", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const before = await readTaskBaseline(directory, "0007");
+    const beforeHeadSha = before?.headSha;
+    assert.ok(beforeHeadSha);
+    const beforeHistory = await readTaskBaselineHistory(directory, "0007");
+    await writeFile(join(directory, "secrets", "appeared-after-discovery.txt"), "forbidden\n", "utf8");
+
+    await assert.rejects(
+      () => captureTaskBaseline(
+        directory,
+        "0007",
+        "agent-a",
+        ".tasks/0007-scoped-task.md",
+        "claim",
+        undefined,
+        {
+          headSha: beforeHeadSha,
+          changedFiles: Object.keys(before.dirtyFiles).sort(),
+          dirtyFiles: before.dirtyFiles,
+        },
+      ),
+      /working-tree paths changed/i,
+    );
+    assert.equal((await readTaskBaselineHistory(directory, "0007")).length, beforeHistory.length);
+    assert.ok((await listGitChangedFiles(directory)).includes("secrets/appeared-after-discovery.txt"));
   });
 });
 
@@ -2943,6 +2978,110 @@ test("verification epoch makes predecessor evidence stale and exposes epoch prov
     assert.equal(provenance.epochs[0]?.epochId, epoch.epochId);
     assert.equal(provenance.epochs[0]?.current, true);
     assert.match(renderTaskProvenance(provenance), /Verification epochs:/);
+  });
+});
+
+test("epoch baselines prove completed candidates for later task attribution", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await startTaskEpoch({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "agent-a",
+      reason: "anchor task A before a later completed task candidate",
+    });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner: "agent-b" });
+    await startTaskEpoch({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0008",
+      owner: "agent-b",
+      reason: "anchor task B before its candidate commit",
+    });
+    await writeFile(join(directory, "docs", "task-b", "epoch-change.md"), "epoch candidate\n", "utf8");
+    await execFileAsync("git", ["add", "docs/task-b/epoch-change.md"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "epoch candidate"], { cwd: directory });
+    const candidateSha = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: directory })).stdout.trim();
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0008",
+      owner: "agent-b",
+      runCommand: async () => 0,
+    });
+    assert.equal(verification.passed, true, verification.diagnostics.join("; "));
+    await doneTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner: "agent-b" });
+    await execFileAsync("git", ["add", ".tasks/0008-bounded-task.md"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "epoch completion bookkeeping"], { cwd: directory });
+
+    const baselineA = await readTaskBaseline(directory, "0007");
+    assert.equal(baselineA?.lineageStatus, "attributed");
+    assert.ok(baselineA?.provenOtherTaskCommits?.some((commit) => commit.sha === candidateSha));
+    const result = await verifyScopedTask(directory, "agent-a");
+    assert.equal(result.passed, true, result.diagnostics.join("; "));
+    assert.ok(result.attribution?.excludedFiles.includes("docs/task-b/epoch-change.md"));
+  });
+});
+
+test("a carried path overlapping a proven task commit remains ambiguous", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    const taskBPath = join(directory, ".tasks", "0008-bounded-task.md");
+    const taskB = (await loadTaskFile(taskBPath)).task;
+    await writeTaskFile(taskBPath, {
+      ...taskB,
+      allowedFiles: [...taskB.allowedFiles, "src/core/tasks/**"],
+    });
+    await execFileAsync("git", ["add", taskBPath], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "expand task B scope"], { cwd: directory });
+
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const sharedPath = "src/core/tasks/shared.ts";
+    await writeFile(join(directory, sharedPath), "A\n", "utf8");
+    await execFileAsync("git", ["add", sharedPath], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "task A candidate"], { cwd: directory });
+    await startTaskEpoch({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "agent-a",
+      reason: "carry the existing task A candidate before parallel attribution",
+    });
+
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner: "agent-b" });
+    await startTaskEpoch({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0008",
+      owner: "agent-b",
+      reason: "anchor task B before its shared-path candidate",
+    });
+    await writeFile(join(directory, sharedPath), "B\n", "utf8");
+    await execFileAsync("git", ["add", sharedPath], { cwd: directory });
+    const candidate = await execFileAsync("git", ["commit", "--quiet", "-m", "task B shared path"], { cwd: directory });
+    const candidateSha = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: directory })).stdout.trim();
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0008",
+      owner: "agent-b",
+      runCommand: async () => 0,
+    });
+    assert.equal(verification.passed, true, verification.diagnostics.join("; "));
+    await doneTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner: "agent-b" });
+    await execFileAsync("git", ["add", ".tasks/0008-bounded-task.md"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "task B completion bookkeeping"], { cwd: directory });
+    assert.equal(candidate.stdout, "");
+
+    const baselineA = await readTaskBaseline(directory, "0007");
+    assert.equal(baselineA?.lineageStatus, "attributed");
+    assert.ok(baselineA?.provenOtherTaskCommits?.some((commit) => commit.sha === candidateSha));
+    const result = await verifyScopedTask(directory, "agent-a");
+    assert.equal(result.passed, false);
+    assert.equal(result.attribution?.excludedFiles.includes(sharedPath), false);
+    assert.ok(result.attribution?.diagnostics.some((diagnostic) => /carried-forward path.*ambiguous/i.test(diagnostic)));
   });
 });
 

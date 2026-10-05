@@ -3751,6 +3751,28 @@ test("CLI task gate --help shows usage", async () => {
   assert.match(result.stdout, /read-only/);
 });
 
+test("CLI task epoch accepts flag values without treating them as task ids", async () => {
+  await withTempDirectory(async (directory) => {
+    await initGitRepo(directory);
+    await writeTaskFile(directory, "0001", "todo", "none");
+    await execFileAsync("git", ["add", ".tasks/0001-task.md"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "task contract"], { cwd: directory });
+    const registered = await runCli([
+      "agent", "register", "--id", "epoch-owner", "--platform", "codex", "--model", "gpt-5",
+    ], directory);
+    assert.equal(registered.exitCode, 0, `${registered.stdout}${registered.stderr}`);
+    const claimed = await runCli(["claim", "0001", "--owner", "epoch-owner"], directory);
+    assert.equal(claimed.exitCode, 0, `${claimed.stdout}${claimed.stderr}`);
+
+    const epoch = await runCli([
+      "task", "epoch", "0001", "--owner", "epoch-owner", "--reason", "refresh stale verification anchor",
+    ], directory);
+    assert.equal(epoch.exitCode, 0, `${epoch.stdout}${epoch.stderr}`);
+    assert.match(epoch.stdout, /Epoch: epoch:/);
+    assert.match(epoch.stdout, /Carried paths: 0/);
+  });
+});
+
 test("CLI task decision --help exposes the operator decision surface", async () => {
   const result = await runCli(["task", "decision", "--help"]);
 
