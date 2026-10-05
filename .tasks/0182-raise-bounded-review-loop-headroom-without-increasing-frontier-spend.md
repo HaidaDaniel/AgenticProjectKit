@@ -1,6 +1,6 @@
 # Task 0182 - Raise bounded review-loop headroom without increasing frontier spend
 
-State: doing
+State: done
 Owner: codex-continue-20261005-1842
 Mode: maintenance
 Lane: quality
