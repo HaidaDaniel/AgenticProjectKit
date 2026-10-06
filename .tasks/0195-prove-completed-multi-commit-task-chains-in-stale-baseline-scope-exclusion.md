@@ -1,6 +1,6 @@
 # Task 0195 - Prove completed multi-commit task chains in stale-baseline scope exclusion
 
-State: doing
+State: done
 Owner: opencode-0191-finish
 Mode: product
 Lane: bugfix
