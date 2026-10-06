@@ -6689,6 +6689,35 @@ test("archive preview blocks live literal task-path references before mutation",
   });
 });
 
+test("archive preview scans no-Git source, immutable history, and binary references", async () => {
+  await withTempDirectory(async (directory) => {
+    const taskPath = join(directory, ".tasks", "0001-done-task.md");
+    await writeTaskFile(taskPath, {
+      ...TASK,
+      id: "0001",
+      title: "Done Task",
+      state: "done",
+      owner: "archive",
+    });
+    await mkdir(join(directory, "src"), { recursive: true });
+    await mkdir(join(directory, "docs", "releases"), { recursive: true });
+    const literal = ".tasks/0001-done-task.md";
+    await writeFile(join(directory, "src", "fixture.ts"), `const taskPath = ${JSON.stringify(literal)};\n`, "utf8");
+    await writeFile(join(directory, "docs", "releases", "history.md"), `Historical note: ${literal}\n`, "utf8");
+    await writeFile(
+      join(directory, "src", "fixture.bin"),
+      Buffer.concat([Buffer.from([0xff, 0x00]), Buffer.from(`${literal}\n`)]),
+    );
+
+    const preview = await previewArchiveTask(directory, ".tasks", "0001");
+    assert.equal(preview.canArchive, false);
+    assert.ok(preview.references.some((reference) => reference.path === "src/fixture.ts" && reference.kind === "tracked-text"));
+    assert.ok(preview.references.some((reference) => reference.path === "docs/releases/history.md" && reference.kind === "immutable-history"));
+    assert.ok(preview.references.some((reference) => reference.path === "src/fixture.bin" && reference.kind === "tracked-text"));
+    assert.match(preview.blockers.join("\n"), /src\/fixture\.bin/);
+  });
+});
+
 test("archiveTask refuses to archive task that does not exist", async () => {
   await withTempDirectory(async (directory) => {
     await mkdir(join(directory, ".tasks"), { recursive: true });
@@ -6767,7 +6796,7 @@ test("archiveAllTasks skips unsafe literal references without partial guessing",
   });
 });
 
-test("archiveAllTasks refuses archive path collisions with clear error", async () => {
+test("archive preview and apply skip archive path collisions consistently", async () => {
   await withTempDirectory(async (directory) => {
     await writeTaskFile(
       join(directory, ".tasks", "0001-done-task.md"),
@@ -6780,10 +6809,12 @@ test("archiveAllTasks refuses archive path collisions with clear error", async (
       "utf8",
     );
 
-    await assert.rejects(
-      () => archiveAllTasks(directory, ".tasks"),
-      /Archive path already exists/,
-    );
+    const preview = await previewArchiveTask(directory, ".tasks", "0001");
+    assert.equal(preview.canArchive, false);
+    assert.match(preview.blockers.join("\n"), /Archive path already exists/);
+    const result = await archiveAllTasks(directory, ".tasks");
+    assert.deepEqual(result.archived, []);
+    assert.deepEqual(result.skipped.map((entry) => entry.taskId), ["0001"]);
     assert.doesNotReject(
       () => readFile(join(directory, ".tasks", "0001-done-task.md")),
     );

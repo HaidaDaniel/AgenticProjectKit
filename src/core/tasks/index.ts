@@ -999,13 +999,16 @@ export async function listTaskFiles(
 export async function listArchivedTaskFiles(
   rootDirectory: string,
   taskDirectory = ".tasks",
+  excludedPaths: readonly string[] = [],
 ): Promise<ProjectTaskFile[]> {
   const archiveDirectory = join(rootDirectory, taskDirectory, "archive");
+  const excluded = new Set(excludedPaths.map((path) => normalizeRepoPath(path)));
   const entries = await readdir(archiveDirectory).catch(() => []);
   const files: ProjectTaskFile[] = [];
 
   for (const entry of entries.filter((name) => name.endsWith(".md")).sort()) {
-    files.push(await loadTaskFile(join(archiveDirectory, entry)));
+    const path = join(archiveDirectory, entry);
+    if (!excluded.has(normalizeRepoPath(path))) files.push(await loadTaskFile(path));
   }
 
   return files.sort((left, right) => {
@@ -1091,27 +1094,112 @@ function archiveReferenceKind(
   return "tracked-text";
 }
 
+interface ArchiveReferenceScanResult {
+  references: Map<string, TaskArchiveReference[]>;
+  blockers: string[];
+}
+
+function archiveErrorMessage(error: unknown): string {
+  if (error && typeof error === "object") {
+    const candidate = error as { message?: unknown; stderr?: unknown };
+    const stderr = typeof candidate.stderr === "string" ? candidate.stderr.trim() : "";
+    if (stderr) return stderr;
+    if (typeof candidate.message === "string") return candidate.message;
+  }
+  return String(error);
+}
+
+function isIntentionalNonGitError(error: unknown): boolean {
+  return /not a git repository|not a git repo/i.test(archiveErrorMessage(error));
+}
+
+async function listFallbackArchiveReferencePaths(
+  rootDirectory: string,
+  activeFiles: readonly ProjectTaskFile[],
+): Promise<string[]> {
+  const paths = new Set(activeFiles.map((file) => archiveRelativePath(rootDirectory, file.path)));
+  let discovered = paths.size;
+
+  async function visit(directory: string, relativeDirectory: string): Promise<void> {
+    const entries = await readdir(directory, { withFileTypes: true });
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+      if (!relativeDirectory && [".git", "node_modules"].includes(entry.name)) continue;
+      const relativePath = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name;
+      const absolutePath = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        await visit(absolutePath, relativePath);
+        continue;
+      }
+      if (!paths.has(normalizeRepoPath(relativePath))) discovered += 1;
+      if (discovered > MAX_ARCHIVE_REFERENCE_FILES) {
+        throw new Error(`Archive reference scan exceeds the ${MAX_ARCHIVE_REFERENCE_FILES}-file safety limit while walking a non-Git directory.`);
+      }
+      paths.add(normalizeRepoPath(relativePath));
+    }
+  }
+
+  await visit(rootDirectory, "");
+  return [...paths].sort();
+}
+
+async function listArchiveReferencePaths(
+  rootDirectory: string,
+  activeFiles: readonly ProjectTaskFile[],
+): Promise<string[]> {
+  let isGitRepository = false;
+  try {
+    const result = await execFileAsync("git", ["rev-parse", "--is-inside-work-tree"], {
+      cwd: rootDirectory,
+      encoding: "utf8",
+      maxBuffer: 1024,
+      windowsHide: true,
+    });
+    isGitRepository = result.stdout.trim() === "true";
+  } catch (error: unknown) {
+    if (isIntentionalNonGitError(error)) {
+      return listFallbackArchiveReferencePaths(rootDirectory, activeFiles);
+    }
+    throw new Error(`Archive reference scan cannot determine repository state: ${archiveErrorMessage(error)}`);
+  }
+
+  if (!isGitRepository) return listFallbackArchiveReferencePaths(rootDirectory, activeFiles);
+
+  const [tracked, untracked] = await Promise.all([
+    gitPaths(rootDirectory, ["ls-files", "--cached", "-z"]),
+    gitPaths(rootDirectory, ["ls-files", "--others", "--exclude-standard", "-z"]),
+  ]);
+  const activePaths = activeFiles.map((file) => archiveRelativePath(rootDirectory, file.path));
+  return [...new Set([...tracked, ...untracked, ...activePaths].map(normalizeGitPath))].sort();
+}
+
+function lineNumberAtOffset(bytes: Buffer, offset: number): number {
+  let line = 1;
+  for (let index = 0; index < offset; index += 1) {
+    if (bytes[index] === 0x0a) line += 1;
+  }
+  return line;
+}
+
 async function scanArchiveReferences(
   rootDirectory: string,
   taskDirectory: string,
   candidates: readonly ProjectTaskFile[],
   activeFiles: readonly ProjectTaskFile[],
-): Promise<Map<string, TaskArchiveReference[]>> {
+): Promise<ArchiveReferenceScanResult> {
   const references = new Map<string, TaskArchiveReference[]>();
-  if (candidates.length === 0) return references;
+  const blockers: string[] = [];
+  if (candidates.length === 0) return { references, blockers };
 
   let trackedPaths: string[];
   try {
-    trackedPaths = (await gitPaths(rootDirectory, ["ls-files", "-z"]))
-      .map(normalizeGitPath)
-      .sort();
-  } catch {
-    // A non-Git fixture has no tracked index, but active task contracts still
-    // carry live context references and must be inspected before a move.
+    trackedPaths = await listArchiveReferencePaths(rootDirectory, activeFiles);
+  } catch (error: unknown) {
+    blockers.push(archiveErrorMessage(error));
     trackedPaths = activeFiles.map((file) => archiveRelativePath(rootDirectory, file.path)).sort();
   }
   if (trackedPaths.length > MAX_ARCHIVE_REFERENCE_FILES) {
-    throw new Error(`Archive reference scan exceeds the ${MAX_ARCHIVE_REFERENCE_FILES}-file safety limit.`);
+    blockers.push(`Archive reference scan exceeds the ${MAX_ARCHIVE_REFERENCE_FILES}-file safety limit.`);
+    trackedPaths = trackedPaths.slice(0, MAX_ARCHIVE_REFERENCE_FILES);
   }
 
   const tokens = candidates.map((file) => {
@@ -1131,46 +1219,58 @@ async function scanArchiveReferences(
     let size: number;
     try {
       size = (await stat(absolutePath)).size;
-    } catch {
+    } catch (error: unknown) {
+      blockers.push(`Archive reference scan cannot inspect ${trackedPath}: ${archiveErrorMessage(error)}`);
       continue;
     }
     if (size > MAX_ARCHIVE_REFERENCE_FILE_BYTES) {
-      throw new Error(`Archive reference scan cannot inspect ${trackedPath}; file exceeds the ${MAX_ARCHIVE_REFERENCE_FILE_BYTES}-byte safety limit.`);
+      blockers.push(`Archive reference scan cannot inspect ${trackedPath}; file exceeds the ${MAX_ARCHIVE_REFERENCE_FILE_BYTES}-byte safety limit.`);
+      continue;
     }
     totalBytes += size;
     if (totalBytes > MAX_ARCHIVE_REFERENCE_TOTAL_BYTES) {
-      throw new Error(`Archive reference scan exceeds the ${MAX_ARCHIVE_REFERENCE_TOTAL_BYTES}-byte safety limit.`);
+      blockers.push(`Archive reference scan exceeds the ${MAX_ARCHIVE_REFERENCE_TOTAL_BYTES}-byte safety limit.`);
+      break;
     }
 
-    const bytes = await readFile(absolutePath);
-    if (bytes.includes(0)) continue;
-    const content = bytes.toString("utf8");
-    if (!Buffer.from(content, "utf8").equals(bytes)) continue;
-    const lines = content.split(/\r?\n/);
-    for (const [index, line] of lines.entries()) {
-      for (const token of tokens) {
-        for (const literal of token.literals) {
-          if (!line.includes(literal)) continue;
+    let bytes: Buffer;
+    try {
+      bytes = await readFile(absolutePath);
+    } catch (error: unknown) {
+      blockers.push(`Archive reference scan cannot read ${trackedPath}: ${archiveErrorMessage(error)}`);
+      continue;
+    }
+    for (const token of tokens) {
+      for (const literal of token.literals) {
+        const needle = Buffer.from(literal, "utf8");
+        let offset = bytes.indexOf(needle);
+        while (offset >= 0) {
           matchCount += 1;
           if (matchCount > MAX_ARCHIVE_REFERENCE_MATCHES) {
-            throw new Error(`Archive reference scan exceeds the ${MAX_ARCHIVE_REFERENCE_MATCHES}-match safety limit.`);
+            blockers.push(`Archive reference scan exceeds the ${MAX_ARCHIVE_REFERENCE_MATCHES}-match safety limit.`);
+            break;
           }
+          const line = lineNumberAtOffset(bytes, offset);
           const existing = references.get(token.taskId) ?? [];
-          if (!existing.some((reference) => reference.path === trackedPath && reference.line === index + 1 && reference.literal === literal)) {
+          if (!existing.some((reference) => reference.path === trackedPath && reference.line === line && reference.literal === literal)) {
             existing.push({
               path: trackedPath,
-              line: index + 1,
+              line,
               literal,
               kind: archiveReferenceKind(trackedPath, rootDirectory, taskDirectory, activeFiles),
             });
             references.set(token.taskId, existing);
           }
+          offset = bytes.indexOf(needle, offset + needle.length);
         }
+        if (matchCount > MAX_ARCHIVE_REFERENCE_MATCHES) break;
       }
+      if (matchCount > MAX_ARCHIVE_REFERENCE_MATCHES) break;
     }
+    if (matchCount > MAX_ARCHIVE_REFERENCE_MATCHES) break;
   }
 
-  return references;
+  return { references, blockers: [...new Set(blockers)] };
 }
 
 function archivePlanError(plan: TaskArchivePlan): Error {
@@ -1186,7 +1286,6 @@ export async function previewArchiveTasks(
   taskIds?: readonly string[],
 ): Promise<TaskArchivePreviewResult> {
   const activeFiles = await listTaskFiles(rootDirectory, taskDirectory);
-  const archivedFiles = await listArchivedTaskFiles(rootDirectory, taskDirectory);
   const candidates = taskIds === undefined
     ? activeFiles.filter((file) => isArchiveTerminalState(file.task.state))
     : taskIds.map((taskId) => {
@@ -1194,19 +1293,33 @@ export async function previewArchiveTasks(
       if (!file) throw new Error(`Task file not found for id: ${taskId}`);
       return file;
     });
-  const references = await scanArchiveReferences(rootDirectory, taskDirectory, candidates, activeFiles);
-  const plans = candidates.map((file): TaskArchivePlan => {
+  const archivePathForFile = (file: ProjectTaskFile): string => {
     const sourcePath = archiveRelativePath(rootDirectory, file.path);
-    const archivePath = `${normalizeRepoPath(taskDirectory).replace(/\/$/, "")}/archive/${sourcePath.split("/").pop()!}`;
+    return `${normalizeRepoPath(taskDirectory).replace(/\/$/, "")}/archive/${sourcePath.split("/").pop()!}`;
+  };
+  const existingArchivePaths: string[] = [];
+  for (const candidate of candidates) {
+    const archivePath = archivePathForFile(candidate);
+    if (await pathExists(join(rootDirectory, archivePath))) existingArchivePaths.push(join(rootDirectory, archivePath));
+  }
+  const archivedFiles = await listArchivedTaskFiles(rootDirectory, taskDirectory, existingArchivePaths);
+  const scan = await scanArchiveReferences(rootDirectory, taskDirectory, candidates, activeFiles);
+  const plans = await Promise.all(candidates.map(async (file): Promise<TaskArchivePlan> => {
+    const sourcePath = archiveRelativePath(rootDirectory, file.path);
+    const archivePath = archivePathForFile(file);
     const blockers: string[] = [];
     if (!isArchiveTerminalState(file.task.state)) {
       blockers.push(`state is ${file.task.state}; only done or canceled tasks can be archived.`);
     }
-    if (references.has(file.task.id)) {
-      for (const reference of references.get(file.task.id)!) {
+    if (await pathExists(join(rootDirectory, archivePath))) {
+      blockers.push(`Archive path already exists: ${archivePath}`);
+    }
+    if (scan.references.has(file.task.id)) {
+      for (const reference of scan.references.get(file.task.id)!) {
         blockers.push(`literal reference ${reference.path}:${reference.line} (${reference.kind}) uses ${reference.literal}; retain the task or update the reference in a separate scoped task.`);
       }
     }
+    blockers.push(...scan.blockers);
     const dependents = findTaskDependents(activeFiles, file.task.id, archivedFiles);
     return {
       taskId: file.task.id,
@@ -1214,11 +1327,11 @@ export async function previewArchiveTasks(
       sourcePath,
       archivePath,
       dependents,
-      references: references.get(file.task.id) ?? [],
+      references: scan.references.get(file.task.id) ?? [],
       blockers,
       canArchive: blockers.length === 0,
     };
-  });
+  }));
   return { plans };
 }
 
@@ -1228,29 +1341,45 @@ async function applyArchiveTasks(
   taskIds?: readonly string[],
 ): Promise<TaskArchiveAllResult> {
   return withTaskMutationLock(rootDirectory, taskDirectory, "task archive", undefined, async () => {
-    const activeFiles = await listTaskFiles(rootDirectory, taskDirectory);
-    const collisionCandidates = taskIds === undefined
-      ? activeFiles.filter((file) => isArchiveTerminalState(file.task.state))
-      : activeFiles.filter((file) => taskIds.includes(file.task.id) && isArchiveTerminalState(file.task.state));
-    for (const file of collisionCandidates) {
-      const sourcePath = archiveRelativePath(rootDirectory, file.path);
-      const archivePath = `${normalizeRepoPath(taskDirectory).replace(/\/$/, "")}/archive/${sourcePath.split("/").pop()!}`;
-      if (await fileExists(join(rootDirectory, archivePath))) {
-        throw new Error(`Archive path already exists: ${archivePath}`);
-      }
-    }
     const preview = await previewArchiveTasks(rootDirectory, taskDirectory, taskIds);
-    const skipped = preview.plans.filter((plan) => !plan.canArchive);
+    const finalPreview = await previewArchiveTasks(rootDirectory, taskDirectory, taskIds);
+    if (JSON.stringify(preview.plans) !== JSON.stringify(finalPreview.plans)) {
+      throw new Error("Archive preview changed before mutation; re-run the preview and apply the current plan.");
+    }
+    const currentPreview = finalPreview;
+    const skipped = currentPreview.plans.filter((plan) => !plan.canArchive);
     if (taskIds !== undefined && taskIds.length === 1 && skipped.length > 0) {
       throw archivePlanError(skipped[0]);
     }
     const archived: TaskArchiveResult[] = [];
-    if (preview.plans.some((plan) => plan.canArchive)) {
+    if (currentPreview.plans.some((plan) => plan.canArchive)) {
       await mkdir(join(rootDirectory, taskDirectory, "archive"), { recursive: true });
     }
-    for (const plan of preview.plans.filter((candidate) => candidate.canArchive)) {
-      await rename(join(rootDirectory, plan.sourcePath), join(rootDirectory, plan.archivePath));
-      archived.push({ taskId: plan.taskId, sourcePath: plan.sourcePath, archivePath: plan.archivePath });
+    const moved: TaskArchiveResult[] = [];
+    try {
+      for (const plan of currentPreview.plans.filter((candidate) => candidate.canArchive)) {
+        const source = join(rootDirectory, plan.sourcePath);
+        const destination = join(rootDirectory, plan.archivePath);
+        if (!(await pathExists(source))) throw new Error(`Archive source no longer exists: ${plan.sourcePath}`);
+        if (await pathExists(destination)) throw new Error(`Archive path already exists: ${plan.archivePath}`);
+        await rename(source, destination);
+        const result = { taskId: plan.taskId, sourcePath: plan.sourcePath, archivePath: plan.archivePath };
+        moved.push(result);
+        archived.push(result);
+      }
+    } catch (error: unknown) {
+      const rollbackErrors: string[] = [];
+      for (const result of [...moved].reverse()) {
+        try {
+          await rename(join(rootDirectory, result.archivePath), join(rootDirectory, result.sourcePath));
+        } catch (rollbackError: unknown) {
+          rollbackErrors.push(`${result.taskId}: ${archiveErrorMessage(rollbackError)}`);
+        }
+      }
+      if (rollbackErrors.length > 0) {
+        throw new Error(`Archive mutation failed: ${archiveErrorMessage(error)}; rollback failed: ${rollbackErrors.join("; ")}`);
+      }
+      throw error;
     }
     return { archived, skipped };
   });
@@ -1899,6 +2028,17 @@ async function fileExists(path: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch (error: unknown) {
+    const code = error && typeof error === "object" ? (error as { code?: unknown }).code : undefined;
+    if (code === "ENOENT" || code === "ENOTDIR") return false;
+    throw error;
   }
 }
 

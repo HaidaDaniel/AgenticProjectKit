@@ -5079,7 +5079,7 @@ test("CLI task deps works for archived task without stack trace", async () => {
   });
 });
 
-test("CLI task archive --all refuses archive path collisions", async () => {
+test("CLI task archive --all reports archive path collisions as skipped", async () => {
   await withTempDirectory(async (directory) => {
     const tasksDir = join(directory, ".tasks");
     await mkdir(tasksDir, { recursive: true });
@@ -5097,10 +5097,10 @@ test("CLI task archive --all refuses archive path collisions", async () => {
 
     const result = await runCli(["task", "archive", "--all"], directory);
 
-    assert.equal(result.exitCode, 1);
+    assert.equal(result.exitCode, 0);
     assert.ok(
-      result.stdout.match(/Archive path already exists/) || result.stderr.match(/Archive path already exists/),
-      "Expected archive collision error",
+      result.stdout.match(/Skipped: 0001[\s\S]*Archive path already exists/) || result.stderr.match(/Skipped: 0001[\s\S]*Archive path already exists/),
+      "Expected archive collision skip reason",
     );
     assert.doesNotReject(
       () => readFile(join(directory, ".tasks", "0001-done-task.md")),
