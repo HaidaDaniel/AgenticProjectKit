@@ -64,7 +64,7 @@ ResLedger supplies several independent traces:
 | --- | --- | --- |
 | 0105 | `4f24c03` implementation | `524f58d` (`docs(0105): record task completion lifecycle state`), then `ca40ba8` fix and `ce24dbe` path-contract correction |
 | 0106 | `e3ebbb5` implementation | `dff6832` (`docs(0106): record task completion lifecycle state`), then `85ebb90` evidence/documentation correction |
-| 0107 | `acc81e1` implementation | `5c481b1` (`docs(0107): record task completion lifecycle state`), then `910149b` behavioral harness and `70189e0` evidence-bound correction |
+| 0107 | `acc81e1` implementation | `5c481b1` (`docs(0107): record task completion lifecycle state`), then `910149b` behavioral harness and `70189a3` evidence-bound correction |
 
 The completion diffs for these commits are task-file state updates, not hidden
 implementation work at the time they were created. The later reopen/fix commits also
@@ -108,6 +108,15 @@ The current task/evidence modules provide separate but connected facts:
 - Gate freshness is candidate-bound. Rewriting or amending the candidate after the
   evidence set is recorded changes the identity that the evidence proves.
 
+APK also appends a local `completion` evidence record after the gate. For 0186,
+`evidence-1791280244248-fkxup5` (`completion-1791280244248-8w1mgk`) points at
+candidate `041f69e` and lists the five automated records plus the independent review
+record in its `evidenceSet`. This is useful operational provenance, but the record
+lives in ignored `.agentic/evidence.jsonl`: it is not a tracked shared lifecycle
+projection, is absent from a fresh clone unless separately copied, and does not by
+itself represent release, block, cancel, or reclaim intent. The tracked task state
+therefore remains necessary even when completion evidence is candidate-bound.
+
 Any alternative must support all of the following in a fresh clone and on an offline
 machine that later pushes normally:
 
@@ -134,25 +143,31 @@ machine that later pushes normally:
 The status-facing behavior is also part of the storage decision, not a cosmetic
 consumer detail:
 
-- **KEEP TRACKED MARKDOWN:** `status`, `next-task`, dependency checks, and archive
-  lookup read the same tracked task fields that collaborators see. A fresh clone can
-  answer all four questions without replaying runtime state.
-- **TRACKED LIFECYCLE JOURNAL:** every command must replay the journal over the legacy
-  contract, resolve duplicate/out-of-order events, and make archive move both the
-  contract and its journal history. `next-task` cannot silently choose a task while
-  the journal is missing or conflicted.
-- **GIT NOTES/REFS:** status and `next-task` become unknown when the custom ref is not
-  fetched; archive and dependency tools need explicit notes/ref plumbing. A normal
-  patch, exported archive, or fresh clone is not enough.
-- **DERIVED LIFECYCLE:** a passing check cannot deterministically choose between
-  review, done, blocked, or canceled, so status and `next-task` would need heuristic
-  tie-breakers. Archive would risk moving a task whose inferred state is incomplete.
-- **LOCAL RUNTIME + PUBLISHED COMPLETION SNAPSHOT:** status and `next-task` can use
-  local state before publication but must report unknown in a fresh clone; archive and
-  dependencies cannot rely on the unpublished snapshot.
-- **COMBINED CANDIDATE/COMPLETION COMMIT:** status and archive are simple only after
-  accepting the unsafe pre-gate `done` semantics. If the system waits for the gate,
-  it still needs a second lifecycle event and loses the promised reduction.
+- **KEEP TRACKED MARKDOWN:** `status` reads tracked `State`; `next-task` reads the
+  same state and dependency fields; `archive` moves the tracked task with its archive
+  identity; `dependency` checks use the same fetched Markdown. A fresh clone answers
+  all four without replaying runtime state.
+- **TRACKED LIFECYCLE JOURNAL:** `status` replays journal events over the legacy
+  contract; `next-task` must refuse to choose while events are missing or conflicted;
+  `archive` moves the contract and preserves its journal history; `dependency` checks
+  must replay the same ordering and reject unresolved duplicates/out-of-order events.
+- **GIT NOTES/REFS:** `status` and `next-task` are unknown when the custom ref is not
+  fetched; `archive` needs explicit notes/ref lookup and publication; `dependency`
+  checks need the same ref plumbing and fail closed when notes are absent. A normal
+  patch or fresh clone is not enough.
+- **DERIVED LIFECYCLE:** `status` needs heuristic tie-breakers between review, done,
+  blocked, and canceled; `next-task` cannot safely select from an inferred state;
+  `archive` risks moving an incomplete task; `dependency` checks cannot distinguish a
+  stale pass from a valid completion. All four remain ambiguous without a new state
+  event schema.
+- **LOCAL RUNTIME + PUBLISHED COMPLETION SNAPSHOT:** `status` and `next-task` can use
+  local state before publication but are unknown in a fresh clone; `archive` requires
+  a published snapshot and legacy fallback; `dependency` checks cannot rely on an
+  unpublished snapshot. Publication therefore remains the shared boundary.
+- **COMBINED CANDIDATE/COMPLETION COMMIT:** `status` and `archive` are simple only if
+  the task is marked done before the final gate; `next-task` and `dependency` checks
+  then expose unsafe pre-gate state. If completion waits for the gate, a second
+  lifecycle event is still required and the promised reduction disappears.
 
 ## Merge and rebase behavior by option
 
@@ -161,35 +176,35 @@ small state relocation can weaken provenance. For every option, the safe rule is
 candidate rebase after evidence binding changes the candidate identity and therefore
 requires a fresh candidate/evidence cycle; it is not a cleanup operation.
 
-- **KEEP TRACKED MARKDOWN:** A clean merge can carry an already-proven candidate or a
-  completion-only child when 0184 can attribute every changed path. An ambiguous or
-  conflict-resolution merge remains fail-closed; the lifecycle child cannot hide a
-  forbidden path. Rebase after evidence binding is rejected as a candidate change.
-- **TRACKED LIFECYCLE JOURNAL:** A clean merge must replay journal entries with stable
-  event IDs and candidate/epoch subjects. An ambiguous merge or conflicting journal
-  order must remain unresolved rather than choosing a parent. A completion-only child
-  is another journal event, so it does not remove a commit. Rebase requires retaining
-  predecessor event identity and refreshing candidate-bound evidence.
-- **GIT NOTES/REFS:** A clean merge does not automatically carry notes attached to a
-  parent or a completion child; consumers must fetch the relevant ref and resolve the
-  merge explicitly. Conflict-resolution notes and missing refs fail closed, but this
-  behavior is outside the normal clone contract. Rebasing changes note keys and needs
-  a separate migration/publication step after evidence binding.
-- **DERIVED LIFECYCLE:** A clean merge can duplicate or omit the evidence records from
-  which state is inferred; an ambiguous merge must produce unknown state rather than a
-  guessed done state. A completion-only child has no distinct lifecycle fact to derive
-  unless another event schema is added. Rebasing makes the derived evidence subject
-  stale and cannot be silently normalized.
-- **LOCAL RUNTIME + PUBLISHED COMPLETION SNAPSHOT:** Concurrent clean merges can carry
-  snapshots only when each snapshot names its candidate and predecessor. Conflict
-  resolution or a missing offline publication must remain pending, and a completion-
-  only child still represents the shared publication event. A local rebase after
-  evidence binding invalidates the unpublished candidate and requires republishing.
-- **COMBINED CANDIDATE/COMPLETION COMMIT:** A clean merge is safe only if the complete
-  combined commit was reviewed as that exact candidate. An ambiguous/conflict-
-  resolution merge cannot be assigned to a parent, and a separate completion child
-  defeats the one-commit promise. Rebasing the reviewed combined commit changes the
-  evidence subject and is unsafe without a new review/gate cycle.
+- **KEEP TRACKED MARKDOWN:** Clean merge can carry a proven candidate or completion-only
+  child when 0184 attributes every path; ambiguous merge remains fail-closed; conflict-
+  resolution merge must also revalidate path attribution; completion-only child cannot
+  hide forbidden paths; rebase after evidence binding is a new candidate and is rejected
+  without a fresh cycle.
+- **TRACKED LIFECYCLE JOURNAL:** Clean merge replays stable event IDs and subjects;
+  ambiguous merge remains unresolved; conflict-resolution merge must preserve event
+  ordering or fail closed; completion-only child is another journal event and does not
+  remove a commit; rebase after evidence binding retains predecessor identity and needs
+  refreshed candidate-bound evidence.
+- **GIT NOTES/REFS:** Clean merge does not automatically carry notes or a completion-only
+  child; ambiguous merge requires explicit ref fetch and resolution; conflict-resolution
+  merge with missing/conflicting notes fails closed outside the normal clone contract;
+  completion-only child still requires separate ref publication; rebase after evidence
+  binding changes note keys and needs a new publication step.
+- **DERIVED LIFECYCLE:** Clean merge can duplicate or omit records; ambiguous merge must
+  produce unknown state; conflict-resolution merge cannot guess which evidence wins;
+  completion-only child has no lifecycle fact unless a new event schema is added; rebase
+  after evidence binding makes the derived subject stale and cannot be normalized.
+- **LOCAL RUNTIME + PUBLISHED COMPLETION SNAPSHOT:** Clean merge carries snapshots only
+  when candidate and predecessor are named; ambiguous merge remains pending; conflict-
+  resolution merge also remains pending until publication is reconciled; completion-only
+  child is the shared publication event; rebase after evidence binding invalidates the
+  unpublished candidate and requires republishing.
+- **COMBINED CANDIDATE/COMPLETION COMMIT:** Clean merge is safe only when that exact
+  combined candidate was reviewed; ambiguous merge cannot be assigned to a parent;
+  conflict-resolution merge requires a new review/gate cycle; completion-only child
+  defeats the one-commit promise; rebase after evidence binding changes the evidence
+  subject and is unsafe without a new review/gate cycle.
 
 ### Why relocating the field is not enough
 
