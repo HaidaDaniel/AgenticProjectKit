@@ -50,6 +50,11 @@ distinct; a local pass never manufactures hosted proof or evidence for a differe
    Source maps, enabled subprocess map capture, and c8 `--exclude-after-remap` preserve coverage
    after temporary output cleanup. A focused CLI-only coverage probe covered `src/cli/index.ts`
    (which the test's imports do not execute), proving subprocess remapping works.
+   The two alternate-tsx source parity subprocesses run without V8 instrumentation to avoid
+   duplicating handler functions with different source-map columns. All ordinary integration
+   and core tests remain instrumented. An initial full report exposed that artifact at 94.92%
+   functions: handlers such as `runTaskCommand` were represented both as executed (column 7)
+   and unexecuted (column 0). Thresholds were preserved while removing double instrumentation.
 3. Compact source-test output retains failures, errors, diagnostics, captured output and totals.
 4. Neutral generated policy, implementation/review prompts, init/adopt task guides, and packaged
    author/split assets require focused feedback, one canonical final verification, and current
@@ -72,6 +77,12 @@ policy, docs-task creation, init/adopt guides, review guidance and CLI parity. F
 coverage, compiler/lint/docs checks, contract lint, package currency, diff validation, independent
 review and the completion gate are required by the task. Exact full-run results are recorded in
 the task evidence; the completion handoff reports measured final verification time.
+
+The accelerated standalone CLI suite passed all 148 tests in 80.4 seconds on Node 22.22.1,
+versus the observed prior 173.3 seconds. The initial canonical run took 160.2 seconds versus
+historical 471-502 seconds, but failed the duplicate-function measurement described above;
+that failed run is not completion proof. These comparisons are observational, not controlled
+hardware benchmarks.
 
 ## Limits and follow-up
 

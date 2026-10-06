@@ -78,7 +78,11 @@ async function runCli(
       : ["--enable-source-maps", freshCliPath];
     const result = await execFileAsync(process.execPath, [...entrypoint, ...args], {
       cwd,
-      env,
+      // Parity smoke uses tsx's different source-map ranges. Instrumenting that
+      // alternate build invents duplicate, uncalled handler functions when c8
+      // merges it with tsc coverage. The fresh CLI integration build measures
+      // those same source handlers through all the actual behavioral scenarios.
+      env: source ? { ...env, NODE_V8_COVERAGE: undefined } : env,
     });
 
     return {
