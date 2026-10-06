@@ -51,6 +51,23 @@ AgenticProjectKit itself uses separate `pnpm typecheck` and `pnpm lint` commands
 
 Hooks can be intentionally bypassed for an exceptional commit with `git commit --no-verify`; Husky's supported disable path is `HUSKY=0` for the command (PowerShell sessions can set `$env:HUSKY=0`).
 
+## CLI test layers
+
+`src/cli/command.test.ts` holds parameter/error matrices, calibration precedence and pure routing
+checks. It calls the actual public dispatcher and core services in the isolated Node test-file
+process. A serialized adapter captures console streams and restores cwd/console in `finally`;
+unexpected throws propagate rather than becoming a synthetic successful command. It does not
+change environment variables, launch CLI subprocesses, or mock domain behavior.
+
+`src/cli/cli.test.ts` retains real-process smoke for every public command, global help/unknown
+command exit streams, source-versus-shipped parity, end-to-end worker/review/gate flow, concurrent
+worker-result append, lock/worktree lifecycle, and developer-local language/environment checks.
+The handler help-option matrix runs in-process; one real-process help dispatch per public command
+still protects entrypoint/registry wiring. Both files run once under the same source compilation
+and unchanged coverage thresholds. Only move a scenario when fresh-process or environment
+isolation is not the property it proves; document retained boundary coverage. See
+[Task 0194 measurements](../research/cli-test-layering.md).
+
 ## Clean-checkout CI
 
 `.github/workflows/quality.yml` uses one bounded Ubuntu job for pull requests and `main` pushes. It asserts the checked-out revision equals `GITHUB_SHA`, installs Node.js `22.22.1` and pnpm `10.28.1` with `pnpm install --frozen-lockfile`, and runs this deterministic sequence:

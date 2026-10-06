@@ -8,6 +8,8 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
+Task 0194 is in progress: move repeated CLI behavior matrices to isolated command-layer tests while retaining real-process boundary, concurrency, source/dist parity, and environment coverage.
+
 Task 0193 is complete: overlapping full quality runs are removed, fresh-source CLI tests share one compilation, and proportional verification/review guidance is exported. Candidate `dbe5173` passed all five canonical checks in 148.5 seconds, independent fresh-context review, and the completion gate; observed prior canonical runs took 471-502 seconds ([research](research/fast-proportional-verification.md)). This is local evidence, not a hosted-CI timing claim. Task 0191 remains unfinished after its implementation agent was stopped; its existing code and review history are preserved.
 
 Task 0192 is complete: local pre-push feedback now runs fast deterministic checks while full CI and release validation remain authoritative.

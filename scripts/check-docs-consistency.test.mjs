@@ -38,6 +38,27 @@ test("quality and release composition execute each full source suite once", asyn
   assert.match(workflow, /run: pnpm release:check/);
 });
 
+test("source suite selects both CLI layers once and preserves process-boundary scenarios", async () => {
+  const { scripts } = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  for (const path of ["src/cli/command.test.ts", "src/cli/cli.test.ts"]) {
+    assert.equal(scripts["test:source"].split(/\s+/).filter((entry) => entry === path).length, 1, path);
+  }
+  const cli = await readFile(new URL("../src/cli/cli.test.ts", import.meta.url), "utf8");
+  for (const name of [
+    "real CLI dispatch reaches every public command handler",
+    "real CLI preserves empty help, short help, and unknown-command exit streams",
+    "committed CLI help and init output match their source surfaces",
+    "CLI work coordinates implementation, review, fixer, and gate roles",
+    "CLI concurrent worker results append one terminal result",
+    "CLI language inspect, set, and reset use developer-local storage",
+  ]) {
+    assert.ok(cli.includes(`test(${JSON.stringify(name)},`), name);
+  }
+  const commands = await readFile(new URL("../src/cli/command.test.ts", import.meta.url), "utf8");
+  assert.match(commands, /await dispatchPublicCommand\(command, rest\)/);
+  assert.doesNotMatch(commands, /\brunCli\(/);
+});
+
 test("compact test reporter preserves failures, diagnostics, and captured output", async () => {
   async function* events() {
     yield { type: "test:pass", data: { name: "quiet passing test" } };
