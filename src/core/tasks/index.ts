@@ -2145,48 +2145,58 @@ interface BoundedGitAncestorGraph {
   diagnostic?: string;
 }
 
-async function boundedGitAncestorGraph(
+async function boundedGitRangeAncestorGraph(
   rootDirectory: string,
-  sha: string,
+  fromSha: string,
+  toSha: string,
   maxNodes = MAX_TASK_ATTRIBUTION_COMMITS,
   diagnosticLimit = maxNodes,
 ): Promise<BoundedGitAncestorGraph> {
+  if (fromSha === toSha) return { nodes: new Map([[fromSha, []]]) };
   try {
     const lines = (await gitOutput(rootDirectory, [
       "rev-list",
       "--topo-order",
+      "--ancestry-path",
       `--max-count=${maxNodes + 1}`,
       "--parents",
-      sha,
+      `${fromSha}..${toSha}`,
     ])).split(/\r?\n/).filter((line) => line.length > 0);
     if (lines.length > maxNodes) {
-      return { nodes: new Map(), diagnostic: `Git ancestry at ${shortenSha(sha)} exceeds the ${diagnosticLimit}-commit attribution limit.` };
+      return { nodes: new Map(), diagnostic: `Git ancestry range from ${shortenSha(fromSha)} to ${shortenSha(toSha)} exceeds the ${diagnosticLimit}-commit attribution limit.` };
     }
     const nodes = new Map<string, string[]>();
     for (const line of lines) {
       const [nodeSha, ...parents] = line.split(" ");
       if (!nodeSha || parents.length > 2) {
-        return { nodes: new Map(), diagnostic: `Git ancestry at ${shortenSha(sha)} contains an unsupported octopus node.` };
+        return { nodes: new Map(), diagnostic: `Git ancestry range from ${shortenSha(fromSha)} to ${shortenSha(toSha)} contains an unsupported octopus node.` };
       }
       nodes.set(nodeSha, parents);
     }
+    if (!nodes.has(toSha)) {
+      return { nodes: new Map(), diagnostic: `Git ancestry range from ${shortenSha(fromSha)} to ${shortenSha(toSha)} is not a proven descendant chain.` };
+    }
+    // The task baseline is the bounded root. Its own parents are outside the
+    // task range and must not be traversed while proving a merge base.
+    nodes.set(fromSha, []);
     return { nodes };
   } catch (error: unknown) {
-    return { nodes: new Map(), diagnostic: `Git comparison failed while reading ancestry at ${shortenSha(sha)} (${error instanceof Error ? error.message : String(error)}).` };
+    return { nodes: new Map(), diagnostic: `Git comparison failed while reading ancestry from ${shortenSha(fromSha)} to ${shortenSha(toSha)} (${error instanceof Error ? error.message : String(error)}).` };
   }
 }
 
 async function boundedMergeBase(
   rootDirectory: string,
   parents: readonly string[],
+  rangeBaseSha: string,
 ): Promise<{ mergeBase?: string; diagnostic?: string }> {
-  const [left, right] = await Promise.all(parents.map((parent) => boundedGitAncestorGraph(rootDirectory, parent)));
+  const [left, right] = await Promise.all(parents.map((parent) => boundedGitRangeAncestorGraph(rootDirectory, rangeBaseSha, parent)));
   if (left.diagnostic || right.diagnostic) {
     return { diagnostic: left.diagnostic ?? right.diagnostic };
   }
   const common = [...left.nodes.keys()].filter((sha) => right.nodes.has(sha));
   if (common.length === 0) {
-    return { diagnostic: `Merge commit parents ${parents.map(shortenSha).join(", ")} have no common ancestor inside the bounded attribution graph.` };
+    return { diagnostic: `Merge commit parents ${parents.map(shortenSha).join(", ")} have no common ancestor inside the bounded task range rooted at ${shortenSha(rangeBaseSha)}.` };
   }
   const graph = new Map([...left.nodes, ...right.nodes]);
   const isAncestor = (ancestor: string, descendant: string): boolean => {
@@ -2205,7 +2215,7 @@ async function boundedMergeBase(
     candidate !== other && isAncestor(candidate, other)
   )));
   if (mergeBases.length !== 1) {
-    return { diagnostic: `Merge commit parents ${parents.map(shortenSha).join(", ")} have ${mergeBases.length} bounded merge bases; criss-cross ancestry is ambiguous.` };
+    return { diagnostic: `Merge commit parents ${parents.map(shortenSha).join(", ")} have ${mergeBases.length} bounded merge bases inside the task range; criss-cross ancestry is ambiguous.` };
   }
   return { mergeBase: mergeBases[0] };
 }
@@ -2483,13 +2493,14 @@ async function readGitCommitNode(
   rootDirectory: string,
   sha: string,
   parents: readonly string[],
+  rangeBaseSha: string,
 ): Promise<GitCommitNode> {
   if (parents.length > 2) {
     throw new Error(`Octopus merge ${shortenSha(sha)} has ${parents.length} parents; bounded DAG attribution supports at most two.`);
   }
   let mergeBase: string | undefined;
   if (parents.length === 2) {
-    const boundedBase = await boundedMergeBase(rootDirectory, parents);
+    const boundedBase = await boundedMergeBase(rootDirectory, parents, rangeBaseSha);
     if (!boundedBase.mergeBase) {
       return {
         sha,
@@ -2615,7 +2626,7 @@ async function listGitDagCommits(
       };
     }
     try {
-      commits.push(await readGitCommitNode(rootDirectory, sha, parents));
+      commits.push(await readGitCommitNode(rootDirectory, sha, parents, fromSha));
     } catch (error: unknown) {
       return {
         diagnostic: `Changed paths for commit ${shortenSha(sha)} are unreadable (${error instanceof Error ? error.message : String(error)}).`,
@@ -2875,13 +2886,14 @@ async function resolveTaskBaselineLineage(
       lineageDiagnostic: "Task baseline has no Git HEAD; commit ownership and scope lineage cannot be re-verified.",
     };
   }
+  const authoritativeHeadSha = authoritative.headSha;
   let currentHead: string;
   try {
     currentHead = (await gitOutput(rootDirectory, ["rev-parse", "HEAD"])).trim();
   } catch (error: unknown) {
     return lineageFailure(`Current Git HEAD is unreadable (${error instanceof Error ? error.message : String(error)}).`, "unresolved");
   }
-  const range = await listGitDagCommits(rootDirectory, authoritative.headSha, currentHead);
+  const range = await listGitDagCommits(rootDirectory, authoritativeHeadSha, currentHead);
   if (!range.commits) return lineageFailure(range.diagnostic ?? "Git lineage cannot be established.");
   const dagCommits = range.commits;
 
@@ -2909,7 +2921,7 @@ async function resolveTaskBaselineLineage(
           const line = (await gitOutput(rootDirectory, ["rev-list", "--parents", "-n", "1", sha])).trim();
           const [commitSha, ...parents] = line.split(" ");
           if (!commitSha) return undefined;
-          commit = await readGitCommitNode(rootDirectory, commitSha, parents);
+          commit = await readGitCommitNode(rootDirectory, commitSha, parents, authoritativeHeadSha);
         } catch {
           return undefined;
         }

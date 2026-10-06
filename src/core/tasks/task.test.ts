@@ -2822,6 +2822,31 @@ test("a clean merge of independently proven task history is attributed without b
   });
 });
 
+test("a clean merge uses the bounded task range instead of repository-wide ancestry", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    for (let index = 0; index < 140; index += 1) {
+      await writeFile(join(directory, "pre-baseline-history.txt"), `${index}\n`, "utf8");
+      await execFileAsync("git", ["add", "pre-baseline-history.txt"], { cwd: directory });
+      await execFileAsync("git", ["commit", "--quiet", "-m", `pre-baseline history ${index}`], { cwd: directory });
+    }
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const baseBranch = (await execFileAsync("git", ["branch", "--show-current"], { cwd: directory })).stdout.trim();
+    await execFileAsync("git", ["checkout", "--quiet", "-b", "proven-side"], { cwd: directory });
+    const completed = await completeBoundedTaskB(directory);
+    await execFileAsync("git", ["checkout", "--quiet", baseBranch], { cwd: directory });
+    await execFileAsync("git", ["merge", "--quiet", "--no-ff", "proven-side", "-m", "merge proven task after long history"], { cwd: directory });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.equal(baseline?.lineageStatus, "attributed", baseline?.lineageDiagnostic);
+    assert.ok(baseline?.mergeCommits?.some((merge) => merge.files.includes(completed.file)));
+    const result = await verifyScopedTask(directory);
+    assert.equal(result.passed, true, result.diagnostics.join("; "));
+  });
+});
+
 test("a merge cannot hide a reverted first-parent forbidden change", async () => {
   await withTempDirectory(async (directory) => {
     await setupReclaimRepo(directory);
