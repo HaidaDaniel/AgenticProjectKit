@@ -1,5 +1,13 @@
 import { constants } from "node:fs";
-import { lstat, mkdir, open, readFile, readdir, realpath } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  open,
+  readFile,
+  readdir,
+  realpath,
+  type FileHandle,
+} from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -177,12 +185,50 @@ async function assertSafeDestinationAncestors(
   }
 }
 
-async function writeMaterializedSkill(
+function descriptorChildPath(fileDescriptor: number, component: string): string | undefined {
+  if (process.platform === "linux" || process.platform === "android") {
+    return `/proc/self/fd/${fileDescriptor}/${component}`;
+  }
+  if (process.platform === "darwin" || process.platform === "freebsd") {
+    return `/dev/fd/${fileDescriptor}/${component}`;
+  }
+  return undefined;
+}
+
+async function openDirectoryChild(
+  parent: FileHandle,
+  component: string,
+  directoryFlags: number,
+): Promise<FileHandle> {
+  const childPath = descriptorChildPath(parent.fd, component);
+  if (!childPath) {
+    throw new Error("This platform does not expose descriptor-relative directory traversal.");
+  }
+
+  try {
+    return await open(childPath, directoryFlags);
+  } catch (error: unknown) {
+    if (
+      !(
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "ENOENT"
+      )
+    ) {
+      throw error;
+    }
+    await mkdir(childPath, { recursive: false });
+    return open(childPath, directoryFlags);
+  }
+}
+
+async function writeOpenFile(
   destinationPath: string,
   content: string,
   status: "create" | "update",
+  noFollow: number,
 ): Promise<void> {
-  const noFollow = constants.O_NOFOLLOW ?? 0;
   const flags = constants.O_WRONLY
     | constants.O_CREAT
     | noFollow
@@ -192,6 +238,51 @@ async function writeMaterializedSkill(
     await handle.writeFile(content, "utf8");
   } finally {
     await handle.close();
+  }
+}
+
+async function writeMaterializedSkill(
+  rootDirectory: string,
+  destination: string,
+  content: string,
+  status: "create" | "update",
+): Promise<void> {
+  const noFollow = constants.O_NOFOLLOW ?? 0;
+  const directoryFlags = constants.O_RDONLY
+    | (constants.O_DIRECTORY ?? 0)
+    | noFollow;
+  const projectRoot = await realpath(resolve(rootDirectory));
+  const destinationPath = join(projectRoot, destination);
+  const relativeDestination = relative(projectRoot, destinationPath);
+  const components = relativeDestination.split(sep).filter(Boolean);
+  const fileName = components.pop();
+  if (!fileName || components.length === 0) {
+    throw new Error(`Invalid packaged skill destination: ${destination}`);
+  }
+
+  const rootHandle = await open(projectRoot, directoryFlags);
+  const handles: FileHandle[] = [rootHandle];
+  try {
+    if (!descriptorChildPath(rootHandle.fd, components[0]!) || noFollow === 0) {
+      throw new Error("This platform does not expose safe descriptor-relative skill materialization.");
+    }
+
+    let parent = rootHandle;
+    for (const component of components) {
+      const child = await openDirectoryChild(parent, component, directoryFlags);
+      handles.push(child);
+      parent = child;
+    }
+
+    const descriptorPath = descriptorChildPath(parent.fd, fileName);
+    if (!descriptorPath) {
+      throw new Error("This platform does not expose safe descriptor-relative skill materialization.");
+    }
+    await writeOpenFile(descriptorPath, content, status, noFollow);
+  } finally {
+    for (const handle of handles.reverse()) {
+      await handle.close();
+    }
   }
 }
 
@@ -224,10 +315,9 @@ export async function materializePackagedSkill(
 
   const shouldWrite = applied && (status === "create" || status === "update");
   if (shouldWrite) {
-    await mkdir(dirname(destinationPath), { recursive: true });
-    await assertSafeDestinationAncestors(projectRoot, destinationPath);
     await writeMaterializedSkill(
-      destinationPath,
+      projectRoot,
+      skill.destination,
       content,
       status === "create" ? "create" : "update",
     );

@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { lstat, mkdir, open, readFile, readdir, realpath } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, readdir, realpath, } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { renderTemplateFile } from "../templates/index.js";
@@ -118,8 +118,35 @@ async function assertSafeDestinationAncestors(rootDirectory, destinationPath) {
         }
     }
 }
-async function writeMaterializedSkill(destinationPath, content, status) {
-    const noFollow = constants.O_NOFOLLOW ?? 0;
+function descriptorChildPath(fileDescriptor, component) {
+    if (process.platform === "linux" || process.platform === "android") {
+        return `/proc/self/fd/${fileDescriptor}/${component}`;
+    }
+    if (process.platform === "darwin" || process.platform === "freebsd") {
+        return `/dev/fd/${fileDescriptor}/${component}`;
+    }
+    return undefined;
+}
+async function openDirectoryChild(parent, component, directoryFlags) {
+    const childPath = descriptorChildPath(parent.fd, component);
+    if (!childPath) {
+        throw new Error("This platform does not expose descriptor-relative directory traversal.");
+    }
+    try {
+        return await open(childPath, directoryFlags);
+    }
+    catch (error) {
+        if (!(error &&
+            typeof error === "object" &&
+            "code" in error &&
+            error.code === "ENOENT")) {
+            throw error;
+        }
+        await mkdir(childPath, { recursive: false });
+        return open(childPath, directoryFlags);
+    }
+}
+async function writeOpenFile(destinationPath, content, status, noFollow) {
     const flags = constants.O_WRONLY
         | constants.O_CREAT
         | noFollow
@@ -130,6 +157,43 @@ async function writeMaterializedSkill(destinationPath, content, status) {
     }
     finally {
         await handle.close();
+    }
+}
+async function writeMaterializedSkill(rootDirectory, destination, content, status) {
+    const noFollow = constants.O_NOFOLLOW ?? 0;
+    const directoryFlags = constants.O_RDONLY
+        | (constants.O_DIRECTORY ?? 0)
+        | noFollow;
+    const projectRoot = await realpath(resolve(rootDirectory));
+    const destinationPath = join(projectRoot, destination);
+    const relativeDestination = relative(projectRoot, destinationPath);
+    const components = relativeDestination.split(sep).filter(Boolean);
+    const fileName = components.pop();
+    if (!fileName || components.length === 0) {
+        throw new Error(`Invalid packaged skill destination: ${destination}`);
+    }
+    const rootHandle = await open(projectRoot, directoryFlags);
+    const handles = [rootHandle];
+    try {
+        if (!descriptorChildPath(rootHandle.fd, components[0]) || noFollow === 0) {
+            throw new Error("This platform does not expose safe descriptor-relative skill materialization.");
+        }
+        let parent = rootHandle;
+        for (const component of components) {
+            const child = await openDirectoryChild(parent, component, directoryFlags);
+            handles.push(child);
+            parent = child;
+        }
+        const descriptorPath = descriptorChildPath(parent.fd, fileName);
+        if (!descriptorPath) {
+            throw new Error("This platform does not expose safe descriptor-relative skill materialization.");
+        }
+        await writeOpenFile(descriptorPath, content, status, noFollow);
+    }
+    finally {
+        for (const handle of handles.reverse()) {
+            await handle.close();
+        }
     }
 }
 export async function materializePackagedSkill(rootDirectory, skillId, options = {}) {
@@ -157,9 +221,7 @@ export async function materializePackagedSkill(rootDirectory, skillId, options =
     }
     const shouldWrite = applied && (status === "create" || status === "update");
     if (shouldWrite) {
-        await mkdir(dirname(destinationPath), { recursive: true });
-        await assertSafeDestinationAncestors(projectRoot, destinationPath);
-        await writeMaterializedSkill(destinationPath, content, status === "create" ? "create" : "update");
+        await writeMaterializedSkill(projectRoot, skill.destination, content, status === "create" ? "create" : "update");
     }
     return {
         skill,

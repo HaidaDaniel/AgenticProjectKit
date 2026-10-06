@@ -119,6 +119,23 @@ test("materialization refuses symlinked destination parents before writing", asy
   });
 });
 
+test("materialization refuses a symlinked final destination", async () => {
+  await withTempDirectory(async (directory) => {
+    const destinationDirectory = join(directory, ".agents/skills/apk-task-author");
+    const outside = join(directory, "outside.md");
+    const destination = join(destinationDirectory, "SKILL.md");
+    await mkdir(destinationDirectory, { recursive: true });
+    await writeFile(outside, "outside content\n", "utf8");
+    await symlink(outside, destination, "file");
+
+    await assert.rejects(
+      materializePackagedSkill(directory, "apk-task-author", { apply: true, force: true }),
+      /symbolic link/,
+    );
+    assert.equal(await readFile(outside, "utf8"), "outside content\n");
+  });
+});
+
 test("unknown skill names fail closed before any project write", async () => {
   await withTempDirectory(async (directory) => {
     await assert.rejects(
