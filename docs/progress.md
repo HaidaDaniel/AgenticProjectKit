@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0193 is in progress: remove overlapping full quality runs, accelerate fresh-source CLI tests, and export proportional verification/review guidance. Task 0191 remains unfinished after its implementation agent was stopped; its existing code and review history are preserved.
+Task 0193 is complete: overlapping full quality runs are removed, fresh-source CLI tests share one compilation, and proportional verification/review guidance is exported. Candidate `dbe5173` passed all five canonical checks in 148.5 seconds, independent fresh-context review, and the completion gate; observed prior canonical runs took 471-502 seconds ([research](research/fast-proportional-verification.md)). This is local evidence, not a hosted-CI timing claim. Task 0191 remains unfinished after its implementation agent was stopped; its existing code and review history are preserved.
 
 Task 0192 is complete: local pre-push feedback now runs fast deterministic checks while full CI and release validation remain authoritative.
 

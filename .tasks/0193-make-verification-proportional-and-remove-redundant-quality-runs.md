@@ -1,6 +1,6 @@
 # Task 0193 - Make verification proportional and remove redundant quality runs
 
-State: review
+State: done
 Owner: codex-fast-workflow-20261006
 Mode: maintenance
 Lane: quality
@@ -142,3 +142,8 @@ Remove repeated full tests in APK local verification and CI; speed fresh-source 
 
 - Do not change public behavior unless the task says so.
 - Independent review found the existing automated-check policy ignored builtin APK operations. Scope includes policy.ts to recognize valid required automated operations and prove docs-only verification can pass the completion gate; gate/evidence engines remain unchanged.
+- Completion evidence below refers to validated candidate dbe5173bca448586367e2d12042ff48c90a35cb5, not the later lifecycle-only bookkeeping commit.
+- Canonical run verify-1791306651882-2vdvrs passed all five required checks in 148.48 seconds; scope attribution was clean.
+- Coverage passed unchanged thresholds: lines/statements 91.87%, functions 98.06%, branches 81.6%.
+- Independent fresh-context review work-1791306808439-3chrpv passed; evidence evidence-1791307020100-wjl9cb. Completion gate passed before done.
+- Historical timings are observational rather than controlled benchmarks. Hosted CI and cross-platform runtime were not exercised in this local completion.
