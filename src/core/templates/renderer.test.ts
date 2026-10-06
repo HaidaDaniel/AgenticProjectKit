@@ -482,6 +482,46 @@ test("apk-task-split ships as a portable manual-only instruction asset", async (
   assert.doesNotMatch(agents.content, /apk-task-split/);
 });
 
+test("apk-task-author ships a portable planning-only task authoring asset", async () => {
+  const content = normalizeLineEndings(
+    await readFile(
+      join(process.cwd(), "src/core/templates/skills/apk-task-author/SKILL.md.hbs"),
+      "utf8",
+    ),
+  );
+
+  assert.match(content, /^---\nname: apk-task-author\n/);
+  assert.match(content, /plain-language|natural-language/i);
+  assert.match(content, /harness-neutral/i);
+  assert.match(content, /Hermes Agent/i);
+  assert.match(content, /Never activate automatically/i);
+  assert.match(content, /pnpm exec apkit status --detail/);
+  assert.match(content, /pnpm exec apkit tasks --all/);
+  assert.match(content, /pnpm exec apkit suggest-context/);
+  assert.match(content, /exact duplicates|material overlap/i);
+  assert.match(content, /one coherent observable outcome/);
+  assert.match(content, /one question at a time/);
+  assert.match(content, /material choice cannot be resolved/i);
+  assert.match(content, /apk-task-split/);
+  assert.match(content, /giant contract/i);
+  assert.match(content, /complete preview/i);
+  assert.match(content, /No task file may be written before that\s+approval/);
+  assert.match(content, /pnpm exec apkit task create/);
+  assert.match(content, /Never allocate an ID\s+yourself/);
+  assert.match(content, /pnpm exec apkit lint --json/);
+  assert.match(content, /pnpm exec apkit task deps <new-task-id>/);
+  assert.match(content, /Stop after reporting/);
+  assert.match(content, /Do not claim or start the task/);
+  assert.match(content, /Completed task history and evidence are immutable/);
+  assert.doesNotMatch(content, /\{\{/);
+
+  const exports = await renderAgentExportFiles();
+  const agents = exports.find((file) => file.outputPath === "AGENTS.md");
+
+  assert.ok(agents);
+  assert.doesNotMatch(agents.content, /apk-task-author/);
+});
+
 test("apk-prototype ships as a portable manual-only instruction asset", async () => {
   const content = normalizeLineEndings(
     await readFile(

@@ -517,6 +517,28 @@ code, never produces a worker role, review result, verification evidence, or com
 certificate, and introduces no lifecycle state or completion requirement. An ordinary task
 proceeds through claim/work/verify/review/gate/done without it.
 
+## Optional task-author planning
+
+APK ships `apk-task-author`, an optional, manually invoked portable instruction asset packaged at
+`dist/core/templates/skills/apk-task-author/SKILL.md.hbs`. It is for a planning agent that can
+read repository files and invoke the repository-local `apkit` CLI through a terminal, including
+Hermes-class agents without requiring a Hermes runtime or provider integration.
+
+Task author establishes bounded project, architecture, roadmap, context, and task-graph truth;
+checks active and relevant archived tasks for duplicates or material overlap; asks one material
+clarification at a time; and previews the complete contract before any write. The preview covers
+the outcome, type/template, mode, lane, risk, scope, context, allowed/forbidden paths,
+dependencies, steps, acceptance, structured verification, correctness assumptions/invariants,
+evidence, review questions, counterexamples, docs updates, and notes as applicable.
+
+The human must explicitly approve that concrete preview before the skill calls canonical
+`apkit task create`; it never allocates IDs or writes `.tasks/<id>-<slug>.md` directly. After
+creation it runs `apkit lint --json`, inspects `apkit task deps <new-id>`, reports the actual ID
+and path, and stops. It does not claim or implement the task, issue a worker package, run
+verification or review, fabricate evidence, pass a gate, or mark work done. Large requests are
+handed to `apk-task-split` instead of being hidden in a giant catch-all task. Completed history
+remains immutable and defects become fresh corrective tasks.
+
 ## Optional task-split decomposition
 
 APK ships `apk-task-split`, an optional, manually invoked instruction asset packaged at

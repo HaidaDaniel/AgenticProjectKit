@@ -28,6 +28,7 @@ For an existing project, preview adoption first with `pnpm exec apkit adopt --pr
 - Bounded context selection and prompts for external coding agents.
 - Candidate-bound verification, review, evidence, and a completion gate that checks scope and freshness.
 - Generated agent instructions from shared repository policy, contract lint, readiness reports, and a quality inventory.
+- Optional packaged planning skills, including `apk-task-author`, `apk-task-split`, and task/project clarification assets; they are manually invoked and never replace the task lifecycle.
 
 APK prepares and records the workflow around coding agents; it does not launch or supervise their models, sessions, or processes. It has no hosted account or project database. The task system keeps unavailable or stale evidence visible instead of treating it as a pass.
 

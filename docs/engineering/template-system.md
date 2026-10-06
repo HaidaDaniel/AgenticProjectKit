@@ -37,7 +37,7 @@ always-active common policy (`AGENTS.md`) and add no CLI command, exporter, or n
 
 - `apk-project-grill` - repository-grounded design grill of a whole project, milestone, or bounded subsystem, at start or as a repeated checkpoint; see `docs/agent-exporters.md`.
 - `apk-task-grill` - clarify one existing task before implementation; see `docs/agent-exporters.md`.
+- `apk-task-author` - author a bounded task contract from a human request before implementation; see `docs/agent-exporters.md`.
 - `apk-task-split` - decompose an explicit planning target into proposed vertical-slice tasks; see `docs/agent-exporters.md`.
 - `apk-prototype` - bounded throwaway experiment for one feasibility question; see `docs/agent-exporters.md`.
 - `apk-milestone-semantic-audit` - cross-contract semantic audit of a finite completed-task set; see `docs/agent-exporters.md`.
-

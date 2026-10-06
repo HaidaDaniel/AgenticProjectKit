@@ -1,0 +1,165 @@
+---
+name: apk-task-author
+description: >
+  Optional, manually invoked planning skill that turns a human product, bug, refactor, or
+  documentation request into one or more complete APK task-contract previews. It uses bounded
+  repository truth, detects duplicate or overlapping work, requires explicit approval before
+  canonical task creation, validates the resulting graph, and stops before implementation.
+---
+
+# APK Task Author (optional, manual only)
+
+Task author helps a planning agent turn a natural-language request into a reviewable APK task
+contract. It is for task authoring, not coding. The primary dogfood target may be Hermes Agent,
+but this asset is harness-neutral: any agent that can read repository files and invoke the
+repository-local `apkit` CLI through a terminal or shell tool can use it.
+
+## When to use it
+
+- Use only when a human explicitly asks to author, plan, or turn a request into APK task(s), or
+  explicitly names `apk-task-author`.
+- Never activate automatically from a vague idea, a changed repository, task complexity, or a
+  work-loop transition.
+- A request to record an idea is not approval to create a task. Return a bounded note or ask
+  whether the human wants a concrete task preview.
+- It is optional. It adds no CLI command, lifecycle state, worker role, review requirement, or
+  completion gate.
+
+## Establish bounded repository truth first
+
+Inspect enough repository truth to avoid inventing or duplicating work. Prefer the repository's
+canonical policy, project/scope/architecture docs, task system, current roadmap or milestone,
+and the request's likely direct dependencies. Use existing interfaces where useful:
+
+```bash
+pnpm exec apkit status --detail
+pnpm exec apkit tasks --all
+pnpm exec apkit suggest-context "<the human request>"
+pnpm exec apkit task deps <relevant-task-id>
+pnpm exec apkit context <relevant-task-id> --level 2
+```
+
+Read the files selected by those commands; command output is a file-selection aid, not proof of
+their contents. Read the task's declared Context files and the canonical docs before deciding
+scope. Inspect active tasks first, then archived/completed summaries only when they are relevant
+to overlap or historical behavior. Do not scan the whole repository, dump all source files, or
+invent a second planning database.
+
+## Detect duplicates and decide the shape
+
+Before drafting, compare the request with active tasks, their allowed paths, goals, acceptance,
+dependencies, and likely context. Look for exact duplicates and material overlap, not just title
+similarity.
+
+- If an unfinished task already owns the request, report its actual ID and path instead of
+  creating a duplicate. Explain the missing distinction if a follow-up task may still be useful.
+- If a completed or archived task is the relevant history, do not rewrite or reopen it. A defect
+  in completed work becomes a fresh corrective task with explicit regression scope.
+- If the request has one coherent observable outcome, draft one task.
+- If it spans unrelated outcomes, ownership boundaries, or independently verifiable vertical
+  slices, do not hide that breadth in a horizontal catch-all. Propose `apk-task-split` as the
+  next planning operation or present a bounded multi-task preview with explicit dependency edges.
+- Treat ID-based dependencies as graph facts. Distinguish an archived/done prerequisite from an
+  active, blocked, or missing dependency and surface any unresolved graph risk.
+
+## Ask only material clarification questions
+
+Repository truth owns implementation details. Ask the human one question at a time only when a
+material choice cannot be resolved from the repository, such as product outcome, ownership,
+security boundary, destructive/external effect, compatibility promise, or an irreversible scope
+choice. Before each question state:
+
+1. what repository evidence already establishes;
+2. what material ambiguity remains; and
+3. how the answer changes the proposed task or dependency graph.
+
+Do not ask the human to choose filenames, libraries, test structure, or coding tactics that the
+future implementation agent can decide inside the approved contract. Do not convert silence,
+elapsed time, a model preference, or a vague "sounds good" into approval.
+
+## Build one concrete preview before any write
+
+Present a complete preview in canonical task vocabulary. For each proposed task include, as
+applicable:
+
+- title, type/template, mode, lane, risk, and whether it is parallelizable;
+- one outcome-focused goal and a narrow scope;
+- exact context files, allowed files, and forbidden files;
+- dependency IDs or clearly labeled symbolic edges for a multi-task preview;
+- ordered implementation steps and observable acceptance criteria;
+- structured verification checks with requiredness, environment, and profile;
+- correctness assumptions, invariants, required evidence, review questions, and counterexample
+  searches when they materially protect the outcome;
+- documentation updates and notes, including explicit unknowns or bounded best-effort limits.
+
+Check that allowed and forbidden paths do not overlap, the verification is runnable or honestly
+marked manual/live, the task is small enough to review, and the contract does not authorize the
+planning agent to implement anything. State the proposed files and graph effects plainly.
+
+## Explicit approval is required before task creation
+
+Ask for explicit approval of the concrete preview, including its task count, paths, dependencies,
+acceptance, verification, and documentation effects. No task file may be written before that
+approval. A human approving discussion in general, invoking this skill, or answering an unrelated
+question is not approval of a concrete preview.
+
+After approval, create only the accepted task contract(s) through canonical APK facilities:
+
+```bash
+pnpm exec apkit task create --title "..." --scope "..." --allowed "..." \
+  --mode <mode> --lane <lane> --risk <risk> --context "..." \
+  --forbidden "..." --depends "..." --verification-json '<structured checks>'
+```
+
+Use the actual supported `apkit task create` flags for the complete preview. Never allocate an ID
+yourself, hand-write `.tasks/<id>-<slug>.md`, or rewrite an existing task to make the graph fit.
+For a large request, hand the approved planning target to `apk-task-split` instead of creating a
+giant contract. Report every actual ID and path returned by canonical creation.
+
+## Validate and stop at planning
+
+Immediately after creation, validate the actual result:
+
+```bash
+pnpm exec apkit lint --json
+pnpm exec apkit task deps <new-task-id>
+```
+
+Inspect the created contract and report any remaining graph, path, or verification blockers. If
+validation fails, correct only the newly created unfinished contract through canonical task
+facilities; do not silently broaden scope or touch completed history. If no approval was given,
+create nothing.
+
+Stop after reporting the validated task ID/path and blockers. Do not claim or start the task, issue
+an `apk work` package, implement product/docs changes, run implementation verification, fabricate
+evidence, request review, pass a gate, or mark the task done. The normal APK work loop owns those
+later actions.
+
+## Relation to other optional skills
+
+- `apk-project-grill` explores project, milestone, or subsystem direction before task planning.
+- `apk-task-author` turns an approved human request into a concrete task-contract preview and
+  canonical creation.
+- `apk-task-split` decomposes a genuinely large target into proposed vertical-slice contracts.
+- `apk-task-grill` clarifies one existing task after creation and before implementation.
+- `apk-prototype` handles one bounded throwaway feasibility experiment, not durable task writing.
+
+These assets are separate and manually invoked. One does not auto-activate or become required
+because another was used.
+
+## Hard boundaries
+
+- No product/runtime code, migrations, dependency changes, provider SDKs, Hermes runtime APIs,
+  model routing, daemon, remote service, or user-global skill installation.
+- No writes before explicit approval of the concrete preview.
+- No direct task-file writes, duplicate task database, automatic backlog scan, or invented state.
+- No implementation, claim, worker handoff, verification evidence, review, gate, or done action.
+- Completed task history and evidence are immutable; create a fresh corrective task when needed.
+
+## Invocation note for harnesses
+
+This asset is plain Markdown shipped inside the installed package under
+`dist/core/templates/skills/apk-task-author/SKILL.md.hbs`. A harness with native skill discovery
+can reference the installed asset or a user-installed copy. A harness without native discovery
+must read the installed asset explicitly when a human invokes task author. APK adds no installer,
+model routing, provider integration, or user-global skill directory write.

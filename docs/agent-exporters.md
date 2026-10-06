@@ -72,6 +72,14 @@ rewriting completed history. It never implements product code, auto-activates, o
 human request such as "Use the APK task-grill skill on task 0026"; it never auto-activates, adds
 no CLI command, and does not change the normal work/review/gate flow.
 
+`apk-task-author` turns a human product, bug, refactor, or documentation request into a bounded
+task-contract preview for an external planning agent. It checks repository truth and active or
+historical overlap, asks only material clarification questions, requires explicit approval before
+calling canonical `apkit task create`, validates the resulting task with `apkit lint --json` and
+`apkit task deps`, and stops before claim or implementation. It is portable Markdown for any
+harness with repository read access and a terminal; Hermes Agent is a dogfood target, not a
+runtime dependency or provider integration.
+
 `apk-milestone-semantic-audit` analyses semantic consistency across a finite set of completed
 tasks or a completed milestone portion. It runs only on an explicit human request, resolves a
 visible completed-task selection, returns bounded findings and proposed corrective tasks, and
@@ -99,6 +107,7 @@ Discovery is manual:
 - A harness without native discovery must read the installed asset explicitly, for example
   `<package>/dist/core/templates/skills/apk-project-grill/SKILL.md.hbs`,
   `<package>/dist/core/templates/skills/apk-task-grill/SKILL.md.hbs`,
+  `<package>/dist/core/templates/skills/apk-task-author/SKILL.md.hbs`,
   `<package>/dist/core/templates/skills/apk-task-split/SKILL.md.hbs`,
   `<package>/dist/core/templates/skills/apk-prototype/SKILL.md.hbs`, or
   `<package>/dist/core/templates/skills/apk-milestone-semantic-audit/SKILL.md.hbs`.
