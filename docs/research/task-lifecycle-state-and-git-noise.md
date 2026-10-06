@@ -49,6 +49,13 @@ This is not a hypothetical cost: implementation and contract corrections remain
 separate candidate history, while the state transition is intentionally visible in a
 later commit.
 
+The downstream runtime trail is uneven and is recorded here rather than inferred:
+translator-agent's `.agentic/runs` contains an independent review event for neighboring
+Task 0157 (`review-1791197938683-z3lq3n`), while the Task 0158 files and Git history
+provide the implementation/fix/state sequence but no durable verify/gate evidence
+record in the committed repository. That absence is itself relevant: ignored runtime
+state cannot be the only source needed to explain completion in a fresh clone.
+
 ### ResLedger
 
 ResLedger supplies several independent traces:
@@ -63,6 +70,26 @@ The completion diffs for these commits are task-file state updates, not hidden
 implementation work. They demonstrate both the noise and the value: a fresh clone can
 see task completion without access to an operator's machine or an untracked runtime
 directory.
+
+ResLedger also preserves a stronger task-local lifecycle trace in the task Notes. For
+0105, the notes report four checks passing against `93e972b`, then identify fresh
+review run `review-1791181800050-v17r4k` and evidence
+`evidence-1791187164659-ngqyor` on corrected candidate `8822f1f`; the Git history
+contains the earlier state-only completion commit `524f58d`. Tasks 0106 and 0107
+similarly record fresh review runs `review-1791181800626-kubpok` /
+`evidence-1791187167816-zbko18` and `review-1791181801198-1vqf4j` /
+`evidence-1791187176323-qmi6lm` before their state-only commits. Those tasks were
+later reopened while awaiting an operator override, which shows why a lifecycle
+commit is a state transition rather than immutable proof that the deliverable can
+never reopen.
+
+For an APK-side current trace, Task 0186's final candidate was `041f69e`. Its
+candidate-bound verify run was `verify-1791279382155-8ynnis`; the fresh review run was
+`review-1791279830954-g0l54b` with evidence
+`evidence-1791280235506-64083j`; the gate passed before lifecycle commit `4219d30`.
+The run/evidence files are local APK operational records, not task implementation
+files, so the research cites their IDs while treating the Git candidate and
+bookkeeping SHAs as the durable cross-clone facts.
 
 ## Constraints that a redesign must preserve
 
@@ -99,6 +126,43 @@ machine that later pushes normally:
 | **DERIVED LIFECYCLE** | No explicit lifecycle commit if state is inferred from evidence/run records. | Weak and ambiguous. Existing runtime records may be absent from a fresh clone; even committed records show checks, not necessarily done/released/canceled intent. | `next-task`, archive, and dependency state would need heuristics for incomplete or conflicting records. A pass cannot distinguish done from review or blocked. | Unsafe as the sole source: evidence freshness can prove a candidate, but cannot safely encode all lifecycle transitions. It risks treating a stale or unrelated pass as completion. | High semantic migration cost and a second implicit state machine. Not compatible with fail-closed lifecycle semantics. |
 | **LOCAL RUNTIME + PUBLISHED COMPLETION SNAPSHOT** | Local state is quiet, but publishing a shared snapshot still creates a tracked commit or an equivalent publication event. | Local UX is good, shared truth is not available until publication. A fresh clone without the snapshot cannot know completion; offline completion remains unpublished. | Snapshot schema, replay, archive, and legacy fallback are required. The design only relocates the current bookkeeping boundary. | Safe only after an explicit published snapshot remains candidate-bound. It cannot remove the final shared-state publication step. | Medium/high migration cost with no demonstrated commit reduction. |
 | **COMBINED CANDIDATE/COMPLETION COMMIT** | Attempts one commit containing implementation and `State: done`. | Readable in a clone, but it requires treating a task as done before final review/gate or rerunning evidence after the state mutation. | Existing commands would need a new pre-done or post-commit lifecycle and archive contract. | Unsafe under current rules: review/gate evidence binds the pre-completion candidate, while the combined commit changes the tracked task contract. Amending after evidence changes the SHA and invalidates the evidence. | A substantial candidate/evidence protocol redesign, not a bookkeeping optimization. Do not adopt as a default. |
+
+## Merge and rebase behavior by option
+
+The matrix's Git column is expanded here because merge behavior is where a seemingly
+small state relocation can weaken provenance. For every option, the safe rule is that a
+candidate rebase after evidence binding changes the candidate identity and therefore
+requires a fresh candidate/evidence cycle; it is not a cleanup operation.
+
+- **KEEP TRACKED MARKDOWN:** A clean merge can carry an already-proven candidate or a
+  completion-only child when 0184 can attribute every changed path. An ambiguous or
+  conflict-resolution merge remains fail-closed; the lifecycle child cannot hide a
+  forbidden path. Rebase after evidence binding is rejected as a candidate change.
+- **TRACKED LIFECYCLE JOURNAL:** A clean merge must replay journal entries with stable
+  event IDs and candidate/epoch subjects. An ambiguous merge or conflicting journal
+  order must remain unresolved rather than choosing a parent. A completion-only child
+  is another journal event, so it does not remove a commit. Rebase requires retaining
+  predecessor event identity and refreshing candidate-bound evidence.
+- **GIT NOTES/REFS:** A clean merge does not automatically carry notes attached to a
+  parent or a completion child; consumers must fetch the relevant ref and resolve the
+  merge explicitly. Conflict-resolution notes and missing refs fail closed, but this
+  behavior is outside the normal clone contract. Rebasing changes note keys and needs
+  a separate migration/publication step after evidence binding.
+- **DERIVED LIFECYCLE:** A clean merge can duplicate or omit the evidence records from
+  which state is inferred; an ambiguous merge must produce unknown state rather than a
+  guessed done state. A completion-only child has no distinct lifecycle fact to derive
+  unless another event schema is added. Rebasing makes the derived evidence subject
+  stale and cannot be silently normalized.
+- **LOCAL RUNTIME + PUBLISHED COMPLETION SNAPSHOT:** Concurrent clean merges can carry
+  snapshots only when each snapshot names its candidate and predecessor. Conflict
+  resolution or a missing offline publication must remain pending, and a completion-
+  only child still represents the shared publication event. A local rebase after
+  evidence binding invalidates the unpublished candidate and requires republishing.
+- **COMBINED CANDIDATE/COMPLETION COMMIT:** A clean merge is safe only if the complete
+  combined commit was reviewed as that exact candidate. An ambiguous/conflict-
+  resolution merge cannot be assigned to a parent, and a separate completion child
+  defeats the one-commit promise. Rebasing the reviewed combined commit changes the
+  evidence subject and is unsafe without a new review/gate cycle.
 
 ### Why relocating the field is not enough
 
