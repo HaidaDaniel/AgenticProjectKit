@@ -568,6 +568,23 @@ test("tooling override cannot hide credible Node runtime evidence", async () => 
   });
 });
 
+test("runtime discovery reports components omitted by the depth bound", async () => {
+  await withTempRepository(async (directory) => {
+    const deepDirectory = join(directory, "one", "two", "three", "four");
+    await mkdir(deepDirectory, { recursive: true });
+    await writeFile(join(deepDirectory, "package.json"), JSON.stringify({
+      dependencies: { react: "^19.0.0" },
+    }), "utf8");
+
+    const scan = await scanRepository(directory);
+    assert.equal(scan.runtime.discoveryLimited, true);
+    assert.deepEqual(scan.runtime.diagnostics, [
+      "Runtime component discovery reached its bounded directory limit; unobserved components remain unknown.",
+    ]);
+    assert.deepEqual(scan.runtime.applicationRuntimes, []);
+  });
+});
+
 test("adoption exposes invalid config diagnostics without migration", async () => {
   await withTempRepository(async (directory) => {
     await mkdir(join(directory, ".agentic"), { recursive: true });

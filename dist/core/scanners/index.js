@@ -190,6 +190,7 @@ async function discoverRuntimeCandidates(rootDirectory) {
     const candidates = [];
     const queue = [{ absolutePath: rootDirectory, relativePath: ".", depth: 0 }];
     let inspectedDirectories = 0;
+    let discoveryLimited = false;
     while (queue.length > 0 && inspectedDirectories < MAX_RUNTIME_DISCOVERY_DIRECTORIES) {
         const current = queue.shift();
         if (!current)
@@ -210,11 +211,15 @@ async function discoverRuntimeCandidates(rootDirectory) {
                 ...(packageJson === undefined ? {} : { packageJson }),
             });
         }
-        if (current.depth >= MAX_RUNTIME_DISCOVERY_DEPTH)
+        const childDirectories = entries.filter((entry) => (entry.isDirectory()
+            && !IGNORED_DIRECTORIES.has(entry.name)
+            && !entry.name.startsWith(".")));
+        if (current.depth >= MAX_RUNTIME_DISCOVERY_DEPTH) {
+            if (childDirectories.length > 0)
+                discoveryLimited = true;
             continue;
-        for (const entry of entries) {
-            if (!entry.isDirectory() || IGNORED_DIRECTORIES.has(entry.name) || entry.name.startsWith("."))
-                continue;
+        }
+        for (const entry of childDirectories) {
             queue.push({
                 absolutePath: join(current.absolutePath, entry.name),
                 relativePath: current.relativePath === "." ? entry.name : `${current.relativePath}/${entry.name}`,
@@ -224,7 +229,7 @@ async function discoverRuntimeCandidates(rootDirectory) {
     }
     return {
         candidates,
-        discoveryLimited: queue.length > 0,
+        discoveryLimited: discoveryLimited || queue.length > 0,
     };
 }
 function dependencyNames(packageJson) {

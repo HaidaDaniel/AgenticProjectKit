@@ -295,6 +295,7 @@ async function discoverRuntimeCandidates(rootDirectory: string): Promise<Runtime
   const candidates: RuntimeDiscoveryCandidate[] = [];
   const queue = [{ absolutePath: rootDirectory, relativePath: ".", depth: 0 }];
   let inspectedDirectories = 0;
+  let discoveryLimited = false;
 
   while (queue.length > 0 && inspectedDirectories < MAX_RUNTIME_DISCOVERY_DIRECTORIES) {
     const current = queue.shift();
@@ -318,9 +319,16 @@ async function discoverRuntimeCandidates(rootDirectory: string): Promise<Runtime
       });
     }
 
-    if (current.depth >= MAX_RUNTIME_DISCOVERY_DEPTH) continue;
-    for (const entry of entries) {
-      if (!entry.isDirectory() || IGNORED_DIRECTORIES.has(entry.name) || entry.name.startsWith(".")) continue;
+    const childDirectories = entries.filter((entry) => (
+      entry.isDirectory()
+      && !IGNORED_DIRECTORIES.has(entry.name)
+      && !entry.name.startsWith(".")
+    ));
+    if (current.depth >= MAX_RUNTIME_DISCOVERY_DEPTH) {
+      if (childDirectories.length > 0) discoveryLimited = true;
+      continue;
+    }
+    for (const entry of childDirectories) {
       queue.push({
         absolutePath: join(current.absolutePath, entry.name),
         relativePath: current.relativePath === "." ? entry.name : `${current.relativePath}/${entry.name}`,
@@ -331,7 +339,7 @@ async function discoverRuntimeCandidates(rootDirectory: string): Promise<Runtime
 
   return {
     candidates,
-    discoveryLimited: queue.length > 0,
+    discoveryLimited: discoveryLimited || queue.length > 0,
   };
 }
 
