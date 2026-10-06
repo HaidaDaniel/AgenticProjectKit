@@ -1,6 +1,6 @@
 # Task 0189 - Finish terminal task archiving and reference safety
 
-State: doing
+State: done
 Owner: codex-continue-20261005-2055
 Mode: maintenance
 Lane: maintenance
