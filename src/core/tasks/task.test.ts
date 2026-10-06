@@ -110,7 +110,7 @@ import {
   startTaskEpoch,
 } from "./workflow.js";
 import { getTaskTemplate, resolveTaskTemplateType } from "../templates/task-templates.js";
-import { runTaskApkOperation } from "./apk-verification.js";
+import { runTaskApkOperation, type TaskApkOperation } from "./apk-verification.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -1020,6 +1020,73 @@ test("default APK operation resolver is path-independent and read-only", async (
     assert.equal(result.exitCode, 0);
     assert.match(result.resolvedApkIdentity, /^agentic-project-kit@\d+\.\d+\.\d+:current-process$/);
     assert.deepEqual(after, before);
+  });
+});
+
+test("builtin APK operations ignore unavailable launchers, shims, and spaced roots", async () => {
+  await withTempDirectory(async (directory) => {
+    const spacedRoot = join(directory, "repository with spaces");
+    const shimDirectory = join(directory, "Windows launcher shim with spaces");
+    await mkdir(spacedRoot, { recursive: true });
+    await mkdir(shimDirectory, { recursive: true });
+    await writeFile(join(shimDirectory, "apkit.cmd"), "@echo off\r\necho unexpected > shim-used\r\n", "utf8");
+    await writeFile(join(shimDirectory, "apkit.ps1"), "Set-Content shim-used unexpected\n", "utf8");
+    const originalPath = process.env.PATH;
+    process.env.PATH = shimDirectory;
+
+    try {
+      for (const operation of ["lint", "doctor", "sync-check", "status"] as const) {
+        const result = await runTaskApkOperation(spacedRoot, operation);
+        assert.match(result.resolvedApkIdentity, /^agentic-project-kit@\d+\.\d+\.\d+:current-process$/);
+        assert.equal(typeof result.exitCode, "number");
+      }
+    } finally {
+      if (originalPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = originalPath;
+      }
+    }
+
+    assert.deepEqual(await readdir(spacedRoot), []);
+    assert.deepEqual((await readdir(directory)).sort(), ["Windows launcher shim with spaces", "repository with spaces"]);
+  });
+});
+
+test("builtin APK operation dispatch rejects unsupported runtime values", async () => {
+  await withTempDirectory(async (directory) => {
+    await assert.rejects(
+      () => runTaskApkOperation(directory, "audit" as TaskApkOperation),
+      /Unsupported APK task operation: audit/,
+    );
+  });
+});
+
+test("legacy verification commands remain shell-backed after builtin support", async () => {
+  await withTempDirectory(async (directory) => {
+    const legacy = {
+      ...TASK,
+      verificationCommands: ["pnpm exec apk lint --json"],
+      verification: undefined,
+    };
+    const parsed = parseTaskMarkdown(renderTaskMarkdown(legacy));
+    assert.deepEqual(parsed.verificationCommands, legacy.verificationCommands);
+    await writeTaskFile(join(directory, ".tasks", "0007-add-task-system.md"), parsed);
+
+    const commands: string[] = [];
+    const result = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      changedFiles: ["src/core/tasks/index.ts"],
+      runCommand: async (command) => {
+        commands.push(command);
+        return 0;
+      },
+    });
+
+    assert.equal(result.passed, true);
+    assert.deepEqual(commands, ["pnpm exec apk lint --json"]);
   });
 });
 

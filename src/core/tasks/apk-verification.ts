@@ -47,6 +47,10 @@ export async function runTaskApkOperation(
   rootDirectory: string,
   operation: TaskApkOperation,
 ): Promise<TaskApkOperationResult> {
+  if (!(TASK_APK_OPERATIONS as readonly string[]).includes(operation)) {
+    throw new Error(`Unsupported APK task operation: ${String(operation)}.`);
+  }
+
   const cwd = resolve(rootDirectory);
   let exitCode = 0;
 
@@ -73,6 +77,9 @@ export async function runTaskApkOperation(
       const { summarizeStatus } = await import("../status/index.js");
       await summarizeStatus(cwd);
       break;
+    }
+    default: {
+      throw new Error(`Unsupported APK task operation: ${String(operation)}.`);
     }
   }
 

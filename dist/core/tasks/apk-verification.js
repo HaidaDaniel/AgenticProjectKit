@@ -29,6 +29,9 @@ async function currentApkIdentity() {
  * no global executable or PATH lookup is used.
  */
 export async function runTaskApkOperation(rootDirectory, operation) {
+    if (!TASK_APK_OPERATIONS.includes(operation)) {
+        throw new Error(`Unsupported APK task operation: ${String(operation)}.`);
+    }
     const cwd = resolve(rootDirectory);
     let exitCode = 0;
     switch (operation) {
@@ -54,6 +57,9 @@ export async function runTaskApkOperation(rootDirectory, operation) {
             const { summarizeStatus } = await import("../status/index.js");
             await summarizeStatus(cwd);
             break;
+        }
+        default: {
+            throw new Error(`Unsupported APK task operation: ${String(operation)}.`);
         }
     }
     return {

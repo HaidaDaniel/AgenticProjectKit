@@ -92,9 +92,10 @@ Host-project commands remain ordinary explicit shell commands.
 
 ## Required evidence
 
-- Reproducer for launcher-path failure.
-- Cross-platform resolver/builtin tests.
-- Legacy command compatibility regression.
+- Reproducer for launcher-path failure: `builtin APK operations ignore unavailable launchers, shims, and spaced roots`.
+- Cross-platform resolver/builtin tests: the same fixture covers a spaced POSIX root, Windows-style `.cmd`/`.ps1` shims, and a PATH containing only the shim directory; the runtime dispatcher test covers fail-closed operation bounds.
+- Legacy command compatibility regression: `legacy verification commands remain shell-backed after builtin support`.
+- Candidate-bound verification evidence must include the quality/coverage run that executes these source tests.
 
 ## Review questions
 
