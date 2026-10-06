@@ -89,6 +89,7 @@ import {
   renderRecordManualVerificationResult,
   withLocalMutationLock,
   renderTaskVerifyResult,
+  resolveMergePathAttribution,
   recordDogfoodResult,
   renderDogfoodPrompt,
   renderDogfoodResult,
@@ -2974,6 +2975,18 @@ test("file-type-only changes on both merge parents fail closed", async () => {
     assert.equal(baseline?.lineageStatus, "intervening");
     assert.match(baseline?.lineageDiagnostic ?? "", /merge-resolution.*mode\.txt|mode\.txt.*merge-resolution/i);
   });
+});
+
+test("an unreadable merge parent entry fails closed even when the result matches the other parent", () => {
+  assert.deepEqual(
+    resolveMergePathAttribution(
+      "entry:100644 blob result",
+      "missing",
+      ["unreadable", "entry:100644 blob result"],
+      ["parent-a", "parent-b"],
+    ),
+    { mergeResolution: true, inheritedFrom: [] },
+  );
 });
 
 test("legacy multiple-claim baseline history selects the earliest authoritative baseline", async () => {

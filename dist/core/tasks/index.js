@@ -1833,20 +1833,12 @@ async function readGitCommitNode(rootDirectory, sha, parents, rangeBaseSha) {
         const resultFingerprint = await gitTreeEntryFingerprint(rootDirectory, sha, path);
         const baseFingerprint = await gitTreeEntryFingerprint(rootDirectory, mergeBaseSha, path);
         const parentFingerprints = await Promise.all(parents.map((parent) => gitTreeEntryFingerprint(rootDirectory, parent, path)));
-        const changedParents = parentFingerprints.filter((fingerprint) => (resultFingerprint === "unreadable"
-            || fingerprint === "unreadable"
-            || fingerprint !== baseFingerprint));
-        const resultMatchesParent = parentFingerprints
-            .map((fingerprint, index) => fingerprint === resultFingerprint ? parents[index] : undefined)
-            .filter((parent) => parent !== undefined);
-        if (resultFingerprint === "unreadable"
-            || baseFingerprint === "unreadable"
-            || changedParents.length === parents.length
-            || resultMatchesParent.length === 0) {
+        const attribution = resolveMergePathAttribution(resultFingerprint, baseFingerprint, parentFingerprints, parents);
+        if (attribution.mergeResolution) {
             mergeResolutionFiles.push(path);
             continue;
         }
-        for (const parent of resultMatchesParent)
+        for (const parent of attribution.inheritedFrom)
             inheritedFrom.add(parent);
     }
     return {
@@ -1987,6 +1979,22 @@ async function gitTreeEntryFingerprint(rootDirectory, revision, path) {
     catch {
         return "unreadable";
     }
+}
+export function resolveMergePathAttribution(resultFingerprint, baseFingerprint, parentFingerprints, parents) {
+    const changedParents = parentFingerprints.filter((fingerprint) => (resultFingerprint === "unreadable"
+        || fingerprint === "unreadable"
+        || fingerprint !== baseFingerprint));
+    const resultMatchesParent = parentFingerprints
+        .map((fingerprint, index) => fingerprint === resultFingerprint ? parents[index] : undefined)
+        .filter((parent) => parent !== undefined);
+    if (resultFingerprint === "unreadable"
+        || baseFingerprint === "unreadable"
+        || parentFingerprints.some((fingerprint) => fingerprint === "unreadable")
+        || changedParents.length === parents.length
+        || resultMatchesParent.length === 0) {
+        return { mergeResolution: true, inheritedFrom: [] };
+    }
+    return { mergeResolution: false, inheritedFrom: resultMatchesParent };
 }
 async function resolveTaskCandidateCommit(rootDirectory, taskFiles, baselineRecords, evidenceRecords, runEvents, activeTaskId, commit) {
     if (commit.parents.length !== 1)
