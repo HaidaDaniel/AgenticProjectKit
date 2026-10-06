@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import assert from "node:assert/strict";
@@ -20,6 +20,10 @@ async function withTempDirectory(
   } finally {
     await rm(directory, { force: true, recursive: true, maxRetries: 5, retryDelay: 20 });
   }
+}
+
+function normalizeLineEndings(value: string): string {
+  return value.replace(/\r\n?/g, "\n");
 }
 
 test("packaged skill registry discovers every canonical SKILL.md.hbs asset", async () => {
@@ -79,6 +83,39 @@ test("materialization previews without mutation, applies idempotently, and prote
     assert.equal(forced.status, "update");
     assert.equal(forced.written, true);
     assert.equal(await readFile(destination, "utf8"), generated);
+  });
+});
+
+test("every materialized skill matches its canonical rendered source", async () => {
+  await withTempDirectory(async (directory) => {
+    for (const skill of await listPackagedSkills()) {
+      const expected = await readPackagedSkillContent(skill.id);
+      const result = await materializePackagedSkill(directory, skill.id, { apply: true });
+      assert.equal(result.status, "create");
+      assert.equal(
+        normalizeLineEndings(await readFile(join(directory, skill.destination), "utf8")),
+        normalizeLineEndings(expected.content),
+      );
+    }
+  });
+});
+
+test("materialization refuses symlinked destination parents before writing", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = join(directory, "outside");
+    const agents = join(directory, ".agents");
+    await mkdir(outside, { recursive: true });
+    await mkdir(agents, { recursive: true });
+    await symlink(outside, join(agents, "skills"), "dir");
+
+    await assert.rejects(
+      materializePackagedSkill(directory, "apk-task-author", { apply: true }),
+      /symbolic-link directory/,
+    );
+    await assert.rejects(
+      stat(join(outside, "apk-task-author", "SKILL.md")),
+      { code: "ENOENT" },
+    );
   });
 });
 

@@ -1,5 +1,6 @@
-import { lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { dirname, join, relative } from "node:path";
+import { constants } from "node:fs";
+import { lstat, mkdir, open, readFile, readdir, realpath } from "node:fs/promises";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { renderTemplateFile } from "../templates/index.js";
@@ -137,6 +138,63 @@ async function readExistingSkill(path: string): Promise<string | undefined> {
   }
 }
 
+async function assertSafeDestinationAncestors(
+  rootDirectory: string,
+  destinationPath: string,
+): Promise<void> {
+  const rootPath = resolve(rootDirectory);
+  const parentPath = dirname(destinationPath);
+  const relativeParent = relative(rootPath, parentPath);
+  if (relativeParent.startsWith("..") || relativeParent.includes(`..${sep}`)) {
+    throw new Error(`Skill destination escapes the project root: ${destinationPath}`);
+  }
+
+  const rootRealPath = await realpath(rootPath);
+  let currentPath = rootPath;
+  for (const component of relativeParent.split(sep).filter(Boolean)) {
+    currentPath = join(currentPath, component);
+    try {
+      const metadata = await lstat(currentPath);
+      if (metadata.isSymbolicLink()) {
+        throw new Error(`Refusing to materialize through symbolic-link directory: ${currentPath}`);
+      }
+
+      const realPath = await realpath(currentPath);
+      if (realPath !== rootRealPath && !realPath.startsWith(`${rootRealPath}${sep}`)) {
+        throw new Error(`Skill destination resolves outside the project root: ${currentPath}`);
+      }
+    } catch (error: unknown) {
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        break;
+      }
+      throw error;
+    }
+  }
+}
+
+async function writeMaterializedSkill(
+  destinationPath: string,
+  content: string,
+  status: "create" | "update",
+): Promise<void> {
+  const noFollow = constants.O_NOFOLLOW ?? 0;
+  const flags = constants.O_WRONLY
+    | constants.O_CREAT
+    | noFollow
+    | (status === "create" ? constants.O_EXCL : constants.O_TRUNC);
+  const handle = await open(destinationPath, flags, 0o644);
+  try {
+    await handle.writeFile(content, "utf8");
+  } finally {
+    await handle.close();
+  }
+}
+
 export async function materializePackagedSkill(
   rootDirectory: string,
   skillId: string,
@@ -147,7 +205,9 @@ export async function materializePackagedSkill(
   }
 
   const { skill, content } = await readPackagedSkillContent(skillId);
-  const destinationPath = join(rootDirectory, skill.destination);
+  const projectRoot = resolve(rootDirectory);
+  const destinationPath = join(projectRoot, skill.destination);
+  await assertSafeDestinationAncestors(projectRoot, destinationPath);
   const existing = await readExistingSkill(destinationPath);
   const applied = options.apply ?? false;
 
@@ -165,7 +225,12 @@ export async function materializePackagedSkill(
   const shouldWrite = applied && (status === "create" || status === "update");
   if (shouldWrite) {
     await mkdir(dirname(destinationPath), { recursive: true });
-    await writeFile(destinationPath, content, "utf8");
+    await assertSafeDestinationAncestors(projectRoot, destinationPath);
+    await writeMaterializedSkill(
+      destinationPath,
+      content,
+      status === "create" ? "create" : "update",
+    );
   }
 
   return {
