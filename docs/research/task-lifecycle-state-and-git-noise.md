@@ -50,26 +50,27 @@ separate candidate history, while the state transition is intentionally visible 
 later commit.
 
 The downstream runtime trail is uneven and is recorded here rather than inferred:
-translator-agent's `.agentic/runs` contains an independent review event for neighboring
-Task 0157 (`review-1791197938683-z3lq3n`), while the Task 0158 files and Git history
-provide the implementation/fix/state sequence but no durable verify/gate evidence
-record in the committed repository. That absence is itself relevant: ignored runtime
-state cannot be the only source needed to explain completion in a fresh clone.
+translator-agent's local operational records include an independent review event for
+neighboring Task 0157 (`review-1791197938683-z3lq3n`), while the Task 0158 files and
+Git history provide the implementation/fix/state sequence but no durable verify/gate
+evidence record in the committed repository. That absence is itself relevant: ignored
+runtime state cannot be the only source needed to explain completion in a fresh clone.
 
 ### ResLedger
 
 ResLedger supplies several independent traces:
 
-| Task | Candidate-side commits | Lifecycle-only commit |
+| Task | Initial candidate-side history | Earlier lifecycle marker and later reopen/fix history |
 | --- | --- | --- |
-| 0105 | `4f24c03` implementation, `ca40ba8` fix, `ce24dbe` path-contract correction | `524f58d` (`docs(0105): record task completion lifecycle state`) |
-| 0106 | `e3ebbb5` implementation, `85ebb90` evidence/documentation correction | `dff6832` (`docs(0106): record task completion lifecycle state`) |
-| 0107 | `acc81e1` implementation, `910149b` behavioral harness, `70189e0` evidence-bound correction | `5c481b1` (`docs(0107): record task completion lifecycle state`) |
+| 0105 | `4f24c03` implementation | `524f58d` (`docs(0105): record task completion lifecycle state`), then `ca40ba8` fix and `ce24dbe` path-contract correction |
+| 0106 | `e3ebbb5` implementation | `dff6832` (`docs(0106): record task completion lifecycle state`), then `85ebb90` evidence/documentation correction |
+| 0107 | `acc81e1` implementation | `5c481b1` (`docs(0107): record task completion lifecycle state`), then `910149b` behavioral harness and `70189e0` evidence-bound correction |
 
 The completion diffs for these commits are task-file state updates, not hidden
-implementation work. They demonstrate both the noise and the value: a fresh clone can
-see task completion without access to an operator's machine or an untracked runtime
-directory.
+implementation work at the time they were created. The later reopen/fix commits also
+show that a lifecycle marker is not immutable delivery proof. They demonstrate both
+the noise and the value: a fresh clone can see the recorded state transition without
+access to an operator's machine or an untracked runtime directory.
 
 ResLedger also preserves a stronger task-local lifecycle trace in the task Notes. For
 0105, the notes report four checks passing against `93e972b`, then identify fresh
@@ -84,7 +85,8 @@ commit is a state transition rather than immutable proof that the deliverable ca
 never reopen.
 
 For an APK-side current trace, Task 0186's final candidate was `041f69e`. Its
-candidate-bound verify run was `verify-1791279382155-8ynnis`; the fresh review run was
+candidate-bound verify run was `verify-1791279382155-8ynnis`, which wrote five
+automated verification records; the fresh review run was
 `review-1791279830954-g0l54b` with evidence
 `evidence-1791280235506-64083j`; the gate passed before lifecycle commit `4219d30`.
 The run/evidence files are local APK operational records, not task implementation
