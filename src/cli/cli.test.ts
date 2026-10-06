@@ -4250,6 +4250,28 @@ test("CLI manual artifact recording keeps artifact and observer evidence referen
     assert.equal(missingReference.exitCode, 1);
     assert.match(missingReference.stderr, /non-empty externally-observed evidence reference/);
 
+    const overlongReference = await runCli([
+      "task", "verify", "0001", "--record", "--owner", "codex-a",
+      "--check", "manual-artifact", "--result", "pass", "--evidence", "x".repeat(241),
+    ], directory);
+    assert.equal(overlongReference.exitCode, 1);
+    assert.match(overlongReference.stderr, /short locator\/reference.*--summary.*Notes/);
+
+    const multilineReference = await runCli([
+      "task", "verify", "0001", "--record", "--owner", "codex-a",
+      "--check", "manual-artifact", "--result", "pass", "--evidence", "reference\nstatus",
+    ], directory);
+    assert.equal(multilineReference.exitCode, 1);
+    assert.match(multilineReference.stderr, /single-line short locator\/reference.*--summary.*Notes/);
+
+    const overlongSummary = await runCli([
+      "task", "verify", "0001", "--record", "--owner", "codex-a",
+      "--check", "manual-artifact", "--result", "pass",
+      "--evidence", "reference", "--summary", "x".repeat(1001),
+    ], directory);
+    assert.equal(overlongSummary.exitCode, 1);
+    assert.match(overlongSummary.stderr, /--summary must be at most 1000 characters.*Notes/);
+
     const recorded = await runCli([
       "task", "verify", "0001", "--record", "--owner", "codex-a",
       "--check", "manual-artifact", "--result", "pass",

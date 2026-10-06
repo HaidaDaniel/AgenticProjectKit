@@ -3219,8 +3219,19 @@ export async function recordManualVerification(options) {
     if (evidence.length === 0) {
         throw new Error("A non-empty externally-observed evidence reference is required.");
     }
+    if (/[\r\n]/.test(evidence)) {
+        throw new Error("Evidence reference must be a single-line short locator/reference; put narrative context in --summary or Notes.");
+    }
     if (evidence.length > MANUAL_EVIDENCE_REFERENCE_MAX_LENGTH) {
-        throw new Error(`Evidence reference must be at most ${MANUAL_EVIDENCE_REFERENCE_MAX_LENGTH} characters.`);
+        throw new Error(`Evidence reference is a short locator/reference and must be at most ${MANUAL_EVIDENCE_REFERENCE_MAX_LENGTH} characters; put narrative context in --summary or Notes.`);
+    }
+    if (options.summary !== undefined) {
+        if (/[\r\n]/.test(options.summary)) {
+            throw new Error("--summary must be single-line; put longer guidance in Notes.");
+        }
+        if (options.summary.length > TASK_EVIDENCE_SUMMARY_MAX_LENGTH) {
+            throw new Error(`--summary must be at most ${TASK_EVIDENCE_SUMMARY_MAX_LENGTH} characters; put longer guidance in Notes.`);
+        }
     }
     const baseline = await readTaskBaseline(options.rootDirectory, task.id);
     const snapshot = await captureTaskScope({

@@ -3684,6 +3684,43 @@ test("recordManualVerification rejects automated checks, missing evidence, forei
         rootDirectory: directory,
         taskDirectory: ".tasks",
         taskId: "0007",
+        owner: "codex-a",
+        checkId: "live-smoke",
+        result: "pass",
+        evidence: "x".repeat(241),
+      }),
+      /short locator\/reference.*--summary.*Notes/,
+    );
+    await assert.rejects(
+      recordManualVerification({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        owner: "codex-a",
+        checkId: "live-smoke",
+        result: "pass",
+        evidence: "reference\nstatus",
+      }),
+      /single-line short locator\/reference.*--summary.*Notes/,
+    );
+    await assert.rejects(
+      recordManualVerification({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        owner: "codex-a",
+        checkId: "live-smoke",
+        result: "pass",
+        evidence: "reference",
+        summary: "x".repeat(1001),
+      }),
+      /--summary must be at most 1000 characters.*Notes/,
+    );
+    await assert.rejects(
+      recordManualVerification({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
         owner: "ghost",
         checkId: "live-smoke",
         result: "pass",
@@ -4203,6 +4240,23 @@ test("artifact metadata and incidental text cannot satisfy unrelated evidence ca
 });
 
 test("malformed, multiline, and overlong artifact/evidence references are rejected", () => {
+  const exactBoundaryTask = parseTaskMarkdown(renderTaskMarkdown({
+    ...TASK,
+    verification: [{
+      id: "boundary-check",
+      type: "manual",
+      required: true,
+      environment: "live",
+      profile: "trusted",
+      instruction: "Inspect the release.",
+      evidenceRef: "x".repeat(240),
+      summary: "x".repeat(1000),
+    }],
+    verificationCommands: [],
+  }));
+  assert.equal(exactBoundaryTask.verification?.[0]?.evidenceRef?.length, 240);
+  assert.equal(exactBoundaryTask.verification?.[0]?.summary?.length, 1000);
+
   for (const field of ["artifact", "evidence", "evidenceRef"] as const) {
     for (const reference of ["", "x".repeat(241), "reports/manual\nresult.json"]) {
       assert.throws(() => parseTaskMarkdown(renderTaskMarkdown({
