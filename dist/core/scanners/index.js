@@ -258,8 +258,9 @@ function packageManifestRole(candidate, override) {
     const packageJson = candidate.packageJson;
     const evidence = nodeApplicationEvidence(packageJson);
     if (candidate.path === "." && override) {
+        const role = override === "tooling" && evidence.length > 0 ? "mixed" : override;
         return {
-            role: override,
+            role,
             evidence: [...evidence, `runtimeManifestRole=${override}`],
         };
     }

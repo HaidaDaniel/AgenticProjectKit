@@ -471,7 +471,7 @@ async function buildAdoptionPlan(rootDirectory, includeMigration) {
             changes: operations.map(({ action, path, reason }) => ({ action, path, reason })),
             skipped,
             gitignore: gitignorePlan.result,
-            diagnostics: gitignorePlan.result.diagnostics,
+            diagnostics: [...compatibility.diagnostics, ...gitignorePlan.result.diagnostics],
         },
         operations,
     };

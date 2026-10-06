@@ -95,7 +95,7 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 
 ### ADR index cross-check
 
-- [x] Each of the 81 index rows matches one retained ADR heading and its title.
+- [x] Each of the 82 index rows matches one retained ADR heading and its title.
 - [x] Each status matches that record's explicit `Status` field.
 - [x] The only supersession link is ADR-0006 -> ADR-0062, recorded by ADR-0006's status and ADR-0062's heading and decision text.
 

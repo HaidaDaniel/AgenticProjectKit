@@ -548,3 +548,32 @@ test("a Node CLI with APK tooling remains an application runtime", async () => {
     assert.deepEqual(scan.runtime.ambiguousRuntimes, []);
   });
 });
+
+test("tooling override cannot hide credible Node runtime evidence", async () => {
+  await withTempRepository(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({
+      runtimeManifestRole: "tooling",
+    }), "utf8");
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      private: true,
+      bin: { "example-cli": "dist/cli.js" },
+      devDependencies: { "agentic-project-kit": "github:HaidaDaniel/AgenticProjectKit#v0.4.7" },
+    }), "utf8");
+
+    const scan = await scanRepository(directory);
+    assert.deepEqual(scan.runtime.applicationRuntimes, ["Node.js"]);
+    assert.deepEqual(scan.runtime.ambiguousRuntimes, []);
+    assert.equal(scan.runtime.components.find((component) => component.runtime === "Node.js")?.role, "mixed");
+  });
+});
+
+test("adoption exposes invalid config diagnostics without migration", async () => {
+  await withTempRepository(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({ defaultMode: "invalid" }), "utf8");
+
+    const plan = await planAdoption(directory, { includeMigration: false });
+    assert.ok(plan.diagnostics.some((diagnostic) => diagnostic.includes("Invalid .agentic/config.json")));
+  });
+});
