@@ -7,6 +7,7 @@ import {
   AGENT_STYLES,
   DOCUMENTATION_PROFILES,
   OPERATING_MODES,
+  RUNTIME_MANIFEST_ROLES,
   type AgenticConfig,
   type ExecutionCalibration,
 } from "./types.js";
@@ -329,6 +330,14 @@ export function parseAgenticConfig(raw: unknown): AgenticConfig {
 
   const contextExcludes = readContextExcludes(raw.contextExcludes, issues);
 
+  let runtimeManifestRole: AgenticConfig["runtimeManifestRole"];
+  if (raw.runtimeManifestRole !== undefined) {
+    runtimeManifestRole = asOneOf(raw.runtimeManifestRole, RUNTIME_MANIFEST_ROLES);
+    if (!runtimeManifestRole) {
+      issues.push(`runtimeManifestRole must be one of: ${RUNTIME_MANIFEST_ROLES.join(", ")}.`);
+    }
+  }
+
   if (issues.length > 0) {
     throw new ConfigValidationError(issues);
   }
@@ -346,6 +355,7 @@ export function parseAgenticConfig(raw: unknown): AgenticConfig {
     ...(executionOverrides === undefined ? {} : { executionOverrides }),
     ...(executionCalibration === undefined ? {} : { executionCalibration }),
     ...(quality === undefined ? {} : { quality }),
+    ...(runtimeManifestRole === undefined ? {} : { runtimeManifestRole }),
     ...(contextExcludes === undefined ? {} : { contextExcludes }),
   };
 }

@@ -449,3 +449,102 @@ test("translator-like and ResLedger-like adoption output carries the corrected s
     assert.match(await readFile(join(directory, "docs/project-map.md"), "utf8"), /- Go/);
   });
 });
+
+test("repository scanning separates APK tooling from Python and Go application runtimes", async () => {
+  await withTempRepository(async (directory) => {
+    await writeFile(join(directory, "pyproject.toml"), "[project]\nname='translator-agent'\n", "utf8");
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      private: true,
+      devDependencies: { "agentic-project-kit": "github:HaidaDaniel/AgenticProjectKit#v0.4.7" },
+    }), "utf8");
+    await writeFile(join(directory, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n", "utf8");
+
+    const scan = await scanRepository(directory);
+    assert.deepEqual(scan.runtime.applicationRuntimes, ["Python"]);
+    assert.deepEqual(scan.runtime.toolingStack, ["APK", "Node.js", "pnpm"]);
+    assert.deepEqual(scan.runtime.ambiguousRuntimes, []);
+    assert.ok(scan.runtime.components.some((component) => (
+      component.path === "." && component.runtime === "Python" && component.role === "application"
+    )));
+    assert.ok(scan.runtime.components.some((component) => (
+      component.path === "." && component.runtime === "Node.js" && component.role === "tooling"
+    )));
+  });
+
+  await withTempRepository(async (directory) => {
+    await writeFile(join(directory, "go.mod"), "module example.com/resledger\n\ngo 1.22\n", "utf8");
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      private: true,
+      scripts: { test: "go test ./...", build: "go build ./..." },
+      devDependencies: { "agentic-project-kit": "github:HaidaDaniel/AgenticProjectKit#v0.4.7" },
+    }), "utf8");
+    await writeFile(join(directory, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n", "utf8");
+
+    const scan = await scanRepository(directory);
+    assert.deepEqual(scan.runtime.applicationRuntimes, ["Go"]);
+    assert.deepEqual(scan.runtime.toolingStack, ["APK", "Node.js", "pnpm"]);
+    assert.ok(!scan.runtime.applicationRuntimes.includes("Node.js"));
+  });
+});
+
+test("repository scanning keeps a genuine nested Node component in a mixed application", async () => {
+  await withTempRepository(async (directory) => {
+    await writeFile(join(directory, "go.mod"), "module example.com/resledger\n\ngo 1.22\n", "utf8");
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      private: true,
+      devDependencies: { "agentic-project-kit": "github:HaidaDaniel/AgenticProjectKit#v0.4.7" },
+    }), "utf8");
+    await writeFile(join(directory, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n", "utf8");
+    await mkdir(join(directory, "frontend"), { recursive: true });
+    await writeFile(join(directory, "frontend", "package.json"), JSON.stringify({
+      private: true,
+      dependencies: { react: "^19.0.0" },
+      devDependencies: { vite: "^7.0.0" },
+    }), "utf8");
+
+    const result = await adoptRepository(directory);
+    assert.deepEqual(result.scan.runtime.applicationRuntimes, ["Go", "Node.js"]);
+    assert.deepEqual(result.scan.runtime.toolingStack, ["APK", "Node.js", "pnpm"]);
+    assert.ok(result.scan.runtime.components.some((component) => (
+      component.path === "frontend" && component.runtime === "Node.js" && component.role === "application"
+    )));
+    const projectMap = await readFile(join(directory, "docs/project-map.md"), "utf8");
+    assert.match(projectMap, /## Application Runtime\n\n- Go\n- Node\.js/);
+    assert.match(projectMap, /## Repository Tooling\n\n- APK\n- Node\.js\n- pnpm/);
+    assert.match(projectMap, /frontend: Node\.js \(application/);
+  });
+});
+
+test("runtime manifest override resolves an otherwise ambiguous package conservatively", async () => {
+  await withTempRepository(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({
+      runtimeManifestRole: "tooling",
+    }), "utf8");
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      private: true,
+      devDependencies: { typescript: "^6.0.0" },
+    }), "utf8");
+
+    const scan = await scanRepository(directory);
+    assert.deepEqual(scan.runtime.applicationRuntimes, []);
+    assert.deepEqual(scan.runtime.toolingStack, ["Node.js", "TypeScript"]);
+    assert.deepEqual(scan.runtime.ambiguousRuntimes, []);
+  });
+});
+
+test("a Node CLI with APK tooling remains an application runtime", async () => {
+  await withTempRepository(async (directory) => {
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      private: true,
+      bin: { "example-cli": "dist/cli.js" },
+      devDependencies: { "agentic-project-kit": "github:HaidaDaniel/AgenticProjectKit#v0.4.7" },
+    }), "utf8");
+    await writeFile(join(directory, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n", "utf8");
+
+    const scan = await scanRepository(directory);
+    assert.deepEqual(scan.runtime.applicationRuntimes, ["Node.js"]);
+    assert.deepEqual(scan.runtime.toolingStack, ["APK", "Node.js", "pnpm"]);
+    assert.deepEqual(scan.runtime.ambiguousRuntimes, []);
+  });
+});

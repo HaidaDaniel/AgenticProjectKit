@@ -762,6 +762,16 @@ test("local communication language path discovery is deterministic per platform"
   );
 });
 
+test("parseAgenticConfig accepts one bounded runtime manifest ownership override", () => {
+  assert.equal(parseAgenticConfig({ runtimeManifestRole: "tooling" }).runtimeManifestRole, "tooling");
+  assert.equal(parseAgenticConfig({ runtimeManifestRole: "application" }).runtimeManifestRole, "application");
+  assert.equal(parseAgenticConfig({ runtimeManifestRole: "mixed" }).runtimeManifestRole, "mixed");
+  assert.throws(
+    () => parseAgenticConfig({ runtimeManifestRole: "unknown" }),
+    /runtimeManifestRole must be one of: application, tooling, mixed/,
+  );
+});
+
 test("communication language tags normalize and reject invalid values", () => {
   assert.equal(DEFAULT_COMMUNICATION_LANGUAGE, "en");
   assert.equal(normalizeCommunicationLanguage("RU"), "ru");

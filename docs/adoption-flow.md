@@ -21,6 +21,22 @@ Adoption is the process of introducing Agentic Project Kit into an existing repo
 7. Create cleanup or documentation tasks.
 8. Add exporter files where appropriate.
 
+The generated Project Map and adoption report keep the legacy flat stack for compatibility, but
+also report `Application Runtime`, `Repository Tooling`, `Ambiguous Runtime Evidence`, and
+bounded `Runtime Components`. A root APK/pnpm manifest in a Python or Go repository is tooling
+evidence; a real Node CLI or nested React/Vite component remains an application runtime. When
+automatic ownership is genuinely ambiguous, the root `.agentic/config.json` may use one bounded
+override:
+
+```json
+{
+  "runtimeManifestRole": "tooling"
+}
+```
+
+The override accepts only `application`, `tooling`, or `mixed` and changes ownership semantics,
+not detected capabilities or APK's repository-local installation model.
+
 ## Compatibility and migration
 
 New `init` and explicit adoption migrations write `schemaVersion: 2` to `.agentic/config.json`. A config without a marker, or with `schemaVersion: 1`, is treated as a legacy v0.3.1-style config. Legacy task Markdown remains readable: flat `## Verification commands` sections are normalized in memory and are not rewritten automatically. Structured `## Verification` tasks are reported as gated; mixed repositories are reported as mixed.

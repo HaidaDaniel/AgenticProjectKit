@@ -1,7 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 
-import { CONFIG_PATH } from "../config/index.js";
+import { CONFIG_PATH, RUNTIME_MANIFEST_ROLES, type RuntimeManifestRole } from "../config/index.js";
 import { listAgentExporters } from "../exporters/index.js";
 
 export interface RepositoryFileSet {
@@ -15,11 +15,28 @@ export interface RepositoryScan {
   topLevelDirectories: string[];
   topLevelFiles: string[];
   detectedStack: string[];
+  runtime: RepositoryRuntimeScan;
   readiness: RepositoryReadinessScan;
   kitDocs: RepositoryFileSet;
   agentExports: RepositoryFileSet;
   hasAgenticConfig: boolean;
   taskFiles: string[];
+}
+
+export type RuntimeComponentRole = "application" | "tooling" | "mixed" | "ambiguous";
+
+export interface RuntimeComponent {
+  path: string;
+  runtime: string;
+  role: RuntimeComponentRole;
+  evidence: string[];
+}
+
+export interface RepositoryRuntimeScan {
+  applicationRuntimes: string[];
+  toolingStack: string[];
+  ambiguousRuntimes: string[];
+  components: RuntimeComponent[];
 }
 
 export interface RepositoryReadinessScan {
@@ -46,6 +63,33 @@ const IGNORED_DIRECTORIES = new Set([
   ".next",
   ".turbo",
   ".cache",
+]);
+
+const MAX_RUNTIME_DISCOVERY_DIRECTORIES = 256;
+const MAX_RUNTIME_DISCOVERY_DEPTH = 3;
+const APK_PACKAGE_NAMES = new Set(["agentic-project-kit"]);
+const NODE_TOOLING_PACKAGES = new Set([
+  "@types/node",
+  "c8",
+  "eslint",
+  "handlebars",
+  "husky",
+  "lint-staged",
+  "prettier",
+  "tsx",
+  "typescript",
+  "typescript-eslint",
+]);
+const NODE_APPLICATION_FRAMEWORKS = new Set([
+  "@angular/core",
+  "express",
+  "fastify",
+  "next",
+  "react",
+  "solid-js",
+  "svelte",
+  "vite",
+  "vue",
 ]);
 
 const REQUIRED_KIT_DOCS = [
@@ -158,17 +202,13 @@ async function scanFileSet(
   };
 }
 
-async function detectPackageStack(rootDirectory: string): Promise<string[]> {
-  const packagePath = join(rootDirectory, "package.json");
-
-  if (!(await fileExists(packagePath))) {
-    return [];
-  }
-
-  const packageJson = JSON.parse(await readFile(packagePath, "utf8")) as {
+type PackageManifest = Record<string, unknown> & {
     dependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
+    scripts?: Record<string, string>;
   };
+
+function packageStack(packageJson: PackageManifest): string[] {
   const dependencies = {
     ...packageJson.dependencies,
     ...packageJson.devDependencies,
@@ -192,6 +232,16 @@ async function detectPackageStack(rootDirectory: string): Promise<string[]> {
   }
 
   return stack;
+}
+
+async function detectPackageStack(rootDirectory: string): Promise<string[]> {
+  const packagePath = join(rootDirectory, "package.json");
+
+  if (!(await fileExists(packagePath))) {
+    return [];
+  }
+
+  return packageStack(JSON.parse(await readFile(packagePath, "utf8")) as PackageManifest);
 }
 
 const PYTHON_MARKER_FILES = [
@@ -226,6 +276,212 @@ async function readJsonFile(path: string): Promise<Record<string, unknown> | und
   }
 
   return JSON.parse(await readFile(path, "utf8")) as Record<string, unknown>;
+}
+
+interface RuntimeDiscoveryCandidate {
+  path: string;
+  files: string[];
+  packageJson?: PackageManifest;
+}
+
+async function discoverRuntimeCandidates(rootDirectory: string): Promise<RuntimeDiscoveryCandidate[]> {
+  const candidates: RuntimeDiscoveryCandidate[] = [];
+  const queue = [{ absolutePath: rootDirectory, relativePath: ".", depth: 0 }];
+  let inspectedDirectories = 0;
+
+  while (queue.length > 0 && inspectedDirectories < MAX_RUNTIME_DISCOVERY_DIRECTORIES) {
+    const current = queue.shift();
+    if (!current) break;
+    inspectedDirectories += 1;
+    const entries = (await readdir(current.absolutePath, { withFileTypes: true }))
+      .sort((left, right) => left.name.localeCompare(right.name));
+    const files = entries.filter((entry) => entry.isFile()).map((entry) => entry.name);
+    const packageJson = files.includes("package.json")
+      ? await readJsonFile(join(current.absolutePath, "package.json")) as PackageManifest | undefined
+      : undefined;
+    if (
+      packageJson !== undefined
+      || hasPythonMarkers(files)
+      || hasGoMarkers(files)
+    ) {
+      candidates.push({
+        path: current.relativePath,
+        files,
+        ...(packageJson === undefined ? {} : { packageJson }),
+      });
+    }
+
+    if (current.depth >= MAX_RUNTIME_DISCOVERY_DEPTH) continue;
+    for (const entry of entries) {
+      if (!entry.isDirectory() || IGNORED_DIRECTORIES.has(entry.name) || entry.name.startsWith(".")) continue;
+      queue.push({
+        absolutePath: join(current.absolutePath, entry.name),
+        relativePath: current.relativePath === "." ? entry.name : `${current.relativePath}/${entry.name}`,
+        depth: current.depth + 1,
+      });
+    }
+  }
+
+  return candidates;
+}
+
+function dependencyNames(packageJson: PackageManifest): string[] {
+  return [
+    ...Object.keys(packageJson.dependencies ?? {}),
+    ...Object.keys(packageJson.devDependencies ?? {}),
+  ];
+}
+
+function packageHasApkDependency(packageJson: PackageManifest): boolean {
+  return dependencyNames(packageJson).some((name) => APK_PACKAGE_NAMES.has(name));
+}
+
+function nodeApplicationEvidence(packageJson: PackageManifest): string[] {
+  const evidence: string[] = [];
+  const dependencyNamesSet = new Set(dependencyNames(packageJson));
+  const productionDependencies = Object.keys(packageJson.dependencies ?? {});
+  const framework = [...dependencyNamesSet].find((name) => NODE_APPLICATION_FRAMEWORKS.has(name));
+  if (framework) evidence.push(`package.json dependency ${framework}`);
+  if (productionDependencies.some((name) => !NODE_TOOLING_PACKAGES.has(name) && !APK_PACKAGE_NAMES.has(name))) {
+    evidence.push("package.json production dependency");
+  }
+  if (["main", "module", "exports", "bin"].some((field) => packageJson[field] !== undefined)) {
+    evidence.push("package.json runtime entrypoint");
+  }
+  const scripts = Object.keys(packageJson.scripts ?? {});
+  const runtimeScript = scripts.find((script) => /^(?:start|dev|serve|preview)$/.test(script));
+  if (runtimeScript) evidence.push(`package.json ${runtimeScript} script`);
+  return evidence;
+}
+
+function packageManifestRole(
+  candidate: RuntimeDiscoveryCandidate,
+  override: RuntimeManifestRole | undefined,
+): { role: RuntimeComponentRole; evidence: string[] } {
+  if (!candidate.packageJson) return { role: "ambiguous", evidence: [] };
+  const packageJson = candidate.packageJson;
+  const evidence = nodeApplicationEvidence(packageJson);
+  if (candidate.path === "." && override) {
+    return {
+      role: override,
+      evidence: [...evidence, `runtimeManifestRole=${override}`],
+    };
+  }
+  if (evidence.length > 0) return { role: "application", evidence };
+  if (packageHasApkDependency(packageJson)) {
+    return { role: "tooling", evidence: ["package.json APK dependency"] };
+  }
+  return { role: "ambiguous", evidence: ["package.json has no bounded runtime ownership evidence"] };
+}
+
+function addRuntimeComponent(
+  components: RuntimeComponent[],
+  component: RuntimeComponent,
+): void {
+  if (!components.some((entry) => (
+    entry.path === component.path
+    && entry.runtime === component.runtime
+    && entry.role === component.role
+  ))) {
+    components.push(component);
+  }
+}
+
+function scanRuntimeEvidence(
+  candidates: readonly RuntimeDiscoveryCandidate[],
+  packageManager: string | undefined,
+  rootManifestRole: RuntimeManifestRole | undefined,
+): RepositoryRuntimeScan {
+  const components: RuntimeComponent[] = [];
+  const toolingStack = new Set<string>();
+  const applicationRuntimes = new Set<string>();
+  const ambiguousRuntimes = new Set<string>();
+
+  for (const candidate of candidates) {
+    if (hasPythonMarkers(candidate.files)) {
+      applicationRuntimes.add("Python");
+      addRuntimeComponent(components, {
+        path: candidate.path,
+        runtime: "Python",
+        role: "application",
+        evidence: candidate.files.filter((file) => (
+          (PYTHON_MARKER_FILES as readonly string[]).includes(file)
+          || PYTHON_REQUIREMENTS_PATTERN.test(file)
+        )).sort(),
+      });
+    }
+    if (hasGoMarkers(candidate.files)) {
+      applicationRuntimes.add("Go");
+      addRuntimeComponent(components, {
+        path: candidate.path,
+        runtime: "Go",
+        role: "application",
+        evidence: ["go.mod"],
+      });
+    }
+    if (!candidate.packageJson) continue;
+    const packageRole = packageManifestRole(candidate, rootManifestRole);
+    const packageStackValues = packageStack(candidate.packageJson);
+    if (packageRole.role === "application" || packageRole.role === "mixed") {
+      applicationRuntimes.add("Node.js");
+      addRuntimeComponent(components, {
+        path: candidate.path,
+        runtime: "Node.js",
+        role: packageRole.role,
+        evidence: packageRole.evidence,
+      });
+    }
+    if (packageRole.role === "tooling" || packageRole.role === "mixed") {
+      packageStackValues.forEach((value) => toolingStack.add(value));
+      if (packageHasApkDependency(candidate.packageJson)) toolingStack.add("APK");
+      addRuntimeComponent(components, {
+        path: candidate.path,
+        runtime: "Node.js",
+        role: packageRole.role,
+        evidence: packageRole.evidence,
+      });
+    }
+    if (packageRole.role === "ambiguous") {
+      ambiguousRuntimes.add("Node.js");
+      addRuntimeComponent(components, {
+        path: candidate.path,
+        runtime: "Node.js",
+        role: "ambiguous",
+        evidence: packageRole.evidence,
+      });
+    }
+  }
+
+  if (packageManager) toolingStack.add(packageManager);
+  if (candidates.some((candidate) => candidate.packageJson && packageHasApkDependency(candidate.packageJson))) {
+    toolingStack.add("APK");
+    toolingStack.add("Node.js");
+  }
+
+  return {
+    applicationRuntimes: [...applicationRuntimes].sort(),
+    toolingStack: [...toolingStack].sort(),
+    ambiguousRuntimes: [...ambiguousRuntimes].sort(),
+    components: components.sort((left, right) => (
+      left.path.localeCompare(right.path)
+      || left.runtime.localeCompare(right.runtime)
+      || left.role.localeCompare(right.role)
+    )),
+  };
+}
+
+async function readRuntimeManifestRole(rootDirectory: string): Promise<RuntimeManifestRole | undefined> {
+  try {
+    const config = await readJsonFile(join(rootDirectory, CONFIG_PATH));
+    const value = config?.runtimeManifestRole;
+    return typeof value === "string" && (RUNTIME_MANIFEST_ROLES as readonly string[]).includes(value)
+      ? value as RuntimeManifestRole
+      : undefined;
+  } catch {
+    // audit/adopt own full config validation; scanner semantics remain available
+    // for invalid config diagnostics instead of masking the original finding.
+    return undefined;
+  }
 }
 
 async function scanReadiness(
@@ -293,13 +549,20 @@ export async function scanRepository(rootDirectory: string): Promise<RepositoryS
     detectedStack.add("pnpm");
   }
 
-  if (hasPythonMarkers(topLevelFiles)) {
-    detectedStack.add("Python");
+  const runtimeManifestRole = await readRuntimeManifestRole(rootDirectory);
+  const runtimeCandidates = await discoverRuntimeCandidates(rootDirectory);
+  for (const candidate of runtimeCandidates) {
+    if (candidate.packageJson) {
+      packageStack(candidate.packageJson).forEach((value) => detectedStack.add(value));
+    }
+    if (hasPythonMarkers(candidate.files)) detectedStack.add("Python");
+    if (hasGoMarkers(candidate.files)) detectedStack.add("Go");
   }
-
-  if (hasGoMarkers(topLevelFiles)) {
-    detectedStack.add("Go");
-  }
+  const runtime = scanRuntimeEvidence(
+    runtimeCandidates,
+    topLevelFiles.includes("pnpm-lock.yaml") ? "pnpm" : undefined,
+    runtimeManifestRole,
+  );
 
   const agentExportPaths = listAgentExporters().map((exporter) => exporter.outputPath);
 
@@ -308,6 +571,7 @@ export async function scanRepository(rootDirectory: string): Promise<RepositoryS
     topLevelDirectories,
     topLevelFiles,
     detectedStack: [...detectedStack].sort(),
+    runtime,
     readiness: await scanReadiness(rootDirectory, allTopLevelDirectories, topLevelFiles),
     kitDocs: await scanFileSet(rootDirectory, REQUIRED_KIT_DOCS),
     agentExports: await scanFileSet(rootDirectory, agentExportPaths),

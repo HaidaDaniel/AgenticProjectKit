@@ -4,7 +4,7 @@ export { CONFIG_PATH, readAgenticConfigFile, writeAgenticConfigFile, } from "./f
 export { parseAgenticConfig, parseAgenticConfigJson, serializeAgenticConfig, } from "./schema.js";
 export { CONFIG_SCHEMA_VERSIONS, CURRENT_CONFIG_SCHEMA_VERSION, LEGACY_CONFIG_SCHEMA_VERSION, } from "./schema.js";
 export { detectCompatibility, } from "./compatibility.js";
-export { AGENT_STYLES, DOCUMENTATION_PROFILES, OPERATING_MODES, } from "./types.js";
+export { AGENT_STYLES, DOCUMENTATION_PROFILES, OPERATING_MODES, RUNTIME_MANIFEST_ROLES, } from "./types.js";
 export { DEFAULT_COMMUNICATION_LANGUAGE, LOCAL_PREFERENCES_DIRECTORY, LOCAL_PREFERENCES_FILE, normalizeCommunicationLanguage, readLocalPreferences, resetLocalCommunicationLanguage, resolveCommunicationLanguage, resolveLocalPreferencesPath, writeLocalCommunicationLanguage, } from "./local-preferences.js";
 export { QUALITY_CAPABILITY_IDS, detectQualityCapabilities, renderQualityDetection, } from "../quality/index.js";
 export { emptyResourceRegistry, parseResourceRegistry, renderResourceRegistry, serializeResourceRegistry, ResourceRegistryValidationError, RESOURCE_AVAILABILITIES, RESOURCE_BILLING_MODES, RESOURCE_COST_CLASSES, RESOURCE_LOCATIONS, RESOURCE_WORKSPACE_MODES, } from "../resources/index.js";

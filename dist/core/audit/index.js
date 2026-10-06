@@ -23,6 +23,16 @@ async function readOptionalFile(path) {
 function renderBulletList(items) {
     return items.length > 0 ? items.map((item) => `- ${item}`) : ["- none"];
 }
+function renderRuntimeComponents(scan) {
+    return scan.runtime.components.length > 0
+        ? scan.runtime.components.map((component) => (`- ${component.path}: ${component.runtime} (${component.role}; evidence=${component.evidence.join(",") || "none"})`))
+        : ["- none"];
+}
+function hasRootNodeApplication(scan) {
+    return scan.runtime.components.some((component) => (component.path === "."
+        && component.runtime === "Node.js"
+        && (component.role === "application" || component.role === "mixed")));
+}
 function renderProjectMap(scan, quality) {
     const ciDetected = quality.capabilities.find((capability) => capability.id === "ci")?.status === "detected";
     return [
@@ -33,6 +43,22 @@ function renderProjectMap(scan, quality) {
         "## Detected Stack",
         "",
         ...renderBulletList(scan.detectedStack),
+        "",
+        "## Application Runtime",
+        "",
+        ...renderBulletList(scan.runtime.applicationRuntimes),
+        "",
+        "## Repository Tooling",
+        "",
+        ...renderBulletList(scan.runtime.toolingStack),
+        "",
+        "## Ambiguous Runtime Evidence",
+        "",
+        ...renderBulletList(scan.runtime.ambiguousRuntimes),
+        "",
+        "## Runtime Components",
+        "",
+        ...renderRuntimeComponents(scan),
         "",
         "## Top-level Directories",
         "",
@@ -181,7 +207,7 @@ async function auditTasks(rootDirectory, scan, findings) {
     return scan.taskFiles.length;
 }
 function auditRepoReadiness(scan, findings, testsCapabilityDetected) {
-    if (scan.topLevelFiles.includes("package.json")) {
+    if (hasRootNodeApplication(scan)) {
         for (const script of ["test", "lint", "typecheck", "build"]) {
             if (!scan.readiness.packageScripts.includes(script)) {
                 findings.push({
@@ -206,7 +232,7 @@ function auditRepoReadiness(scan, findings, testsCapabilityDetected) {
             message: ".env.example not detected.",
         });
     }
-    if (scan.topLevelFiles.includes("package.json")
+    if ((hasRootNodeApplication(scan) || scan.runtime.ambiguousRuntimes.includes("Node.js"))
         && scan.readiness.testDirectories.length === 0
         && !testsCapabilityDetected) {
         findings.push({

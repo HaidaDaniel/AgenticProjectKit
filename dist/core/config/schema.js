@@ -3,7 +3,7 @@ import { ConfigValidationError } from "./errors.js";
 import { parseResourceRegistry, ResourceRegistryValidationError } from "../resources/index.js";
 import { parseExecutionOverride, parseExecutionProfile, ExecutionValidationError } from "../execution/index.js";
 import { QUALITY_CAPABILITY_IDS } from "../quality/index.js";
-import { AGENT_STYLES, DOCUMENTATION_PROFILES, OPERATING_MODES, } from "./types.js";
+import { AGENT_STYLES, DOCUMENTATION_PROFILES, OPERATING_MODES, RUNTIME_MANIFEST_ROLES, } from "./types.js";
 export const LEGACY_CONFIG_SCHEMA_VERSION = 1;
 export const CURRENT_CONFIG_SCHEMA_VERSION = 2;
 export const CONFIG_SCHEMA_VERSIONS = [
@@ -255,6 +255,13 @@ export function parseAgenticConfig(raw) {
     }
     const executionCalibration = readExecutionCalibration(raw.executionCalibration, issues);
     const contextExcludes = readContextExcludes(raw.contextExcludes, issues);
+    let runtimeManifestRole;
+    if (raw.runtimeManifestRole !== undefined) {
+        runtimeManifestRole = asOneOf(raw.runtimeManifestRole, RUNTIME_MANIFEST_ROLES);
+        if (!runtimeManifestRole) {
+            issues.push(`runtimeManifestRole must be one of: ${RUNTIME_MANIFEST_ROLES.join(", ")}.`);
+        }
+    }
     if (issues.length > 0) {
         throw new ConfigValidationError(issues);
     }
@@ -271,6 +278,7 @@ export function parseAgenticConfig(raw) {
         ...(executionOverrides === undefined ? {} : { executionOverrides }),
         ...(executionCalibration === undefined ? {} : { executionCalibration }),
         ...(quality === undefined ? {} : { quality }),
+        ...(runtimeManifestRole === undefined ? {} : { runtimeManifestRole }),
         ...(contextExcludes === undefined ? {} : { contextExcludes }),
     };
 }

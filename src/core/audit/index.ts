@@ -51,6 +51,22 @@ function renderBulletList(items: readonly string[]): string[] {
   return items.length > 0 ? items.map((item) => `- ${item}`) : ["- none"];
 }
 
+function renderRuntimeComponents(scan: RepositoryScan): string[] {
+  return scan.runtime.components.length > 0
+    ? scan.runtime.components.map((component) => (
+      `- ${component.path}: ${component.runtime} (${component.role}; evidence=${component.evidence.join(",") || "none"})`
+    ))
+    : ["- none"];
+}
+
+function hasRootNodeApplication(scan: RepositoryScan): boolean {
+  return scan.runtime.components.some((component) => (
+    component.path === "."
+    && component.runtime === "Node.js"
+    && (component.role === "application" || component.role === "mixed")
+  ));
+}
+
 function renderProjectMap(scan: RepositoryScan, quality: QualityDetectionResult): string {
   const ciDetected = quality.capabilities.find((capability) => capability.id === "ci")?.status === "detected";
   return [
@@ -61,6 +77,22 @@ function renderProjectMap(scan: RepositoryScan, quality: QualityDetectionResult)
     "## Detected Stack",
     "",
     ...renderBulletList(scan.detectedStack),
+    "",
+    "## Application Runtime",
+    "",
+    ...renderBulletList(scan.runtime.applicationRuntimes),
+    "",
+    "## Repository Tooling",
+    "",
+    ...renderBulletList(scan.runtime.toolingStack),
+    "",
+    "## Ambiguous Runtime Evidence",
+    "",
+    ...renderBulletList(scan.runtime.ambiguousRuntimes),
+    "",
+    "## Runtime Components",
+    "",
+    ...renderRuntimeComponents(scan),
     "",
     "## Top-level Directories",
     "",
@@ -228,7 +260,7 @@ async function auditTasks(
 }
 
 function auditRepoReadiness(scan: RepositoryScan, findings: AuditFinding[], testsCapabilityDetected: boolean): void {
-  if (scan.topLevelFiles.includes("package.json")) {
+  if (hasRootNodeApplication(scan)) {
     for (const script of ["test", "lint", "typecheck", "build"]) {
       if (!scan.readiness.packageScripts.includes(script)) {
         findings.push({
@@ -257,7 +289,7 @@ function auditRepoReadiness(scan: RepositoryScan, findings: AuditFinding[], test
   }
 
   if (
-    scan.topLevelFiles.includes("package.json")
+    (hasRootNodeApplication(scan) || scan.runtime.ambiguousRuntimes.includes("Node.js"))
     && scan.readiness.testDirectories.length === 0
     && !testsCapabilityDetected
   ) {

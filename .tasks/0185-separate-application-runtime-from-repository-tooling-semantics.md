@@ -1,7 +1,7 @@
 # Task 0185 - Separate application runtime from repository tooling semantics
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-continue-20261005-2055
 Mode: product
 Lane: architecture
 Type: refactor

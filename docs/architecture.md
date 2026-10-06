@@ -17,6 +17,12 @@ Agentic Project Kit uses a layered architecture:
 - Select context explicitly rather than loading the whole repository.
 - Keep commands thin and predictable.
 
+## Application/runtime and repository tooling semantics
+
+Repository scanning keeps the backward-compatible flat `detectedStack` projection, but its canonical semantic view is additive: `runtime.applicationRuntimes`, `runtime.toolingStack`, `runtime.ambiguousRuntimes`, and bounded `runtime.components`. APK's root `package.json` plus pnpm lockfile is repository tooling evidence, not proof that a Python or Go application is Node.js. Strong Node evidence includes an application entrypoint, production dependency, recognized application framework, runtime script, or a discovered nested application component; a real Node frontend remains visible in a mixed repository. The optional root-manifest `runtimeManifestRole` config override is limited to `application`, `tooling`, or `mixed`, and controls ownership semantics without fabricating runtime capabilities.
+
+Project Map, adoption output, and audit readiness consume this semantic projection. Tooling-only manifests do not trigger Node application package-script or test-directory assumptions, while ambiguous manifests remain visible and conservative. Discovery is deterministic, read-only, and bounded; APK distribution remains repository-local `package.json` plus pnpm and is not moved or replaced.
+
 ## Current resource-aware execution
 
 [Resource-Aware Execution](execution-profiles.md) records the accepted architecture implemented by Tasks 0082-0088 and shipped in [v0.4.0](releases/v0.4.0.md). It separates project mode, task risk/assurance, and execution profile; models model, harness, and executable worker/resource independently; and routes roles through the existing vendor-neutral worker contract.

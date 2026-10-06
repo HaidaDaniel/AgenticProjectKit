@@ -30,10 +30,12 @@ export {
   AGENT_STYLES,
   DOCUMENTATION_PROFILES,
   OPERATING_MODES,
+  RUNTIME_MANIFEST_ROLES,
   type AgentStyle,
   type AgenticConfig,
   type DocumentationProfile,
   type OperatingMode,
+  type RuntimeManifestRole,
 } from "./types.js";
 export {
   DEFAULT_COMMUNICATION_LANGUAGE,

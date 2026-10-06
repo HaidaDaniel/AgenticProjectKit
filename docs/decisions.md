@@ -91,6 +91,7 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0080](#adr-0080---current-operator-decisions-take-precedence-over-stale-history) | accepted | Current operator decisions take precedence over stale history | — |
 | [ADR-0081](#adr-0081---verification-epochs-refresh-stale-baselines-without-scope-laundering) | accepted | Verification epochs refresh stale baselines without scope laundering | — |
 | [ADR-0082](#adr-0082---bounded-git-dag-lineage-preserves-clean-merge-attribution-and-fails-closed-on-ambiguity) | accepted | Bounded Git DAG lineage preserves clean merge attribution and fails closed on ambiguity | — |
+| [ADR-0083](#adr-0083---application-runtime-and-repository-tooling-are-separate-scanner-semantics) | accepted | Application runtime and repository tooling are separate scanner semantics | — |
 
 ### ADR index cross-check
 
@@ -1556,3 +1557,41 @@ This changes only Git lineage attribution. It does not create an ownership ledge
 Reference:
 
 Task 0184.
+
+## ADR-0083 - Application runtime and repository tooling are separate scanner semantics
+
+Status: accepted
+
+Decision:
+
+Keep the legacy flat `detectedStack` scanner projection for compatibility, and add a canonical
+runtime projection that separates application runtimes, repository tooling, ambiguous runtime
+evidence, and bounded runtime components. A root `package.json` or pnpm lockfile alone does not
+prove a Node application. An APK dependency is tooling evidence; a Node application requires
+stronger component evidence such as an entrypoint, production dependency, recognized application
+framework, runtime script, or a discovered nested application manifest. The root
+`.agentic/config.json` may provide one bounded `runtimeManifestRole` override with the values
+`application`, `tooling`, or `mixed` when ownership remains ambiguous.
+
+Reason:
+
+Task 0125 established that repository-local package pinning is the accepted APK distribution model
+for non-Node repositories, while translator-agent and ResLedger show that the same root Node
+manifest can be APK/development tooling. Treating that manifest as application truth mislabels the
+host runtime and leaks Node-specific readiness assumptions. The projection must also preserve a
+real Node frontend or CLI in mixed repositories; globally suppressing Node when Python or Go is
+present would hide credible application evidence.
+
+Boundary:
+
+Runtime discovery is read-only, deterministic, and bounded by explicit depth and directory caps.
+The semantic projection is additive and does not change APK installation, package layout,
+lockfiles, dependency resolution, quality capability policy, or downstream repositories. Audit and
+adoption wording consume the semantic fields, while legacy consumers continue to receive the flat
+stack. The explicit override changes ownership classification only; it cannot invent framework,
+language, or capability evidence. Invalid configuration remains an audit/adoption diagnostic and
+does not make scanner output fail open.
+
+Reference:
+
+Task 0185 and ADR-0057.

@@ -13,3 +13,4 @@ export const DOCUMENTATION_PROFILES = [
     "production",
 ];
 export const AGENT_STYLES = ["caveman", "normal"];
+export const RUNTIME_MANIFEST_ROLES = ["application", "tooling", "mixed"];

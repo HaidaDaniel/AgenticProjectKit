@@ -76,6 +76,7 @@ test("auditRepository reports lightweight repo readiness findings", async () => 
         devDependencies: {
           typescript: "^6.0.0",
         },
+        main: "dist/index.js",
       }, null, 2),
       "utf8",
     );
@@ -384,6 +385,27 @@ test("auditRepository reports Python and Go stacks from canonical markers", asyn
 
     const projectMap = await readFile(join(directory, "docs/project-map.md"), "utf8");
     assert.match(projectMap, /## Detected Stack\n\n- Go\n- Python/);
+  });
+});
+
+test("audit project map and readiness use runtime ownership for APK-only manifests", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeFile(join(directory, "pyproject.toml"), "[project]\nname='translator-agent'\n", "utf8");
+    await writeFile(join(directory, "package.json"), JSON.stringify({
+      private: true,
+      devDependencies: { "agentic-project-kit": "github:HaidaDaniel/AgenticProjectKit#v0.4.7" },
+    }), "utf8");
+    await writeFile(join(directory, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n", "utf8");
+
+    const result = await auditRepository(directory);
+    const projectMap = await readFile(join(directory, "docs/project-map.md"), "utf8");
+
+    assert.deepEqual(result.scan.runtime.applicationRuntimes, ["Python"]);
+    assert.deepEqual(result.scan.runtime.toolingStack, ["APK", "Node.js", "pnpm"]);
+    assert.ok(!result.findings.some((finding) => finding.message.startsWith("Missing package script:")));
+    assert.ok(!result.findings.some((finding) => finding.message === "Top-level test directory not detected."));
+    assert.match(projectMap, /## Application Runtime\n\n- Python/);
+    assert.match(projectMap, /## Repository Tooling\n\n- APK\n- Node\.js\n- pnpm/);
   });
 });
 

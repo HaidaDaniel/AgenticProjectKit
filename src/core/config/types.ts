@@ -26,6 +26,10 @@ export const AGENT_STYLES = ["caveman", "normal"] as const;
 
 export type AgentStyle = (typeof AGENT_STYLES)[number];
 
+export const RUNTIME_MANIFEST_ROLES = ["application", "tooling", "mixed"] as const;
+
+export type RuntimeManifestRole = (typeof RUNTIME_MANIFEST_ROLES)[number];
+
 export interface ExecutionCalibrationBudget {
   maxReviewPasses?: number;
   maxFrontierRuns?: number;
@@ -56,6 +60,8 @@ export interface AgenticConfig {
   executionOverrides?: ExecutionOverride;
   executionCalibration?: ExecutionCalibration;
   quality?: QualityPolicy;
+  /** Optional bounded ownership override for the root package manifest. */
+  runtimeManifestRole?: RuntimeManifestRole;
   /**
    * Optional additive exclusions for repository file discovery. Git-native
    * `.gitignore` semantics are authoritative; these entries remove additional

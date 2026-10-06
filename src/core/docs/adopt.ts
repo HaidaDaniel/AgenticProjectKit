@@ -76,6 +76,9 @@ async function fileExists(path: string): Promise<boolean> {
 }
 
 function renderProjectMap(scan: RepositoryScan): string {
+  const renderList = (items: readonly string[]): string[] => (
+    items.length > 0 ? items.map((item) => `- ${item}`) : ["- none"]
+  );
   return [
     "# Project Map",
     "",
@@ -86,6 +89,26 @@ function renderProjectMap(scan: RepositoryScan): string {
     ...(scan.detectedStack.length > 0
       ? scan.detectedStack.map((item) => `- ${item}`)
       : ["- unknown"]),
+    "",
+    "## Application Runtime",
+    "",
+    ...renderList(scan.runtime.applicationRuntimes),
+    "",
+    "## Repository Tooling",
+    "",
+    ...renderList(scan.runtime.toolingStack),
+    "",
+    "## Ambiguous Runtime Evidence",
+    "",
+    ...renderList(scan.runtime.ambiguousRuntimes),
+    "",
+    "## Runtime Components",
+    "",
+    ...(scan.runtime.components.length > 0
+      ? scan.runtime.components.map((component) => (
+        `- ${component.path}: ${component.runtime} (${component.role}; evidence=${component.evidence.join(",") || "none"})`
+      ))
+      : ["- none"]),
     "",
     "## Top-level Directories",
     "",
@@ -118,6 +141,8 @@ function renderAdoptionReport(scan: RepositoryScan, compatibility: Compatibility
     "",
     `- Name: ${scan.rootName}`,
     `- Stack: ${scan.detectedStack.length > 0 ? scan.detectedStack.join(", ") : "unknown"}`,
+    `- Application runtime: ${scan.runtime.applicationRuntimes.length > 0 ? scan.runtime.applicationRuntimes.join(", ") : "unknown"}`,
+    `- Repository tooling: ${scan.runtime.toolingStack.length > 0 ? scan.runtime.toolingStack.join(", ") : "none"}`,
     "",
     "## Pre-adoption Gaps",
     "",
