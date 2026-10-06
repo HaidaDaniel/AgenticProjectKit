@@ -32,7 +32,7 @@ traces reproduce it:
 | 0185 | `aec1b91`, `3632388`, `47b71f0`, `31e91c3`, `4d1ecab` | `d81831e` | Candidate fixes were committed before verify/review/gate; the final commit only marked the task done. |
 | 0186 | `8c4bdb3`, `a95f3dc`, `851958d`, `ea6151e`, `b222c95`, `041f69e` | `4219d30` | Multiple correction commits were bound to fresh evidence; the final commit changed only `State: doing` to `State: done`. |
 
-For 0186, the passing gate reported the current candidate and six candidate-bound
+For 0186, the passing gate reported the current candidate and five automated
 verification records plus independent review before `4219d30` was created. The
 completion commit was therefore bookkeeping, not an implementation correction.
 
@@ -128,6 +128,31 @@ machine that later pushes normally:
 | **DERIVED LIFECYCLE** | No explicit lifecycle commit if state is inferred from evidence/run records. | Weak and ambiguous. Existing runtime records may be absent from a fresh clone; even committed records show checks, not necessarily done/released/canceled intent. | `next-task`, archive, and dependency state would need heuristics for incomplete or conflicting records. A pass cannot distinguish done from review or blocked. | Unsafe as the sole source: evidence freshness can prove a candidate, but cannot safely encode all lifecycle transitions. It risks treating a stale or unrelated pass as completion. | High semantic migration cost and a second implicit state machine. Not compatible with fail-closed lifecycle semantics. |
 | **LOCAL RUNTIME + PUBLISHED COMPLETION SNAPSHOT** | Local state is quiet, but publishing a shared snapshot still creates a tracked commit or an equivalent publication event. | Local UX is good, shared truth is not available until publication. A fresh clone without the snapshot cannot know completion; offline completion remains unpublished. | Snapshot schema, replay, archive, and legacy fallback are required. The design only relocates the current bookkeeping boundary. | Safe only after an explicit published snapshot remains candidate-bound. It cannot remove the final shared-state publication step. | Medium/high migration cost with no demonstrated commit reduction. |
 | **COMBINED CANDIDATE/COMPLETION COMMIT** | Attempts one commit containing implementation and `State: done`. | Readable in a clone, but it requires treating a task as done before final review/gate or rerunning evidence after the state mutation. | Existing commands would need a new pre-done or post-commit lifecycle and archive contract. | Unsafe under current rules: review/gate evidence binds the pre-completion candidate, while the combined commit changes the tracked task contract. Amending after evidence changes the SHA and invalidates the evidence. | A substantial candidate/evidence protocol redesign, not a bookkeeping optimization. Do not adopt as a default. |
+
+## Status, next-task, and archive behavior by option
+
+The status-facing behavior is also part of the storage decision, not a cosmetic
+consumer detail:
+
+- **KEEP TRACKED MARKDOWN:** `status`, `next-task`, dependency checks, and archive
+  lookup read the same tracked task fields that collaborators see. A fresh clone can
+  answer all four questions without replaying runtime state.
+- **TRACKED LIFECYCLE JOURNAL:** every command must replay the journal over the legacy
+  contract, resolve duplicate/out-of-order events, and make archive move both the
+  contract and its journal history. `next-task` cannot silently choose a task while
+  the journal is missing or conflicted.
+- **GIT NOTES/REFS:** status and `next-task` become unknown when the custom ref is not
+  fetched; archive and dependency tools need explicit notes/ref plumbing. A normal
+  patch, exported archive, or fresh clone is not enough.
+- **DERIVED LIFECYCLE:** a passing check cannot deterministically choose between
+  review, done, blocked, or canceled, so status and `next-task` would need heuristic
+  tie-breakers. Archive would risk moving a task whose inferred state is incomplete.
+- **LOCAL RUNTIME + PUBLISHED COMPLETION SNAPSHOT:** status and `next-task` can use
+  local state before publication but must report unknown in a fresh clone; archive and
+  dependencies cannot rely on the unpublished snapshot.
+- **COMBINED CANDIDATE/COMPLETION COMMIT:** status and archive are simple only after
+  accepting the unsafe pre-gate `done` semantics. If the system waits for the gate,
+  it still needs a second lifecycle event and loses the promised reduction.
 
 ## Merge and rebase behavior by option
 
