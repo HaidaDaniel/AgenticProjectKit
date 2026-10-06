@@ -49,6 +49,7 @@ Do not auto-install project skills during init/adopt. Materialization is an expl
 - src/cli/command-registry.ts
 - src/cli/commands/skills.ts
 - src/cli/cli.test.ts
+- package.json
 - dist/**
 - README.md
 - docs/agent-exporters.md
@@ -66,7 +67,6 @@ Do not auto-install project skills during init/adopt. Materialization is an expl
 - src/core/execution/**
 - src/core/work/**
 - src/core/resources/**
-- package.json
 - pnpm-lock.yaml
 - .github/**
 - .agentic/**

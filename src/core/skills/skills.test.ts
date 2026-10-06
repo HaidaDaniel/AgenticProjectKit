@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { link, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import assert from "node:assert/strict";
@@ -131,6 +131,23 @@ test("materialization refuses a symlinked final destination", async () => {
     await assert.rejects(
       materializePackagedSkill(directory, "apk-task-author", { apply: true, force: true }),
       /symbolic link/,
+    );
+    assert.equal(await readFile(outside, "utf8"), "outside content\n");
+  });
+});
+
+test("materialization refuses a hardlinked final destination", async () => {
+  await withTempDirectory(async (directory) => {
+    const destinationDirectory = join(directory, ".agents/skills/apk-task-author");
+    const outside = join(directory, "outside.md");
+    const destination = join(destinationDirectory, "SKILL.md");
+    await mkdir(destinationDirectory, { recursive: true });
+    await writeFile(outside, "outside content\n", "utf8");
+    await link(outside, destination);
+
+    await assert.rejects(
+      materializePackagedSkill(directory, "apk-task-author", { apply: true, force: true }),
+      /hard-linked destination/,
     );
     assert.equal(await readFile(outside, "utf8"), "outside content\n");
   });

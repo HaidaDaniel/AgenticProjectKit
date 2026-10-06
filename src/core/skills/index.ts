@@ -132,6 +132,9 @@ async function readExistingSkill(path: string): Promise<string | undefined> {
     if (!metadata.isFile()) {
       throw new Error(`Skill destination is not a regular file: ${path}`);
     }
+    if (metadata.nlink > 1) {
+      throw new Error(`Refusing to materialize through hard-linked destination: ${path}`);
+    }
     return await readFile(path, "utf8");
   } catch (error: unknown) {
     if (
