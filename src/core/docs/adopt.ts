@@ -110,6 +110,10 @@ function renderProjectMap(scan: RepositoryScan): string {
       ))
       : ["- none"]),
     "",
+    "## Runtime Discovery Diagnostics",
+    "",
+    ...renderList(scan.runtime.diagnostics),
+    "",
     "## Top-level Directories",
     "",
     ...(scan.topLevelDirectories.length > 0

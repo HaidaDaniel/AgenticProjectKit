@@ -1584,7 +1584,7 @@ present would hide credible application evidence.
 
 Boundary:
 
-Runtime discovery is read-only, deterministic, and bounded by explicit depth and directory caps.
+Runtime discovery is read-only, deterministic, and bounded by explicit depth and directory caps; reaching a cap emits a diagnostic so consumers do not mistake bounded results for complete discovery.
 The semantic projection is additive and does not change APK installation, package layout,
 lockfiles, dependency resolution, quality capability policy, or downstream repositories. Audit and
 adoption wording consume the semantic fields, while legacy consumers continue to receive the flat

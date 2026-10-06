@@ -37,6 +37,8 @@ export interface RepositoryRuntimeScan {
   toolingStack: string[];
   ambiguousRuntimes: string[];
   components: RuntimeComponent[];
+  discoveryLimited: boolean;
+  diagnostics: string[];
 }
 
 export interface RepositoryReadinessScan {
@@ -284,7 +286,12 @@ interface RuntimeDiscoveryCandidate {
   packageJson?: PackageManifest;
 }
 
-async function discoverRuntimeCandidates(rootDirectory: string): Promise<RuntimeDiscoveryCandidate[]> {
+interface RuntimeDiscoveryResult {
+  candidates: RuntimeDiscoveryCandidate[];
+  discoveryLimited: boolean;
+}
+
+async function discoverRuntimeCandidates(rootDirectory: string): Promise<RuntimeDiscoveryResult> {
   const candidates: RuntimeDiscoveryCandidate[] = [];
   const queue = [{ absolutePath: rootDirectory, relativePath: ".", depth: 0 }];
   let inspectedDirectories = 0;
@@ -322,7 +329,10 @@ async function discoverRuntimeCandidates(rootDirectory: string): Promise<Runtime
     }
   }
 
-  return candidates;
+  return {
+    candidates,
+    discoveryLimited: queue.length > 0,
+  };
 }
 
 function dependencyNames(packageJson: PackageManifest): string[] {
@@ -348,9 +358,12 @@ function nodeApplicationEvidence(packageJson: PackageManifest): string[] {
   if (["main", "module", "exports", "bin"].some((field) => packageJson[field] !== undefined)) {
     evidence.push("package.json runtime entrypoint");
   }
-  const scripts = Object.keys(packageJson.scripts ?? {});
-  const runtimeScript = scripts.find((script) => /^(?:start|dev|serve|preview)$/.test(script));
-  if (runtimeScript) evidence.push(`package.json ${runtimeScript} script`);
+  const runtimeScript = Object.entries(packageJson.scripts ?? {}).find(([script, command]) => (
+    /^(?:start|dev|serve|preview)$/.test(script)
+    && typeof command === "string"
+    && /\b(?:node|tsx|ts-node|vite|next|react-scripts|webpack|rollup|parcel|astro|nuxt|svelte-kit)\b/i.test(command)
+  ));
+  if (runtimeScript) evidence.push(`package.json ${runtimeScript[0]} script`);
   return evidence;
 }
 
@@ -392,6 +405,7 @@ function scanRuntimeEvidence(
   candidates: readonly RuntimeDiscoveryCandidate[],
   packageManager: string | undefined,
   rootManifestRole: RuntimeManifestRole | undefined,
+  discoveryLimited: boolean,
 ): RepositoryRuntimeScan {
   const components: RuntimeComponent[] = [];
   const toolingStack = new Set<string>();
@@ -468,6 +482,10 @@ function scanRuntimeEvidence(
       || left.runtime.localeCompare(right.runtime)
       || left.role.localeCompare(right.role)
     )),
+    discoveryLimited,
+    diagnostics: discoveryLimited
+      ? ["Runtime component discovery reached its bounded directory limit; unobserved components remain unknown."]
+      : [],
   };
 }
 
@@ -551,8 +569,8 @@ export async function scanRepository(rootDirectory: string): Promise<RepositoryS
   }
 
   const runtimeManifestRole = await readRuntimeManifestRole(rootDirectory);
-  const runtimeCandidates = await discoverRuntimeCandidates(rootDirectory);
-  for (const candidate of runtimeCandidates) {
+  const runtimeDiscovery = await discoverRuntimeCandidates(rootDirectory);
+  for (const candidate of runtimeDiscovery.candidates) {
     if (candidate.packageJson) {
       packageStack(candidate.packageJson).forEach((value) => detectedStack.add(value));
     }
@@ -560,9 +578,10 @@ export async function scanRepository(rootDirectory: string): Promise<RepositoryS
     if (hasGoMarkers(candidate.files)) detectedStack.add("Go");
   }
   const runtime = scanRuntimeEvidence(
-    runtimeCandidates,
+    runtimeDiscovery.candidates,
     topLevelFiles.includes("pnpm-lock.yaml") ? "pnpm" : undefined,
     runtimeManifestRole,
+    runtimeDiscovery.discoveryLimited,
   );
 
   const agentExportPaths = listAgentExporters().map((exporter) => exporter.outputPath);

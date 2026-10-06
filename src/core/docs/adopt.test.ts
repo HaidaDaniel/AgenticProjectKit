@@ -475,7 +475,7 @@ test("repository scanning separates APK tooling from Python and Go application r
     await writeFile(join(directory, "go.mod"), "module example.com/resledger\n\ngo 1.22\n", "utf8");
     await writeFile(join(directory, "package.json"), JSON.stringify({
       private: true,
-      scripts: { test: "go test ./...", build: "go build ./..." },
+      scripts: { test: "go test ./...", build: "go build ./...", dev: "go run ./cmd/app" },
       devDependencies: { "agentic-project-kit": "github:HaidaDaniel/AgenticProjectKit#v0.4.7" },
     }), "utf8");
     await writeFile(join(directory, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n", "utf8");

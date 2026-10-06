@@ -24,7 +24,9 @@ Adoption is the process of introducing Agentic Project Kit into an existing repo
 The generated Project Map and adoption report keep the legacy flat stack for compatibility, but
 also report `Application Runtime`, `Repository Tooling`, `Ambiguous Runtime Evidence`, and
 bounded `Runtime Components`. A root APK/pnpm manifest in a Python or Go repository is tooling
-evidence; a real Node CLI or nested React/Vite component remains an application runtime. When
+evidence; a real Node CLI or nested React/Vite component remains an application runtime. Runtime
+script evidence is command-aware, and bounded discovery reports when its result may be incomplete.
+When
 automatic ownership is genuinely ambiguous, the root `.agentic/config.json` may use one bounded
 override:
 

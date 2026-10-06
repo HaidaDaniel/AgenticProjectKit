@@ -222,7 +222,10 @@ async function discoverRuntimeCandidates(rootDirectory) {
             });
         }
     }
-    return candidates;
+    return {
+        candidates,
+        discoveryLimited: queue.length > 0,
+    };
 }
 function dependencyNames(packageJson) {
     return [
@@ -246,10 +249,11 @@ function nodeApplicationEvidence(packageJson) {
     if (["main", "module", "exports", "bin"].some((field) => packageJson[field] !== undefined)) {
         evidence.push("package.json runtime entrypoint");
     }
-    const scripts = Object.keys(packageJson.scripts ?? {});
-    const runtimeScript = scripts.find((script) => /^(?:start|dev|serve|preview)$/.test(script));
+    const runtimeScript = Object.entries(packageJson.scripts ?? {}).find(([script, command]) => (/^(?:start|dev|serve|preview)$/.test(script)
+        && typeof command === "string"
+        && /\b(?:node|tsx|ts-node|vite|next|react-scripts|webpack|rollup|parcel|astro|nuxt|svelte-kit)\b/i.test(command)));
     if (runtimeScript)
-        evidence.push(`package.json ${runtimeScript} script`);
+        evidence.push(`package.json ${runtimeScript[0]} script`);
     return evidence;
 }
 function packageManifestRole(candidate, override) {
@@ -278,7 +282,7 @@ function addRuntimeComponent(components, component) {
         components.push(component);
     }
 }
-function scanRuntimeEvidence(candidates, packageManager, rootManifestRole) {
+function scanRuntimeEvidence(candidates, packageManager, rootManifestRole, discoveryLimited) {
     const components = [];
     const toolingStack = new Set();
     const applicationRuntimes = new Set();
@@ -350,6 +354,10 @@ function scanRuntimeEvidence(candidates, packageManager, rootManifestRole) {
         components: components.sort((left, right) => (left.path.localeCompare(right.path)
             || left.runtime.localeCompare(right.runtime)
             || left.role.localeCompare(right.role))),
+        discoveryLimited,
+        diagnostics: discoveryLimited
+            ? ["Runtime component discovery reached its bounded directory limit; unobserved components remain unknown."]
+            : [],
     };
 }
 async function readRuntimeManifestRole(rootDirectory) {
@@ -423,8 +431,8 @@ export async function scanRepository(rootDirectory) {
         detectedStack.add("pnpm");
     }
     const runtimeManifestRole = await readRuntimeManifestRole(rootDirectory);
-    const runtimeCandidates = await discoverRuntimeCandidates(rootDirectory);
-    for (const candidate of runtimeCandidates) {
+    const runtimeDiscovery = await discoverRuntimeCandidates(rootDirectory);
+    for (const candidate of runtimeDiscovery.candidates) {
         if (candidate.packageJson) {
             packageStack(candidate.packageJson).forEach((value) => detectedStack.add(value));
         }
@@ -433,7 +441,7 @@ export async function scanRepository(rootDirectory) {
         if (hasGoMarkers(candidate.files))
             detectedStack.add("Go");
     }
-    const runtime = scanRuntimeEvidence(runtimeCandidates, topLevelFiles.includes("pnpm-lock.yaml") ? "pnpm" : undefined, runtimeManifestRole);
+    const runtime = scanRuntimeEvidence(runtimeDiscovery.candidates, topLevelFiles.includes("pnpm-lock.yaml") ? "pnpm" : undefined, runtimeManifestRole, runtimeDiscovery.discoveryLimited);
     const agentExportPaths = listAgentExporters().map((exporter) => exporter.outputPath);
     return {
         rootName: rootDirectory.split(/[\\/]/).filter(Boolean).at(-1) ?? rootDirectory,

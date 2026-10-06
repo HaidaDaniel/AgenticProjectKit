@@ -52,6 +52,10 @@ function renderProjectMap(scan) {
             ? scan.runtime.components.map((component) => (`- ${component.path}: ${component.runtime} (${component.role}; evidence=${component.evidence.join(",") || "none"})`))
             : ["- none"]),
         "",
+        "## Runtime Discovery Diagnostics",
+        "",
+        ...renderList(scan.runtime.diagnostics),
+        "",
         "## Top-level Directories",
         "",
         ...(scan.topLevelDirectories.length > 0
