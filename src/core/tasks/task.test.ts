@@ -68,6 +68,8 @@ import {
   renderTaskEvidence,
   renderTaskPolicy,
   renderTaskProvenance,
+  previewArchiveTask,
+  previewArchiveTasks,
   readTaskEvidence,
   readTaskBaseline,
   listTaskChangedFilesSinceBaseline,
@@ -6603,10 +6605,10 @@ test("archiveTask uses the shared task mutation lock", async () => {
   });
 });
 
-test("archiveTask refuses to archive non-done tasks", async () => {
+test("archiveTask refuses to archive non-terminal tasks", async () => {
   await withTempDirectory(async (directory) => {
-    const states: Array<"todo" | "blocked" | "canceled"> = [
-      "todo", "blocked", "canceled",
+    const states: Array<"todo" | "blocked"> = [
+      "todo", "blocked",
     ];
 
     for (const state of states) {
@@ -6617,11 +6619,73 @@ test("archiveTask refuses to archive non-done tasks", async () => {
 
       await assert.rejects(
         () => archiveTask(directory, ".tasks", "0010"),
-        /only done tasks can be archived/,
+        /only done or canceled tasks can be archived/,
       );
 
       await rm(join(directory, ".tasks", `0010-${state}-task.md`), { force: true });
     }
+  });
+});
+
+test("archiveTask supports canceled tasks and preserves bytes with ID dependents", async () => {
+  await withTempDirectory(async (directory) => {
+    const canceledPath = join(directory, ".tasks", "0010-canceled-task.md");
+    await writeTaskFile(canceledPath, {
+      ...TASK,
+      id: "0010",
+      title: "Canceled Task",
+      state: "canceled",
+      owner: "archive",
+    });
+    await writeTaskFile(join(directory, ".tasks", "0011-dependent-task.md"), {
+      ...TASK,
+      id: "0011",
+      title: "Dependent Task",
+      dependsOn: ["0010"],
+    });
+    const before = await readFile(canceledPath, "utf8");
+    const preview = await previewArchiveTask(directory, ".tasks", "0010");
+
+    assert.equal(preview.state, "canceled");
+    assert.equal(preview.canArchive, true);
+    assert.deepEqual(preview.dependents.map((dependent) => dependent.id), ["0011"]);
+    const result = await archiveTask(directory, ".tasks", "0010");
+
+    assert.equal(result.archivePath, ".tasks/archive/0010-canceled-task.md");
+    assert.equal(await readFile(join(directory, result.archivePath), "utf8"), before);
+    const archived = await listArchivedTaskFiles(directory);
+    assert.equal(archived.find((file) => file.task.id === "0010")?.task.state, "canceled");
+    assert.equal(validateTaskDependencies(await listTaskFiles(directory), archived).length, 0);
+  });
+});
+
+test("archive preview blocks live literal task-path references before mutation", async () => {
+  await withTempDirectory(async (directory) => {
+    const taskPath = join(directory, ".tasks", "0001-done-task.md");
+    await writeTaskFile(taskPath, {
+      ...TASK,
+      id: "0001",
+      title: "Done Task",
+      state: "done",
+      owner: "archive",
+    });
+    await writeTaskFile(join(directory, ".tasks", "0002-active-task.md"), {
+      ...TASK,
+      id: "0002",
+      title: "Active Task",
+      contextFiles: [".tasks/0001-done-task.md"],
+    });
+    const before = await readFile(taskPath, "utf8");
+
+    const preview = await previewArchiveTasks(directory, ".tasks", ["0001"]);
+    assert.equal(preview.plans[0]?.canArchive, false);
+    assert.match(preview.plans[0]?.blockers.join("\n") ?? "", /0002-active-task\.md/);
+    await assert.rejects(
+      () => archiveTask(directory, ".tasks", "0001"),
+      /cannot be archived safely.*literal reference/s,
+    );
+    assert.equal(await readFile(taskPath, "utf8"), before);
+    assert.deepEqual((await readdir(join(directory, ".tasks"))).sort(), ["0001-done-task.md", "0002-active-task.md"]);
   });
 });
 
@@ -6665,6 +6729,41 @@ test("archiveAllTasks moves all done tasks to archive", async () => {
     assert.doesNotReject(
       () => readFile(join(directory, ".tasks", "archive", "0002-done-two.md")),
     );
+  });
+});
+
+test("archiveAllTasks skips unsafe literal references without partial guessing", async () => {
+  await withTempDirectory(async (directory) => {
+    const unsafePath = join(directory, ".tasks", "0001-done-unsafe.md");
+    const safePath = join(directory, ".tasks", "0002-canceled-safe.md");
+    await writeTaskFile(unsafePath, {
+      ...TASK,
+      id: "0001",
+      title: "Unsafe Done",
+      state: "done",
+      owner: "archive",
+    });
+    await writeTaskFile(safePath, {
+      ...TASK,
+      id: "0002",
+      title: "Safe Canceled",
+      state: "canceled",
+      owner: "archive",
+    });
+    await writeTaskFile(join(directory, ".tasks", "0003-active-task.md"), {
+      ...TASK,
+      id: "0003",
+      title: "Active Task",
+      contextFiles: [".tasks/0001-done-unsafe.md"],
+    });
+
+    const result = await archiveAllTasks(directory, ".tasks");
+
+    assert.deepEqual(result.archived.map((entry) => entry.taskId), ["0002"]);
+    assert.deepEqual(result.skipped.map((entry) => entry.taskId), ["0001"]);
+    assert.match(result.skipped[0]?.blockers.join("\n") ?? "", /0003-active-task\.md/);
+    assert.doesNotReject(() => readFile(unsafePath));
+    assert.doesNotReject(() => readFile(join(directory, ".tasks", "archive", "0002-canceled-safe.md")));
   });
 });
 

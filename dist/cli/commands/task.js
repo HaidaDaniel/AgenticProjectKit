@@ -2,14 +2,14 @@ import { join, relative, resolve } from "node:path";
 import { readAgenticConfigFile } from "../../core/config/index.js";
 import { getTaskTemplate, resolveTaskTemplateType, TASK_TEMPLATE_TYPES, } from "../../core/templates/task-templates.js";
 import { TASK_HUMAN_DECISIONS, MAX_HUMAN_REVIEW_GRANT_PASSES, recordTaskHumanDecision, renderTaskHumanDecisionResult, cancelTask, startTaskEpoch, } from "../../core/tasks/index.js";
-import { archiveAllTasks, archiveTask, buildTaskProvenance, buildTaskDeps, createTask, evaluateTaskCompletionGate, findTaskFile, listArchivedTaskFiles, listTaskFiles, loadTaskFile, readTaskEvidence, renderTaskPolicy, renderTaskDeps, renderTaskEvidence, renderTaskCompletionGate, renderTaskProvenance, renderTaskVerifyResult, renderRecordManualVerificationResult, recordManualVerification, renderDogfoodResult, renderDogfoodSession, recordDogfoodResult, resolveTaskPolicy, startDogfoodSession, TASK_MODES, TASK_RISKS, TASK_VERIFICATION_PROFILES, PACKAGED_DIST_CHECK_ID, mayIncludePackagedSource, repositoryPackagedDistContract, normalizeVerificationCommands, taskPathPatternMayMatchDistOutput, verifyTask, } from "../../core/tasks/index.js";
+import { archiveAllTasks, archiveTask, previewArchiveTask, previewArchiveTasks, buildTaskProvenance, buildTaskDeps, createTask, evaluateTaskCompletionGate, findTaskFile, listArchivedTaskFiles, listTaskFiles, loadTaskFile, readTaskEvidence, renderTaskPolicy, renderTaskDeps, renderTaskEvidence, renderTaskCompletionGate, renderTaskProvenance, renderTaskVerifyResult, renderRecordManualVerificationResult, recordManualVerification, renderDogfoodResult, renderDogfoodSession, recordDogfoodResult, resolveTaskPolicy, startDogfoodSession, TASK_MODES, TASK_RISKS, TASK_VERIFICATION_PROFILES, PACKAGED_DIST_CHECK_ID, mayIncludePackagedSource, repositoryPackagedDistContract, normalizeVerificationCommands, taskPathPatternMayMatchDistOutput, verifyTask, } from "../../core/tasks/index.js";
 import { TASK_EVIDENCE_LOCK_PATH } from "../../core/tasks/evidence.js";
 import { inspectLocalMutationLock, recoverLocalLock, renderLocalLockInspection, } from "../../core/tasks/lock.js";
 const TASK_HELP_TEXT = [
     "Agentic Project Kit",
     "",
     "Usage:",
-    "  apk task archive [<task-id>] [--all]",
+    "  apk task archive [<task-id>] [--all] [--preview|--apply]",
     "  apk task deps <task-id>",
     "  apk task evidence <task-id>",
     "  apk task lock status [--kind <task|evidence>] [--json]",
@@ -26,7 +26,7 @@ const TASK_HELP_TEXT = [
     "  apk task create --title <title> --scope <csv> --allowed <csv> [--type <name>|--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>]",
     "",
     "Subcommands:",
-    "  archive Archive a done task or all done tasks.",
+    "  archive Archive a done or canceled task, or preview/archive all terminal tasks.",
     "  deps    Inspect task prerequisites, dependents, and graph problems.",
     "  evidence List append-only evidence records for a task.",
     "  lock    Inspect or explicitly recover local mutation locks.",
@@ -168,15 +168,29 @@ const TASK_ARCHIVE_HELP_TEXT = [
     "Agentic Project Kit",
     "",
     "Usage:",
-    "  apk task archive [<task-id>] [--all]",
+    "  apk task archive [<task-id>] [--all] [--preview|--apply]",
     "  apk task archive <task-id>",
     "  apk task archive --all",
     "",
-    "Archive a done task by moving it to .tasks/archive/.",
-    "Use --all to archive all done top-level tasks.",
+    "Archive a done or canceled task by moving it to .tasks/archive/.",
+    "Use --preview to inspect moves, dependents, and literal path references without mutation.",
+    "Use --all to archive all eligible terminal tasks; unsafe tasks are skipped with reasons.",
+    "--apply is an explicit spelling of the default mutation mode.",
     "",
-    "Only tasks in state 'done' can be archived.",
+    "Only tasks in state 'done' or 'canceled' can be archived.",
 ].join("\n");
+function renderArchivePlan(plan, prefix) {
+    console.log(`${prefix}: ${plan.taskId} [${plan.state}] ${plan.sourcePath} -> ${plan.archivePath}`);
+    console.log(`  Dependents: ${plan.dependents.length === 0 ? "none" : plan.dependents.map((dependent) => `${dependent.id} [${dependent.state}]${dependent.archived ? " (archived)" : ""}`).join(", ")}`);
+    console.log(`  Literal references: ${plan.references.length === 0 ? "none" : plan.references.map((reference) => `${reference.path}:${reference.line} (${reference.kind})`).join(", ")}`);
+    if (plan.blockers.length === 0) {
+        console.log("  Decision: archive");
+    }
+    else {
+        for (const blocker of plan.blockers)
+            console.log(`  Skip reason: ${blocker}`);
+    }
+}
 function hasHelpFlag(argv) {
     return argv.includes("--help") || argv.includes("-h");
 }
@@ -418,7 +432,7 @@ async function runArchiveSubcommand(argv) {
         console.log(TASK_ARCHIVE_HELP_TEXT);
         return 0;
     }
-    const knownArchiveFlags = new Set(["--all", "--help", "-h"]);
+    const knownArchiveFlags = new Set(["--all", "--preview", "--apply", "--help", "-h"]);
     for (const arg of argv) {
         if (arg.startsWith("-") && !knownArchiveFlags.has(arg)) {
             throw new Error(`Unknown option: ${arg}`);
@@ -436,14 +450,30 @@ async function runArchiveSubcommand(argv) {
         }
         const rootDirectory = resolve(process.cwd());
         const config = await readAgenticConfigFile(rootDirectory);
+        if (hasFlag(argv, "--preview") && hasFlag(argv, "--apply")) {
+            throw new Error("Use either --preview or --apply, not both.");
+        }
+        if (hasFlag(argv, "--preview")) {
+            const preview = await previewArchiveTasks(rootDirectory, config.taskDirectory);
+            if (preview.plans.length === 0) {
+                console.log("No done or canceled tasks to archive.");
+                return 0;
+            }
+            console.log("Archive preview (no files moved):");
+            for (const plan of preview.plans)
+                renderArchivePlan(plan, "Plan");
+            return 0;
+        }
         const result = await archiveAllTasks(rootDirectory, config.taskDirectory);
-        if (result.archived.length === 0) {
-            console.log("No done tasks to archive.");
+        if (result.archived.length === 0 && result.skipped.length === 0) {
+            console.log("No done or canceled tasks to archive.");
             return 0;
         }
         for (const a of result.archived) {
             console.log(`Archived: ${a.taskId} -> ${a.archivePath}`);
         }
+        for (const plan of result.skipped)
+            renderArchivePlan(plan, "Skipped");
         return 0;
     }
     if (positional.length !== 1) {
@@ -452,6 +482,15 @@ async function runArchiveSubcommand(argv) {
     const rootDirectory = resolve(process.cwd());
     const config = await readAgenticConfigFile(rootDirectory);
     const taskId = positional[0];
+    if (hasFlag(argv, "--preview") && hasFlag(argv, "--apply")) {
+        throw new Error("Use either --preview or --apply, not both.");
+    }
+    if (hasFlag(argv, "--preview")) {
+        const plan = await previewArchiveTask(rootDirectory, config.taskDirectory, taskId);
+        console.log("Archive preview (no files moved):");
+        renderArchivePlan(plan, "Plan");
+        return 0;
+    }
     const result = await archiveTask(rootDirectory, config.taskDirectory, taskId);
     console.log(`Archived: ${result.taskId} -> ${result.archivePath}`);
     return 0;

@@ -1,7 +1,7 @@
 # Task 0189 - Finish terminal task archiving and reference safety
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-continue-20261005-2055
 Mode: maintenance
 Lane: maintenance
 Type: bugfix
@@ -33,6 +33,7 @@ Keep archived task contents byte-identical and preserve dependency resolution by
 
 - src/core/tasks/**
 - src/cli/commands/task.ts
+- src/cli/command-registry.ts
 - src/cli/cli.test.ts
 - dist/**
 - docs/task-system.md
@@ -111,7 +112,7 @@ Keep archived task contents byte-identical and preserve dependency resolution by
 
 - `{"id":"quality","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm quality"}`
 - `{"id":"coverage","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test:coverage"}`
-- `{"id":"task-lint","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
+- `{"id":"task-lint","type":"automated","required":true,"environment":"local","profile":"deterministic","apkOperation":"lint","evidenceRef":"archive-task-tests"}`
 - `{"id":"build-current","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"rm -rf dist && pnpm build && test -z \"$(git status --porcelain --untracked-files=all --ignored=matching -- dist)\""}`
 - `{"id":"diff-check","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
 

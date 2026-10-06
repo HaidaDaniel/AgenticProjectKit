@@ -220,8 +220,8 @@ export const PUBLIC_COMMANDS = [
         summary: "Inspect, create, and verify task contracts.",
         handler: simple(runTaskCommand),
         variants: [
-            { usage: "task archive <task-id>", description: "archive a done task." },
-            { usage: "task archive --all", description: "archive all done top-level tasks." },
+            { usage: "task archive <task-id> [--preview|--apply]", description: "preview or archive a done or canceled task with literal-reference safety checks." },
+            { usage: "task archive --all [--preview|--apply]", description: "preview or archive all eligible terminal tasks, skipping unsafe moves with reasons." },
             { usage: "task deps <task-id>", description: "inspect prerequisites, dependents, and graph problems." },
             { usage: "task evidence <task-id>", description: "list bounded evidence references and subject identities." },
             { usage: "task lock status [--kind <task|evidence>] [--json]", description: "inspect task/evidence lock ownership and liveness." },

@@ -570,13 +570,15 @@ and from per-task review (which remains authoritative for its own contract).
 Completed tasks can be archived to reduce noise in the active task list.
 
 ```bash
-pnpm exec apk task archive 0001
-pnpm exec apk task archive --all
+pnpm exec apk task archive 0001 --preview
+pnpm exec apk task archive 0001 --apply
+pnpm exec apk task archive --all --preview
+pnpm exec apk task archive --all --apply
 ```
 
 Archive rules:
 
-- Only tasks in `done` state can be archived.
+- Tasks in `done` or `canceled` state can be archived; terminal state is preserved byte-for-byte.
 - Archived tasks are moved to `.tasks/archive/`.
 - `pnpm exec apk tasks` default output shows only active top-level tasks (excludes archive).
 - `pnpm exec apk tasks --all` includes both active and archived tasks.
@@ -585,7 +587,10 @@ Archive rules:
 - `pnpm exec apk task deps` marks archived prerequisites and dependents with `(archived)` tag.
 - `pnpm exec apk task create` includes archived tasks in the id sequence.
 - Archived tasks cannot be overwritten; existing archive paths are refused.
+- `--preview` is read-only and reports each exact source/destination path, terminal state, ID-based dependents, and bounded literal path references. `--apply` is explicit; omitting it keeps the compatible apply behavior for a single task or `--all`.
+- Literal references to the current `.tasks/<file>.md` path block a single-task move and are skipped by `--all`, with the source path and line reported. Active task context/source/docs references and immutable release/history references are never rewritten automatically; update them through a separate scoped task before archiving.
+- ID-based `Depends on` references are safe across the move and remain resolvable from `.tasks/archive/`. `--all` computes one deterministic preview and applies only unblocked terminal moves, so it never partially guesses through a literal reference.
 
-Before choosing `--all`, inspect unfinished task context lists and literal task paths used by source tests or immutable release artifacts. Dependencies resolve by ID across the archive, but explicit `.tasks/<file>.md` context paths do not relocate themselves. Retain those referenced completed contracts at their current paths; archive the remaining eligible tasks individually.
+Before choosing `--all`, inspect the preview and its skipped reasons. Dependencies resolve by ID across the archive, but explicit `.tasks/<file>.md` context paths do not relocate themselves. Retain those referenced completed contracts at their current paths; archive the remaining eligible tasks individually.
 
 Keep archived contracts byte-identical so lifecycle history and old acceptance criteria remain intact. Update affected current documentation links, then run `apk lint --json`, `apk task deps <active-task-id>`, and `node scripts/check-docs-consistency.mjs`. The docs checker covers only its listed documentation sources; inspect other affected links separately. Archive maintenance belongs to its own scoped task, outside a frozen release candidate: moving files changes the candidate and makes existing evidence stale.

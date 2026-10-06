@@ -71,8 +71,8 @@ The command synopsis and option list below are rendered from `src/cli/command-re
 - `apkit status [--detail]` - show task and gate state; detail adds bounded evidence/provenance diagnostics without writing files.
 - `apkit suggest-context "<task description>" [--limit <n>]` - rank context candidates from repository paths and task signals; suggestions are not guaranteed impact analysis.
 - `apkit sync [agent] [--write]` - check generated files by default; write missing or stale files only with `--write`.
-- `apkit task archive <task-id>` - archive a done task.
-- `apkit task archive --all` - archive all done top-level tasks.
+- `apkit task archive <task-id> [--preview|--apply]` - preview or archive a done or canceled task with literal-reference safety checks.
+- `apkit task archive --all [--preview|--apply]` - preview or archive all eligible terminal tasks, skipping unsafe moves with reasons.
 - `apkit task deps <task-id>` - inspect prerequisites, dependents, and graph problems.
 - `apkit task evidence <task-id>` - list bounded evidence references and subject identities.
 - `apkit task lock status [--kind <task|evidence>] [--json]` - inspect task/evidence lock ownership and liveness.
@@ -129,8 +129,10 @@ pnpm exec apkit workspaces cleanup ws-abc123 --apply
 pnpm exec apkit analytics summary --month 2026-05 --write
 pnpm exec apkit task deps 0043
 pnpm exec apkit task verify 0043 --owner codex-a
-pnpm exec apkit task archive 0001
-pnpm exec apkit task archive --all
+pnpm exec apkit task archive 0001 --preview
+pnpm exec apkit task archive 0001 --apply
+pnpm exec apkit task archive --all --preview
+pnpm exec apkit task archive --all --apply
 pnpm exec apkit task create --title "Add Feature" --goal "Implement the smallest useful feature slice." --mode mvp --lane implementation --scope api,docs --risk low --context "AGENTS.md,docs/task-system.md" --allowed "src/api/index.ts" --verification "pnpm test"
 pnpm exec apkit task create --template bugfix --title "Fix Parser" --scope cli --allowed src/cli/index.ts
 ```

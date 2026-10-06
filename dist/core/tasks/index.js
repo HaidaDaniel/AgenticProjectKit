@@ -1,6 +1,6 @@
 import { exec, execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFile, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { promisify } from "node:util";
 import { appendRunLog, readRunLog, requireAgent } from "../agents/index.js";
@@ -17,6 +17,10 @@ const MAX_TASK_ATTRIBUTION_FILES = 512;
 const MAX_TASK_EPOCH_COMMITS = 4096;
 const MAX_TASK_ATTRIBUTION_OUTPUT_COMMITS = 16;
 const MAX_TASK_ATTRIBUTION_OUTPUT_FILES = 128;
+const MAX_ARCHIVE_REFERENCE_FILES = 4096;
+const MAX_ARCHIVE_REFERENCE_FILE_BYTES = 1024 * 1024;
+const MAX_ARCHIVE_REFERENCE_TOTAL_BYTES = 16 * 1024 * 1024;
+const MAX_ARCHIVE_REFERENCE_MATCHES = 256;
 export const TASK_STATES = [
     "todo",
     "doing",
@@ -700,55 +704,185 @@ export async function allTaskFiles(rootDirectory, taskDirectory = ".tasks") {
         return byId === 0 ? left.path.localeCompare(right.path) : byId;
     });
 }
-export async function archiveTask(rootDirectory, taskDirectory, taskId) {
-    return withTaskMutationLock(rootDirectory, taskDirectory, `task archive ${taskId}`, taskId, async () => {
-        const activeFiles = await listTaskFiles(rootDirectory, taskDirectory);
-        const file = activeFiles.find((f) => f.task.id === taskId);
-        if (!file) {
-            throw new Error(`Task file not found for id: ${taskId}`);
-        }
-        if (file.task.state !== "done") {
-            throw new Error(`Task ${taskId} is ${file.task.state}; only done tasks can be archived.`);
-        }
-        const sourcePath = file.path;
-        const archiveDirectory = join(rootDirectory, taskDirectory, "archive");
-        const fileName = sourcePath.split(/[\\/]/).pop();
-        const archivePath = join(archiveDirectory, fileName);
-        if (await fileExists(archivePath)) {
-            throw new Error(`Archived task already exists: ${archivePath}`);
-        }
-        await mkdir(archiveDirectory, { recursive: true });
-        await rename(sourcePath, archivePath);
+function isArchiveTerminalState(state) {
+    return state === "done" || state === "canceled";
+}
+function archiveRelativePath(rootDirectory, path) {
+    return relative(rootDirectory, path).replace(/\\/g, "/");
+}
+function archiveReferenceKind(path, rootDirectory, taskDirectory, activeFiles) {
+    const normalized = normalizeRepoPath(path);
+    const activeTaskPaths = new Set(activeFiles.map((file) => archiveRelativePath(rootDirectory, file.path)));
+    if (activeTaskPaths.has(normalized))
+        return "active-task";
+    const normalizedTaskDirectory = normalizeRepoPath(taskDirectory).replace(/\/$/, "");
+    if (normalized.startsWith(`${normalizedTaskDirectory}/archive/`)
+        || normalized.startsWith("docs/releases/")
+        || normalized.startsWith("docs/history/")) {
+        return "immutable-history";
+    }
+    return "tracked-text";
+}
+async function scanArchiveReferences(rootDirectory, taskDirectory, candidates, activeFiles) {
+    const references = new Map();
+    if (candidates.length === 0)
+        return references;
+    let trackedPaths;
+    try {
+        trackedPaths = (await gitPaths(rootDirectory, ["ls-files", "-z"]))
+            .map(normalizeGitPath)
+            .sort();
+    }
+    catch {
+        // A non-Git fixture has no tracked index, but active task contracts still
+        // carry live context references and must be inspected before a move.
+        trackedPaths = activeFiles.map((file) => archiveRelativePath(rootDirectory, file.path)).sort();
+    }
+    if (trackedPaths.length > MAX_ARCHIVE_REFERENCE_FILES) {
+        throw new Error(`Archive reference scan exceeds the ${MAX_ARCHIVE_REFERENCE_FILES}-file safety limit.`);
+    }
+    const tokens = candidates.map((file) => {
+        const sourcePath = archiveRelativePath(rootDirectory, file.path);
+        const fileName = sourcePath.split("/").pop();
+        const taskPath = `${normalizeRepoPath(taskDirectory).replace(/\/$/, "")}/${fileName}`;
         return {
-            taskId,
-            sourcePath: relative(rootDirectory, sourcePath).replace(/\\/g, "/"),
-            archivePath: relative(rootDirectory, archivePath).replace(/\\/g, "/"),
+            taskId: file.task.id,
+            literals: [taskPath, taskPath.replace(/\//g, "\\")],
         };
     });
+    let totalBytes = 0;
+    let matchCount = 0;
+    for (const trackedPath of trackedPaths) {
+        const absolutePath = join(rootDirectory, trackedPath);
+        let size;
+        try {
+            size = (await stat(absolutePath)).size;
+        }
+        catch {
+            continue;
+        }
+        if (size > MAX_ARCHIVE_REFERENCE_FILE_BYTES) {
+            throw new Error(`Archive reference scan cannot inspect ${trackedPath}; file exceeds the ${MAX_ARCHIVE_REFERENCE_FILE_BYTES}-byte safety limit.`);
+        }
+        totalBytes += size;
+        if (totalBytes > MAX_ARCHIVE_REFERENCE_TOTAL_BYTES) {
+            throw new Error(`Archive reference scan exceeds the ${MAX_ARCHIVE_REFERENCE_TOTAL_BYTES}-byte safety limit.`);
+        }
+        const bytes = await readFile(absolutePath);
+        if (bytes.includes(0))
+            continue;
+        const content = bytes.toString("utf8");
+        if (!Buffer.from(content, "utf8").equals(bytes))
+            continue;
+        const lines = content.split(/\r?\n/);
+        for (const [index, line] of lines.entries()) {
+            for (const token of tokens) {
+                for (const literal of token.literals) {
+                    if (!line.includes(literal))
+                        continue;
+                    matchCount += 1;
+                    if (matchCount > MAX_ARCHIVE_REFERENCE_MATCHES) {
+                        throw new Error(`Archive reference scan exceeds the ${MAX_ARCHIVE_REFERENCE_MATCHES}-match safety limit.`);
+                    }
+                    const existing = references.get(token.taskId) ?? [];
+                    if (!existing.some((reference) => reference.path === trackedPath && reference.line === index + 1 && reference.literal === literal)) {
+                        existing.push({
+                            path: trackedPath,
+                            line: index + 1,
+                            literal,
+                            kind: archiveReferenceKind(trackedPath, rootDirectory, taskDirectory, activeFiles),
+                        });
+                        references.set(token.taskId, existing);
+                    }
+                }
+            }
+        }
+    }
+    return references;
+}
+function archivePlanError(plan) {
+    return new Error([
+        `Task ${plan.taskId} cannot be archived safely.`,
+        ...plan.blockers.map((blocker) => `- ${blocker}`),
+    ].join("\n"));
+}
+export async function previewArchiveTasks(rootDirectory, taskDirectory, taskIds) {
+    const activeFiles = await listTaskFiles(rootDirectory, taskDirectory);
+    const archivedFiles = await listArchivedTaskFiles(rootDirectory, taskDirectory);
+    const candidates = taskIds === undefined
+        ? activeFiles.filter((file) => isArchiveTerminalState(file.task.state))
+        : taskIds.map((taskId) => {
+            const file = activeFiles.find((entry) => entry.task.id === taskId);
+            if (!file)
+                throw new Error(`Task file not found for id: ${taskId}`);
+            return file;
+        });
+    const references = await scanArchiveReferences(rootDirectory, taskDirectory, candidates, activeFiles);
+    const plans = candidates.map((file) => {
+        const sourcePath = archiveRelativePath(rootDirectory, file.path);
+        const archivePath = `${normalizeRepoPath(taskDirectory).replace(/\/$/, "")}/archive/${sourcePath.split("/").pop()}`;
+        const blockers = [];
+        if (!isArchiveTerminalState(file.task.state)) {
+            blockers.push(`state is ${file.task.state}; only done or canceled tasks can be archived.`);
+        }
+        if (references.has(file.task.id)) {
+            for (const reference of references.get(file.task.id)) {
+                blockers.push(`literal reference ${reference.path}:${reference.line} (${reference.kind}) uses ${reference.literal}; retain the task or update the reference in a separate scoped task.`);
+            }
+        }
+        const dependents = findTaskDependents(activeFiles, file.task.id, archivedFiles);
+        return {
+            taskId: file.task.id,
+            state: file.task.state,
+            sourcePath,
+            archivePath,
+            dependents,
+            references: references.get(file.task.id) ?? [],
+            blockers,
+            canArchive: blockers.length === 0,
+        };
+    });
+    return { plans };
+}
+async function applyArchiveTasks(rootDirectory, taskDirectory, taskIds) {
+    return withTaskMutationLock(rootDirectory, taskDirectory, "task archive", undefined, async () => {
+        const activeFiles = await listTaskFiles(rootDirectory, taskDirectory);
+        const collisionCandidates = taskIds === undefined
+            ? activeFiles.filter((file) => isArchiveTerminalState(file.task.state))
+            : activeFiles.filter((file) => taskIds.includes(file.task.id) && isArchiveTerminalState(file.task.state));
+        for (const file of collisionCandidates) {
+            const sourcePath = archiveRelativePath(rootDirectory, file.path);
+            const archivePath = `${normalizeRepoPath(taskDirectory).replace(/\/$/, "")}/archive/${sourcePath.split("/").pop()}`;
+            if (await fileExists(join(rootDirectory, archivePath))) {
+                throw new Error(`Archive path already exists: ${archivePath}`);
+            }
+        }
+        const preview = await previewArchiveTasks(rootDirectory, taskDirectory, taskIds);
+        const skipped = preview.plans.filter((plan) => !plan.canArchive);
+        if (taskIds !== undefined && taskIds.length === 1 && skipped.length > 0) {
+            throw archivePlanError(skipped[0]);
+        }
+        const archived = [];
+        if (preview.plans.some((plan) => plan.canArchive)) {
+            await mkdir(join(rootDirectory, taskDirectory, "archive"), { recursive: true });
+        }
+        for (const plan of preview.plans.filter((candidate) => candidate.canArchive)) {
+            await rename(join(rootDirectory, plan.sourcePath), join(rootDirectory, plan.archivePath));
+            archived.push({ taskId: plan.taskId, sourcePath: plan.sourcePath, archivePath: plan.archivePath });
+        }
+        return { archived, skipped };
+    });
+}
+export async function previewArchiveTask(rootDirectory, taskDirectory, taskId) {
+    const result = await previewArchiveTasks(rootDirectory, taskDirectory, [taskId]);
+    return result.plans[0];
+}
+export async function archiveTask(rootDirectory, taskDirectory, taskId) {
+    const result = await applyArchiveTasks(rootDirectory, taskDirectory, [taskId]);
+    return result.archived[0];
 }
 export async function archiveAllTasks(rootDirectory, taskDirectory) {
-    return withTaskMutationLock(rootDirectory, taskDirectory, "task archive --all", undefined, async () => {
-        const activeFiles = await listTaskFiles(rootDirectory, taskDirectory);
-        const doneFiles = activeFiles.filter((f) => f.task.state === "done");
-        const archived = [];
-        for (const file of doneFiles) {
-            const sourcePath = file.path;
-            const archiveDirectory = join(rootDirectory, taskDirectory, "archive");
-            const fileName = sourcePath.split(/[\\/]/).pop();
-            const archivePath = join(archiveDirectory, fileName);
-            if (await fileExists(archivePath)) {
-                throw new Error(`Archive path already exists: ${relative(rootDirectory, archivePath).replace(/\\/g, "/")}`);
-            }
-            await mkdir(archiveDirectory, { recursive: true });
-            await rename(sourcePath, archivePath);
-            archived.push({
-                taskId: file.task.id,
-                sourcePath: relative(rootDirectory, sourcePath).replace(/\\/g, "/"),
-                archivePath: relative(rootDirectory, archivePath).replace(/\\/g, "/"),
-            });
-        }
-        return { archived };
-    });
+    return applyArchiveTasks(rootDirectory, taskDirectory);
 }
 export async function findTaskFile(rootDirectory, taskId, taskDirectory = ".tasks") {
     const directory = join(rootDirectory, taskDirectory);

@@ -4790,7 +4790,7 @@ test("CLI task archive moves a done task to archive", async () => {
   });
 });
 
-test("CLI task archive refuses non-done task", async () => {
+test("CLI task archive refuses non-terminal task", async () => {
   await withTempDirectory(async (directory) => {
     const tasksDir = join(directory, ".tasks");
     await mkdir(tasksDir, { recursive: true });
@@ -4804,9 +4804,31 @@ test("CLI task archive refuses non-done task", async () => {
 
     assert.equal(result.exitCode, 1);
     assert.ok(
-      result.stdout.match(/only done tasks can be archived/) || result.stderr.match(/only done tasks can be archived/),
+      result.stdout.match(/only done or canceled tasks can be archived/) || result.stderr.match(/only done or canceled tasks can be archived/),
       "Expected non-done refusal error",
     );
+  });
+});
+
+test("CLI task archive supports canceled tasks and preview mode", async () => {
+  await withTempDirectory(async (directory) => {
+    const tasksDir = join(directory, ".tasks");
+    await mkdir(tasksDir, { recursive: true });
+    await writeFile(
+      join(tasksDir, "0001-canceled-task.md"),
+      buildTaskMarkdown("0001", "Canceled Task", "canceled"),
+      "utf8",
+    );
+
+    const preview = await runCli(["task", "archive", "0001", "--preview"], directory);
+    assert.equal(preview.exitCode, 0);
+    assert.match(preview.stdout, /Archive preview \(no files moved\)/);
+    assert.match(preview.stdout, /0001 \[canceled\].*\.tasks\/archive\/0001-canceled-task\.md/);
+    assert.doesNotReject(() => readFile(join(tasksDir, "0001-canceled-task.md")));
+
+    const applied = await runCli(["task", "archive", "0001", "--apply"], directory);
+    assert.equal(applied.exitCode, 0, `${applied.stdout}${applied.stderr}`);
+    assert.match(applied.stdout, /Archived: 0001/);
   });
 });
 
