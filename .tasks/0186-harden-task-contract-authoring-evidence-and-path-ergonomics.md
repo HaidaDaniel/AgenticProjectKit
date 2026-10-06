@@ -36,6 +36,7 @@ Keep strict task contracts, but make the schema and diagnostics guide agents tow
 
 - src/core/tasks/**
 - src/core/audit/lint.ts
+- src/core/audit/lint.test.ts
 - src/core/audit/audit.test.ts
 - src/cli/commands/task.ts
 - src/cli/cli.test.ts
