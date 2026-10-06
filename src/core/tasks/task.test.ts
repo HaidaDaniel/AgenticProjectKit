@@ -2650,6 +2650,88 @@ async function completeBoundedTaskB(
   return { candidateSha, bookkeepingSha, file };
 }
 
+async function completeTaskBChain(
+  directory: string,
+  options: {
+    commitCount?: number;
+    includeTaskFileInFirstCommit?: boolean;
+  } = {},
+): Promise<{ firstSha: string; candidateSha: string; bookkeepingSha: string; chainShas: string[]; files: string[] }> {
+  const commitCount = options.commitCount ?? 1;
+  const owner = "agent-b";
+  await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner });
+  const files: string[] = [];
+  const chainShas: string[] = [];
+  for (let index = 0; index < commitCount; index += 1) {
+    const file = `docs/task-b/change-${index + 1}.md`;
+    files.push(file);
+    await writeFile(join(directory, file), `task B change ${index + 1}\n`, "utf8");
+    await execFileAsync("git", ["add", file], { cwd: directory });
+    if (options.includeTaskFileInFirstCommit && index === 0) {
+      await execFileAsync("git", ["add", ".tasks/0008-bounded-task.md"], { cwd: directory });
+    }
+    await execFileAsync("git", ["commit", "--quiet", "-m", "ordinary commit text"], { cwd: directory });
+    chainShas.push((await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: directory })).stdout.trim());
+  }
+  const firstSha = chainShas[0]!;
+  const candidateSha = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: directory })).stdout.trim();
+  const verification = await verifyTask({
+    rootDirectory: directory,
+    taskDirectory: ".tasks",
+    taskId: "0008",
+    owner,
+    runCommand: async () => 0,
+  });
+  assert.equal(verification.passed, true, verification.diagnostics.join("; "));
+  await doneTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner });
+  await execFileAsync("git", ["add", ".tasks/0008-bounded-task.md"], { cwd: directory });
+  await execFileAsync("git", ["commit", "--quiet", "-m", "completion bookkeeping"], { cwd: directory });
+  const bookkeepingSha = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: directory })).stdout.trim();
+  return { firstSha, candidateSha, bookkeepingSha, chainShas, files };
+}
+
+async function setupReclaimRepoWithUntrackedTaskB(directory: string): Promise<void> {
+  const git = async (...args: string[]) => {
+    await execFileAsync("git", args, { cwd: directory });
+  };
+  await git("init", "--quiet");
+  await git("config", "user.email", "codex@example.test");
+  await git("config", "user.name", "Codex");
+  await mkdir(join(directory, ".tasks"), { recursive: true });
+  await mkdir(join(directory, "src", "core", "tasks"), { recursive: true });
+  await mkdir(join(directory, "secrets"), { recursive: true });
+  await mkdir(join(directory, "docs", "task-b"), { recursive: true });
+  await writeFile(join(directory, "secrets", "config.txt"), "clean\n", "utf8");
+  await writeTaskFile(join(directory, ".tasks", "0007-scoped-task.md"), {
+    ...TASK,
+    risk: "low",
+    dependsOn: [],
+    allowedFiles: ["src/core/tasks/**"],
+    forbiddenFiles: ["secrets/**"],
+    verificationCommands: [],
+    verification: [
+      { id: "check", type: "automated", required: true, environment: "local", profile: "deterministic", command: "true" },
+    ],
+  });
+  await git("add", ".");
+  await git("commit", "--quiet", "-m", "initial");
+  await writeTaskFile(join(directory, ".tasks", "0008-bounded-task.md"), {
+    ...TASK,
+    id: "0008",
+    title: "Bounded Task B",
+    risk: "low",
+    dependsOn: [],
+    allowedFiles: ["docs/task-b/**", "tooling/**"],
+    forbiddenFiles: [],
+    verificationCommands: [],
+    verification: [
+      { id: "check", type: "automated", required: true, environment: "local", profile: "deterministic", command: "true" },
+    ],
+  });
+  await registerAgent(directory, { id: "agent-a", developer: "alice", platform: "opencode", model: "m1" });
+  await registerAgent(directory, { id: "agent-b", developer: "bob", platform: "opencode", model: "m1" });
+}
+
 async function completeTypeOnlyTaskB(directory: string, file: string): Promise<void> {
   const owner = "agent-b";
   await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner });
@@ -2915,6 +2997,300 @@ test("a task baseline at another candidate HEAD can attribute its later bookkeep
     assert.equal(result.passed, true);
     assert.deepEqual(result.changedFiles, []);
     assert.deepEqual(result.attribution?.excludedFiles, [".tasks/0008-bounded-task.md"]);
+  });
+});
+
+test("completed multi-commit task chain is excluded from a stale baseline scope", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const commits = await completeTaskBChain(directory, { commitCount: 2 });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.equal(baseline?.lineageStatus, "attributed");
+    assert.deepEqual(baseline?.provenOtherTaskCommits?.map(({ sha, taskId, kind }) => ({ sha, taskId, kind })), [
+      { sha: commits.firstSha, taskId: "0008", kind: "task-candidate" },
+      { sha: commits.candidateSha, taskId: "0008", kind: "task-candidate" },
+      { sha: commits.bookkeepingSha, taskId: "0008", kind: "completion-bookkeeping" },
+    ]);
+
+    const verified = await verifyScopedTask(directory);
+    assert.equal(verified.passed, true, verified.diagnostics.join("; "));
+    assert.deepEqual(verified.changedFiles, []);
+    assert.deepEqual(
+      verified.attribution?.excludedFiles?.sort(),
+      [...commits.files, ".tasks/0008-bounded-task.md"].sort(),
+    );
+  });
+});
+
+test("completed task with a first-commit task file is excluded from a stale baseline scope", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepoWithUntrackedTaskB(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const commits = await completeTaskBChain(directory, { commitCount: 1, includeTaskFileInFirstCommit: true });
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.equal(baseline?.lineageStatus, "attributed");
+    assert.deepEqual(baseline?.provenOtherTaskCommits?.map(({ sha, taskId, kind }) => ({ sha, taskId, kind })), [
+      { sha: commits.candidateSha, taskId: "0008", kind: "task-candidate" },
+      { sha: commits.bookkeepingSha, taskId: "0008", kind: "completion-bookkeeping" },
+    ]);
+
+    const verified = await verifyScopedTask(directory);
+    assert.equal(verified.passed, true, verified.diagnostics.join("; "));
+    assert.deepEqual(verified.changedFiles, []);
+    assert.deepEqual(
+      verified.attribution?.excludedFiles?.sort(),
+      [...commits.files, ".tasks/0008-bounded-task.md"].sort(),
+    );
+  });
+});
+
+test("multi-commit and first-commit task chains are excluded together from a stale baseline scope", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      return execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await mkdir(join(directory, "src", "core", "tasks"), { recursive: true });
+    await mkdir(join(directory, "secrets"), { recursive: true });
+    await mkdir(join(directory, "docs", "task-b"), { recursive: true });
+    await mkdir(join(directory, "extra"), { recursive: true });
+    await writeFile(join(directory, "secrets", "config.txt"), "clean\n", "utf8");
+    await writeTaskFile(join(directory, ".tasks", "0007-scoped-task.md"), {
+      ...TASK,
+      risk: "low",
+      dependsOn: [],
+      allowedFiles: ["src/core/tasks/**"],
+      forbiddenFiles: ["secrets/**"],
+      verificationCommands: [],
+      verification: [
+        { id: "check", type: "automated", required: true, environment: "local", profile: "deterministic", command: "true" },
+      ],
+    });
+    await git("add", ".");
+    await git("commit", "--quiet", "-m", "initial");
+    await writeTaskFile(join(directory, ".tasks", "0008-bounded-task.md"), {
+      ...TASK,
+      id: "0008",
+      title: "Bounded Task B",
+      risk: "low",
+      dependsOn: [],
+      allowedFiles: ["docs/task-b/**", "tooling/**"],
+      forbiddenFiles: [],
+      verificationCommands: [],
+      verification: [
+        { id: "check", type: "automated", required: true, environment: "local", profile: "deterministic", command: "true" },
+      ],
+    });
+    await writeTaskFile(join(directory, ".tasks", "0009-bounded-task-c.md"), {
+      ...TASK,
+      id: "0009",
+      title: "Bounded Task C",
+      risk: "low",
+      dependsOn: [],
+      allowedFiles: ["extra/**"],
+      forbiddenFiles: [],
+      verificationCommands: [],
+      verification: [
+        { id: "check", type: "automated", required: true, environment: "local", profile: "deterministic", command: "true" },
+      ],
+    });
+    await registerAgent(directory, { id: "agent-a", developer: "alice", platform: "opencode", model: "m1" });
+    await registerAgent(directory, { id: "agent-b", developer: "bob", platform: "opencode", model: "m1" });
+
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const chain = await completeTaskBChain(directory, { commitCount: 4, includeTaskFileInFirstCommit: true });
+
+    const owner = "agent-b";
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0009", owner });
+    await writeFile(join(directory, "extra", "change.md"), "task C change\n", "utf8");
+    await git("add", "extra/change.md", ".tasks/0009-bounded-task-c.md");
+    await git("commit", "--quiet", "-m", "ordinary commit text");
+    const candidateC = (await git("rev-parse", "HEAD")).stdout.trim();
+    const verificationC = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0009",
+      owner,
+      runCommand: async () => 0,
+    });
+    assert.equal(verificationC.passed, true, verificationC.diagnostics.join("; "));
+    await doneTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0009", owner });
+    await git("add", ".tasks/0009-bounded-task-c.md");
+    await git("commit", "--quiet", "-m", "completion bookkeeping");
+    const bookkeepingC = (await git("rev-parse", "HEAD")).stdout.trim();
+
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.equal(baseline?.lineageStatus, "attributed", baseline?.lineageDiagnostic);
+    assert.deepEqual(
+      baseline?.provenOtherTaskCommits?.map(({ sha, taskId, kind }) => ({ sha, taskId, kind })),
+      [
+        ...chain.chainShas.map((sha) => ({ sha, taskId: "0008", kind: "task-candidate" })),
+        { sha: chain.bookkeepingSha, taskId: "0008", kind: "completion-bookkeeping" },
+        { sha: candidateC, taskId: "0009", kind: "task-candidate" },
+        { sha: bookkeepingC, taskId: "0009", kind: "completion-bookkeeping" },
+      ],
+    );
+
+    const verified = await verifyScopedTask(directory);
+    assert.equal(verified.passed, true, verified.diagnostics.join("; "));
+    assert.deepEqual(verified.changedFiles, []);
+    assert.ok(verified.attribution?.excludedFiles?.includes(".tasks/0008-bounded-task.md"));
+    assert.ok(verified.attribution?.excludedFiles?.includes(".tasks/0009-bounded-task-c.md"));
+    assert.ok(verified.attribution?.excludedFiles?.includes("extra/change.md"));
+  });
+});
+
+test("chain commit that temporarily touched an out-of-scope path is not proven", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const owner = "agent-b";
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner });
+    await writeFile(join(directory, "docs", "task-b", "change-1.md"), "task B change 1\n", "utf8");
+    await writeFile(join(directory, "src", "core", "tasks", "borrowed.ts"), "borrowed\n", "utf8");
+    await execFileAsync("git", ["add", "docs/task-b/change-1.md", "src/core/tasks/borrowed.ts"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "ordinary commit text"], { cwd: directory });
+    await writeFile(join(directory, "docs", "task-b", "change-2.md"), "task B change 2\n", "utf8");
+    await execFileAsync("git", ["rm", "--quiet", "src/core/tasks/borrowed.ts"], { cwd: directory });
+    await execFileAsync("git", ["add", "docs/task-b/change-2.md"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "ordinary commit text"], { cwd: directory });
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0008",
+      owner,
+      runCommand: async () => 0,
+    });
+    assert.equal(verification.passed, true, verification.diagnostics.join("; "));
+    await doneTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner });
+    await execFileAsync("git", ["add", ".tasks/0008-bounded-task.md"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "completion bookkeeping"], { cwd: directory });
+
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.equal(baseline?.lineageStatus, "clean", baseline?.lineageDiagnostic);
+    assert.deepEqual(baseline?.provenOtherTaskCommits ?? [], []);
+
+    const verified = await verifyScopedTask(directory);
+    assert.equal(verified.passed, false);
+    assert.ok(verified.outOfScopeFiles.includes("docs/task-b/change-1.md"));
+    assert.ok(verified.outOfScopeFiles.includes("docs/task-b/change-2.md"));
+  });
+});
+
+test("chain with a non-lifecycle task-file edit is not proven", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const owner = "agent-b";
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner });
+    await writeFile(join(directory, "docs", "task-b", "change-1.md"), "task B change 1\n", "utf8");
+    await execFileAsync("git", ["add", "docs/task-b/change-1.md"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "ordinary commit text"], { cwd: directory });
+    const taskPath = join(directory, ".tasks", "0008-bounded-task.md");
+    const rewritten = (await readFile(taskPath, "utf8")).replace("Bounded Task B", "Renamed Task B");
+    await writeFile(taskPath, rewritten, "utf8");
+    await execFileAsync("git", ["add", ".tasks/0008-bounded-task.md"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "rename task contract"], { cwd: directory });
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0008",
+      owner,
+      runCommand: async () => 0,
+    });
+    assert.equal(verification.passed, true, verification.diagnostics.join("; "));
+    await doneTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner });
+    await execFileAsync("git", ["add", ".tasks/0008-bounded-task.md"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "completion bookkeeping"], { cwd: directory });
+
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.equal(baseline?.lineageStatus, "clean", baseline?.lineageDiagnostic);
+    assert.deepEqual(baseline?.provenOtherTaskCommits ?? [], []);
+
+    const verified = await verifyScopedTask(directory);
+    assert.equal(verified.passed, false);
+    assert.ok(verified.outOfScopeFiles.includes("docs/task-b/change-1.md"));
+  });
+});
+
+test("overlapping completed task chains fail closed as ambiguous", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    const taskCPath = join(directory, ".tasks", "0009-bounded-task-c.md");
+    await writeTaskFile(taskCPath, {
+      ...TASK,
+      id: "0009",
+      title: "Bounded Task C",
+      risk: "low",
+      dependsOn: [],
+      allowedFiles: ["docs/task-b/**", "extra/**", ".tasks/0008-bounded-task.md"],
+      forbiddenFiles: [],
+      verificationCommands: [],
+      verification: [
+        { id: "check", type: "automated", required: true, environment: "local", profile: "deterministic", command: "true" },
+      ],
+    });
+    await execFileAsync("git", ["add", ".tasks/0009-bounded-task-c.md"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "add task c contract"], { cwd: directory });
+
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0009", owner: "agent-b" });
+
+    await completeTaskBChain(directory, { commitCount: 2 });
+    await mkdir(join(directory, "extra"), { recursive: true });
+    await writeFile(join(directory, "extra", "change.md"), "task C change\n", "utf8");
+    await execFileAsync("git", ["add", "extra/change.md"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "ordinary commit text"], { cwd: directory });
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0009",
+      owner: "agent-b",
+      runCommand: async () => 0,
+    });
+    assert.equal(verification.passed, true, verification.diagnostics.join("; "));
+    await doneTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0009", owner: "agent-b" });
+    await execFileAsync("git", ["add", ".tasks/0009-bounded-task-c.md"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "completion bookkeeping"], { cwd: directory });
+    const bookkeepingC = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: directory })).stdout.trim();
+
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const baseline = await readTaskBaseline(directory, "0007");
+    const proven = baseline?.provenOtherTaskCommits ?? [];
+    assert.ok(proven.some((entry) => entry.taskId === "0009" && entry.kind === "task-candidate"));
+    assert.ok(proven.some((entry) => entry.sha === bookkeepingC && entry.taskId === "0009" && entry.kind === "completion-bookkeeping"));
+    assert.ok(!proven.some((entry) => entry.taskId === "0008"), "ambiguous shared commits must not be attributed to task 0008");
+
+    const verified = await verifyScopedTask(directory);
+    assert.equal(verified.passed, false);
+    assert.ok(verified.outOfScopeFiles.includes("docs/task-b/change-1.md"));
+    assert.ok(verified.outOfScopeFiles.includes("docs/task-b/change-2.md"));
   });
 });
 

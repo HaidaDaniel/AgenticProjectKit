@@ -3487,6 +3487,74 @@ async function resolveTaskCandidateCommit(
   return matches.length === 1 ? matches[0] : undefined;
 }
 
+/**
+ * Walk the single-parent commit chain from a task's claim/epoch baseline
+ * (exclusive) to its completion-bound final commit (inclusive). Every
+ * intermediate commit must be a single-parent node inside the bounded DAG.
+ */
+function walkSingleParentTaskChain(
+  commitBySha: Map<string, GitCommitNode>,
+  baseSha: string,
+  headSha: string,
+): GitCommitNode[] | undefined {
+  if (headSha === baseSha) return undefined;
+  if (!commitBySha.has(headSha)) return undefined;
+  const chain: GitCommitNode[] = [];
+  let sha: string | undefined = headSha;
+  while (sha !== baseSha) {
+    if (!sha) return undefined;
+    const node = commitBySha.get(sha);
+    if (!node || node.parents.length !== 1) return undefined;
+    chain.push(node);
+    sha = node.parents[0];
+    if (chain.length > MAX_TASK_ATTRIBUTION_COMMITS) return undefined;
+  }
+  return chain.reverse();
+}
+
+/**
+ * The chain contract is stable when the task file's normalized contract is
+ * identical from its anchor through the chain head and to the current task
+ * file. The anchor is the baseline when the file exists there, otherwise the
+ * first chain commit that introduces the file (first-commit task files).
+ */
+async function taskChainContractStable(
+  rootDirectory: string,
+  taskFile: string,
+  baseSha: string,
+  chain: readonly GitCommitNode[],
+  currentTask: ProjectTask,
+): Promise<boolean> {
+  const comparableAt = async (revision: string): Promise<string> => {
+    try {
+      const markdown = await gitOutput(rootDirectory, ["show", `${revision}:${taskFile}`]);
+      return comparableTaskContract(parseTaskMarkdown(markdown));
+    } catch {
+      return "missing";
+    }
+  };
+  let anchor: string;
+  const baseContract = await comparableAt(baseSha);
+  if (baseContract !== "missing") {
+    anchor = baseContract;
+  } else {
+    let found: string | undefined;
+    for (const node of chain) {
+      const contract = await comparableAt(node.sha);
+      if (contract !== "missing") {
+        found = contract;
+        break;
+      }
+    }
+    if (!found) return false;
+    anchor = found;
+  }
+  const head = chain[chain.length - 1];
+  if (!head) return false;
+  const headContract = await comparableAt(head.sha);
+  return headContract === anchor && anchor === comparableTaskContract(currentTask);
+}
+
 async function resolveCompletionBookkeepingCommit(
   rootDirectory: string,
   commit: GitCommitNode,
@@ -3570,6 +3638,95 @@ async function resolveTaskBaselineLineage(
     return lineageFailure(`Canonical task attribution evidence is unreadable (${error instanceof Error ? error.message : String(error)}).`, "unresolved");
   }
 
+  const commitBySha = new Map(dagCommits.map((commit) => [commit.sha, commit]));
+
+  // A completed task whose work spans more than one commit is proven as a
+  // whole bounded chain from its claim/epoch baseline to the commit its
+  // completion record is bound to. Every chain commit must fit the task's
+  // current scope, and the chain contract must be stable (a task file may be
+  // introduced by the chain itself when it is absent at the baseline).
+  const chainProofsByTask = new Map<string, ResolvedTaskCommitProof[]>();
+  for (const taskFile of taskFiles) {
+    const task = taskFile.task;
+    if (task.id === authoritative.taskId || task.state !== "done") continue;
+    const relativeTaskFile = normalizeRepoPath(relative(rootDirectory, taskFile.path));
+    const taskBaselines = baselineRecords.filter((record) => record.taskId === task.id);
+    const taskEvidence = evidenceRecords.filter((record) => record.taskId === task.id);
+    const completions = taskEvidence.filter((record) => (
+      record.type === "completion"
+      && record.result === "pass"
+      && record.gateEligible === true
+      && record.subject.repository === "git"
+      && record.subject.taskId === task.id
+    ));
+    if (completions.length !== 1) continue;
+    const completion = completions[0];
+    const taskBaseline = [...taskBaselines]
+      .filter((record) => (
+        record.repository === "git"
+        && record.baselineId === completion.subject.baselineId
+        && ((record.phase ?? "claim") === "claim" || record.phase === "epoch")
+      ))
+      .at(-1);
+    if (!taskBaseline || !taskBaseline.headSha || taskBaseline.taskFile !== relativeTaskFile) continue;
+    if (task.owner !== completion.agent) continue;
+    const doneEvents = runEvents.filter((event) => (
+      event.event === "done"
+      && event.outcome === "ok"
+      && event.state === "done"
+      && event.task === task.id
+      && event.runId === completion.runId
+      && event.agent === completion.agent
+    ));
+    if (doneEvents.length !== 1) continue;
+    const evidenceSet = completion.evidenceSet ?? [];
+    if (new Set(evidenceSet).size !== evidenceSet.length) continue;
+    if (!evidenceSet.every((id) => {
+      const matchesById = taskEvidence.filter((record) => record.id === id);
+      return matchesById.length === 1
+        && matchesById[0].result === "pass"
+        && matchesById[0].type !== "completion"
+        && sameEvidenceCandidate(matchesById[0].subject, completion.subject);
+    })) continue;
+
+    const chainHead = completion.subject.headSha;
+    if (!chainHead) continue;
+    const chain = walkSingleParentTaskChain(commitBySha, taskBaseline.headSha, chainHead);
+    if (!chain) continue;
+    if (!(await taskChainContractStable(rootDirectory, relativeTaskFile, taskBaseline.headSha, chain, task))) continue;
+
+    let chainScopeValid = true;
+    for (const node of chain) {
+      const scopeFiles: string[] = [];
+      for (const path of node.files) {
+        if (isBookkeepingPath(path, taskBaseline)) continue;
+        const originalFingerprint = taskBaseline.dirtyFiles[path];
+        if (originalFingerprint && originalFingerprint === await gitFileFingerprint(rootDirectory, node.sha, path)) {
+          continue;
+        }
+        scopeFiles.push(path);
+      }
+      const scope = verifyTaskFileScope(task, scopeFiles);
+      if (scope.outOfScopeFiles.length > 0 || scope.forbiddenTouchedFiles.length > 0) {
+        chainScopeValid = false;
+        break;
+      }
+    }
+    if (!chainScopeValid) continue;
+
+    chainProofsByTask.set(task.id, chain.map((node) => ({
+      attribution: {
+        sha: node.sha,
+        taskId: task.id,
+        kind: "task-candidate",
+        files: node.files,
+      },
+      taskFile: relativeTaskFile,
+      completionAgent: completion.agent,
+      taskBaselineDirtyFiles: taskBaseline.dirtyFiles,
+    })));
+  }
+
   const proofCache = new Map<string, Promise<ResolvedTaskCommitProof | undefined>>();
   const proofForCandidate = (sha: string): Promise<ResolvedTaskCommitProof | undefined> => {
     const existing = proofCache.get(sha);
@@ -3600,14 +3757,36 @@ async function resolveTaskBaselineLineage(
     return operation;
   };
 
+  const proofAtCache = new Map<string, Promise<ResolvedTaskCommitProof | undefined>>();
+  const proofAt = (sha: string): Promise<ResolvedTaskCommitProof | undefined> => {
+    const existing = proofAtCache.get(sha);
+    if (existing) return existing;
+    const operation = (async () => {
+      const candidateProof = await proofForCandidate(sha);
+      const coveringChains = [...chainProofsByTask.entries()]
+        .filter(([, chain]) => chain.some((entry) => entry.attribution.sha === sha));
+      if (coveringChains.length > 1) return undefined;
+      const chainProof = coveringChains.length === 1
+        ? coveringChains[0][1].find((entry) => entry.attribution.sha === sha)
+        : undefined;
+      const proofs = [candidateProof, chainProof].filter(
+        (proof): proof is ResolvedTaskCommitProof => proof !== undefined,
+      );
+      if (new Set(proofs.map((proof) => proof.attribution.taskId)).size > 1) return undefined;
+      return proofs[0];
+    })();
+    proofAtCache.set(sha, operation);
+    return operation;
+  };
+
   const proofByCommit = new Map<string, ResolvedTaskCommitProof>();
   for (const commit of dagCommits) {
-    const candidateProof = await proofForCandidate(commit.sha);
+    const candidateProof = await proofAt(commit.sha);
     if (candidateProof) {
       proofByCommit.set(commit.sha, candidateProof);
       continue;
     }
-    const bookkeepingProof = await resolveCompletionBookkeepingCommit(rootDirectory, commit, proofForCandidate);
+    const bookkeepingProof = await resolveCompletionBookkeepingCommit(rootDirectory, commit, proofAt);
     if (bookkeepingProof) proofByCommit.set(commit.sha, bookkeepingProof);
   }
 
@@ -3624,7 +3803,6 @@ async function resolveTaskBaselineLineage(
     );
   }
 
-  const commitBySha = new Map(dagCommits.map((commit) => [commit.sha, commit]));
   const acceptedMergeCommits = new Set<string>();
   const mergeAttributions: TaskMergeAttribution[] = [];
   const branchAncestors = (parent: string): Set<string> => {
