@@ -68,6 +68,9 @@ The command synopsis and option list below are rendered from `src/cli/command-re
 - `apkit review <task-id> --owner <agent-id>` - move the implementation task to review.
 - `apkit review <task-id> --reviewer <reviewer-id> --prompt` - prepare a revision-bound review session and print its review run ID.
 - `apkit review <task-id> --reviewer <reviewer-id> --review-run <review-run-id> --result <pass|changes_requested|fail> [--finding <text>] [--implementation-run <run-id>]` - record the prepared review outcome; reviewer must be registered and separate from the owner.
+- `apkit skills list [--json]` - list packaged skills and their canonical source/destination paths.
+- `apkit skills show <skill> [--json]` - show one packaged skill without writing project files.
+- `apkit skills materialize <skill> [--apply] [--force] [--json]` - preview or explicitly materialize one skill under `.agents/skills/<skill>/SKILL.md`; force is required for conflicts.
 - `apkit status [--detail]` - show task and gate state; detail adds bounded evidence/provenance diagnostics without writing files.
 - `apkit suggest-context "<task description>" [--limit <n>]` - rank context candidates from repository paths and task signals; suggestions are not guaranteed impact analysis.
 - `apkit sync [agent] [--write]` - check generated files by default; write missing or stale files only with `--write`.

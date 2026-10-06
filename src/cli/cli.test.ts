@@ -111,6 +111,47 @@ test("CLI help lists implemented commands", async () => {
   assert.doesNotMatch(result.stdout, /^\s+apk /m);
 });
 
+test("CLI skills list, show, preview, apply, and protect customized project files", async () => {
+  await withTempDirectory(async (directory) => {
+    const list = await runCli(["skills", "list", "--json"], directory);
+    assert.equal(list.exitCode, 0, `${list.stdout}${list.stderr}`);
+    const listed = JSON.parse(list.stdout) as { skills: Array<{ id: string; source: string; destination: string }> };
+    assert.ok(listed.skills.some((skill) => skill.id === "apk-task-author"));
+    assert.ok(listed.skills.every((skill) => skill.source.endsWith("/SKILL.md.hbs")));
+
+    const shown = await runCli(["skills", "show", "apk-task-author"], directory);
+    assert.equal(shown.exitCode, 0, `${shown.stdout}${shown.stderr}`);
+    assert.match(shown.stdout, /Source: core\/templates\/skills\/apk-task-author\/SKILL\.md\.hbs/);
+    assert.match(shown.stdout, /^---\nname: apk-task-author\n/m);
+    assert.doesNotMatch(shown.stdout, /\{\{|\}\}/);
+
+    const destination = join(directory, ".agents/skills/apk-task-author/SKILL.md");
+    const preview = await runCli(["skills", "materialize", "apk-task-author"], directory);
+    assert.equal(preview.exitCode, 0, `${preview.stdout}${preview.stderr}`);
+    assert.match(preview.stdout, /Status: create/);
+    await assert.rejects(stat(destination), { code: "ENOENT" });
+
+    const applied = await runCli(["skills", "materialize", "apk-task-author", "--apply"], directory);
+    assert.equal(applied.exitCode, 0, `${applied.stdout}${applied.stderr}`);
+    assert.match(applied.stdout, /Wrote project-local skill/);
+
+    const repeated = await runCli(["skills", "materialize", "apk-task-author", "--apply", "--json"], directory);
+    assert.equal(repeated.exitCode, 0, `${repeated.stdout}${repeated.stderr}`);
+    assert.equal(JSON.parse(repeated.stdout).status, "no-op");
+
+    await writeFile(destination, "customized by project\n", "utf8");
+    const conflict = await runCli(["skills", "materialize", "apk-task-author", "--apply"], directory);
+    assert.equal(conflict.exitCode, 1);
+    assert.match(conflict.stdout, /Status: customized-conflict/);
+    assert.equal(await readFile(destination, "utf8"), "customized by project\n");
+
+    const forced = await runCli(["skills", "materialize", "apk-task-author", "--apply", "--force", "--json"], directory);
+    assert.equal(forced.exitCode, 0, `${forced.stdout}${forced.stderr}`);
+    assert.equal(JSON.parse(forced.stdout).status, "update");
+    assert.match(await readFile(destination, "utf8"), /^---\nname: apk-task-author\n/);
+  });
+});
+
 test("committed CLI help and init output match their source surfaces", async () => {
   const compiledCli = join(process.cwd(), "dist/cli/index.js");
   const sourceHelp = await runCli(["--help"]);

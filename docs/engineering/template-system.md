@@ -33,7 +33,9 @@ rule ships them. Skill assets are packaged as-is for explicit loading; they are 
 through the neutral policy pipeline.
 
 Packaged skills are optional and manually invoked. They are never embedded into the
-always-active common policy (`AGENTS.md`) and add no CLI command, exporter, or native installer.
+always-active common policy (`AGENTS.md`) and add no native installer or provider runtime. The
+generic `apkit skills` command can list, show, preview, and explicitly materialize one asset into
+the repository's `.agents/skills/<skill>/SKILL.md` directory; it does not change `init`/`adopt`.
 
 - `apk-project-grill` - repository-grounded design grill of a whole project, milestone, or bounded subsystem, at start or as a repeated checkpoint; see `docs/agent-exporters.md`.
 - `apk-task-grill` - clarify one existing task before implementation; see `docs/agent-exporters.md`.

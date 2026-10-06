@@ -539,6 +539,26 @@ verification or review, fabricate evidence, pass a gate, or mark work done. Larg
 handed to `apk-task-split` instead of being hidden in a giant catch-all task. Completed history
 remains immutable and defects become fresh corrective tasks.
 
+## Project-local packaged skills
+
+APK keeps optional skill source in the packaged `SKILL.md.hbs` assets, but a standards-based
+harness needs a literal project-local `SKILL.md`. Use `apkit skills list` to discover the package
+registry or `apkit skills show <skill>` to inspect one without writing. Materialization is generic
+for every packaged APK skill:
+
+```bash
+pnpm exec apkit skills materialize apk-task-author
+pnpm exec apkit skills materialize apk-task-author --apply
+```
+
+The first command previews the canonical source, `.agents/skills/apk-task-author/SKILL.md`
+destination, and create/update/no-op/conflict status. `--apply` is the explicit write path and is
+idempotent; a differing project-local file is preserved and requires `--force` for replacement
+after review. Rendered output is a literal `SKILL.md` with no unresolved template syntax. APK does
+not materialize from `init`/`adopt`, alter ignore rules, install provider-global skills, or change
+Hermes trust/configuration. The repository decides whether its generated project-local file is
+committed or ignored, while the packaged asset remains APK's source of truth.
+
 ## Optional task-split decomposition
 
 APK ships `apk-task-split`, an optional, manually invoked instruction asset packaged at

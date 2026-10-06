@@ -113,8 +113,18 @@ Discovery is manual:
   `<package>/dist/core/templates/skills/apk-milestone-semantic-audit/SKILL.md.hbs`.
 - The canonical sources are `src/core/templates/skills/<skill>/SKILL.md.hbs`.
 
-APK does not install skills into user-global directories, route models, or run providers. See
-`docs/task-system.md` for the planning/task-grill/work/review distinction.
+Use `apkit skills list` to inspect packaged assets and `apkit skills show <skill>` to read one
+without writing. `apkit skills materialize <skill>` is preview-only by default; `--apply` writes
+the generated, literal `.agents/skills/<skill>/SKILL.md` project file, and `--force` is required
+to replace a conflicting customized or older generated file. Re-running an unchanged materialize
+is a no-op. The source remains the packaged `SKILL.md.hbs`; the project-local file is a derived
+copy that the repository may commit or ignore according to its own policy.
+
+Materialization never runs from `init` or `adopt`, never changes ignore rules, and never installs
+anything under `~/.hermes/skills` or another provider-global directory. Start Hermes in the
+repository, let Hermes apply its own project trust rules, and invoke the materialized skill through
+Hermes' documented project-local `.agents/skills` discovery. APK does not modify Hermes config or
+trust state. See `docs/task-system.md` for the planning/task-grill/work/review distinction.
 
 ## Worker handoff contract
 

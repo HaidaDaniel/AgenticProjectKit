@@ -1,7 +1,7 @@
 # Task 0191 - Materialize APK skills into standards-based project skill directories
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-continue-20261005-2055
 Mode: product
 Lane: tooling
 Type: feature
@@ -46,6 +46,7 @@ Do not auto-install project skills during init/adopt. Materialization is an expl
 - src/core/skills/**
 - src/core/templates/renderer.test.ts
 - src/cli/index.ts
+- src/cli/command-registry.ts
 - src/cli/commands/skills.ts
 - src/cli/cli.test.ts
 - dist/**

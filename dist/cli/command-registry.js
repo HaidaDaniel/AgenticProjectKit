@@ -15,6 +15,7 @@ import { runNextTaskCommand } from "./commands/next-task.js";
 import { runPromptCommand } from "./commands/prompt.js";
 import { runQualityCommand } from "./commands/quality.js";
 import { runResourcesCommand } from "./commands/resources.js";
+import { runSkillsCommand } from "./commands/skills.js";
 import { runSuggestContextCommand } from "./commands/suggest-context.js";
 import { runSyncCommand } from "./commands/sync.js";
 import { runStatusCommand } from "./commands/status.js";
@@ -195,6 +196,16 @@ export const PUBLIC_COMMANDS = [
             { usage: "review <task-id> --owner <agent-id>", description: "move the implementation task to review." },
             { usage: "review <task-id> --reviewer <reviewer-id> --prompt", description: "prepare a revision-bound review session and print its review run ID." },
             { usage: "review <task-id> --reviewer <reviewer-id> --review-run <review-run-id> --result <pass|changes_requested|fail> [--finding <text>] [--implementation-run <run-id>]", description: "record the prepared review outcome; reviewer must be registered and separate from the owner." },
+        ],
+    },
+    {
+        command: "skills",
+        summary: "List, inspect, and materialize packaged APK skills.",
+        handler: simple(runSkillsCommand),
+        variants: [
+            { usage: "skills list [--json]", description: "list packaged skills and their canonical source/destination paths." },
+            { usage: "skills show <skill> [--json]", description: "show one packaged skill without writing project files." },
+            { usage: "skills materialize <skill> [--apply] [--force] [--json]", description: "preview or explicitly materialize one skill under `.agents/skills/<skill>/SKILL.md`; force is required for conflicts." },
         ],
     },
     {
