@@ -35,7 +35,9 @@ function renderCorrectnessRequirements(task) {
 function renderVerificationRequirement(check) {
     const requirement = check.required ? "required" : "optional";
     const subject = check.type === "automated"
-        ? `command=${check.command}`
+        ? check.apkOperation
+            ? `apkOperation=${check.apkOperation} (read-only, current APK process)`
+            : `command=${check.command}`
         : `instruction=${check.instruction}`;
     const extras = [
         check.artifact ? `artifact=${check.artifact}` : undefined,

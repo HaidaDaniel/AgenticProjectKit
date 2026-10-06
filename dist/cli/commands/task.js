@@ -131,7 +131,7 @@ const TASK_CREATE_HELP_TEXT = [
     "  --risk <risk>           Risk level: low, medium, high, critical.",
     "  --context <csv>         Comma-separated context file paths.",
     "  --verification <csv>    Comma-separated legacy verification commands; normalized to required local deterministic checks.",
-    "  --verification-json <json>  Structured checks; use short evidenceRef (legacy evidence alias) for locators and summary for bounded narrative.",
+    "  --verification-json <json>  Structured checks; use apkOperation lint|doctor|sync-check|status for local read-only APK checks, or command for host tools; use short evidenceRef (legacy evidence alias) for locators and summary for bounded narrative.",
     "  --goal <text>           Task goal text (default: title).",
     "  --depends <csv>         Comma-separated dependency task ids.",
     "  --tags <csv>            Comma-separated tags.",

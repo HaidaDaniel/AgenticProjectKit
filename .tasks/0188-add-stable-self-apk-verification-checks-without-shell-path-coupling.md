@@ -35,6 +35,8 @@ Host-project commands remain ordinary explicit shell commands.
 
 - src/core/tasks/**
 - src/cli/**
+- src/core/docs/prompt.ts
+- src/core/docs/prompt.test.ts
 - src/core/templates/task-templates.ts
 - src/core/templates/**
 - dist/**
