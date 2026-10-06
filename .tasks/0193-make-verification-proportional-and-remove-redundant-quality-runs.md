@@ -39,6 +39,7 @@ Remove repeated full tests in APK local verification and CI; speed fresh-source 
 - package.json
 - .github/workflows/quality.yml
 - scripts/test-reporter.mjs
+- scripts/test-source.mjs
 - scripts/check-docs-consistency.mjs
 - scripts/check-docs-consistency.test.mjs
 - src/cli/cli.test.ts
@@ -76,7 +77,7 @@ Remove repeated full tests in APK local verification and CI; speed fresh-source 
 
 1. Research authoritative testing and CI guidance
 2. Replace redundant CI and release composition
-3. Compile the integration CLI once from current source with coverage source maps
+3. Compile source tests and integration CLI once with consistent coverage source maps
 4. Make exported implementation and review guidance proportional
 5. Remove blanket host tests from docs tasks and document host command selection
 6. Run coverage and downstream generation regressions

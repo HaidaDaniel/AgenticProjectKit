@@ -1,11 +1,23 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import test from "node:test";
+import { promisify } from "node:util";
 import { checkDocumentationConsistency } from "./check-docs-consistency.mjs";
 import reporter from "./test-reporter.mjs";
+
+test("fresh source runner refuses missing or escaping test paths", async () => {
+  const exec = promisify(execFile);
+  for (const args of [[], ["src/../outside.test.ts"], ["dist/cli/cli.test.js"]]) {
+    await assert.rejects(
+      exec(process.execPath, ["scripts/test-source.mjs", ...args]),
+      (error) => error.code === 1 && /Specify repository src/.test(error.stderr),
+    );
+  }
+});
 
 test("quality and release composition execute each full source suite once", async () => {
   const { scripts } = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));

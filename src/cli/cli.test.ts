@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import assert from "node:assert/strict";
 import test, { before, after } from "node:test";
@@ -37,6 +37,12 @@ let freshCliPath: string;
 let freshCliDirectory: string | undefined;
 
 before(async () => {
+  // The full suite shares one compiler/output with its CLI subprocesses so
+  // coverage never merges incompatible tsc and tsx function ranges.
+  if (import.meta.url.endsWith("/cli.test.js")) {
+    freshCliPath = fileURLToPath(new URL("./index.js", import.meta.url));
+    return;
+  }
   const cache = join(process.cwd(), "node_modules/.cache");
   await mkdir(cache, { recursive: true });
   freshCliDirectory = await mkdtemp(join(cache, "apk-cli-tests-"));
