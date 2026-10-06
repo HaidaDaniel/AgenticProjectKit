@@ -1,6 +1,6 @@
 # Task 0188 - Add stable self-APK verification checks without shell-path coupling
 
-State: doing
+State: done
 Owner: codex-continue-20261005-2055
 Mode: product
 Lane: tooling
