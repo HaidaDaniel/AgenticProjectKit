@@ -95,7 +95,6 @@ The command synopsis and option list below are rendered from `src/cli/command-re
 - `apkit workspaces list [--json]` - list bounded APK-managed workspace state.
 - `apkit workspaces status [--json]` - inspect one or all managed workspace states.
 - `apkit workspaces cleanup <workspace-id> [--apply] [--json]` - preview cleanup by default; apply removes only a proven clean, inactive APK-owned worktree.
-
 <!-- END GENERATED CLI COMMAND REFERENCE -->
 
 Structured task verification may use `apkOperation` with `lint`, `doctor`, `sync-check`, or `status` for a local read-only APK self-check. This resolves the currently running repository APK implementation and records its package/version identity; use an ordinary explicit shell command for host-project tools or mutating APK commands such as `audit`.
