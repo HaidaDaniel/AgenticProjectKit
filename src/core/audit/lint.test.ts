@@ -185,7 +185,7 @@ test("contract lint proves glob overlaps instead of using shared prefixes", asyn
       forbiddenFiles: ["src/**/a.ts"],
     }));
     await writeTask(directory, "0015-nested-parent.md", task("0015", {
-      allowedFiles: ["internal/app/assets/**"],
+      allowedFiles: ["internal/app/asset/**"],
       forbiddenFiles: ["internal/app/**"],
     }));
 

@@ -3981,7 +3981,7 @@ test("CLI task create rejects overlapping allowed and forbidden paths before wri
       "--scope", "tasks",
       "--risk", "medium",
       "--context", "AGENTS.md",
-      "--allowed", "internal/app/assets/**",
+      "--allowed", "internal/app/asset/**",
       "--forbidden", "internal/app/**",
       "--verification", "pnpm test",
     ], directory);

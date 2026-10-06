@@ -3721,6 +3721,19 @@ test("recordManualVerification rejects automated checks, missing evidence, forei
         rootDirectory: directory,
         taskDirectory: ".tasks",
         taskId: "0007",
+        owner: "codex-a",
+        checkId: "live-smoke",
+        result: "pass",
+        evidence: "reference",
+        summary: "first line\nsecond line",
+      }),
+      /--summary must be single-line.*Notes/,
+    );
+    await assert.rejects(
+      recordManualVerification({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
         owner: "ghost",
         checkId: "live-smoke",
         result: "pass",
@@ -4288,6 +4301,20 @@ test("malformed, multiline, and overlong artifact/evidence references are reject
     }],
     verificationCommands: [],
   })), /summary must be at most 1000 characters/);
+  assert.throws(() => parseTaskMarkdown(renderTaskMarkdown({
+    ...TASK,
+    verification: [{
+      id: "multiline-summary",
+      type: "manual",
+      required: true,
+      environment: "live",
+      profile: "trusted",
+      instruction: "Inspect the release.",
+      evidenceRef: "release-url",
+      summary: "first line\nsecond line",
+    }],
+    verificationCommands: [],
+  })), /summary must be single-line/);
 });
 
 test("explicit benchmark execution writes typed current evidence and satisfies the gate", async () => {
@@ -6304,7 +6331,7 @@ test("createTask rejects an allowed child inside a forbidden parent before writi
         tags: [],
         goal: "Create a narrowly scoped task contract.",
         contextFiles: ["AGENTS.md"],
-        allowedFiles: ["internal/app/assets/**"],
+        allowedFiles: ["internal/app/asset/**"],
         forbiddenFiles: ["internal/app/**"],
         steps: ["Implement the change."],
         acceptanceCriteria: ["The narrow allowlist is preserved."],
