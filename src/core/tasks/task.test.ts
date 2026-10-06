@@ -110,6 +110,7 @@ import {
   startTaskEpoch,
 } from "./workflow.js";
 import { getTaskTemplate, resolveTaskTemplateType } from "../templates/task-templates.js";
+import { runTaskApkOperation } from "./apk-verification.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -559,6 +560,17 @@ test("bugfix template defaults enforce repro-first sequencing and honest limits"
   assert.equal(resolveTaskTemplateType("bugfix"), "bugfix");
 });
 
+test("audit template uses the stable builtin for read-only APK lint and keeps audit explicit", () => {
+  const checks = getTaskTemplate("audit").verification;
+  const apkLint = checks.find((check) => check.id === "apk-lint");
+  const audit = checks.find((check) => check.id === "audit");
+
+  assert.equal(apkLint?.apkOperation, "lint");
+  assert.equal(apkLint?.command, undefined);
+  assert.equal(audit?.command, "node dist/cli/index.js audit");
+  assert.equal(audit?.apkOperation, undefined);
+});
+
 test("release template defaults order pre-tag evidence before the immutable tag and separate post-tag evidence", () => {
   const template = getTaskTemplate("release");
   const steps = template.steps.join("\n");
@@ -912,6 +924,103 @@ test("benchmark evidence declarations reject unsupported types and non-automated
       TaskFormatError,
     );
   }
+});
+
+test("read-only APK operation checks round-trip and reject shell coupling", () => {
+  const task = {
+    ...TASK,
+    verification: [{
+      id: "apk-lint",
+      type: "automated" as const,
+      required: true,
+      environment: "local" as const,
+      profile: "deterministic" as const,
+      apkOperation: "lint" as const,
+    }],
+    verificationCommands: [],
+  };
+
+  const parsed = parseTaskMarkdown(renderTaskMarkdown(task));
+  assert.deepEqual(parsed.verification, task.verification);
+  assert.throws(
+    () => parseTaskMarkdown(renderTaskMarkdown({
+      ...TASK,
+      verification: [{ ...task.verification[0], command: "pnpm exec apk lint --json" }],
+      verificationCommands: [],
+    })),
+    /command and apkOperation are mutually exclusive/,
+  );
+  assert.throws(
+    () => parseTaskMarkdown(renderTaskMarkdown({
+      ...TASK,
+      verification: [{ ...task.verification[0], apkOperation: "audit" as "lint" }],
+      verificationCommands: [],
+    })),
+    /apkOperation must be one of/,
+  );
+});
+
+test("builtin APK verification runs without shell commands and records resolved identity", async () => {
+  await withTempDirectory(async (directory) => {
+    const task = {
+      ...TASK,
+      verification: [{
+        id: "apk-status",
+        type: "automated" as const,
+        required: true,
+        environment: "local" as const,
+        profile: "deterministic" as const,
+        apkOperation: "status" as const,
+      }],
+      verificationCommands: [],
+    };
+    await writeTaskFile(join(directory, ".tasks", "0007-add-task-system.md"), task);
+
+    let receivedOperation: string | undefined;
+    let shellCalled = false;
+    const result = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      changedFiles: ["src/core/tasks/index.ts"],
+      runCommand: async () => {
+        shellCalled = true;
+        return 1;
+      },
+      runApkOperation: async (_rootDirectory, operation) => {
+        receivedOperation = operation;
+        return { exitCode: 0, resolvedApkIdentity: "apk-current-process" };
+      },
+    });
+
+    assert.equal(result.passed, true);
+    assert.equal(receivedOperation, "status");
+    assert.equal(shellCalled, false);
+    assert.deepEqual(result.commandsRun, [{
+      command: "builtin:apk/status",
+      exitCode: 0,
+      apkOperation: "status",
+      resolvedApkIdentity: "apk-current-process",
+    }]);
+    assert.equal(result.checkResults[0]?.resolvedApkIdentity, "apk-current-process");
+    const evidence = await readTaskEvidence(directory, "0007");
+    assert.equal(evidence[0]?.apkOperation, "status");
+    assert.equal(evidence[0]?.resolvedApkIdentity, "apk-current-process");
+  });
+});
+
+test("default APK operation resolver is path-independent and read-only", async () => {
+  await withTempDirectory(async (directory) => {
+    const spacedDirectory = join(directory, "repository with spaces");
+    await mkdir(spacedDirectory, { recursive: true });
+    const before = await readdir(spacedDirectory);
+    const result = await runTaskApkOperation(spacedDirectory, "status");
+    const after = await readdir(spacedDirectory);
+
+    assert.equal(result.exitCode, 0);
+    assert.match(result.resolvedApkIdentity, /^agentic-project-kit@\d+\.\d+\.\d+:current-process$/);
+    assert.deepEqual(after, before);
+  });
 });
 
 test("optional checks never cancel tag evidence requirements", () => {

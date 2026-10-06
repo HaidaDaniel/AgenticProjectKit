@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 
 import { withLocalMutationLock } from "./lock.js";
 import type { ResourceCostClass } from "../resources/index.js";
+import { TASK_APK_OPERATIONS, type TaskApkOperation } from "./apk-verification.js";
 
 export const TASK_EVIDENCE_PATH = ".agentic/evidence.jsonl";
 export const TASK_EVIDENCE_LOCK_PATH = ".agentic/evidence.append.lock";
@@ -85,6 +86,8 @@ export interface TaskEvidenceRecord {
   checkId?: string;
   profile?: string;
   command?: string;
+  apkOperation?: TaskApkOperation;
+  resolvedApkIdentity?: string;
   artifact?: string;
   evidence?: string;
   summary?: string;
@@ -134,6 +137,8 @@ export interface AddTaskEvidenceInput {
   checkId?: string;
   profile?: string;
   command?: string;
+  apkOperation?: TaskApkOperation;
+  resolvedApkIdentity?: string;
   artifact?: string;
   evidence?: string;
   summary?: string;
@@ -396,6 +401,10 @@ function normalizeEvidenceRecord(
     checkId: optionalText(value.checkId, `${prefix}.checkId`, issues, 120),
     profile: optionalText(value.profile, `${prefix}.profile`, issues, 120),
     command: optionalText(value.command, `${prefix}.command`, issues),
+    apkOperation: value.apkOperation === undefined
+      ? undefined
+      : oneOf(value.apkOperation, TASK_APK_OPERATIONS, `${prefix}.apkOperation`, issues),
+    resolvedApkIdentity: optionalText(value.resolvedApkIdentity, `${prefix}.resolvedApkIdentity`, issues, 120),
     artifact: optionalText(value.artifact, `${prefix}.artifact`, issues),
     evidence: optionalText(value.evidence, `${prefix}.evidence`, issues),
     summary: optionalText(value.summary, `${prefix}.summary`, issues, TASK_EVIDENCE_SUMMARY_MAX_LENGTH),
@@ -654,6 +663,9 @@ export function renderTaskEvidence(
     }
     if (record.evidence) {
       lines.push(`    Evidence reference: ${record.evidence}`);
+    }
+    if (record.apkOperation) {
+      lines.push(`    APK operation: ${record.apkOperation}; resolved=${record.resolvedApkIdentity ?? "unknown"}`);
     }
     if (record.summary) {
       lines.push(`    Summary: ${record.summary}`);

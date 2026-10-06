@@ -15,6 +15,12 @@ import {
   TASK_EVIDENCE_REFERENCE_MAX_LENGTH,
   TASK_EVIDENCE_SUMMARY_MAX_LENGTH,
 } from "./evidence.js";
+import {
+  TASK_APK_OPERATIONS,
+  runTaskApkOperation,
+  type TaskApkOperation,
+  type TaskApkOperationRunner,
+} from "./apk-verification.js";
 import { withLocalMutationLock } from "./lock.js";
 
 const execAsync = promisify(exec);
@@ -87,6 +93,8 @@ export interface TaskVerificationCheck {
   profile: TaskVerificationProfile;
   /** Explicitly declares that this check measures a benchmark result. */
   evidenceType?: "benchmark";
+  /** Read-only APK operation dispatched by the currently running APK process. */
+  apkOperation?: TaskApkOperation;
   command?: string;
   instruction?: string;
   artifact?: string;
@@ -482,6 +490,13 @@ function parseVerificationCheck(
   const evidenceRef = parseVerificationString(raw.evidenceRef, "evidenceRef", checkNumber, issues);
   const summary = parseVerificationString(raw.summary, "summary", checkNumber, issues);
   const evidenceType = parseVerificationString(raw.evidenceType, "evidenceType", checkNumber, issues);
+  const apkOperation = parseVerificationString(raw.apkOperation, "apkOperation", checkNumber, issues);
+  const validApkOperation = apkOperation !== undefined
+    && (TASK_APK_OPERATIONS as readonly string[]).includes(apkOperation);
+
+  if (apkOperation !== undefined && !validApkOperation) {
+    addVerificationIssue(issues, checkNumber, `apkOperation must be one of: ${TASK_APK_OPERATIONS.join(", ")}.`);
+  }
 
   validateVerificationReference(artifact, "artifact", checkNumber, issues);
   validateVerificationReference(evidence, "evidence", checkNumber, issues);
@@ -502,11 +517,20 @@ function parseVerificationCheck(
     addVerificationIssue(issues, checkNumber, 'evidenceType "benchmark" requires an automated check in a local or static environment.');
   }
 
-  if (type === "automated" && !command) {
-    addVerificationIssue(issues, checkNumber, "automated checks require command.");
+  if (type === "automated" && !command && !validApkOperation) {
+    addVerificationIssue(issues, checkNumber, "automated checks require command or a valid apkOperation.");
   }
   if (type === "manual" && !instruction) {
     addVerificationIssue(issues, checkNumber, "manual checks require instruction.");
+  }
+  if (apkOperation && type !== "automated") {
+    addVerificationIssue(issues, checkNumber, "apkOperation requires type automated.");
+  }
+  if (apkOperation && environment !== "local") {
+    addVerificationIssue(issues, checkNumber, "apkOperation requires environment local.");
+  }
+  if (apkOperation && command) {
+    addVerificationIssue(issues, checkNumber, "command and apkOperation are mutually exclusive.");
   }
   if (command && instruction) {
     addVerificationIssue(issues, checkNumber, "must define command or instruction, not both.");
@@ -519,6 +543,7 @@ function parseVerificationCheck(
     environment: environment as TaskVerificationEnvironment,
     profile: profile as TaskVerificationProfile,
     ...(evidenceType === "benchmark" ? { evidenceType } : {}),
+    ...(validApkOperation ? { apkOperation: apkOperation as TaskApkOperation } : {}),
     ...(command ? { command } : {}),
     ...(instruction ? { instruction } : {}),
     ...(artifact ? { artifact } : {}),
@@ -1477,6 +1502,8 @@ export class TaskBaselineFormatError extends Error {
 export interface TaskVerifyCommandResult {
   command: string;
   exitCode: number;
+  apkOperation?: TaskApkOperation;
+  resolvedApkIdentity?: string;
 }
 
 export type TaskVerifyCheckStatus = TaskEvidenceResult;
@@ -1486,6 +1513,8 @@ export interface TaskVerifyCheckResult {
   type: TaskVerificationType;
   evidenceType?: "benchmark";
   artifact?: string;
+  apkOperation?: TaskApkOperation;
+  resolvedApkIdentity?: string;
   required: boolean;
   status: TaskVerifyCheckStatus;
   command?: string;
@@ -1513,6 +1542,7 @@ export interface TaskVerifyOptions {
   checkFilesOnly?: boolean;
   changedFiles?: string[];
   runCommand?: (command: string) => Promise<number>;
+  runApkOperation?: TaskApkOperationRunner;
   profile?: TaskVerificationProfile | "all";
   commandTimeoutMs?: number;
 }
@@ -3942,6 +3972,7 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
     let status: TaskVerifyCheckStatus = "not-run";
     let reason: string | undefined;
     let exitCode: number | undefined;
+    let resolvedApkIdentity: string | undefined;
 
     if (!passed) {
       reason = "file scope failed";
@@ -3955,22 +3986,36 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
     } else if (check.environment === "live") {
       status = "unavailable";
       reason = "live environment check is not executed by local verifier";
-    } else if (!check.command) {
+    } else if (!check.command && !check.apkOperation) {
       status = "unavailable";
-      reason = "automated check has no command";
+      reason = "automated check has no command or apkOperation";
     } else {
       try {
-        exitCode = await (options.runCommand ?? ((cmd) => defaultRunCommand(
-          options.rootDirectory,
-          cmd,
-          options.commandTimeoutMs,
-        )))(check.command);
+        if (check.apkOperation) {
+          const operationResult = await (options.runApkOperation ?? runTaskApkOperation)(
+            options.rootDirectory,
+            check.apkOperation,
+          );
+          exitCode = operationResult.exitCode;
+          resolvedApkIdentity = operationResult.resolvedApkIdentity;
+        } else {
+          exitCode = await (options.runCommand ?? ((cmd) => defaultRunCommand(
+            options.rootDirectory,
+            cmd,
+            options.commandTimeoutMs,
+          )))(check.command!);
+        }
       } catch (error: unknown) {
         exitCode = 1;
         reason = `command execution failed: ${error instanceof Error ? error.message : String(error)}`;
       }
       status = exitCode === 0 ? "pass" : "fail";
-      commandsRun.push({ command: check.command, exitCode });
+      commandsRun.push({
+        command: check.apkOperation ? `builtin:apk/${check.apkOperation}` : check.command!,
+        exitCode,
+        ...(check.apkOperation ? { apkOperation: check.apkOperation } : {}),
+        ...(resolvedApkIdentity ? { resolvedApkIdentity } : {}),
+      });
       if (status === "fail" && !reason) {
         reason = `command exited with code ${exitCode}`;
       }
@@ -3981,9 +4026,11 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
       type: check.type,
       ...(check.evidenceType ? { evidenceType: check.evidenceType } : {}),
       ...(check.artifact ? { artifact: check.artifact } : {}),
+      ...(check.apkOperation ? { apkOperation: check.apkOperation } : {}),
       required: check.required,
       status,
       ...(check.command ? { command: check.command } : {}),
+      ...(resolvedApkIdentity ? { resolvedApkIdentity } : {}),
       ...(reason ? { reason } : {}),
     });
   }
@@ -4069,6 +4116,8 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
       checkId: check.id,
       profile: check.profile,
       ...(check.command ? { command: check.command } : {}),
+      ...(check.apkOperation ? { apkOperation: check.apkOperation } : {}),
+      ...(result.resolvedApkIdentity ? { resolvedApkIdentity: result.resolvedApkIdentity } : {}),
       ...(check.artifact ? { artifact: check.artifact } : {}),
       ...((check.evidenceRef ?? check.evidence) ? { evidence: check.evidenceRef ?? check.evidence } : {}),
       ...((check.summary ?? localSummary) ? { summary: check.summary ?? localSummary } : {}),
@@ -4153,13 +4202,13 @@ export function renderTaskVerifyResult(result: TaskVerifyResult): string {
   } else {
     lines.push("Commands:");
     for (const command of result.commandsRun) {
-      lines.push(`  - ${command.exitCode === 0 ? "pass" : "fail"} ${command.command}`);
+      lines.push(`  - ${command.exitCode === 0 ? "pass" : "fail"} ${command.command}${command.resolvedApkIdentity ? ` (${command.resolvedApkIdentity})` : ""}`);
     }
   }
 
   lines.push("Checks:");
   for (const check of result.checkResults) {
-    lines.push(`  - ${check.status} ${check.id}${check.required ? " (required)" : " (optional)"}${check.evidenceType ? ` evidence=${check.evidenceType}` : ""}${check.artifact ? ` artifact=${check.artifact}` : ""}${check.reason ? `: ${check.reason}` : ""}`);
+    lines.push(`  - ${check.status} ${check.id}${check.required ? " (required)" : " (optional)"}${check.evidenceType ? ` evidence=${check.evidenceType}` : ""}${check.apkOperation ? ` apkOperation=${check.apkOperation}` : ""}${check.resolvedApkIdentity ? ` resolved=${check.resolvedApkIdentity}` : ""}${check.artifact ? ` artifact=${check.artifact}` : ""}${check.reason ? `: ${check.reason}` : ""}`);
   }
   lines.push(`Evidence: ${result.evidenceWritten} record(s)`);
 

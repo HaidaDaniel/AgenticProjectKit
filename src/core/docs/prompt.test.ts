@@ -134,6 +134,14 @@ test("renderTaskPrompt preserves structured verification requirements", () => {
         evidenceRef: "release-observer-url",
         summary: "Explain the observed release result.",
       },
+      {
+        id: "apk-lint",
+        type: "automated",
+        required: true,
+        environment: "local",
+        profile: "deterministic",
+        apkOperation: "lint",
+      },
     ],
     verificationCommands: [],
   }, 1));
@@ -142,6 +150,7 @@ test("renderTaskPrompt preserves structured verification requirements", () => {
   assert.match(prompt, /smoke \[required\] type=manual; environment=live; profile=trusted/);
   assert.match(prompt, /instruction=Check the deployed smoke path\.; artifact=smoke-report\.md; evidence=release URL/);
   assert.match(prompt, /smoke-new-contract \[required\] type=manual; environment=live; profile=trusted; instruction=Check the new evidence contract\.; evidenceRef=release-observer-url; summary=Explain the observed release result\./);
+  assert.match(prompt, /apk-lint \[required\] type=automated; environment=local; profile=deterministic; apkOperation=lint \(read-only, current APK process\)/);
   assert.match(prompt, /Verification commands:\n/);
 });
 

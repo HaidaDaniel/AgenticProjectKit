@@ -49,6 +49,7 @@ function automated(
   id: string,
   options: {
     command?: string;
+    apkOperation?: TaskVerificationCheck["apkOperation"];
     profile?: TaskVerificationCheck["profile"];
     evidenceType?: TaskVerificationCheck["evidenceType"];
     artifact?: string;
@@ -60,7 +61,7 @@ function automated(
     required: true,
     environment: "local",
     profile: options.profile ?? "deterministic",
-    command: options.command ?? "pnpm test",
+    ...(options.apkOperation ? { apkOperation: options.apkOperation } : { command: options.command ?? "pnpm test" }),
     ...(options.evidenceType ? { evidenceType: options.evidenceType } : {}),
     ...(options.artifact ? { artifact: options.artifact } : {}),
   };
@@ -177,7 +178,12 @@ const templates: Record<TaskTemplateType, TaskTemplateDefaults> = {
     risk: "medium",
     tags: ["audit"],
     contextFiles: ["AGENTS.md", "docs/cli-commands.md", "docs/task-system.md"],
-    verification: [automated("tests"), automated("audit", { command: "node dist/cli/index.js audit" })],
+    verification: [
+      automated("tests"),
+      automated("apk-lint", { apkOperation: "lint" }),
+      // audit writes reports, so keep it an explicit command rather than a builtin.
+      automated("audit", { command: "node dist/cli/index.js audit" }),
+    ],
     steps: ["Inspect current behavior.", "Add or update audit checks.", "Run verification."],
     acceptanceCriteria: ["Audit findings are deterministic and documented."],
     documentationUpdates: docsUpdate,

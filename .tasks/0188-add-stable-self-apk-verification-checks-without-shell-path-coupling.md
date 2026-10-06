@@ -1,7 +1,7 @@
 # Task 0188 - Add stable self-APK verification checks without shell-path coupling
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-continue-20261005-2055
 Mode: product
 Lane: tooling
 Type: refactor
@@ -112,7 +112,7 @@ Host-project commands remain ordinary explicit shell commands.
 
 - `{"id":"quality","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm quality"}`
 - `{"id":"coverage","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test:coverage"}`
-- `{"id":"task-lint","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
+- `{"id":"task-lint","type":"automated","required":true,"environment":"local","profile":"deterministic","apkOperation":"lint"}`
 - `{"id":"build-current","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"rm -rf dist && pnpm build && test -z \"$(git status --porcelain --untracked-files=all --ignored=matching -- dist)\""}`
 - `{"id":"diff-check","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
 
