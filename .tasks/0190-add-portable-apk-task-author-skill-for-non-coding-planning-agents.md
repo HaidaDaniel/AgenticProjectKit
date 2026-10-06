@@ -1,7 +1,7 @@
 # Task 0190 - Add portable APK task-author skill for non-coding planning agents
 
-State: todo
-Owner: none
+State: review
+Owner: codex-continue-20261005-2055
 Mode: product
 Lane: instructions
 Type: feature
@@ -70,11 +70,11 @@ The skill owns task authoring only: inspect repository truth, detect overlap/dup
 1. Define concise standards-compatible skill frontmatter and invocation guidance; keep the skill harness-neutral while ensuring it is usable by Hermes-class agents with repository read access and a terminal tool.
 2. Establish repository truth before drafting: canonical policy/project/scope/architecture docs, active and archived task summaries, current roadmap/milestone, direct dependencies, and relevant context suggestions. Never scan the whole repository by default.
 3. Detect existing tasks that already cover the request or would materially overlap its files/scope. Prefer extending a still-unfinished canonical task when appropriate; never rewrite completed history.
-4. Decide whether the request is one task or materially needs decomposition. For a genuinely multi-slice target, propose use of `apk-task-split` or a bounded multi-task preview instead of creating a giant catch-all contract.
+4. Decide whether the request is one task or materially needs decomposition. For a genuinely multi-slice target, propose use of `apk-task-split` instead of creating a giant catch-all contract or unresolved multi-task dependency preview.
 5. Build a complete preview with title, type/template, mode, lane, risk, scope, goal, context, allowed/forbidden paths, dependencies, parallel flag, steps, acceptance, structured verification, correctness assumptions, invariants, required evidence, review questions, counterexample searches, docs updates, and notes as applicable.
 6. Ask one clarification at a time only when a material choice cannot be resolved from repository truth. Do not ask the human to choose implementation details already owned by the future coding agent.
 7. Require explicit approval of the concrete preview before any task write. After approval, create through `apkit task create` rather than hand-allocating IDs or directly inventing task filenames.
-8. Immediately validate the new contract with `apkit lint --json`, inspect `apkit task deps <new-id>`, and report the actual ID/path and any remaining blockers. If validation fails, correct only the newly created unfinished contract; do not continue into implementation.
+8. Immediately validate the new contract with `apkit lint --json`, inspect `apkit task deps <new-id>`, and report the actual ID/path and any remaining blockers. If validation fails, stop and report the failing command and blocker; do not directly edit the created contract or continue into implementation.
 9. Stop before claim, work-package generation, implementation, verification, review, or done.
 10. Add focused deterministic instruction/packaging tests and regenerate committed dist.
 
@@ -137,6 +137,7 @@ The skill owns task authoring only: inspect repository truth, detect overlap/dup
 - `{"id":"source-lint","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm lint"}`
 - `{"id":"tests","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test"}`
 - `{"id":"build","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}`
+- `{"id":"build-current","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"rm -rf dist && pnpm build && test -z \"$(git status --porcelain --untracked-files=all --ignored=matching -- dist)\""}`
 - `{"id":"contract-lint","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node dist/cli/index.js lint --json"}`
 - `{"id":"packaged-skill","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node -e \"require('fs').existsSync('dist/core/templates/skills/apk-task-author/SKILL.md.hbs')||process.exit(1)\""}`
 - `{"id":"diff-check","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
