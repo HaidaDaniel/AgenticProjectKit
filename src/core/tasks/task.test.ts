@@ -6636,6 +6636,7 @@ test("archiveTask supports canceled tasks and preserves bytes with ID dependents
       title: "Canceled Task",
       state: "canceled",
       owner: "archive",
+      contextFiles: [".tasks/0010-canceled-task.md"],
     });
     await writeTaskFile(join(directory, ".tasks", "0011-dependent-task.md"), {
       ...TASK,
@@ -6643,7 +6644,7 @@ test("archiveTask supports canceled tasks and preserves bytes with ID dependents
       title: "Dependent Task",
       dependsOn: ["0010"],
     });
-    const before = await readFile(canceledPath, "utf8");
+    const before = await readFile(canceledPath);
     const preview = await previewArchiveTask(directory, ".tasks", "0010");
 
     assert.equal(preview.state, "canceled");
@@ -6652,7 +6653,7 @@ test("archiveTask supports canceled tasks and preserves bytes with ID dependents
     const result = await archiveTask(directory, ".tasks", "0010");
 
     assert.equal(result.archivePath, ".tasks/archive/0010-canceled-task.md");
-    assert.equal(await readFile(join(directory, result.archivePath), "utf8"), before);
+    assert.deepEqual(await readFile(join(directory, result.archivePath)), before);
     const archived = await listArchivedTaskFiles(directory);
     assert.equal(archived.find((file) => file.task.id === "0010")?.task.state, "canceled");
     assert.equal(validateTaskDependencies(await listTaskFiles(directory), archived).length, 0);
@@ -6818,6 +6819,22 @@ test("archive preview and apply skip archive path collisions consistently", asyn
     assert.doesNotReject(
       () => readFile(join(directory, ".tasks", "0001-done-task.md")),
     );
+  });
+});
+
+test("archive preview reports malformed unrelated archive files as a blocker", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeTaskFile(
+      join(directory, ".tasks", "0001-done-task.md"),
+      { ...TASK, id: "0001", title: "Done Task", state: "done", owner: "archive" },
+    );
+    await mkdir(join(directory, ".tasks", "archive"), { recursive: true });
+    await writeFile(join(directory, ".tasks", "archive", "9999-malformed.md"), "not a task", "utf8");
+
+    const preview = await previewArchiveTask(directory, ".tasks", "0001");
+    assert.equal(preview.canArchive, false);
+    assert.match(preview.blockers.join("\n"), /cannot parse existing archive files/);
+    assert.doesNotReject(() => readFile(join(directory, ".tasks", "0001-done-task.md")));
   });
 });
 
