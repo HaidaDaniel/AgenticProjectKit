@@ -124,6 +124,16 @@ test("renderTaskPrompt preserves structured verification requirements", () => {
         artifact: "smoke-report.md",
         evidence: "release URL",
       },
+      {
+        id: "smoke-new-contract",
+        type: "manual",
+        required: true,
+        environment: "live",
+        profile: "trusted",
+        instruction: "Check the new evidence contract.",
+        evidenceRef: "release-observer-url",
+        summary: "Explain the observed release result.",
+      },
     ],
     verificationCommands: [],
   }, 1));
@@ -131,6 +141,7 @@ test("renderTaskPrompt preserves structured verification requirements", () => {
   assert.match(prompt, /Verification requirements:/);
   assert.match(prompt, /smoke \[required\] type=manual; environment=live; profile=trusted/);
   assert.match(prompt, /instruction=Check the deployed smoke path\.; artifact=smoke-report\.md; evidence=release URL/);
+  assert.match(prompt, /smoke-new-contract \[required\] type=manual; environment=live; profile=trusted; instruction=Check the new evidence contract\.; evidenceRef=release-observer-url; summary=Explain the observed release result\./);
   assert.match(prompt, /Verification commands:\n/);
 });
 

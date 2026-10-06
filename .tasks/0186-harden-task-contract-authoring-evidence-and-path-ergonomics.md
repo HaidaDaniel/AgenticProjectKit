@@ -35,6 +35,8 @@ Keep strict task contracts, but make the schema and diagnostics guide agents tow
 ## Files allowed to edit
 
 - src/core/tasks/**
+- src/core/docs/prompt.ts
+- src/core/docs/prompt.test.ts
 - src/core/audit/lint.ts
 - src/core/audit/lint.test.ts
 - src/core/audit/audit.test.ts

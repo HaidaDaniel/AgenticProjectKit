@@ -69,7 +69,12 @@ function renderVerificationRequirement(
     : `instruction=${check.instruction}`;
   const extras = [
     check.artifact ? `artifact=${check.artifact}` : undefined,
-    check.evidence ? `evidence=${check.evidence}` : undefined,
+    check.evidenceRef
+      ? `evidenceRef=${check.evidenceRef}`
+      : check.evidence
+        ? `evidence=${check.evidence}`
+        : undefined,
+    check.summary ? `summary=${check.summary}` : undefined,
   ].filter((value): value is string => value !== undefined);
 
   return `- ${check.id} [${requirement}] type=${check.type}; environment=${check.environment}; profile=${check.profile}; ${subject}${extras.length > 0 ? `; ${extras.join("; ")}` : ""}`;
