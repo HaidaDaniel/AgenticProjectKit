@@ -196,7 +196,7 @@ const TASK_CREATE_HELP_TEXT = [
   "  --risk <risk>           Risk level: low, medium, high, critical.",
   "  --context <csv>         Comma-separated context file paths.",
   "  --verification <csv>    Comma-separated legacy verification commands; normalized to required local deterministic checks.",
-  "  --verification-json <json>  Structured verification check array.",
+  "  --verification-json <json>  Structured checks; use short evidenceRef (legacy evidence alias) for locators and summary for bounded narrative.",
   "  --goal <text>           Task goal text (default: title).",
   "  --depends <csv>         Comma-separated dependency task ids.",
   "  --tags <csv>            Comma-separated tags.",
@@ -227,7 +227,7 @@ const TASK_VERIFY_HELP_TEXT = [
   "Runs selected eligible automated checks and records per-check evidence.",
   "Manual/live and unselected checks remain visible as unavailable or not-run.",
   "Use --record for an externally observed manual/live result or a check explicitly declared evidenceType=benchmark; records bind to the current candidate.",
-  "For a check with artifact, --record stores the declared artifact reference separately from the required --evidence observer reference; each reference is single-line and at most 240 characters.",
+  "For a check with artifact, --record stores the declared artifact reference separately from the required --evidence observer reference; references are short single-line locators (at most 240 characters), while --summary carries bounded narrative.",
   "APK records artifact references but does not verify external artifact existence or integrity.",
 ].join("\n");
 

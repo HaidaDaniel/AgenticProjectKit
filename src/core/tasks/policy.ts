@@ -210,7 +210,7 @@ function declaredEvidenceCategories(task: ProjectTask, requiredOnly = false): st
     else if (check.environment === "live") categories.add("live");
     else if (check.type === "manual") categories.add("manual");
     if (check.artifact) categories.add("artifact");
-    if (check.evidence) categories.add("evidence");
+    if (check.evidenceRef ?? check.evidence) categories.add("evidence");
   }
   return [...categories].sort();
 }

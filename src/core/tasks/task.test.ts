@@ -463,7 +463,8 @@ test("structured verification survives canonical task round trip", () => {
         environment: "live",
         profile: "trusted",
         instruction: "Confirm the production smoke check.",
-        evidence: "link or incident id",
+        evidenceRef: "link or incident id",
+        summary: "Confirm the exact candidate and capture the incident if the smoke check fails.",
       },
     ],
     verificationCommands: ["pnpm test"],
@@ -473,6 +474,31 @@ test("structured verification survives canonical task round trip", () => {
   assert.match(rendered, /## Verification/);
   assert.doesNotMatch(rendered, /## Verification commands/);
   assert.deepEqual(parseTaskMarkdown(rendered), task);
+});
+
+test("legacy evidence aliases round trip and incompatible aliases fail clearly", () => {
+  const legacy: ProjectTask = {
+    ...TASK,
+    verification: [{
+      id: "legacy-evidence",
+      type: "manual",
+      required: true,
+      environment: "live",
+      profile: "trusted",
+      instruction: "Inspect the release.",
+      evidence: "legacy locator",
+    }],
+    verificationCommands: [],
+  };
+  assert.deepEqual(parseTaskMarkdown(renderTaskMarkdown(legacy)), legacy);
+
+  assert.throws(
+    () => parseTaskMarkdown(renderTaskMarkdown({
+      ...legacy,
+      verification: [{ ...legacy.verification![0], evidenceRef: "new locator" }],
+    })),
+    /evidence and evidenceRef are incompatible aliases.*summary or Notes/,
+  );
 });
 
 test("optional correctness contract survives canonical round trip without legacy noise", () => {
@@ -561,6 +587,9 @@ test("release template defaults order pre-tag evidence before the immutable tag 
   assert.match(template.reviewQuestions?.join("\n") ?? "", /actually run against the exact candidate SHA before tag publication/i);
   assert.match(template.counterexampleSearches?.join("\n") ?? "", /claimed pre-tag/i);
   assert.equal(template.tags.includes("release"), true);
+  const releaseSmoke = template.verification.find((check) => check.id === "release-smoke");
+  assert.equal(releaseSmoke?.evidenceRef, "release URL, CI run, tag object, or release id");
+  assert.equal(releaseSmoke?.evidence, undefined);
 });
 
 test("task policy applies deterministic risk defaults", () => {
@@ -3986,7 +4015,8 @@ async function setupManualArtifactRepo(directory: string, tags: string[] = []): 
       profile: "trusted",
       instruction: "Inspect the generated manual verification artifact.",
       artifact: "reports/manual-result.json",
-      evidence: "Observer report reference",
+      evidenceRef: "Observer report reference",
+      summary: "Confirm the generated artifact matches the candidate and explain any discrepancy.",
     },
   ], "bugfix", tags, "high");
 }
@@ -4005,6 +4035,8 @@ test("external manual artifact recording preserves separate candidate-bound refe
     assert.match(renderTaskVerifyResult(verification), /unavailable manual-artifact \(required\) artifact=reports\/manual-result\.json/);
     const localRecords = await readTaskEvidence(directory, "0007");
     assert.equal(localRecords.find((record) => record.checkId === "manual-artifact")?.artifact, "reports/manual-result.json");
+    assert.equal(localRecords.find((record) => record.checkId === "manual-artifact")?.evidence, "Observer report reference");
+    assert.equal(localRecords.find((record) => record.checkId === "manual-artifact")?.summary, "Confirm the generated artifact matches the candidate and explain any discrepancy.");
 
     await assert.rejects(() => recordManualVerification({
       rootDirectory: directory,
@@ -4028,6 +4060,7 @@ test("external manual artifact recording preserves separate candidate-bound refe
     assert.equal(recorded.type, "manual");
     assert.equal(recorded.record.artifact, "reports/manual-result.json");
     assert.equal(recorded.record.evidence, "https://observer.example/runs/manual-7");
+    assert.equal(recorded.record.summary, "Confirm the generated artifact matches the candidate and explain any discrepancy.");
     assert.match(renderRecordManualVerificationResult(recorded), /Artifact reference: reports\/manual-result\.json/);
     assert.match(renderRecordManualVerificationResult(recorded), /Evidence reference: https:\/\/observer\.example\/runs\/manual-7/);
     await registerAgent(directory, { id: "codex-reviewer", developer: "bob", platform: "codex", model: "gpt-5" });
@@ -4170,7 +4203,7 @@ test("artifact metadata and incidental text cannot satisfy unrelated evidence ca
 });
 
 test("malformed, multiline, and overlong artifact/evidence references are rejected", () => {
-  for (const field of ["artifact", "evidence"] as const) {
+  for (const field of ["artifact", "evidence", "evidenceRef"] as const) {
     for (const reference of ["", "x".repeat(241), "reports/manual\nresult.json"]) {
       assert.throws(() => parseTaskMarkdown(renderTaskMarkdown({
         ...TASK,
@@ -4187,6 +4220,20 @@ test("malformed, multiline, and overlong artifact/evidence references are reject
       })), TaskFormatError, `${field} reference ${JSON.stringify(reference)}`);
     }
   }
+  assert.throws(() => parseTaskMarkdown(renderTaskMarkdown({
+    ...TASK,
+    verification: [{
+      id: "long-summary",
+      type: "manual",
+      required: true,
+      environment: "live",
+      profile: "trusted",
+      instruction: "Inspect the release.",
+      evidenceRef: "release-url",
+      summary: "x".repeat(1001),
+    }],
+    verificationCommands: [],
+  })), /summary must be at most 1000 characters/);
 });
 
 test("explicit benchmark execution writes typed current evidence and satisfies the gate", async () => {
@@ -6181,6 +6228,40 @@ test("createTask validates rendered task before writing", async () => {
 
     assert.rejects(
       () => readFile(join(directory, ".tasks", "0001-bad-task.md"), "utf8"),
+      /ENOENT/,
+    );
+  });
+});
+
+test("createTask rejects an allowed child inside a forbidden parent before writing", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({}), "utf8");
+
+    await assert.rejects(
+      () => createTask(directory, ".tasks", {
+        title: "Scoped Internal App Change",
+        mode: "product",
+        lane: "implementation",
+        scope: ["tasks"],
+        risk: "medium",
+        parallel: false,
+        dependsOn: [],
+        tags: [],
+        goal: "Create a narrowly scoped task contract.",
+        contextFiles: ["AGENTS.md"],
+        allowedFiles: ["internal/app/assets/**"],
+        forbiddenFiles: ["internal/app/**"],
+        steps: ["Implement the change."],
+        acceptanceCriteria: ["The narrow allowlist is preserved."],
+        verificationCommands: ["pnpm test"],
+        documentationUpdates: [],
+        notes: [],
+      }),
+      /Path contract validation failed before writing task.*positive allowedFiles already bounds edits.*remove or narrow the broad forbidden parent/s,
+    );
+    await assert.rejects(
+      () => readFile(join(directory, ".tasks", "0001-scoped-internal-app-change.md"), "utf8"),
       /ENOENT/,
     );
   });

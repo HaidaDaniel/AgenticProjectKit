@@ -6,6 +6,8 @@ import type { ResourceCostClass } from "../resources/index.js";
 
 export const TASK_EVIDENCE_PATH = ".agentic/evidence.jsonl";
 export const TASK_EVIDENCE_LOCK_PATH = ".agentic/evidence.append.lock";
+export const TASK_EVIDENCE_REFERENCE_MAX_LENGTH = 240;
+export const TASK_EVIDENCE_SUMMARY_MAX_LENGTH = 1000;
 
 export const TASK_EVIDENCE_TYPES = [
   "automated-test",
@@ -396,7 +398,7 @@ function normalizeEvidenceRecord(
     command: optionalText(value.command, `${prefix}.command`, issues),
     artifact: optionalText(value.artifact, `${prefix}.artifact`, issues),
     evidence: optionalText(value.evidence, `${prefix}.evidence`, issues),
-    summary: optionalText(value.summary, `${prefix}.summary`, issues, 320),
+    summary: optionalText(value.summary, `${prefix}.summary`, issues, TASK_EVIDENCE_SUMMARY_MAX_LENGTH),
     reviewer: optionalText(value.reviewer, `${prefix}.reviewer`, issues, 120),
     implementationRunId: optionalText(value.implementationRunId, `${prefix}.implementationRunId`, issues, 120),
     workerProtocol: optionalText(value.workerProtocol, `${prefix}.workerProtocol`, issues, 80),

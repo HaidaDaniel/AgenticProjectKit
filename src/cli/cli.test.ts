@@ -3935,7 +3935,8 @@ test("CLI task create writes structured verification from JSON", async () => {
       environment: "live",
       profile: "trusted",
       instruction: "Check the deployed release.",
-      evidence: "release URL",
+      evidenceRef: "release URL",
+      summary: "Confirm the exact candidate and readiness.",
     }]);
     const result = await runCli([
       "task", "create",
@@ -3959,9 +3960,39 @@ test("CLI task create writes structured verification from JSON", async () => {
     assert.match(content, /## Verification/);
     assert.match(content, /"environment":"live"/);
     assert.match(content, /"instruction":"Check the deployed release\."/);
+    assert.match(content, /"evidenceRef":"release URL"/);
+    assert.match(content, /"summary":"Confirm the exact candidate and readiness\."/);
     assert.match(content, /## Correctness assumptions/);
     assert.match(content, /## Counterexample searches/);
     assert.doesNotMatch(content, /## Verification commands/);
+  });
+});
+
+test("CLI task create rejects overlapping allowed and forbidden paths before writing", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({}), "utf8");
+
+    const result = await runCli([
+      "task", "create",
+      "--title", "Scoped Internal App Change",
+      "--mode", "product",
+      "--lane", "implementation",
+      "--scope", "tasks",
+      "--risk", "medium",
+      "--context", "AGENTS.md",
+      "--allowed", "internal/app/assets/**",
+      "--forbidden", "internal/app/**",
+      "--verification", "pnpm test",
+    ], directory);
+
+    assert.equal(result.exitCode, 1);
+    assert.match(`${result.stdout}${result.stderr}`, /positive allowedFiles already bounds edits/);
+    assert.match(`${result.stdout}${result.stderr}`, /remove or narrow the broad forbidden parent/);
+    await assert.rejects(
+      () => readFile(join(directory, ".tasks", "0001-scoped-internal-app-change.md"), "utf8"),
+      /ENOENT/,
+    );
   });
 });
 

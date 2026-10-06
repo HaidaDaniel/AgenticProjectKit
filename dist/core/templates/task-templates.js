@@ -30,7 +30,7 @@ function automated(id, options = {}) {
         ...(options.artifact ? { artifact: options.artifact } : {}),
     };
 }
-function live(id, instruction, evidence) {
+function live(id, instruction, evidenceRef) {
     return {
         id,
         type: "manual",
@@ -38,7 +38,7 @@ function live(id, instruction, evidence) {
         environment: "live",
         profile: "trusted",
         instruction,
-        evidence,
+        evidenceRef,
     };
 }
 const docsUpdate = ["Update docs/progress.md when task state changes."];

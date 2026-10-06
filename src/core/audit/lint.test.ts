@@ -184,12 +184,20 @@ test("contract lint proves glob overlaps instead of using shared prefixes", asyn
       allowedFiles: ["src/*/**"],
       forbiddenFiles: ["src/**/a.ts"],
     }));
+    await writeTask(directory, "0015-nested-parent.md", task("0015", {
+      allowedFiles: ["internal/app/assets/**"],
+      forbiddenFiles: ["internal/app/**"],
+    }));
 
     const result = await lintRepositoryContracts(directory);
     const contradictions = result.findings
       .filter((finding) => finding.code === "path-contract-contradiction")
       .map((finding) => finding.taskId);
-    assert.deepEqual(contradictions, ["0010", "0011", "0014"]);
+    assert.deepEqual(contradictions, ["0010", "0011", "0014", "0015"]);
+    const nestedFinding = result.findings.find((finding) => finding.code === "path-contract-contradiction" && finding.taskId === "0015");
+    assert.ok(nestedFinding);
+    assert.match(nestedFinding.message, /positive allowedFiles already bounds edits/);
+    assert.match(nestedFinding.message, /remove or narrow the broad forbidden parent/);
     assert.equal(contradictions.includes("0012"), false);
     assert.equal(contradictions.includes("0013"), false);
   });

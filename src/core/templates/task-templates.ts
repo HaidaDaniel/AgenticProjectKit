@@ -66,7 +66,7 @@ function automated(
   };
 }
 
-function live(id: string, instruction: string, evidence: string): TaskVerificationCheck {
+function live(id: string, instruction: string, evidenceRef: string): TaskVerificationCheck {
   return {
     id,
     type: "manual",
@@ -74,7 +74,7 @@ function live(id: string, instruction: string, evidence: string): TaskVerificati
     environment: "live",
     profile: "trusted",
     instruction,
-    evidence,
+    evidenceRef,
   };
 }
 

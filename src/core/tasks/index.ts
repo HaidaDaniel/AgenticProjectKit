@@ -1,7 +1,7 @@
 import { exec, execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFile, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join, relative } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 import { promisify } from "node:util";
 
 import { appendRunLog, readRunLog, requireAgent } from "../agents/index.js";
@@ -12,13 +12,16 @@ import {
   type TaskEvidenceRecord,
   type TaskEvidenceResult,
   type TaskEvidenceType,
+  TASK_EVIDENCE_REFERENCE_MAX_LENGTH,
+  TASK_EVIDENCE_SUMMARY_MAX_LENGTH,
 } from "./evidence.js";
 import { withLocalMutationLock } from "./lock.js";
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 const DEFAULT_TASK_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
-const TASK_VERIFICATION_REFERENCE_MAX_LENGTH = 240;
+export const TASK_VERIFICATION_REFERENCE_MAX_LENGTH = TASK_EVIDENCE_REFERENCE_MAX_LENGTH;
+export const TASK_VERIFICATION_SUMMARY_MAX_LENGTH = TASK_EVIDENCE_SUMMARY_MAX_LENGTH;
 const MAX_TASK_ATTRIBUTION_COMMITS = 128;
 const MAX_TASK_ATTRIBUTION_FILES = 512;
 const MAX_TASK_EPOCH_COMMITS = 4096;
@@ -88,6 +91,8 @@ export interface TaskVerificationCheck {
   instruction?: string;
   artifact?: string;
   evidence?: string;
+  evidenceRef?: string;
+  summary?: string;
 }
 
 export interface ProjectTask {
@@ -417,16 +422,30 @@ function parseVerificationString(
 
 function validateVerificationReference(
   value: string | undefined,
-  field: "artifact" | "evidence",
+  field: "artifact" | "evidence" | "evidenceRef",
   checkNumber: number,
   issues: string[],
 ): void {
   if (value === undefined) return;
   if (/[\r\n]/.test(value)) {
-    addVerificationIssue(issues, checkNumber, `${field} must be single-line.`);
+    addVerificationIssue(issues, checkNumber, `${field} must be a single-line short locator/reference; put narrative context in summary or Notes.`);
   }
   if (value.length > TASK_VERIFICATION_REFERENCE_MAX_LENGTH) {
-    addVerificationIssue(issues, checkNumber, `${field} must be at most ${TASK_VERIFICATION_REFERENCE_MAX_LENGTH} characters.`);
+    addVerificationIssue(issues, checkNumber, `${field} is a short locator/reference and must be at most ${TASK_VERIFICATION_REFERENCE_MAX_LENGTH} characters; put narrative context in summary or Notes.`);
+  }
+}
+
+function validateVerificationSummary(
+  value: string | undefined,
+  checkNumber: number,
+  issues: string[],
+): void {
+  if (value === undefined) return;
+  if (/[\r\n]/.test(value)) {
+    addVerificationIssue(issues, checkNumber, "summary must be single-line; use Notes for multiline narrative.");
+  }
+  if (value.length > TASK_VERIFICATION_SUMMARY_MAX_LENGTH) {
+    addVerificationIssue(issues, checkNumber, `summary must be at most ${TASK_VERIFICATION_SUMMARY_MAX_LENGTH} characters.`);
   }
 }
 
@@ -460,10 +479,21 @@ function parseVerificationCheck(
   const instruction = parseVerificationString(raw.instruction, "instruction", checkNumber, issues);
   const artifact = parseVerificationString(raw.artifact, "artifact", checkNumber, issues);
   const evidence = parseVerificationString(raw.evidence, "evidence", checkNumber, issues);
+  const evidenceRef = parseVerificationString(raw.evidenceRef, "evidenceRef", checkNumber, issues);
+  const summary = parseVerificationString(raw.summary, "summary", checkNumber, issues);
   const evidenceType = parseVerificationString(raw.evidenceType, "evidenceType", checkNumber, issues);
 
   validateVerificationReference(artifact, "artifact", checkNumber, issues);
   validateVerificationReference(evidence, "evidence", checkNumber, issues);
+  validateVerificationReference(evidenceRef, "evidenceRef", checkNumber, issues);
+  validateVerificationSummary(summary, checkNumber, issues);
+  if (evidence !== undefined && evidenceRef !== undefined) {
+    addVerificationIssue(
+      issues,
+      checkNumber,
+      "evidence and evidenceRef are incompatible aliases; provide only evidenceRef (or legacy evidence), and put narrative context in summary or Notes.",
+    );
+  }
 
   if (evidenceType !== undefined && evidenceType !== "benchmark") {
     addVerificationIssue(issues, checkNumber, 'evidenceType must be "benchmark" when provided.');
@@ -493,6 +523,8 @@ function parseVerificationCheck(
     ...(instruction ? { instruction } : {}),
     ...(artifact ? { artifact } : {}),
     ...(evidence ? { evidence } : {}),
+    ...(evidenceRef ? { evidenceRef } : {}),
+    ...(summary ? { summary } : {}),
   };
 }
 
@@ -1595,6 +1627,24 @@ export async function createTask(
       notes: input.notes,
     };
 
+    const invalidPathPatterns = [
+      ...task.allowedFiles.map((pattern) => ({ kind: "allowed", pattern })),
+      ...task.forbiddenFiles.map((pattern) => ({ kind: "forbidden", pattern })),
+    ]
+      .map(({ kind, pattern }) => ({ kind, pattern, issue: taskPathPatternIssue(pattern) }))
+      .filter((entry): entry is { kind: string; pattern: string; issue: string } => entry.issue !== undefined);
+    const pathOverlaps = findTaskPathContractOverlaps(task.allowedFiles, task.forbiddenFiles);
+    if (invalidPathPatterns.length > 0 || pathOverlaps.length > 0) {
+      const messages = [
+        ...invalidPathPatterns.map((entry) => `${entry.kind} pattern ${JSON.stringify(entry.pattern)}: ${entry.issue}.`),
+        ...pathOverlaps.map(renderTaskPathContractOverlap),
+      ];
+      const err = new Error(`Path contract validation failed before writing task:
+- ${messages.join("\n- ")}`) as TaskCreateError;
+      err.name = "TaskCreateError";
+      throw err;
+    }
+
     try {
       renderTaskMarkdown(task);
     } catch (error: unknown) {
@@ -1687,6 +1737,145 @@ function pathMatchesPattern(path: string, pattern: string): boolean {
   }
 
   return patternToRegex(normalizedPattern).test(normalizedPath);
+}
+
+export interface TaskPathContractOverlap {
+  allowed: string;
+  forbidden: string;
+  forbiddenParent: boolean;
+}
+
+export function taskPathPatternIssue(pattern: string): string | undefined {
+  const normalized = normalizeRepoPath(pattern);
+  if (normalized.length === 0) return "path pattern must not be empty";
+  if (normalized.includes("\n") || normalized.includes("\r")) return "path pattern must be single-line";
+  if (isAbsolute(pattern) || /^[A-Za-z]:\//.test(normalized) || normalized.startsWith("/")) {
+    return "absolute paths are not allowed";
+  }
+  if (normalized.split("/").includes("..")) return "parent traversal is not allowed";
+  if (/[?\[\]{}]/.test(normalized)) return "only * and ** glob operators are supported";
+  if (normalized.includes("//")) return "empty path segments are not allowed";
+  return undefined;
+}
+
+function taskPathPatternsOverlap(left: string, right: string): boolean {
+  const leftNormalized = normalizeRepoPath(left);
+  const rightNormalized = normalizeRepoPath(right);
+  const leftGlob = leftNormalized.includes("*");
+  const rightGlob = rightNormalized.includes("*");
+  if (!leftGlob && !rightGlob) return leftNormalized === rightNormalized;
+  if (!leftGlob) return pathMatchesPattern(leftNormalized, rightNormalized);
+  if (!rightGlob) return pathMatchesPattern(rightNormalized, leftNormalized);
+
+  type GlobToken = { kind: "literal"; value: string }
+    | { kind: "star" | "globstar" };
+  const tokenize = (pattern: string): GlobToken[] => {
+    const tokens: GlobToken[] = [];
+    for (let index = 0; index < pattern.length; index += 1) {
+      if (pattern[index] === "*" && pattern[index + 1] === "*") {
+        tokens.push({ kind: "globstar" });
+        index += 1;
+      } else if (pattern[index] === "*") {
+        tokens.push({ kind: "star" });
+      } else {
+        tokens.push({ kind: "literal", value: pattern[index] });
+      }
+    }
+    return tokens;
+  };
+  const leftTokens = tokenize(leftNormalized);
+  const rightTokens = tokenize(rightNormalized);
+  const queue: Array<[number, number]> = [[0, 0]];
+  const visited = new Set<string>();
+  const enqueue = (leftIndex: number, rightIndex: number): void => {
+    const key = `${leftIndex}:${rightIndex}`;
+    if (!visited.has(key)) {
+      visited.add(key);
+      queue.push([leftIndex, rightIndex]);
+    }
+  };
+  const closure = (leftIndex: number, rightIndex: number): void => {
+    const leftToken = leftTokens[leftIndex];
+    const rightToken = rightTokens[rightIndex];
+    if (leftToken && (leftToken.kind === "star" || leftToken.kind === "globstar")) {
+      enqueue(leftIndex + 1, rightIndex);
+    }
+    if (rightToken && (rightToken.kind === "star" || rightToken.kind === "globstar")) {
+      enqueue(leftIndex, rightIndex + 1);
+    }
+  };
+  const choices = (tokens: GlobToken[], index: number): Array<{ next: number; kind: "literal" | "non-slash" | "any"; value?: string }> => {
+    const token = tokens[index];
+    if (!token) return [];
+    if (token.kind === "literal") return [{ next: index + 1, kind: "literal", value: token.value }];
+    return [{ next: index, kind: token.kind === "star" ? "non-slash" : "any" }];
+  };
+  const intersects = (
+    leftChoice: ReturnType<typeof choices>[number],
+    rightChoice: ReturnType<typeof choices>[number],
+  ): boolean => {
+    if (leftChoice.kind === "literal" && rightChoice.kind === "literal") {
+      return leftChoice.value === rightChoice.value;
+    }
+    if (leftChoice.kind === "literal") return rightChoice.kind === "any" || leftChoice.value !== "/";
+    if (rightChoice.kind === "literal") return leftChoice.kind === "any" || rightChoice.value !== "/";
+    return true;
+  };
+
+  while (queue.length > 0) {
+    const [leftIndex, rightIndex] = queue.shift()!;
+    if (leftIndex === leftTokens.length && rightIndex === rightTokens.length) return true;
+    closure(leftIndex, rightIndex);
+    for (const leftChoice of choices(leftTokens, leftIndex)) {
+      for (const rightChoice of choices(rightTokens, rightIndex)) {
+        if (intersects(leftChoice, rightChoice)) {
+          enqueue(leftChoice.next, rightChoice.next);
+        }
+      }
+    }
+  }
+  return false;
+}
+
+function forbiddenPatternIsParent(allowed: string, forbidden: string): boolean {
+  const normalizedAllowed = normalizeRepoPath(allowed);
+  const normalizedForbidden = normalizeRepoPath(forbidden);
+  const parentPrefix = normalizedForbidden.endsWith("/**")
+    ? normalizedForbidden.slice(0, -3).replace(/\/$/, "")
+    : undefined;
+  return parentPrefix !== undefined
+    && normalizedAllowed.startsWith(`${parentPrefix}/`)
+    && normalizedAllowed !== parentPrefix;
+}
+
+export function findTaskPathContractOverlaps(
+  allowedFiles: readonly string[],
+  forbiddenFiles: readonly string[],
+): TaskPathContractOverlap[] {
+  const overlaps: TaskPathContractOverlap[] = [];
+  for (const allowed of allowedFiles) {
+    for (const forbidden of forbiddenFiles) {
+      if (
+        !taskPathPatternIssue(allowed)
+        && !taskPathPatternIssue(forbidden)
+        && taskPathPatternsOverlap(allowed, forbidden)
+      ) {
+        overlaps.push({
+          allowed,
+          forbidden,
+          forbiddenParent: forbiddenPatternIsParent(allowed, forbidden),
+        });
+      }
+    }
+  }
+  return overlaps;
+}
+
+export function renderTaskPathContractOverlap(overlap: TaskPathContractOverlap): string {
+  if (overlap.forbiddenParent) {
+    return `Allowed child pattern ${JSON.stringify(overlap.allowed)} overlaps broad forbidden parent ${JSON.stringify(overlap.forbidden)}; positive allowedFiles already bounds edits, so remove or narrow the broad forbidden parent.`;
+  }
+  return `Allowed pattern ${JSON.stringify(overlap.allowed)} overlaps forbidden pattern ${JSON.stringify(overlap.forbidden)}; remove or narrow one of the overlapping patterns.`;
 }
 
 export function verifyTaskFileScope(
@@ -3881,8 +4070,8 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
       profile: check.profile,
       ...(check.command ? { command: check.command } : {}),
       ...(check.artifact ? { artifact: check.artifact } : {}),
-      ...(check.evidence ? { evidence: check.evidence } : {}),
-      ...(localSummary ? { summary: localSummary } : {}),
+      ...((check.evidenceRef ?? check.evidence) ? { evidence: check.evidenceRef ?? check.evidence } : {}),
+      ...((check.summary ?? localSummary) ? { summary: check.summary ?? localSummary } : {}),
     });
     evidenceWritten += 1;
   }
@@ -4109,7 +4298,7 @@ export async function recordManualVerification(
     profile: check.profile,
     ...(check.artifact ? { artifact: check.artifact } : {}),
     evidence,
-    ...(options.summary ? { summary: options.summary } : {}),
+    ...((options.summary ?? check.summary) ? { summary: options.summary ?? check.summary } : {}),
   });
   await appendRunLog(options.rootDirectory, {
     event: "verify",

@@ -160,7 +160,7 @@ function declaredEvidenceCategories(task, requiredOnly = false) {
             categories.add("manual");
         if (check.artifact)
             categories.add("artifact");
-        if (check.evidence)
+        if (check.evidenceRef ?? check.evidence)
             categories.add("evidence");
     }
     return [...categories].sort();

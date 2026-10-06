@@ -1,5 +1,5 @@
 import { readdir, readFile, stat } from "node:fs/promises";
-import { isAbsolute, join, relative } from "node:path";
+import { join, relative } from "node:path";
 
 import { listAgents } from "../agents/index.js";
 import { readAgenticConfigFile } from "../config/index.js";
@@ -11,6 +11,9 @@ import {
   packagedDistTaskContractBlockers,
   repositoryPackagedDistContract,
   resolveTaskPolicy,
+  findTaskPathContractOverlaps,
+  renderTaskPathContractOverlap,
+  taskPathPatternIssue,
   validateTaskDependencies,
   type ProjectTask,
   type ProjectTaskFile,
@@ -177,124 +180,6 @@ function duplicateIds(documents: readonly TaskDocument[]): string[] {
     .sort();
 }
 
-function globRegex(pattern: string): RegExp {
-  let source = "";
-  const normalized = normalizeRepoPath(pattern);
-  for (let index = 0; index < normalized.length; index += 1) {
-    const char = normalized[index];
-    const next = normalized[index + 1];
-    if (char === "*" && next === "*") {
-      source += ".*";
-      index += 1;
-    } else if (char === "*") {
-      source += "[^/]*";
-    } else {
-      source += char.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
-    }
-  }
-  return new RegExp(`^${source}$`);
-}
-
-function pathMatchesPattern(path: string, pattern: string): boolean {
-  const normalizedPath = normalizeRepoPath(path);
-  const normalizedPattern = normalizeRepoPath(pattern);
-  return normalizedPattern.includes("*")
-    ? globRegex(normalizedPattern).test(normalizedPath)
-    : normalizedPath === normalizedPattern;
-}
-
-function pathPatternIssue(pattern: string): string | undefined {
-  const normalized = normalizeRepoPath(pattern);
-  if (normalized.length === 0) return "path pattern must not be empty";
-  if (normalized.includes("\n") || normalized.includes("\r")) return "path pattern must be single-line";
-  if (isAbsolute(pattern) || /^[A-Za-z]:\//.test(normalized) || normalized.startsWith("/")) {
-    return "absolute paths are not allowed";
-  }
-  if (normalized.split("/").includes("..")) return "parent traversal is not allowed";
-  if (/[?\[\]{}]/.test(normalized)) return "only * and ** glob operators are supported";
-  if (normalized.includes("//")) return "empty path segments are not allowed";
-  return undefined;
-}
-
-function patternsMayOverlap(left: string, right: string): boolean {
-  const leftNormalized = normalizeRepoPath(left);
-  const rightNormalized = normalizeRepoPath(right);
-  const leftGlob = leftNormalized.includes("*");
-  const rightGlob = rightNormalized.includes("*");
-  if (!leftGlob && !rightGlob) return leftNormalized === rightNormalized;
-  if (!leftGlob) return pathMatchesPattern(leftNormalized, rightNormalized);
-  if (!rightGlob) return pathMatchesPattern(rightNormalized, leftNormalized);
-
-  type GlobToken = { kind: "literal"; value: string }
-    | { kind: "star" | "globstar" };
-  const tokenize = (pattern: string): GlobToken[] => {
-    const tokens: GlobToken[] = [];
-    for (let index = 0; index < pattern.length; index += 1) {
-      if (pattern[index] === "*" && pattern[index + 1] === "*") {
-        tokens.push({ kind: "globstar" });
-        index += 1;
-      } else if (pattern[index] === "*") {
-        tokens.push({ kind: "star" });
-      } else {
-        tokens.push({ kind: "literal", value: pattern[index] });
-      }
-    }
-    return tokens;
-  };
-  const leftTokens = tokenize(leftNormalized);
-  const rightTokens = tokenize(rightNormalized);
-  const queue: Array<[number, number]> = [[0, 0]];
-  const visited = new Set<string>();
-  const enqueue = (leftIndex: number, rightIndex: number): void => {
-    const key = `${leftIndex}:${rightIndex}`;
-    if (!visited.has(key)) {
-      visited.add(key);
-      queue.push([leftIndex, rightIndex]);
-    }
-  };
-  const closure = (leftIndex: number, rightIndex: number): void => {
-    const leftToken = leftTokens[leftIndex];
-    const rightToken = rightTokens[rightIndex];
-    if (leftToken && (leftToken.kind === "star" || leftToken.kind === "globstar")) {
-      enqueue(leftIndex + 1, rightIndex);
-    }
-    if (rightToken && (rightToken.kind === "star" || rightToken.kind === "globstar")) {
-      enqueue(leftIndex, rightIndex + 1);
-    }
-  };
-  const choices = (tokens: GlobToken[], index: number): Array<{ next: number; kind: "literal" | "non-slash" | "any"; value?: string }> => {
-    const token = tokens[index];
-    if (!token) return [];
-    if (token.kind === "literal") return [{ next: index + 1, kind: "literal", value: token.value }];
-    return [{ next: index, kind: token.kind === "star" ? "non-slash" : "any" }];
-  };
-  const intersects = (
-    leftChoice: ReturnType<typeof choices>[number],
-    rightChoice: ReturnType<typeof choices>[number],
-  ): boolean => {
-    if (leftChoice.kind === "literal" && rightChoice.kind === "literal") {
-      return leftChoice.value === rightChoice.value;
-    }
-    if (leftChoice.kind === "literal") return rightChoice.kind === "any" || leftChoice.value !== "/";
-    if (rightChoice.kind === "literal") return leftChoice.kind === "any" || rightChoice.value !== "/";
-    return true;
-  };
-
-  while (queue.length > 0) {
-    const [leftIndex, rightIndex] = queue.shift()!;
-    if (leftIndex === leftTokens.length && rightIndex === rightTokens.length) return true;
-    closure(leftIndex, rightIndex);
-    for (const leftChoice of choices(leftTokens, leftIndex)) {
-      for (const rightChoice of choices(rightTokens, rightIndex)) {
-        if (intersects(leftChoice, rightChoice)) {
-          enqueue(leftChoice.next, rightChoice.next);
-        }
-      }
-    }
-  }
-  return false;
-}
-
 function lintPathContracts(
   task: ProjectTask,
   findings: TaskLintFinding[],
@@ -305,7 +190,7 @@ function lintPathContracts(
     ...task.forbiddenFiles.map((pattern) => ({ pattern, kind: "forbidden" })),
   ];
   for (const { pattern, kind } of patterns) {
-    const issue = pathPatternIssue(pattern);
+    const issue = taskPathPatternIssue(pattern);
     if (issue) {
       addFinding(findings, {
         level: "error",
@@ -318,19 +203,15 @@ function lintPathContracts(
     }
   }
 
-  for (const allowed of task.allowedFiles) {
-    for (const forbidden of task.forbiddenFiles) {
-      if (!pathPatternIssue(allowed) && !pathPatternIssue(forbidden) && patternsMayOverlap(allowed, forbidden)) {
-        addFinding(findings, {
-          level: "error",
-          code: "path-contract-contradiction",
-          area: "paths",
-          message: `Allowed pattern ${JSON.stringify(allowed)} overlaps forbidden pattern ${JSON.stringify(forbidden)}.`,
-          path,
-          taskId: task.id,
-        });
-      }
-    }
+  for (const overlap of findTaskPathContractOverlaps(task.allowedFiles, task.forbiddenFiles)) {
+    addFinding(findings, {
+      level: "error",
+      code: "path-contract-contradiction",
+      area: "paths",
+      message: renderTaskPathContractOverlap(overlap),
+      path,
+      taskId: task.id,
+    });
   }
 }
 

@@ -1,7 +1,7 @@
 # Task 0186 - Harden task-contract authoring evidence and path ergonomics
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-continue-20261005-2055
 Mode: product
 Lane: tooling
 Type: bugfix

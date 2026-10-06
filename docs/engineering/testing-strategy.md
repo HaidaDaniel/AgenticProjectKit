@@ -29,6 +29,7 @@ The implementation should use tests to protect the CLI and repository generation
 - keep CLI smoke tests temp-directory based and deterministic.
 - verify team analytics with sharded log fixtures.
 - keep dogfooding evidence separate from automated tests and benchmark fixtures; never treat a failed session as a pass.
+- cover legacy verification evidence round trips, evidenceRef/summary bounds and alias conflicts, and task-create path-overlap preflight with focused parser, lint, and CLI fixtures.
 - assert that typecheck-only lint scripts are not source-lint evidence and that quality JSON is deterministic and mutation-free.
 - compare source and compiled CLI help and init output; exercise the committed-dist guard with compiled TypeScript and copied template inputs, including stale and rebuilt output.
 
