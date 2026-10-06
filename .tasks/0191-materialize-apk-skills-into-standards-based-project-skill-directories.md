@@ -1,7 +1,7 @@
 # Task 0191 - Materialize APK skills into standards-based project skill directories
 
-State: doing
-Owner: codex-continue-20261005-2055
+State: blocked
+Owner: none
 Mode: product
 Lane: tooling
 Type: feature
@@ -144,9 +144,9 @@ Do not auto-install project skills during init/adopt. Materialization is an expl
 
 ## Verification
 
-- `{"id":"quality","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm quality:static"}`
-- `{"id":"coverage","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test:coverage"}`
-- `{"id":"task-lint","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
+- `{"id":"static-quality","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm quality:static"}`
+- `{"id":"coverage","type":"automated","required":true,"environment":"local","profile":"report","command":"pnpm test:coverage","artifact":"coverage/coverage-summary.json"}`
+- `{"id":"task-lint","type":"automated","required":true,"environment":"local","profile":"deterministic","apkOperation":"lint"}`
 - `{"id":"build-current","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"rm -rf dist && pnpm build && test -z \"$(git status --porcelain --untracked-files=all --ignored=matching -- dist)\""}`
 - `{"id":"diff-check","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
 
@@ -159,3 +159,4 @@ Do not auto-install project skills during init/adopt. Materialization is an expl
 - Hermes Agent currently documents project-local skills under both `<project-root>/.hermes/skills/` and the cross-tool `<project-root>/.agents/skills/`, with project skills taking highest precedence after the repository is trusted.
 - Hermes also documents skills as agentskills.io-compatible and recommends a Skill when instructions wrap an external CLI through terminal access. APK therefore needs no Hermes-specific plugin/tool to enable task authoring.
 - Keep Hermes trust/user-global installation outside APK. This task only creates the repo-local standards-based file when explicitly requested.
+- block: Gate blocked on scope attribution, not on implementation: authoritative claim baseline 5d39fdf predates completed Tasks 0193/0194, whose 7 commits cannot be proven as other-task commits (0193 completion bound to dbe5173, a non-baseline child of a 4-commit chain; both 0193 and 0194 task files created inside their own first candidate commit, so parent-commit contract proof fails). Their 27 files (4 forbidden for 0191) are attributed to 0191 scope, so verify/gate fail closed before any check runs. 0191's own work 0415c97..02373d6 is fully in-scope and passed all 5 canonical checks plus a review round at candidate 02373d6. Contract now declares report/artifact evidence categories. Unblocking requires an attribution fix in src/core/tasks (separate task) or operator history intervention.
