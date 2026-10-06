@@ -1667,6 +1667,10 @@ documentation checks added by the author; other template shell commands remain c
 examples to adapt through `--verification-json`. APK never installs its internal test tooling or
 CI workflow into host repositories.
 
+Required automated policy accepts supported builtin APK operations as well as shell commands.
+Optional, absent and unsupported operations do not satisfy this requirement. Docs-only contracts
+retain candidate-bound verification and completion gates without adding unrelated application tests.
+
 Migration, async-worker, provider-integration and security templates combine the formerly
 identical test/report commands into one required automated report check. Host authors provide a
 command that executes relevant tests and produces the declared artifact. Required report proof

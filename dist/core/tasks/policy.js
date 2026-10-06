@@ -1,3 +1,4 @@
+import { TASK_APK_OPERATIONS } from "./apk-verification.js";
 export const ASSURANCE_LEVELS = ["none", "self-check", "fresh-context", "independent", "diverse"];
 export const DEFAULT_TASK_POLICY_TAG_RULES = [
     { tag: "migration", evidenceCategories: ["report"] },
@@ -251,7 +252,8 @@ export function resolveTaskPolicy(task, options = {}) {
         }
     }
     const checks = verificationChecks(task);
-    const hasRequiredAutomated = checks.some((check) => check.required && check.type === "automated" && check.command);
+    const hasRequiredAutomated = checks.some((check) => check.required && check.type === "automated"
+        && (check.command || (check.apkOperation && TASK_APK_OPERATIONS.includes(check.apkOperation))));
     if (requirements.automatedVerification && !hasRequiredAutomated) {
         blockers.push("Declare at least one required automated verification check.");
     }

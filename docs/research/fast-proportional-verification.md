@@ -68,6 +68,10 @@ distinct; a local pass never manufactures hosted proof or evidence for a differe
    Authors add applicable host links/content/examples. All templates explain adaptation of
    command examples through `--verification-json`, avoiding overlapping aggregates while keeping
    required domain, hosted-CI, package-currency, and independent-review evidence.
+   Required automated-policy checks recognize supported builtin APK operations as well as
+   shell commands; optional, absent and unsupported operations do not satisfy that requirement.
+   Independent review caught the earlier shell-only predicate, and the regression now exercises
+   docs task creation, claim, actual builtin verification, gate and completion in a Git fixture.
 6. Migration, async-worker, provider-integration and security templates formerly ran the same
    `pnpm test` separately for regression and report checks. They now declare one required
    automated report check; authors adapt its command to run relevant tests and produce the
@@ -86,6 +90,11 @@ versus the observed prior 173.3 seconds. Two initial mixed-compiler canonical ru
 and 163.4 seconds versus historical 471-502 seconds, but failed the duplicate-function
 measurement described above; those failed runs are not completion proof. These comparisons
 are observational, not controlled hardware benchmarks.
+
+The first single-compiler candidate (`2732c31`) passed all five canonical checks in 152.0 seconds.
+Independent review then requested the builtin-policy correction above; that earlier pass is not
+completion proof for the corrected candidate. Final verification and independent-review results
+are recorded against their exact subject in Task 0193 evidence and its completion handoff.
 
 ## Limits and follow-up
 

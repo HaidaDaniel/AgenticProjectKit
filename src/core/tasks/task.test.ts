@@ -112,6 +112,7 @@ import {
   startTaskEpoch,
 } from "./workflow.js";
 import { getTaskTemplate, resolveTaskTemplateType } from "../templates/task-templates.js";
+import { syncAgentExports } from "../sync/index.js";
 import { runTaskApkOperation, type TaskApkOperation } from "./apk-verification.js";
 
 const execFileAsync = promisify(execFile);
@@ -591,6 +592,7 @@ test("domain templates combine regression execution and required report without 
 
 test("docs templates avoid application suites while retaining runnable contract checks", async () => {
   await withTempDirectory(async (directory) => {
+    await writeFile(join(directory, "README.md"), "# Documentation\n");
     const template = getTaskTemplate("docs");
     assert.deepEqual(template.verification.map((check) => check.apkOperation), ["lint"]);
     assert.ok(template.verification.every((check) => check.required && !check.command));
@@ -603,9 +605,47 @@ test("docs templates avoid application suites while retaining runnable contract 
     const { task } = await loadTaskFile(join(directory, created.path));
     assert.equal(getTaskVerification(task)[0]?.apkOperation, "lint");
     assert.deepEqual(task.verificationCommands, []);
+    assert.deepEqual(resolveTaskPolicy(task).blockers, []);
+    const git = async (...args: string[]) => execFileAsync("git", args, { cwd: directory });
+    await writeFile(join(directory, ".gitignore"), ".agentic/\n");
+    const synced = await syncAgentExports(directory, { write: true });
+    await git("init", "--quiet");
+    await git("add", created.path, "README.md", ".gitignore", ...synced.written);
+    await git("-c", "user.name=APK", "-c", "user.email=apk@example.test", "commit", "--quiet", "-m", "Docs fixture");
+    await registerAgent(directory, { id: "docs-owner", platform: "codex", model: "test" });
+    const options = { rootDirectory: directory, taskDirectory: ".tasks", taskId: task.id, owner: "docs-owner" };
+    await claimTask(options);
+    await writeFile(join(directory, "README.md"), "# Documentation\n\nClarified docs.\n");
+    await git("add", "README.md");
+    await git("-c", "user.name=APK", "-c", "user.email=apk@example.test", "commit", "--quiet", "-m", "Clarify docs");
+    const missing = await evaluateTaskCompletionGate(options);
+    assert.equal(missing.passed, false);
+    assert.ok(missing.verification.some((check) => check.result === "missing"));
+    const verified = await verifyTask({
+      ...options,
+      runCommand: async () => { throw new Error("Docs verification must not run application shell tests"); },
+    });
+    assert.equal(verified.passed, true, JSON.stringify({ diagnostics: verified.diagnostics, checks: verified.checkResults }));
+    const gate = await evaluateTaskCompletionGate(options);
+    assert.equal(gate.passed, true, gate.blockers.join("; "));
+    await doneTask(options);
+    assert.equal((await loadTaskFile(join(directory, created.path))).task.state, "done");
     assert.match(template.notes.join("\n"), /host repository's documentation\/link\/example checks/);
     assert.match(getTaskTemplate("migration").notes.join("\n"), /non-overlapping final set/);
   });
+});
+
+test("automated policy recognizes required builtins but rejects optional and unknown operations", () => {
+  const template = getTaskTemplate("docs");
+  const task = { ...TASK, risk: template.risk, tags: template.tags, type: template.type, verification: template.verification, verificationCommands: [] };
+  assert.deepEqual(resolveTaskPolicy(task).blockers, []);
+  for (const check of [
+    { ...template.verification[0], required: false },
+    { ...template.verification[0], apkOperation: "audit" as TaskApkOperation },
+    { ...template.verification[0], apkOperation: undefined },
+  ]) {
+    assert.ok(resolveTaskPolicy({ ...task, verification: [check] }).blockers.includes("Declare at least one required automated verification check."));
+  }
 });
 
 test("release template defaults order pre-tag evidence before the immutable tag and separate post-tag evidence", () => {
