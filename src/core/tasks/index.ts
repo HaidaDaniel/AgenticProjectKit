@@ -1,6 +1,6 @@
 import { exec, execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFile, link, mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { appendFile, link, lstat, mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { promisify } from "node:util";
 
@@ -1157,7 +1157,9 @@ async function listFallbackArchiveReferencePaths(
 
 async function listArchiveReferencePaths(
   rootDirectory: string,
+  taskDirectory: string,
   activeFiles: readonly ProjectTaskFile[],
+  archivedFiles: readonly ProjectTaskFile[],
 ): Promise<string[]> {
   let isGitRepository = false;
   try {
@@ -1182,7 +1184,24 @@ async function listArchiveReferencePaths(
     gitPaths(rootDirectory, ["ls-files", "--others", "--exclude-standard", "-z"]),
   ]);
   const activePaths = activeFiles.map((file) => archiveRelativePath(rootDirectory, file.path));
-  return [...new Set([...tracked, ...untracked, ...activePaths].map(normalizeGitPath))].sort();
+  const archivedPaths = archivedFiles.map((file) => archiveRelativePath(rootDirectory, file.path));
+  const candidates = [...new Set([...tracked, ...untracked, ...activePaths, ...archivedPaths].map(normalizeGitPath))].sort();
+  const normalizedTaskDirectory = normalizeRepoPath(taskDirectory).replace(/\/$/, "");
+  const resolved: string[] = [];
+  for (const candidate of candidates) {
+    if (await pathExists(join(rootDirectory, candidate))) {
+      resolved.push(candidate);
+      continue;
+    }
+    const prefix = `${normalizedTaskDirectory}/`;
+    if (!candidate.startsWith(prefix) || candidate.startsWith(`${prefix}archive/`)) {
+      resolved.push(candidate);
+      continue;
+    }
+    const archiveCandidate = `${prefix}archive/${candidate.slice(prefix.length)}`;
+    resolved.push(await pathExists(join(rootDirectory, archiveCandidate)) ? archiveCandidate : candidate);
+  }
+  return resolved;
 }
 
 function lineNumberAtOffset(bytes: Buffer, offset: number): number {
@@ -1198,6 +1217,7 @@ async function scanArchiveReferences(
   taskDirectory: string,
   candidates: readonly ProjectTaskFile[],
   activeFiles: readonly ProjectTaskFile[],
+  archivedFiles: readonly ProjectTaskFile[],
 ): Promise<ArchiveReferenceScanResult> {
   const references = new Map<string, TaskArchiveReference[]>();
   const blockers: string[] = [];
@@ -1205,13 +1225,11 @@ async function scanArchiveReferences(
 
   let trackedPaths: string[];
   try {
-    trackedPaths = await listArchiveReferencePaths(rootDirectory, activeFiles);
+    trackedPaths = await listArchiveReferencePaths(rootDirectory, taskDirectory, activeFiles, archivedFiles);
   } catch (error: unknown) {
     blockers.push(archiveErrorMessage(error));
     trackedPaths = activeFiles.map((file) => archiveRelativePath(rootDirectory, file.path)).sort();
   }
-  const candidatePaths = new Set(candidates.map((file) => archiveRelativePath(rootDirectory, file.path)));
-  trackedPaths = trackedPaths.filter((path) => !candidatePaths.has(normalizeRepoPath(path)));
   if (trackedPaths.length > MAX_ARCHIVE_REFERENCE_FILES) {
     blockers.push(`Archive reference scan exceeds the ${MAX_ARCHIVE_REFERENCE_FILES}-file safety limit.`);
     trackedPaths = trackedPaths.slice(0, MAX_ARCHIVE_REFERENCE_FILES);
@@ -1223,6 +1241,7 @@ async function scanArchiveReferences(
     const taskPath = `${normalizeRepoPath(taskDirectory).replace(/\/$/, "")}/${fileName}`;
     return {
       taskId: file.task.id,
+      sourcePath,
       literals: [taskPath, taskPath.replace(/\//g, "\\")],
     };
   });
@@ -1233,7 +1252,12 @@ async function scanArchiveReferences(
     const absolutePath = join(rootDirectory, trackedPath);
     let size: number;
     try {
-      size = (await stat(absolutePath)).size;
+      const metadata = await lstat(absolutePath);
+      if (metadata.isSymbolicLink()) {
+        blockers.push(`Archive reference scan cannot inspect symbolic link ${trackedPath}; scan fails closed.`);
+        continue;
+      }
+      size = metadata.size;
     } catch (error: unknown) {
       blockers.push(`Archive reference scan cannot inspect ${trackedPath}: ${archiveErrorMessage(error)}`);
       continue;
@@ -1256,6 +1280,7 @@ async function scanArchiveReferences(
       continue;
     }
     for (const token of tokens) {
+      if (normalizeRepoPath(trackedPath) === normalizeRepoPath(token.sourcePath)) continue;
       for (const literal of token.literals) {
         const needle = Buffer.from(literal, "utf8");
         let offset = bytes.indexOf(needle);
@@ -1295,7 +1320,15 @@ function archivePlanError(plan: TaskArchivePlan): Error {
   ].join("\n"));
 }
 
-function archivePlanSafetySignature(plan: TaskArchivePlan): string {
+function archivePlanSafetySignature(plan: TaskArchivePlan, taskDirectory: string): string {
+  const normalizedTaskDirectory = normalizeRepoPath(taskDirectory).replace(/\/$/, "");
+  const canonicalReferencePath = (path: string): string => {
+    const normalized = normalizeRepoPath(path);
+    const archivePrefix = `${normalizedTaskDirectory}/archive/`;
+    return normalized.startsWith(archivePrefix)
+      ? `${normalizedTaskDirectory}/${normalized.slice(archivePrefix.length)}`
+      : normalized;
+  };
   return JSON.stringify({
     taskId: plan.taskId,
     state: plan.state,
@@ -1303,7 +1336,7 @@ function archivePlanSafetySignature(plan: TaskArchivePlan): string {
     archivePath: plan.archivePath,
     canArchive: plan.canArchive,
     references: plan.references.map((reference) => ({
-      path: reference.path,
+      path: canonicalReferencePath(reference.path),
       line: reference.line,
       literal: reference.literal,
     })),
@@ -1356,7 +1389,7 @@ export async function previewArchiveTasks(
   } catch (error: unknown) {
     archiveBlockers.push(`Archive preview cannot parse existing archive files: ${archiveErrorMessage(error)}; repair the archive before moving terminal tasks.`);
   }
-  const scan = await scanArchiveReferences(rootDirectory, taskDirectory, candidates, activeFiles);
+  const scan = await scanArchiveReferences(rootDirectory, taskDirectory, candidates, activeFiles, archivedFiles);
   const plans = await Promise.all(candidates.map(async (file): Promise<TaskArchivePlan> => {
     const sourcePath = archiveRelativePath(rootDirectory, file.path);
     const archivePath = archivePathForFile(file);
@@ -1427,7 +1460,7 @@ async function applyArchiveTasks(
         const source = join(rootDirectory, plan.sourcePath);
         const destination = join(rootDirectory, plan.archivePath);
         const latestPlan = await previewArchiveTask(rootDirectory, taskDirectory, plan.taskId);
-        if (archivePlanSafetySignature(latestPlan) !== archivePlanSafetySignature(plan)) {
+        if (archivePlanSafetySignature(latestPlan, taskDirectory) !== archivePlanSafetySignature(plan, taskDirectory)) {
           throw new Error(`Archive plan changed before mutation for task ${plan.taskId}; re-run the preview and apply the current plan.`);
         }
         if (!(await pathExists(source))) throw new Error(`Archive source no longer exists: ${plan.sourcePath}`);

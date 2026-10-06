@@ -6719,6 +6719,70 @@ test("archive preview scans no-Git source, immutable history, and binary referen
   });
 });
 
+test("archive --all blocks candidate-to-candidate literal references", async () => {
+  await withTempDirectory(async (directory) => {
+    const firstPath = join(directory, ".tasks", "0001-done-first.md");
+    const secondPath = join(directory, ".tasks", "0002-done-second.md");
+    await writeTaskFile(firstPath, {
+      ...TASK,
+      id: "0001",
+      title: "Done First",
+      state: "done",
+      owner: "archive",
+      contextFiles: [".tasks/0002-done-second.md"],
+    });
+    await writeTaskFile(secondPath, {
+      ...TASK,
+      id: "0002",
+      title: "Done Second",
+      state: "done",
+      owner: "archive",
+    });
+
+    const preview = await previewArchiveTasks(directory, ".tasks");
+    assert.equal(preview.plans.find((plan) => plan.taskId === "0001")?.canArchive, true);
+    const secondPlan = preview.plans.find((plan) => plan.taskId === "0002");
+    assert.equal(secondPlan?.canArchive, false);
+    assert.match(secondPlan?.blockers.join("\n") ?? "", /0001-done-first\.md/);
+
+    const result = await archiveAllTasks(directory, ".tasks");
+    assert.deepEqual(result.archived.map((entry) => entry.taskId), ["0001"]);
+    assert.deepEqual(result.skipped.map((entry) => entry.taskId), ["0002"]);
+  });
+});
+
+test("archive --all moves multiple terminal tasks in a Git checkout", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeTaskFile(join(directory, ".tasks", "0001-done-first.md"), {
+      ...TASK,
+      id: "0001",
+      title: "Done First",
+      state: "done",
+      owner: "archive",
+    });
+    await writeTaskFile(join(directory, ".tasks", "0002-canceled-second.md"), {
+      ...TASK,
+      id: "0002",
+      title: "Canceled Second",
+      state: "canceled",
+      owner: "archive",
+    });
+    await execFileAsync("git", ["init", "-q"], { cwd: directory });
+    await execFileAsync("git", ["add", "."], { cwd: directory });
+    await execFileAsync("git", [
+      "-c", "user.name=APK Test",
+      "-c", "user.email=apk-test@example.invalid",
+      "commit", "-qm", "fixture",
+    ], { cwd: directory });
+
+    const result = await archiveAllTasks(directory, ".tasks");
+    assert.deepEqual(result.archived.map((entry) => entry.taskId), ["0001", "0002"]);
+    assert.equal(result.skipped.length, 0);
+    assert.doesNotReject(() => readFile(join(directory, ".tasks", "archive", "0001-done-first.md")));
+    assert.doesNotReject(() => readFile(join(directory, ".tasks", "archive", "0002-canceled-second.md")));
+  });
+});
+
 test("archiveTask refuses to archive task that does not exist", async () => {
   await withTempDirectory(async (directory) => {
     await mkdir(join(directory, ".tasks"), { recursive: true });
