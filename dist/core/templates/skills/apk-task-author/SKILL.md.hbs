@@ -58,7 +58,8 @@ similarity.
 - If the request has one coherent observable outcome, draft one task.
 - If it spans unrelated outcomes, ownership boundaries, or independently verifiable vertical
   slices, do not hide that breadth in a horizontal catch-all. Propose `apk-task-split` as the
-  next planning operation or present a bounded multi-task preview with explicit dependency edges.
+  next planning operation. This skill creates at most one task contract; do not invent symbolic
+  dependency edges or pass unresolved names to `--depends`.
 - Treat ID-based dependencies as graph facts. Distinguish an archived/done prerequisite from an
   active, blocked, or missing dependency and surface any unresolved graph risk.
 
@@ -85,7 +86,8 @@ applicable:
 - title, type/template, mode, lane, risk, and whether it is parallelizable;
 - one outcome-focused goal and a narrow scope;
 - exact context files, allowed files, and forbidden files;
-- dependency IDs or clearly labeled symbolic edges for a multi-task preview;
+- resolved dependency IDs for the one proposed task; for a multi-slice request, record the
+  proposed relationships as planning notes for `apk-task-split` instead of creating contracts here;
 - ordered implementation steps and observable acceptance criteria;
 - structured verification checks with requiredness, environment, and profile;
 - correctness assumptions, invariants, required evidence, review questions, and counterexample
@@ -98,12 +100,12 @@ planning agent to implement anything. State the proposed files and graph effects
 
 ## Explicit approval is required before task creation
 
-Ask for explicit approval of the concrete preview, including its task count, paths, dependencies,
+Ask for explicit approval of the concrete preview, including its one-task count, paths, dependencies,
 acceptance, verification, and documentation effects. No task file may be written before that
 approval. A human approving discussion in general, invoking this skill, or answering an unrelated
 question is not approval of a concrete preview.
 
-After approval, create only the accepted task contract(s) through canonical APK facilities:
+After approval, create only the accepted task contract through canonical APK facilities:
 
 ```bash
 pnpm exec apkit task create --title "..." --scope "..." --allowed "..." \
@@ -114,7 +116,7 @@ pnpm exec apkit task create --title "..." --scope "..." --allowed "..." \
 Use the actual supported `apkit task create` flags for the complete preview. Never allocate an ID
 yourself, hand-write `.tasks/<id>-<slug>.md`, or rewrite an existing task to make the graph fit.
 For a large request, hand the approved planning target to `apk-task-split` instead of creating a
-giant contract. Report every actual ID and path returned by canonical creation.
+giant contract. Report the actual ID and path returned by canonical creation.
 
 ## Validate and stop at planning
 
@@ -126,9 +128,10 @@ pnpm exec apkit task deps <new-task-id>
 ```
 
 Inspect the created contract and report any remaining graph, path, or verification blockers. If
-validation fails, correct only the newly created unfinished contract through canonical task
-facilities; do not silently broaden scope or touch completed history. If no approval was given,
-create nothing.
+validation fails, stop and report the actual task ID/path, failing command, and blocker. Do not
+edit the created contract directly, invent an unsupported repair command, silently broaden scope,
+or touch completed history. A later correction must be a separately authorized operation through
+whatever canonical APK facility exists. If no approval was given, create nothing.
 
 Stop after reporting the validated task ID/path and blockers. Do not claim or start the task, issue
 an `apk work` package, implement product/docs changes, run implementation verification, fabricate

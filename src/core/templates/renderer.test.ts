@@ -504,12 +504,16 @@ test("apk-task-author ships a portable planning-only task authoring asset", asyn
   assert.match(content, /material choice cannot be resolved/i);
   assert.match(content, /apk-task-split/);
   assert.match(content, /giant contract/i);
+  assert.match(content, /at most one task contract/i);
+  assert.match(content, /unresolved names to `--depends`/i);
   assert.match(content, /complete preview/i);
   assert.match(content, /No task file may be written before that\s+approval/);
   assert.match(content, /pnpm exec apkit task create/);
   assert.match(content, /Never allocate an ID\s+yourself/);
   assert.match(content, /pnpm exec apkit lint --json/);
   assert.match(content, /pnpm exec apkit task deps <new-task-id>/);
+  assert.match(content, /If\s+validation fails, stop and report/i);
+  assert.match(content, /Do not\s+edit the created contract directly/i);
   assert.match(content, /Stop after reporting/);
   assert.match(content, /Do not claim or start the task/);
   assert.match(content, /Completed task history and evidence are immutable/);
