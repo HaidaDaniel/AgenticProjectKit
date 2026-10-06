@@ -1,6 +1,6 @@
 # Task 0190 - Add portable APK task-author skill for non-coding planning agents
 
-State: review
+State: done
 Owner: codex-continue-20261005-2055
 Mode: product
 Lane: instructions
