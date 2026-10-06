@@ -455,8 +455,8 @@ export async function checkDocumentationConsistency(root, expectedCliReference) 
     report(issues, "package.json", 1, "the quality script must run node scripts/check-docs-consistency.mjs");
   }
   const qualityWorkflow = await readText(root, ".github/workflows/quality.yml", issues);
-  if (!/^\s+run:\s+pnpm quality\s*$/m.test(qualityWorkflow)) {
-    report(issues, ".github/workflows/quality.yml", 1, "the hosted quality workflow must run pnpm quality");
+  if (!/^\s+run:\s+pnpm (?:quality|release:check)\s*$/m.test(qualityWorkflow)) {
+    report(issues, ".github/workflows/quality.yml", 1, "the hosted quality workflow must run pnpm quality or its authoritative release:check composition");
   }
 
   const documents = new Map();

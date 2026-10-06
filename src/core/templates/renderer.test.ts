@@ -482,6 +482,21 @@ test("apk-task-split ships as a portable manual-only instruction asset", async (
   assert.doesNotMatch(agents.content, /apk-task-split/);
 });
 
+test("exported policy and authoring assets keep verification proportional to host behavior", async () => {
+  const agents = (await renderAgentExportFiles()).find((file) => file.outputPath === "AGENTS.md");
+  assert.ok(agents);
+  assert.match(agents.content, /canonical task verification once/);
+  assert.match(agents.content, /Avoid overlapping aggregate commands/);
+  assert.match(agents.content, /Do not automatically rerun the full suite/);
+  assert.match(agents.content, /missing, stale, failed, or untrusted evidence/);
+  for (const name of ["apk-task-author", "apk-task-split"]) {
+    const asset = await readFile(join(process.cwd(), "src/core/templates/skills", name, "SKILL.md.hbs"), "utf8");
+    assert.match(asset, /host repository/);
+    assert.match(asset, /overlapping/);
+    assert.match(asset, /Documentation(?:-only| tasks)/);
+  }
+});
+
 test("apk-task-author ships a portable planning-only task authoring asset", async () => {
   const content = normalizeLineEndings(
     await readFile(

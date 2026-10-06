@@ -165,11 +165,11 @@ const templates: Record<TaskTemplateType, TaskTemplateDefaults> = {
     risk: "low",
     tags: ["docs"],
     contextFiles: ["AGENTS.md", "docs/project.md", "docs/scope.md"],
-    verification: [automated("lint", { command: "pnpm lint" }), automated("tests")],
+    verification: [automated("apk-lint", { apkOperation: "lint" })],
     steps: ["Read relevant docs.", "Update documentation.", "Run verification."],
     acceptanceCriteria: ["Docs are accurate and scoped."],
     documentationUpdates: docsUpdate,
-    notes: ["Do not change source code unless explicitly required."],
+    notes: ["Do not change source code unless explicitly required.", "Add the host repository's documentation/link/example checks when relevant; docs-only work does not require unrelated application tests, coverage, or release checks."],
   },
   audit: {
     type: "audit",
@@ -209,7 +209,7 @@ const templates: Record<TaskTemplateType, TaskTemplateDefaults> = {
     risk: "high",
     tags: ["migration"],
     contextFiles: ["AGENTS.md", "docs/architecture.md", "docs/task-system.md"],
-    verification: [automated("compatibility"), automated("migration-report", { profile: "report", artifact: "reports/migration.json" })],
+    verification: [automated("migration-report", { profile: "report", artifact: "reports/migration.json" })],
     steps: [
       "Define compatibility boundaries and the migration precondition.",
       "Implement data integrity checks and an idempotent migration path.",
@@ -237,7 +237,7 @@ const templates: Record<TaskTemplateType, TaskTemplateDefaults> = {
     risk: "high",
     tags: ["async", "worker"],
     contextFiles: ["AGENTS.md", "docs/architecture.md", "docs/task-system.md"],
-    verification: [automated("worker-tests"), automated("worker-report", { profile: "report", artifact: "reports/worker.json" })],
+    verification: [automated("worker-report", { profile: "report", artifact: "reports/worker.json" })],
     steps: [
       "Define idempotency, retry, cancellation, and concurrency bounds.",
       "Implement graceful shutdown and partial-commit handling.",
@@ -265,7 +265,7 @@ const templates: Record<TaskTemplateType, TaskTemplateDefaults> = {
     risk: "high",
     tags: ["provider", "integration"],
     contextFiles: ["AGENTS.md", "docs/architecture.md", "docs/task-system.md"],
-    verification: [automated("integration-tests"), automated("provider-report", { profile: "report", artifact: "reports/provider-integration.json" })],
+    verification: [automated("provider-report", { profile: "report", artifact: "reports/provider-integration.json" })],
     steps: [
       "Define timeout, capability, fallback, and error-propagation boundaries.",
       "Implement the provider adapter and malformed-response handling.",
@@ -349,7 +349,7 @@ const templates: Record<TaskTemplateType, TaskTemplateDefaults> = {
     risk: "high",
     tags: ["security"],
     contextFiles: ["AGENTS.md", "docs/architecture.md", "docs/task-system.md"],
-    verification: [automated("security-tests"), automated("security-report", { profile: "report", artifact: "reports/security.json" })],
+    verification: [automated("security-report", { profile: "report", artifact: "reports/security.json" })],
     steps: [
       "Map privilege, authentication, authorization, and secret boundaries.",
       "Implement the change with fail-closed negative paths.",
@@ -426,5 +426,9 @@ export function resolveTaskTemplateType(value: string): TaskTemplateType {
 }
 
 export function getTaskTemplate(type: TaskTemplateType): TaskTemplateDefaults {
-  return templates[type];
+  const template = templates[type];
+  return {
+    ...template,
+    notes: [...template.notes, "Select runnable host-repository checks with --verification-json; template shell commands are examples. Prefer focused feedback and a non-overlapping final set; do not repeat a suite through test, coverage, quality, and release aggregates. Report checks must execute the relevant tests and produce the declared artifact in one host command. Preserve required domain evidence."],
+  };
 }

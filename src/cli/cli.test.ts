@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { before, after } from "node:test";
 import ts from "typescript";
 
 import { startWork } from "../core/work/index.js";
@@ -33,6 +33,32 @@ import {
 const execFileAsync = promisify(execFile);
 const CLI_PATH = join(process.cwd(), "src/cli/index.ts");
 const TSX_LOADER = pathToFileURL(join(process.cwd(), "node_modules/tsx/dist/loader.mjs")).href;
+let freshCliPath: string;
+let freshCliDirectory: string | undefined;
+
+before(async () => {
+  const cache = join(process.cwd(), "node_modules/.cache");
+  await mkdir(cache, { recursive: true });
+  freshCliDirectory = await mkdtemp(join(cache, "apk-cli-tests-"));
+  const output = join(freshCliDirectory, "dist");
+  await writeFile(join(freshCliDirectory, "package.json"), await readFile(join(process.cwd(), "package.json")));
+  await execFileAsync(process.execPath, [
+    join(process.cwd(), "node_modules/typescript/bin/tsc"),
+    "-p", join(process.cwd(), "tsconfig.build.json"),
+    "--outDir", output, "--sourceMap", "--inlineSources",
+  ]);
+  await cp(join(process.cwd(), "src/core/templates"), join(output, "core/templates"), {
+    recursive: true,
+    filter: async (path) => (await stat(path)).isDirectory() || path.endsWith(".hbs"),
+  });
+  freshCliPath = join(output, "cli/index.js");
+});
+
+after(async () => {
+  if (freshCliDirectory) {
+    await rm(freshCliDirectory, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
+  }
+});
 
 interface CliResult {
   exitCode: number;
@@ -44,9 +70,13 @@ async function runCli(
   args: readonly string[],
   cwd = process.cwd(),
   env: NodeJS.ProcessEnv = process.env,
+  source = false,
 ): Promise<CliResult> {
   try {
-    const result = await execFileAsync(process.execPath, ["--import", TSX_LOADER, CLI_PATH, ...args], {
+    const entrypoint = source
+      ? ["--import", TSX_LOADER, CLI_PATH]
+      : ["--enable-source-maps", freshCliPath];
+    const result = await execFileAsync(process.execPath, [...entrypoint, ...args], {
       cwd,
       env,
     });
@@ -154,14 +184,14 @@ test("CLI skills list, show, preview, apply, and protect customized project file
 
 test("committed CLI help and init output match their source surfaces", async () => {
   const compiledCli = join(process.cwd(), "dist/cli/index.js");
-  const sourceHelp = await runCli(["--help"]);
+  const sourceHelp = await runCli(["--help"], process.cwd(), process.env, true);
   const compiledHelp = await execFileAsync(process.execPath, [compiledCli, "--help"]);
   assert.equal(compiledHelp.stdout, sourceHelp.stdout);
 
   await withTempDirectory(async (directory) => {
     const sourceProject = join(directory, "source-project");
     const compiledProject = join(directory, "compiled-project");
-    const sourceInit = await runCli(["init", sourceProject], directory);
+    const sourceInit = await runCli(["init", sourceProject], directory, process.env, true);
     assert.equal(sourceInit.exitCode, 0, `${sourceInit.stdout}${sourceInit.stderr}`);
     await execFileAsync(process.execPath, [compiledCli, "init", compiledProject], { cwd: directory });
 
@@ -4455,8 +4485,8 @@ test("CLI task create template allows explicit overrides", async () => {
     assert.match(content, /Mode: maintenance/);
     assert.match(content, /Risk: medium/);
     assert.match(content, /Tags: docs,cli/);
-    assert.match(content, /"command":"pnpm lint"/);
-    assert.match(content, /"command":"pnpm test"/);
+    assert.match(content, /"apkOperation":"lint"/);
+    assert.doesNotMatch(content, /"command":"pnpm (?:test|lint)"/);
   });
 });
 

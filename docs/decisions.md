@@ -93,6 +93,7 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0082](#adr-0082---bounded-git-dag-lineage-preserves-clean-merge-attribution-and-fails-closed-on-ambiguity) | accepted | Bounded Git DAG lineage preserves clean merge attribution and fails closed on ambiguity | — |
 | [ADR-0083](#adr-0083---application-runtime-and-repository-tooling-are-separate-scanner-semantics) | accepted | Application runtime and repository tooling are separate scanner semantics | — |
 | [ADR-0084](#adr-0084---keep-tracked-markdown-task-lifecycle-state-despite-bookkeeping-noise) | accepted | Keep tracked Markdown task lifecycle state despite bookkeeping noise | — |
+| [ADR-0085](#adr-0085---verification-is-proportional-and-full-suites-run-once-per-boundary) | accepted | Verification is proportional and full suites run once per boundary | — |
 
 ### ADR index cross-check
 
@@ -1635,3 +1636,49 @@ task.
 Reference:
 
 Task 0187 and [task lifecycle research](research/task-lifecycle-state-and-git-noise.md).
+
+## ADR-0085 - Verification is proportional and full suites run once per boundary
+
+Status: accepted
+
+Decision:
+
+Within one final-candidate verification boundary, select a non-overlapping set of host checks.
+Focused feedback during edits precedes one canonical final run, rather than redundant complete
+test/quality/coverage/release invocations. Coverage that executes a suite also proves that suite
+ran. Independent review consumes current registered, gate-eligible evidence and tests unresolved
+counterexamples; full reruns need a reason such as missing, stale, failed, untrusted, or insufficient
+evidence. Review context contains the contract, diff, relevant files and evidence, not inherited
+implementation conversation. APK adds no evidence cache, skipping mode, or semantic deduplication
+of arbitrary shell commands, and never relaxes required assurance or candidate freshness.
+
+The APK source repository uses `quality:static` for static/documentation checks, `quality` for
+development tests, and `quality:ci` for static checks plus one covered source suite.
+`release:check` adds one clean build and APK lint/sync/audit; hosted CI invokes that aggregate once
+and retains exact-SHA and committed-output/drift guards. Superseded branch/PR CI runs are canceled,
+never recorded as passes. This refines the command composition in ADR-0035/0036 without changing
+their proof boundaries or coverage thresholds.
+
+CLI integration tests compile current source once into a unique ignored workspace, use source
+maps with c8 filtering after remapping, and retain direct source-versus-shipped parity smoke.
+Generated policy, task prompts, init/adopt guides, and optional author/split assets carry
+proportional guidance. Docs templates default to read-only APK contract lint, with relevant host
+documentation checks added by the author; other template shell commands remain compatibility
+examples to adapt through `--verification-json`. APK never installs its internal test tooling or
+CI workflow into host repositories.
+
+Migration, async-worker, provider-integration and security templates combine the formerly
+identical test/report commands into one required automated report check. Host authors provide a
+command that executes relevant tests and produces the declared artifact. Required report proof
+and behavioral acceptance criteria remain; already-authored contracts are not rewritten.
+
+Reason:
+
+Observed Task 0189 spent 30.7 minutes in four canonical verification runs and 43.9 minutes in four
+reviews. One CLI suite took 173 seconds of a 189-second source run; loading TypeScript separately
+for each CLI process and repeated aggregates dominated feedback. Earlier CI executed the source
+suite four times. Removing duplication and loader work preserves proof while reducing latency.
+
+Reference:
+
+Task 0193 and [verification research](research/fast-proportional-verification.md).

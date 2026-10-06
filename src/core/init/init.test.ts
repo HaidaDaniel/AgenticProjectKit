@@ -39,6 +39,10 @@ test("initProject creates starter kit files", async () => {
       [...getInitStarterFiles().map((file) => file.path), ".gitignore"],
     );
     assert.deepEqual(result.skipped, []);
+    const taskGuide = await readFile(join(directory, "docs/task-system.md"), "utf8");
+    assert.match(taskGuide, /non-overlapping final verification set/);
+    assert.match(taskGuide, /Documentation-only tasks/);
+    assert.match(taskGuide, /stale, failed, missing, or insufficient/);
 
     const configText = await readFile(
       join(directory, ".agentic/config.json"),

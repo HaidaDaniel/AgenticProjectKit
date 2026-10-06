@@ -187,6 +187,7 @@ export function renderTaskPrompt(input: TaskPromptInput): string {
     "- Work only inside allowed files.",
     "- Do not touch forbidden files.",
     "- Run verification before done.",
+    "- Use focused checks during edits, then canonical task verification once on the committed final candidate. Do not separately repeat its aggregate checks; changes, failures, or missing evidence require fresh verification.",
     "",
   ].join("\n");
 }

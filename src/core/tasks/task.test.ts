@@ -573,6 +573,41 @@ test("audit template uses the stable builtin for read-only APK lint and keeps au
   assert.equal(audit?.apkOperation, undefined);
 });
 
+test("domain templates combine regression execution and required report without duplicate suites", () => {
+  for (const type of ["migration", "async-worker", "provider-integration", "security"] as const) {
+    const template = getTaskTemplate(type);
+    assert.equal(template.verification.length, 1, type);
+    const check = template.verification[0];
+    assert.equal(check.type, "automated");
+    assert.equal(check.required, true);
+    assert.equal(check.profile, "report");
+    assert.ok(check.artifact);
+    assert.match(template.notes.join("\n"), /execute the relevant tests and produce the declared artifact/);
+    const task = { ...TASK, type, risk: template.risk, tags: template.tags, verification: template.verification, verificationCommands: [] };
+    assert.ok(resolveTaskPolicy(task).requirements.evidenceCategories.includes("report"));
+    assert.deepEqual(parseTaskMarkdown(renderTaskMarkdown(task)).verification, template.verification);
+  }
+});
+
+test("docs templates avoid application suites while retaining runnable contract checks", async () => {
+  await withTempDirectory(async (directory) => {
+    const template = getTaskTemplate("docs");
+    assert.deepEqual(template.verification.map((check) => check.apkOperation), ["lint"]);
+    assert.ok(template.verification.every((check) => check.required && !check.command));
+    const created = await createTask(directory, ".tasks", {
+      ...TASK, dependsOn: [], contextFiles: ["README.md"], forbiddenFiles: [], verificationCommands: [],
+      title: "Clarify Python documentation",
+      scope: ["docs"], allowedFiles: ["README.md"], verification: template.verification,
+      mode: template.mode, risk: template.risk, type: "docs",
+    });
+    const { task } = await loadTaskFile(join(directory, created.path));
+    assert.equal(getTaskVerification(task)[0]?.apkOperation, "lint");
+    assert.deepEqual(task.verificationCommands, []);
+    assert.match(template.notes.join("\n"), /host repository's documentation\/link\/example checks/);
+    assert.match(getTaskTemplate("migration").notes.join("\n"), /non-overlapping final set/);
+  });
+});
+
 test("release template defaults order pre-tag evidence before the immutable tag and separate post-tag evidence", () => {
   const template = getTaskTemplate("release");
   const steps = template.steps.join("\n");
@@ -7967,4 +8002,8 @@ test("review prompt presents spec and engineering axes with a conservative overa
   assert.match(prompt, /Submit one Overall outcome: pass, changes_requested, or fail\./);
   assert.match(prompt, /do not continue implementation work/);
   assert.match(prompt, /Green tests alone are not correctness proof/);
+  assert.match(prompt, /candidate-bound, registered, gate-eligible verification evidence/);
+  assert.match(prompt, /Stale, failed, missing, or untrusted evidence cannot be reused/);
+  assert.match(prompt, /Do not automatically rerun the full suite/);
+  assert.match(prompt, /fresh review context; do not inherit the implementation conversation/);
 });

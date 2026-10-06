@@ -74,6 +74,10 @@ test("adoptRepository scans repository shape and creates kit files", async () =>
     assert.ok(result.created.includes(".agentic/config.json"));
     assert.ok(result.created.includes(".tasks/0001-document-adopted-repository.md"));
     assert.ok(result.created.includes("AGENTS.md"));
+    const taskGuide = await readFile(join(directory, "docs/task-system.md"), "utf8");
+    assert.match(taskGuide, /non-overlapping final verification set/);
+    assert.match(taskGuide, /Documentation-only tasks/);
+    assert.match(taskGuide, /stale, failed, missing, or insufficient/);
     assert.equal(
       await readFile(join(directory, "src/index.ts"), "utf8"),
       "console.log('app');\n",

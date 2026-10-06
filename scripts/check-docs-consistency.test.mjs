@@ -5,6 +5,42 @@ import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import test from "node:test";
 import { checkDocumentationConsistency } from "./check-docs-consistency.mjs";
+import reporter from "./test-reporter.mjs";
+
+test("quality and release composition execute each full source suite once", async () => {
+  const { scripts } = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  function calls(script, target, ancestors = []) {
+    assert.ok(!ancestors.includes(script), `recursive quality script ${script}`);
+    if (script === target) return 1;
+    return [...(scripts[script] ?? "").matchAll(/\bpnpm(?: run)? ([\w:-]+)/g)]
+      .reduce((sum, match) => sum + calls(match[1], target, [...ancestors, script]), 0);
+  }
+  for (const script of ["quality", "quality:ci", "release:check"]) {
+    assert.equal(calls(script, "test:source"), 1, script);
+    assert.equal(calls(script, "test:docs"), 1, script);
+  }
+  assert.equal(calls("release:check", "build"), 1);
+  assert.equal(calls("quality:ci", "test:coverage"), 1);
+  const workflow = await readFile(new URL("../.github/workflows/quality.yml", import.meta.url), "utf8");
+  assert.equal([...workflow.matchAll(/^\s+run: pnpm (quality|test:coverage|release:check|build)\s*$/gm)].length, 1);
+  assert.match(workflow, /run: pnpm release:check/);
+});
+
+test("compact test reporter preserves failures, diagnostics, and captured output", async () => {
+  async function* events() {
+    yield { type: "test:pass", data: { name: "quiet passing test" } };
+    yield { type: "test:fail", data: { name: "broken boundary", details: { error: new Error("expected refusal") } } };
+    yield { type: "test:diagnostic", data: { message: "fail 1" } };
+    yield { type: "test:stderr", data: { message: "child process diagnostic\n" } };
+  }
+  let output = "";
+  for await (const chunk of reporter(events())) output += chunk;
+  assert.doesNotMatch(output, /quiet passing test/);
+  assert.match(output, /FAIL broken boundary/);
+  assert.match(output, /expected refusal/);
+  assert.match(output, /fail 1/);
+  assert.match(output, /child process diagnostic/);
+});
 
 const { register } = await import("tsx/esm/api");
 register();

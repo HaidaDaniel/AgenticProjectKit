@@ -98,6 +98,14 @@ Check that allowed and forbidden paths do not overlap, the verification is runna
 marked manual/live, the task is small enough to review, and the contract does not authorize the
 planning agent to implement anything. State the proposed files and graph effects plainly.
 
+Choose verification from the host repository's actual commands and the changed behavior. Template
+commands are examples to replace or narrow through `--verification-json`, not a mandate to run
+APK's own pnpm toolchain. Use focused checks during implementation and one non-overlapping final
+verification set. If coverage executes the test suite, do not also require that same suite through
+test/quality/release aggregates. Documentation tasks need applicable contract, link, content, or
+example checks; add application tests only when those changes affect executable behavior. Keep
+required domain, package-currency, hosted-CI, and independent-review proof where applicable.
+
 ## Explicit approval is required before task creation
 
 Ask for explicit approval of the concrete preview, including its one-task count, paths, dependencies,
