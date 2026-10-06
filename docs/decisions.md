@@ -92,10 +92,11 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0081](#adr-0081---verification-epochs-refresh-stale-baselines-without-scope-laundering) | accepted | Verification epochs refresh stale baselines without scope laundering | — |
 | [ADR-0082](#adr-0082---bounded-git-dag-lineage-preserves-clean-merge-attribution-and-fails-closed-on-ambiguity) | accepted | Bounded Git DAG lineage preserves clean merge attribution and fails closed on ambiguity | — |
 | [ADR-0083](#adr-0083---application-runtime-and-repository-tooling-are-separate-scanner-semantics) | accepted | Application runtime and repository tooling are separate scanner semantics | — |
+| [ADR-0084](#adr-0084---keep-tracked-markdown-task-lifecycle-state-despite-bookkeeping-noise) | accepted | Keep tracked Markdown task lifecycle state despite bookkeeping noise | — |
 
 ### ADR index cross-check
 
-- [x] Each of the 82 index rows matches one retained ADR heading and its title.
+- [x] Each of the 83 index rows matches one retained ADR heading and its title.
 - [x] Each status matches that record's explicit `Status` field.
 - [x] The only supersession link is ADR-0006 -> ADR-0062, recorded by ADR-0006's status and ADR-0062's heading and decision text.
 
@@ -1595,3 +1596,42 @@ does not make scanner output fail open.
 Reference:
 
 Task 0185 and ADR-0057.
+
+## ADR-0084 - Keep tracked Markdown task lifecycle state despite bookkeeping noise
+
+Status: accepted
+
+Decision:
+
+Keep `State` and `Owner` in the tracked task Markdown as the authoritative lifecycle
+projection. Require implementation/fix changes to be committed before candidate-bound
+verification, independent review, and gate; allow `apk done` to produce a separate
+tracked lifecycle/bookkeeping commit after the gate. Report the candidate and
+bookkeeping SHAs separately.
+
+Reason:
+
+The candidate must remain immutable after evidence is bound to its baseline/candidate
+subject. A tracked completion transition is the smallest shared fact that lets a
+fresh clone, collaborator, archive reader, dependency resolver, and offline-first
+workflow agree on task state. Moving the fields to another tracked file preserves the
+commit, while an untracked sidecar, derived state, Git notes/refs, or a combined
+candidate/completion commit either loses distributed truth or changes the evidence
+binding boundary. Local downstream traces in translator-agent and ResLedger, plus
+Task 0121 and APK Tasks 0185-0186, confirm that the second commit is bounded
+bookkeeping rather than hidden implementation work.
+
+Boundary:
+
+This decision does not add a state store, change `apk done`, rewrite history, or make
+one task equal one commit. Task 0183 epoch provenance, Task 0184 bounded DAG
+attribution, evidence freshness, archive semantics, dependencies, and existing
+Markdown tasks remain authoritative. Presentation may classify bookkeeping commits
+as a separate normal category. Any future redesign must first prove fewer shared
+commits, exact candidate/evidence binding, fresh-clone visibility, collaboration,
+offline publication, and backward-compatible rollback in a separate implementation
+task.
+
+Reference:
+
+Task 0187 and [task lifecycle research](research/task-lifecycle-state-and-git-noise.md).

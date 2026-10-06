@@ -1,7 +1,7 @@
 # Task 0187 - Design a lower-noise task lifecycle without losing distributed state
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-continue-20261005-2055
 Mode: discovery
 Lane: architecture
 Type: research
