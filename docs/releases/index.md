@@ -2,8 +2,8 @@
 
 <!-- APK_VALIDATED_RELEASE: v0.4.9 -->
 
-The current package/candidate version is `0.4.9`.
-Its release note is [v0.4.9](v0.4.9.md), and its separate [post-tag validation record](../delivery/workflow-v0.4.9-post-release.md) records the immutable tag and cold-install observations.
+The current package/candidate version is `0.5.0`.
+Its pre-tag release note is [v0.5.0](v0.5.0.md). The latest validated tagged release remains [v0.4.9](v0.4.9.md), with its separate [post-tag validation record](../delivery/workflow-v0.4.9-post-release.md).
 The latest validated tagged release is [v0.4.9](v0.4.9.md). Its annotated tag peels to
 candidate `719c0ef55134b49987248976b732739bee749327`.
 

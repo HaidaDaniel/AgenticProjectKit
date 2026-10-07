@@ -1,7 +1,7 @@
 # Task 0214 - Release corrected performance observability as v0.5.0
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-performance-20261007
 Mode: production
 Lane: release
 Type: release
