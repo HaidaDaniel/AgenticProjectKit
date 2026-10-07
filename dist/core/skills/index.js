@@ -169,7 +169,7 @@ async function writeOpenFile(destinationPath, content, status, noFollow) {
         await handle.close();
     }
 }
-async function writeDescriptorRelativeFile(platform, parent, fileName, content, status, noFollow) {
+async function writeDescriptorRelativeFile(platform, parent, fileName, content, status, noFollow, renameFile) {
     const destinationPath = descriptorChildPath(platform, parent.fd, fileName);
     if (!destinationPath) {
         throw new Error("This platform does not expose safe descriptor-relative skill materialization.");
@@ -185,7 +185,7 @@ async function writeDescriptorRelativeFile(platform, parent, fileName, content, 
     }
     try {
         await writeOpenFile(temporaryPath, content, "create", noFollow);
-        await rename(temporaryPath, destinationPath);
+        await renameFile(temporaryPath, destinationPath);
     }
     finally {
         try {
@@ -212,7 +212,7 @@ async function resolveSafePathBasedDestination(projectRoot, destinationPath, fil
     await assertSafeDestinationAncestors(projectRoot, safeDestination, platform);
     return safeDestination;
 }
-async function writePathBasedFile(projectRoot, destinationPath, fileName, content, status, platform) {
+async function writePathBasedFile(projectRoot, destinationPath, fileName, content, status, platform, renameFile) {
     // This fallback is for platforms where Node core has no openat-like API.
     // The parent is canonicalized immediately before mutation, but a hostile
     // concurrent namespace replacement cannot be ruled out by these path APIs.
@@ -227,7 +227,7 @@ async function writePathBasedFile(projectRoot, destinationPath, fileName, conten
     try {
         await writeOpenFile(temporaryPath, content, "create", 0);
         try {
-            await rename(temporaryPath, safeDestination);
+            await renameFile(temporaryPath, safeDestination);
         }
         catch (error) {
             const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
@@ -235,9 +235,34 @@ async function writePathBasedFile(projectRoot, destinationPath, fileName, conten
                 throw error;
             await assertSafeDestinationAncestors(projectRoot, safeDestination, platform);
             const existing = await readExistingSkill(safeDestination);
-            if (existing !== undefined)
-                await unlink(safeDestination);
-            await rename(temporaryPath, safeDestination);
+            if (existing === undefined) {
+                await renameFile(temporaryPath, safeDestination);
+            }
+            else {
+                const backupPath = join(canonicalParent, `.${fileName}.${randomUUID()}.bak`);
+                await renameFile(safeDestination, backupPath);
+                try {
+                    await renameFile(temporaryPath, safeDestination);
+                }
+                catch (replacementError) {
+                    try {
+                        await unlink(safeDestination);
+                    }
+                    catch (cleanupError) {
+                        if (!(cleanupError && typeof cleanupError === "object" && "code" in cleanupError && cleanupError.code === "ENOENT")) {
+                            throw new Error(`Skill replacement failed and the destination could not be restored from ${backupPath}.`, { cause: replacementError });
+                        }
+                    }
+                    try {
+                        await renameFile(backupPath, safeDestination);
+                    }
+                    catch (restoreError) {
+                        throw new Error(`Skill replacement failed and the destination could not be restored from ${backupPath}.`, { cause: restoreError });
+                    }
+                    throw replacementError;
+                }
+                await unlink(backupPath);
+            }
         }
     }
     finally {
@@ -251,7 +276,7 @@ async function writePathBasedFile(projectRoot, destinationPath, fileName, conten
         }
     }
 }
-async function writeMaterializedSkill(rootDirectory, destination, content, status, platform) {
+async function writeMaterializedSkill(rootDirectory, destination, content, status, platform, renameFile) {
     const noFollow = constants.O_NOFOLLOW ?? 0;
     const directoryFlags = constants.O_RDONLY
         | (constants.O_DIRECTORY ?? 0)
@@ -265,7 +290,7 @@ async function writeMaterializedSkill(rootDirectory, destination, content, statu
         throw new Error(`Invalid packaged skill destination: ${destination}`);
     }
     if (!descriptorChildPath(platform, 0, components[0]) || noFollow === 0) {
-        await writePathBasedFile(projectRoot, destinationPath, fileName, content, status, platform);
+        await writePathBasedFile(projectRoot, destinationPath, fileName, content, status, platform, renameFile);
         return;
     }
     const rootHandle = await open(projectRoot, directoryFlags);
@@ -277,7 +302,7 @@ async function writeMaterializedSkill(rootDirectory, destination, content, statu
             handles.push(child);
             parent = child;
         }
-        await writeDescriptorRelativeFile(platform, parent, fileName, content, status, noFollow);
+        await writeDescriptorRelativeFile(platform, parent, fileName, content, status, noFollow, renameFile);
     }
     finally {
         for (const handle of handles.reverse()) {
@@ -291,6 +316,7 @@ export async function materializePackagedSkill(rootDirectory, skillId, options =
     }
     const { skill, content } = await readPackagedSkillContent(skillId);
     const platform = options.platform ?? process.platform;
+    const renameFile = options.renameFile ?? rename;
     const projectRoot = resolve(rootDirectory);
     const destinationPath = join(projectRoot, skill.destination);
     await assertSafeDestinationAncestors(projectRoot, destinationPath, platform);
@@ -311,7 +337,7 @@ export async function materializePackagedSkill(rootDirectory, skillId, options =
     }
     const shouldWrite = applied && (status === "create" || status === "update");
     if (shouldWrite) {
-        await writeMaterializedSkill(projectRoot, skill.destination, content, status === "create" ? "create" : "update", platform);
+        await writeMaterializedSkill(projectRoot, skill.destination, content, status === "create" ? "create" : "update", platform, renameFile);
     }
     return {
         skill,

@@ -37,6 +37,8 @@ export interface MaterializeSkillOptions {
   force?: boolean;
   /** @internal Used by platform regression tests; the CLI always uses the host platform. */
   platform?: NodeJS.Platform;
+  /** @internal Used by platform regression tests; the CLI always uses fs.rename. */
+  renameFile?: (oldPath: string, newPath: string) => Promise<void>;
 }
 
 export interface MaterializeSkillResult {
@@ -268,6 +270,7 @@ async function writeDescriptorRelativeFile(
   content: string,
   status: "create" | "update",
   noFollow: number,
+  renameFile: (oldPath: string, newPath: string) => Promise<void>,
 ): Promise<void> {
   const destinationPath = descriptorChildPath(platform, parent.fd, fileName);
   if (!destinationPath) {
@@ -285,7 +288,7 @@ async function writeDescriptorRelativeFile(
   }
   try {
     await writeOpenFile(temporaryPath, content, "create", noFollow);
-    await rename(temporaryPath, destinationPath);
+    await renameFile(temporaryPath, destinationPath);
   } finally {
     try {
       await unlink(temporaryPath);
@@ -324,6 +327,7 @@ async function writePathBasedFile(
   content: string,
   status: "create" | "update",
   platform: NodeJS.Platform,
+  renameFile: (oldPath: string, newPath: string) => Promise<void>,
 ): Promise<void> {
   // This fallback is for platforms where Node core has no openat-like API.
   // The parent is canonicalized immediately before mutation, but a hostile
@@ -345,14 +349,36 @@ async function writePathBasedFile(
   try {
     await writeOpenFile(temporaryPath, content, "create", 0);
     try {
-      await rename(temporaryPath, safeDestination);
+      await renameFile(temporaryPath, safeDestination);
     } catch (error: unknown) {
       const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
       if (code !== "EEXIST" && code !== "EPERM" && code !== "EACCES" && code !== "ENOTEMPTY") throw error;
       await assertSafeDestinationAncestors(projectRoot, safeDestination, platform);
       const existing = await readExistingSkill(safeDestination);
-      if (existing !== undefined) await unlink(safeDestination);
-      await rename(temporaryPath, safeDestination);
+      if (existing === undefined) {
+        await renameFile(temporaryPath, safeDestination);
+      } else {
+        const backupPath = join(canonicalParent, `.${fileName}.${randomUUID()}.bak`);
+        await renameFile(safeDestination, backupPath);
+        try {
+          await renameFile(temporaryPath, safeDestination);
+        } catch (replacementError) {
+          try {
+            await unlink(safeDestination);
+          } catch (cleanupError: unknown) {
+            if (!(cleanupError && typeof cleanupError === "object" && "code" in cleanupError && cleanupError.code === "ENOENT")) {
+              throw new Error(`Skill replacement failed and the destination could not be restored from ${backupPath}.`, { cause: replacementError });
+            }
+          }
+          try {
+            await renameFile(backupPath, safeDestination);
+          } catch (restoreError) {
+            throw new Error(`Skill replacement failed and the destination could not be restored from ${backupPath}.`, { cause: restoreError });
+          }
+          throw replacementError;
+        }
+        await unlink(backupPath);
+      }
     }
   } finally {
     try {
@@ -371,6 +397,7 @@ async function writeMaterializedSkill(
   content: string,
   status: "create" | "update",
   platform: NodeJS.Platform,
+  renameFile: (oldPath: string, newPath: string) => Promise<void>,
 ): Promise<void> {
   const noFollow = constants.O_NOFOLLOW ?? 0;
   const directoryFlags = constants.O_RDONLY
@@ -386,7 +413,7 @@ async function writeMaterializedSkill(
   }
 
   if (!descriptorChildPath(platform, 0, components[0]!) || noFollow === 0) {
-    await writePathBasedFile(projectRoot, destinationPath, fileName, content, status, platform);
+    await writePathBasedFile(projectRoot, destinationPath, fileName, content, status, platform, renameFile);
     return;
   }
 
@@ -400,7 +427,7 @@ async function writeMaterializedSkill(
       parent = child;
     }
 
-    await writeDescriptorRelativeFile(platform, parent, fileName, content, status, noFollow);
+    await writeDescriptorRelativeFile(platform, parent, fileName, content, status, noFollow, renameFile);
   } finally {
     for (const handle of handles.reverse()) {
       await handle.close();
@@ -419,6 +446,7 @@ export async function materializePackagedSkill(
 
   const { skill, content } = await readPackagedSkillContent(skillId);
   const platform = options.platform ?? process.platform;
+  const renameFile = options.renameFile ?? rename;
   const projectRoot = resolve(rootDirectory);
   const destinationPath = join(projectRoot, skill.destination);
   await assertSafeDestinationAncestors(projectRoot, destinationPath, platform);
@@ -444,6 +472,7 @@ export async function materializePackagedSkill(
       content,
       status === "create" ? "create" : "update",
       platform,
+      renameFile,
     );
   }
 

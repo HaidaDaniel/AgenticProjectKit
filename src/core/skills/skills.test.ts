@@ -1,4 +1,4 @@
-import { link, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { link, mkdir, mkdtemp, readFile, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import assert from "node:assert/strict";
@@ -113,6 +113,28 @@ test("Windows fallback materializes paths with spaces and rejects redirects", as
     const forced = await materializePackagedSkill(project, "apk-task-author", { apply: true, force: true, platform });
     assert.equal(forced.status, "update");
     assert.equal(await readFile(destination, "utf8"), generated);
+
+    const customized = "customized before replacement failure\n";
+    await writeFile(destination, customized, "utf8");
+    let replacementFailures = 2;
+    const failingRename = async (oldPath: string, newPath: string): Promise<void> => {
+      if (replacementFailures > 0 && oldPath.includes(".tmp") && newPath.endsWith("SKILL.md")) {
+        replacementFailures -= 1;
+        const error = Object.assign(new Error("simulated Windows replacement failure"), { code: "EEXIST" });
+        throw error;
+      }
+      await rename(oldPath, newPath);
+    };
+    await assert.rejects(
+      materializePackagedSkill(project, "apk-task-author", {
+        apply: true,
+        force: true,
+        platform,
+        renameFile: failingRename,
+      }),
+      /simulated Windows replacement failure/,
+    );
+    assert.equal(await readFile(destination, "utf8"), customized);
 
     const parentRedirectProject = join(directory, "parent redirect");
     const outside = join(directory, "outside");
