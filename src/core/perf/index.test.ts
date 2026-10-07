@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { promisify } from "node:util";
 import test from "node:test";
 
 import {
@@ -16,6 +18,8 @@ import {
   type PerfClock,
   type PerfInvocationRecord,
 } from "./index.js";
+
+const execFileAsync = promisify(execFile);
 
 async function withTempDirectory(run: (root: string) => Promise<void>): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), "apk-perf-test-"));
@@ -60,6 +64,17 @@ test("session lifecycle records one invocation and preserves privacy", async () 
   });
 });
 
+test("session start adds profiler state to local Git excludes for legacy checkouts", async () => {
+  await withTempDirectory(async (root) => {
+    await execFileAsync("git", ["init", "--quiet"], { cwd: root });
+    await startPerfSession(root, "legacy-ignore");
+    const ignored = await execFileAsync("git", ["check-ignore", "--no-index", ".agentic/perf/session.json"], { cwd: root });
+    assert.equal(ignored.stdout.trim(), ".agentic/perf/session.json");
+    assert.match(await readFile(join(root, ".git/info/exclude"), "utf8"), /\.agentic\/perf\/\*/);
+    await stopPerfSession(root);
+  });
+});
+
 test("malformed trace records are ignored with an incomplete coverage warning", async () => {
   await withTempDirectory(async (root) => {
     await startPerfSession(root, "malformed");
@@ -80,8 +95,23 @@ test("malformed trace records are ignored with an incomplete coverage warning", 
     ].join("\n")}\n`, "utf8");
     const report = await readPerfReport(root);
     assert.equal(report.invocationCount, 0);
-    assert.equal(report.malformedRecordCount, 3);
+    assert.equal(report.malformedRecordCount, 2);
     assert.equal(report.incompleteCoverage, true);
+  });
+});
+
+test("valid records from other sessions are excluded without malformed warnings", async () => {
+  await withTempDirectory(async (root) => {
+    await startPerfSession(root, "first");
+    await runWithPerfInvocation(root, "status", async () => 0, fakeClock(0n, 10_000_000n));
+    await stopPerfSession(root);
+    await startPerfSession(root, "second");
+    await runWithPerfInvocation(root, "status", async () => 0, fakeClock(20_000_000n, 30_000_000n));
+    await stopPerfSession(root);
+    const report = await readPerfReport(root);
+    assert.equal(report.invocationCount, 1);
+    assert.equal(report.malformedRecordCount, 0);
+    assert.equal(report.incompleteCoverage, false);
   });
 });
 

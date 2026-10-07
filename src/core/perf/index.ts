@@ -1,7 +1,7 @@
 import { exec, execFile, spawn, type ExecFileOptions, type ExecOptions } from "node:child_process";
 import { appendFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 export const PERF_SCHEMA_VERSION = 1 as const;
@@ -9,6 +9,7 @@ export const PERF_RUNTIME_DIRECTORY = ".agentic/perf";
 const ACTIVE_SESSION_FILE = "session.json";
 const LAST_SESSION_FILE = "last-session.json";
 const TRACE_FILE = "trace.jsonl";
+const PERF_GIT_EXCLUDE_ENTRY = ".agentic/perf/*";
 const MAX_TRACE_BYTES = 8 * 1024 * 1024;
 const MAX_RECORD_BYTES = 64 * 1024;
 
@@ -213,6 +214,33 @@ async function ensureRuntimeDirectory(rootDirectory: string): Promise<void> {
   await mkdir(join(rootDirectory, PERF_RUNTIME_DIRECTORY), { recursive: true });
 }
 
+/**
+ * Keep profiler state local even when a downstream checkout predates the
+ * canonical APK .gitignore entry. Git's per-repository exclude file is local
+ * metadata, so this does not mutate tracked project files or task provenance.
+ */
+async function ensurePerfGitExclude(rootDirectory: string): Promise<void> {
+  try {
+    const result = await execFileAsync("git", ["rev-parse", "--git-path", "info/exclude"], {
+      cwd: rootDirectory,
+      encoding: "utf8",
+      windowsHide: true,
+      maxBuffer: 1024 * 1024,
+    });
+    const excludePath = resolve(rootDirectory, result.stdout.trim());
+    if (excludePath.length === 0) return;
+    const existing = await readOptional(excludePath);
+    const lines = (existing ?? "").split(/\r?\n/);
+    if (lines.includes(PERF_GIT_EXCLUDE_ENTRY)) return;
+    let content = existing ?? "";
+    if (content.length > 0 && !content.endsWith("\n")) content += "\n";
+    await mkdir(dirname(excludePath), { recursive: true });
+    await writeFile(excludePath, `${content}${PERF_GIT_EXCLUDE_ENTRY}\n`, "utf8");
+  } catch {
+    // Local profiling must remain best-effort; normal APK work must not fail.
+  }
+}
+
 async function safeAppendRecord(rootDirectory: string, record: PerfInvocationRecord): Promise<void> {
   try {
     const serialized = JSON.stringify(record);
@@ -249,6 +277,7 @@ export async function startPerfSession(rootDirectory: string, label: string): Pr
     label: boundedLabel(label),
     startedAt: new Date().toISOString(),
   };
+  await ensurePerfGitExclude(rootDirectory);
   await ensureRuntimeDirectory(rootDirectory);
   await writeFile(activePath, `${JSON.stringify(session)}\n`, { encoding: "utf8", flag: "wx" });
   return session;
@@ -435,11 +464,12 @@ async function readTraceRecords(rootDirectory: string, sessionId?: string): Prom
       const value: unknown = JSON.parse(line);
       if (!value || typeof value !== "object") throw new Error("not object");
       const record = value as Partial<PerfInvocationRecord>;
+      if (sessionId && typeof record.sessionId === "string" && record.sessionId !== sessionId) continue;
       const start = parseNs(record.interval && typeof record.interval === "object" ? record.interval.startNs : undefined);
       const end = parseNs(record.interval && typeof record.interval === "object" ? record.interval.endNs : undefined);
       const spans = Array.isArray(record.spans) ? record.spans : [];
       if (record.schemaVersion !== PERF_SCHEMA_VERSION || record.recordType !== "invocation"
-        || typeof record.sessionId !== "string" || (sessionId && record.sessionId !== sessionId)
+        || typeof record.sessionId !== "string"
         || typeof record.invocationId !== "string" || typeof record.commandKind !== "string"
         || typeof record.durationMs !== "number" || !Number.isFinite(record.durationMs)
         || start === undefined || end === undefined || end < start || !Array.isArray(record.spans)
