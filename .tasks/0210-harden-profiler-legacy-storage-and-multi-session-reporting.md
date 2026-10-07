@@ -1,6 +1,6 @@
 # Task 0210 - Harden profiler legacy storage and multi-session reporting
 
-State: doing
+State: done
 Owner: codex-performance-20261007
 Mode: product
 Lane: bugfix
