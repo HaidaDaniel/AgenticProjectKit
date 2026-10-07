@@ -1,6 +1,6 @@
 # APK performance v0.5.0 self-dogfood baseline
 
-Generated: 2026-10-07T18:23:52.134Z
+Generated: 2026-10-07T18:27:45.439Z
 Environment: linux/x64, Node v24.21.0
 Trace/report schema: v2
 
@@ -14,8 +14,8 @@ First-run means the first command group after a session starts. Repeated-run mea
 
 | Group | repetitions | parent process wall | Node full process | startup residual | instrumented APK internal | Git |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| short first-run group | 5 | min 2.504 s, median 2.512 s, p95 2.837 s, max 2.837 s (n=5) | min 0.449 s, median 0.451 s, p95 0.456 s, max 0.456 s (n=5) | min 0.322 s, median 0.332 s, p95 0.337 s, max 0.337 s (n=5) | min 0.109 s, median 0.110 s, p95 0.121 s, max 0.121 s (n=5) | min 0.007 s, median 0.008 s, p95 0.008 s, max 0.008 s (n=5) |
-| short repeated-run group | 10 | min 2.478 s, median 2.509 s, p95 2.546 s, max 2.546 s (n=10) | min 0.431 s, median 0.444 s, p95 0.459 s, max 0.459 s (n=10) | min 0.315 s, median 0.321 s, p95 0.333 s, max 0.333 s (n=10) | min 0.104 s, median 0.108 s, p95 0.122 s, max 0.122 s (n=10) | min 0.007 s, median 0.008 s, p95 0.008 s, max 0.008 s (n=10) |
+| short first-run group | 5 | min 2.522 s, median 2.529 s, p95 2.845 s, max 2.845 s (n=5) | min 0.428 s, median 0.449 s, p95 0.460 s, max 0.460 s (n=5) | min 0.318 s, median 0.327 s, p95 0.336 s, max 0.336 s (n=5) | min 0.103 s, median 0.112 s, p95 0.118 s, max 0.118 s (n=5) | min 0.007 s, median 0.009 s, p95 0.009 s, max 0.009 s (n=5) |
+| short repeated-run group | 10 | min 2.507 s, median 2.539 s, p95 2.576 s, max 2.576 s (n=10) | min 0.436 s, median 0.445 s, p95 0.458 s, max 0.458 s (n=10) | min 0.318 s, median 0.327 s, p95 0.341 s, max 0.341 s (n=10) | min 0.104 s, median 0.108 s, p95 0.120 s, max 0.120 s (n=10) | min 0.007 s, median 0.008 s, p95 0.009 s, max 0.009 s (n=10) |
 
 ## Verification-heavy workload
 
@@ -23,8 +23,8 @@ The AgenticProjectKit row runs the same four commands in OFF and ON groups throu
 
 | Workload | repetitions | wall | rewrite-sensitive APK | Git | tests | lint | typecheck | build | other |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| AgenticProjectKit test/lint/typecheck/build | 3 | min 12.799 s, median 12.842 s, p95 12.852 s, max 12.852 s (n=3) | min 0.547 s, median 0.555 s, p95 0.562 s, max 0.562 s (n=3) | 0.000 s | 0.743 s | 4.116 s | 3.984 s | 3.418 s | 0.000 s |
-| Disposable task verify | 3 | min 0.325 s, median 0.326 s, p95 0.332 s, max 0.332 s (n=3) | min 0.248 s, median 0.249 s, p95 0.253 s, max 0.253 s (n=3) | 0.049 s | 0.000 s | 0.000 s | 0.000 s | 0.000 s | 0.029 s |
+| AgenticProjectKit test/lint/typecheck/build | 3 | min 12.685 s, median 12.752 s, p95 12.850 s, max 12.850 s (n=3) | min 0.544 s, median 0.546 s, p95 0.561 s, max 0.561 s (n=3) | 0.000 s | 0.731 s | 4.130 s | 3.976 s | 3.393 s | 0.000 s |
+| Disposable task verify | 3 | min 0.325 s, median 0.329 s, p95 0.333 s, max 0.333 s (n=3) | min 0.247 s, median 0.252 s, p95 0.255 s, max 0.255 s (n=3) | 0.049 s | 0.000 s | 0.000 s | 0.000 s | 0.000 s | 0.029 s |
 
 Child duration sum and child wall-clock union remain separate diagnostics. Primary command-kind attribution is disjoint, so overlapping children are not added as wall-clock percentages.
 
@@ -34,10 +34,10 @@ OFF and ON use identical command sequences, fixtures, Node version, and environm
 
 | Workload | OFF parent wall | ON parent wall | delta ms | delta % |
 | --- | ---: | ---: | ---: | ---: |
-| short first-run group | 2.512 s | 2.543 s | 30.2 ms | 1.2% |
-| short repeated-run group | 2.509 s | 2.521 s | 11.5 ms | 0.5% |
-| verification-heavy | 12.701 s | 12.764 s | 62.7 ms | 0.5% |
-| disposable task verify | 0.227 s | 0.223 s | -3.3 ms | -1.5% |
+| short first-run group | 2.529 s | 2.548 s | 19.7 ms | 0.8% |
+| short repeated-run group | 2.539 s | 2.548 s | 9.5 ms | 0.4% |
+| verification-heavy | 12.705 s | 12.676 s | -28.3 ms | -0.2% |
+| disposable task verify | 0.225 s | 0.224 s | -1.4 ms | -0.6% |
 
 ## Go ceilings
 
@@ -45,10 +45,10 @@ These are Amdahl-style mathematical scenarios for the measured rewrite-sensitive
 
 | Workload | APK rewrite-sensitive share | 2x gain | 5x gain | zero-cost maximum |
 | --- | ---: | ---: | ---: | ---: |
-| short first-run group | 98.3% | 49.2% | 78.7% | 98.3% |
-| short repeated-run group | 98.3% | 49.1% | 78.6% | 98.3% |
-| verification-heavy | 4.3% | 2.2% | 3.5% | 4.3% |
-| disposable task verify | 76.1% | 38.0% | 60.9% | 76.1% |
+| short first-run group | 98.1% | 49.0% | 78.5% | 98.1% |
+| short repeated-run group | 98.1% | 49.1% | 78.6% | 98.3% |
+| verification-heavy | 4.3% | 2.1% | 3.4% | 4.3% |
+| disposable task verify | 76.7% | 38.2% | 61.1% | 76.4% |
 
 ## Evidence controls and limits
 
