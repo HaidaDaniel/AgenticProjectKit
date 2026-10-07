@@ -1,6 +1,6 @@
 # Task 0203 - Avoid archived task ID collisions during adoption
 
-State: doing
+State: done
 Owner: codex-public-readiness-20261007
 Mode: production
 Lane: implementation
