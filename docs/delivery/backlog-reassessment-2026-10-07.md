@@ -21,7 +21,7 @@ All four canonical rechecks below used HEAD `fa611ca6d908497ede64c82ca51f1983c43
 
 ### Exact obstructing commits and paths
 
-The table lists the non-proven out-of-scope/forbidden commits in the bounded 0191/0197 investigations. Own in-scope implementation commits are not relabeled foreign. The older 0120/0133 ranges are explicitly over the proof bound and are not silently truncated into successful proofs.
+Paths below are the original paths at each historical commit; they are not current navigation links. The table lists the non-proven out-of-scope/forbidden commits in the bounded 0191/0197 investigations. Own in-scope implementation commits are not relabeled foreign. The older 0120/0133 ranges are explicitly over the proof bound and are not silently truncated into successful proofs.
 
 | Task | Exact commit SHA | Blocking paths |
 | --- | --- | --- |
@@ -35,15 +35,15 @@ The table lists the non-proven out-of-scope/forbidden commits in the bounded 019
 | 0191 | `398d925ed360534a1bbd4337499571d360e49fdf` | `src/core/tasks/evidence.ts`, `src/core/tasks/gate.ts`, `src/core/tasks/index.ts`, `src/core/tasks/review.ts`, `src/core/tasks/task.test.ts` |
 | 0191 | `ac8454ea8c828bf5b5cb88343bfa5b99526e90c4` | `src/core/tasks/evidence.ts`, `src/core/tasks/index.ts`, `src/core/tasks/task.test.ts` |
 | 0191 | `7a659aa3e5ff852dfe9177e0afed6f3e01a3a1fe` | `src/core/tasks/index.ts`, `src/core/tasks/task.test.ts` |
-| 0191 | `08586eb65ace7f679cd57b6259b8d38e739be65e` | `.tasks/archive/0197-add-explicit-operator-approved-attribution-recovery-for-interrupted-tasks.md` |
+| 0191 | `08586eb65ace7f679cd57b6259b8d38e739be65e` | `.tasks/0197-add-explicit-operator-approved-attribution-recovery-for-interrupted-tasks.md` |
 | 0191 | `582e07e90f1e9ec5c278ff6d4112748ae8a2059f` | `src/core/tasks/review.ts`, `src/core/tasks/task.test.ts` |
 | 0191 | `bb2a4fc4b5b6dfeef1e4cb8b04417be9b228e8b7` | `src/core/tasks/index.ts`, `src/core/tasks/task.test.ts` |
 | 0191 | `30cd9a542485a266bdfa3867aaa041bffe24f7c1` | `src/core/tasks/index.ts` |
 | 0191 | `8fd48628925e8ae2fa602a78a641ca5d0fe4d0a2` | `src/core/tasks/index.ts`, `src/core/tasks/task.test.ts`, `src/core/tasks/workflow.ts` |
-| 0191 | `ecb576d24fb72c882fed28697b015552257daa1d` | `.tasks/archive/0197-add-explicit-operator-approved-attribution-recovery-for-interrupted-tasks.md` |
+| 0191 | `ecb576d24fb72c882fed28697b015552257daa1d` | `.tasks/0197-add-explicit-operator-approved-attribution-recovery-for-interrupted-tasks.md` |
 | 0191 | `e5ad1e4c149af9c0df06730b08a1eaad02487049` | `src/core/tasks/index.ts`, `src/core/tasks/task.test.ts` |
-| 0191 | `002360c2f14f8a3e10c8347f49b5ac7cf6f2dcaa` | `.tasks/archive/0197-add-explicit-operator-approved-attribution-recovery-for-interrupted-tasks.md` |
-| 0191 | `5836af541ccea9e29e6f9cb4ebe2caaf7b44f3fb` | `.tasks/archive/0198-document-safe-same-checkout-task-switching-in-generated-agent-instructions.md` |
+| 0191 | `002360c2f14f8a3e10c8347f49b5ac7cf6f2dcaa` | `.tasks/0197-add-explicit-operator-approved-attribution-recovery-for-interrupted-tasks.md` |
+| 0191 | `5836af541ccea9e29e6f9cb4ebe2caaf7b44f3fb` | `.tasks/0198-document-safe-same-checkout-task-switching-in-generated-agent-instructions.md` |
 | 0197 | `b209924cfe482fba9b7c4eee351b53a64cf497f5` | `src/core/skills/index.ts` |
 | 0197 | `af1d0cbf7d82076bb6b243104c969046ed6ee8bd` | `src/core/skills/index.ts` |
 | 0197 | `4194c1e1aff733a2f364b51d9be29bd4c616b311` | `src/core/skills/index.ts` |
@@ -54,7 +54,7 @@ The table lists the non-proven out-of-scope/forbidden commits in the bounded 019
 | 0197 | `5e5bad8737688fcef1d4a3eba5a1783f80559e57` | `src/core/skills/index.ts` |
 | 0197 | `4af239b24460d3cc088edb1d2532cf871b7ccede` | `src/core/skills/index.ts`, `src/core/skills/skills.test.ts` |
 | 0197 | `ecb576d24fb72c882fed28697b015552257daa1d` | `.tasks/0191-materialize-apk-skills-into-standards-based-project-skill-directories.md` |
-| 0197 | `5836af541ccea9e29e6f9cb4ebe2caaf7b44f3fb` | `.tasks/archive/0198-document-safe-same-checkout-task-switching-in-generated-agent-instructions.md` |
+| 0197 | `5836af541ccea9e29e6f9cb4ebe2caaf7b44f3fb` | `.tasks/0198-document-safe-same-checkout-task-switching-in-generated-agent-instructions.md` |
 
 Task 0193 temporarily expanded its allowed files/steps in `2732c31e04358eedca823ee2ca2d8cd1c5ba83e6` and allowed/context scope in `dbe5173bca448586367e2d12042ff48c90a35cb5` while implementing those paths. Its exact completion evidence cannot establish a stable material contract across that chain. Closeouts `b20b94257af9310a027eda7577bc82acbf0acedb` and `37de8dab786ac0716219ea5d7752004fa928ff87` changed docs/progress alongside task Markdown, so they are not task-file-only bookkeeping proofs.
 
