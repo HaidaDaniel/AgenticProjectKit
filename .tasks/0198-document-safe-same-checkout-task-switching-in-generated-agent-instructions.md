@@ -1,6 +1,6 @@
 # Task 0198 - Document safe same-checkout task switching in generated agent instructions
 
-State: doing
+State: done
 Owner: codex-main-20261007
 Mode: maintenance
 Lane: workflow
@@ -93,6 +93,5 @@ Add a short generated/default instruction that requires releasing the current do
 ## Notes
 
 - Pre-fix signal on Node 24.21.0: generated switching-rule regression failed because DEFAULT_AGENT_POLICY lacked release-before-claim/worktree rules. After updating the neutral source and canonical sync, all 34 renderer tests passed, including exact generated-file equivalence. The agents.md.hbs template remains the shared policy renderer; no duplicate rule source was added.
-
 - Keep the fix narrow. Reproduction is best-effort, not a forced completion gate.
 - Select runnable host-repository checks with --verification-json; template shell commands are examples. Prefer focused feedback and a non-overlapping final set; do not repeat a suite through test, coverage, quality, and release aggregates. Report checks must execute the relevant tests and produce the declared artifact in one host command. Preserve required domain evidence.
