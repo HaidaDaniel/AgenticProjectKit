@@ -1,7 +1,7 @@
 # Task 0215 - Measure real downstream workflows with released v0.5.0
 
-State: todo
-Owner: none
+State: done
+Owner: codex-performance-20261007
 Mode: discovery
 Lane: architecture
 Type: benchmark
