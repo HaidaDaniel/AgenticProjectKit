@@ -3052,7 +3052,10 @@ async function resolveTaskBaselineLineage(rootDirectory, authoritative, taskReco
             if (commit.parents.length === 2 && acceptedMergeCommits.has(commit.sha))
                 continue;
             if (!proofByCommit.has(commit.sha)) {
-                const file = commit.files[0] ?? "no changed path";
+                const nonBookkeepingFiles = commit.files.filter((path) => !isBookkeepingPath(path, authoritative));
+                if (nonBookkeepingFiles.length === 0)
+                    continue;
+                const file = nonBookkeepingFiles[0] ?? "no changed path";
                 return lineageFailure(`Intervening commit ${shortenSha(commit.sha)} (${file}) has no canonical completed-task provenance in the merge DAG; scope fails closed.`, "intervening", proven, mergeAttributions);
             }
         }
