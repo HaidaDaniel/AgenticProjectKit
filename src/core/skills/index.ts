@@ -263,13 +263,20 @@ async function writeMaterializedSkill(
     throw new Error(`Invalid packaged skill destination: ${destination}`);
   }
 
+  if (!descriptorChildPath(0, components[0]!) || noFollow === 0) {
+    // Node does not expose descriptor-relative traversal on Windows. The
+    // path-based fallback repeats the ancestor and destination checks after
+    // creating missing directories so Windows can use the same workflow.
+    await mkdir(dirname(destinationPath), { recursive: true });
+    await assertSafeDestinationAncestors(projectRoot, destinationPath);
+    await readExistingSkill(destinationPath);
+    await writeOpenFile(destinationPath, content, status, 0);
+    return;
+  }
+
   const rootHandle = await open(projectRoot, directoryFlags);
   const handles: FileHandle[] = [rootHandle];
   try {
-    if (!descriptorChildPath(rootHandle.fd, components[0]!) || noFollow === 0) {
-      throw new Error("This platform does not expose safe descriptor-relative skill materialization.");
-    }
-
     let parent = rootHandle;
     for (const component of components) {
       const child = await openDirectoryChild(parent, component, directoryFlags);
