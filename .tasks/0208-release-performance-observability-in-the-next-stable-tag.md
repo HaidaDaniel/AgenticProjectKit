@@ -1,6 +1,6 @@
 # Task 0208 - Release performance observability in the next stable tag
 
-State: doing
+State: done
 Owner: codex-performance-20261007
 Mode: production
 Lane: release
@@ -107,3 +107,4 @@ Release performance observability in the next stable tag
 ## Notes
 
 - Use the repository release discipline; never hardcode the target version or move an existing tag. Exact hosted CI and actual-tag cold install are mandatory.
+- block: External blocker: GitHub rejected three consecutive pushes of frozen candidate 719c0ef55134b49987248976b732739bee749327 to origin/main with remote Internal Server Error; remote main remains f493c3eafa2f43bc57d420cbaa7deb627f7a6465 and v0.4.9 is not published, so exact-HEAD hosted CI and immutable-tag/post-tag validation cannot proceed.
