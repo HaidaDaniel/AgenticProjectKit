@@ -55,7 +55,7 @@ Each row repeats its contract's lifecycle state so readers can compare the roadm
 | Documentation consistency and release gate | 0178 | done | [0178](../.tasks/0178-separate-release-candidate-version-from-latest-validated-release.md) |
 | Documentation consistency and release gate | 0179 | done | [0179](../.tasks/0179-require-externally-observed-ci-for-every-declared-ci-verification-check.md) |
 | Workflow decision correctness | 0181 | done | [0181](../.tasks/0181-prefer-current-operator-decisions-over-stale-candidate-history.md) |
-| Documentation consistency and release gate | 0173 | doing | [0173](../.tasks/0173-validate-the-next-public-readiness-release.md) |
+| Documentation consistency and release gate | 0173 | blocked | [0173](../.tasks/0173-validate-the-next-public-readiness-release.md) |
 
 Task contracts carry the exact prerequisite graph; use `apk task deps <task-id>` to inspect it. In particular, Task 0173 depends on completed Tasks 0178 and 0179, and its existing guide, CLI, contribution, consistency, and security prerequisites. Task 0181 completed the current-versus-stale operator decision correction after 0179; it remains a separate workflow correctness task, not an added release prerequisite. Task 0173 validates an exact frozen candidate only after its dependencies pass; it does not assign a version or date in advance. Its PRE-TAG state may have `packageVersion` ahead of `validatedReleaseVersion`; promotion follows successful post-tag validation in a separate change on `main`.
 
@@ -67,7 +67,7 @@ The external-runtime dogfood recorded by Task 0097 is deferred until the APK bac
 
 ## Blocked work
 
-Task 0173 now has its declared prerequisites, including Task 0170, completed and is validating the next exact public-readiness candidate. Independent development-candidate packaging, executable/skill assets, downstream adoption, and self-adoption checks passed earlier without publishing a release or claiming post-tag validation ([reassessment](delivery/backlog-reassessment-2026-10-07.md)). The new release semantics and hosted-CI policy corrections are completed separate prerequisites.
+Task 0173 has its declared prerequisites, including Task 0170, completed, but its required exact-candidate self-adoption check is blocked: applying the candidate creates Task 0196 while the frozen repository already contains archived Task 0196, and candidate lint therefore reports duplicate-task-id. Independent development-candidate packaging and downstream adoption checks passed earlier without publishing a release or claiming post-tag validation ([reassessment](delivery/backlog-reassessment-2026-10-07.md)).
 
 ## Excluded from current scope
 

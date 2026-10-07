@@ -1,7 +1,7 @@
 # Task 0173 - Validate the next public-readiness release
 
-State: doing
-Owner: codex-public-readiness-20261007
+State: blocked
+Owner: none
 Mode: production
 Lane: release
 Type: release
@@ -131,3 +131,4 @@ Validate the next public-readiness release
 - Tasks 0149 and 0150 are optional deferred product-identity work and are outside this release's dependency path. Any future naming/rebrand investigation requires a new explicit human decision before activation and remains a separate optional milestone.
 - block: Task 0170 is an explicit prerequisite and remains blocked until GitHub PVR is enabled and verified by an external non-maintainer. Independent technical/package/install checks are being performed separately; they cannot substitute for the security dependency or exact pre-tag/post-tag release chronology. No release/tag is being created while the prerequisite is unmet.
 - block: Operator selected GitHub PVR, but Task 0170 remains blocked until the official route is enabled and externally verified. Existing explicit dependency prevents release/tag completion. Technical package/bin/assets, downstream Go adoption, materialization/no-op and exact-candidate self-adoption passed at 040440f; development-package smoke does not claim publication or post-tag validation.
+- block: Required candidate self-adoption fails after apply: generated .tasks/0196-document-adopted-repository.md collides with existing archived Task 0196, so exact-candidate lint reports duplicate-task-id. Source correction and regression verification required before release validation can continue.
