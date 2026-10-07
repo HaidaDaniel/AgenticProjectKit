@@ -31,6 +31,7 @@ Replace the v0.4.9 synthetic-only baseline with a repeatable v2 harness that mea
 
 - scripts/benchmarks/perf-harness.mjs
 - src/cli/commands/perf.ts
+- src/cli/command-registry.ts
 - src/core/perf/index.ts
 - src/core/perf/index.test.ts
 - src/cli/cli.test.ts
