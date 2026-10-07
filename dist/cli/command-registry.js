@@ -87,7 +87,7 @@ export const PUBLIC_COMMANDS = [
         command: "claim",
         summary: "Claim a todo task for an agent.",
         handler: taskState("claim"),
-        variants: [{ usage: "claim <task-id> --owner <agent-id>", description: "claim a todo task and capture its task baseline." }],
+        variants: [{ usage: "claim <task-id> --owner <agent-id>", description: "claim a todo task and capture its task baseline; another doing/review task in the same checkout must be released first, or work must use a separate Git worktree." }],
     },
     {
         command: "context",
