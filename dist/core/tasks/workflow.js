@@ -3,7 +3,7 @@ import { dirname, join, relative } from "node:path";
 import { appendRunLog, durationSinceLastClaim, normalizeReasonText, REASON_STORAGE_LIMIT, requireAgent, } from "../agents/index.js";
 import { appendTaskEvidence } from "./evidence.js";
 import { captureTaskCompletionCandidate, evaluateTaskCompletionGate, TaskCompletionGateError, } from "./gate.js";
-import { findTaskFile, ensureTaskBaseline, loadTaskFile, recordTaskHandoff, startTaskVerificationEpoch, writeTaskFile, } from "./index.js";
+import { allTaskFiles, findTaskFile, ensureTaskBaseline, loadTaskFile, recordTaskHandoff, startTaskVerificationEpoch, taskContractHash, writeTaskFile, } from "./index.js";
 import { withLocalMutationLock } from "./lock.js";
 async function withTaskLock(rootDirectory, taskDirectory, command, taskId, run) {
     const lockPath = join(rootDirectory, taskDirectory, ".apk.lock");
@@ -33,18 +33,30 @@ function appendReason(task, event, reason) {
         notes: [...task.notes, `${event}: ${normalizeReasonText(reason, REASON_STORAGE_LIMIT)}`],
     };
 }
+async function requireNoOtherMutableTask(rootDirectory, taskDirectory, taskId) {
+    const active = (await allTaskFiles(rootDirectory, taskDirectory))
+        .filter(({ task }) => task.id !== taskId && (task.state === "doing" || task.state === "review"))
+        .map(({ task }) => `${task.id} (${task.state})`);
+    if (active.length > 0) {
+        throw new Error(`Task ${taskId} cannot be claimed while another mutable task is active: ${active.join(", ")}. `
+            + "Release the current task first, or use a separate Git worktree for parallel work.");
+    }
+}
 async function transition(options, event, update) {
     return withTaskLock(options.rootDirectory, options.taskDirectory, event, options.taskId, async () => {
         const agent = await requireAgent(options.rootDirectory, options.owner);
         const taskPath = await findTaskFile(options.rootDirectory, options.taskId, options.taskDirectory);
         const { task } = await loadTaskFile(taskPath);
+        if (event === "claim") {
+            await requireNoOtherMutableTask(options.rootDirectory, options.taskDirectory, task.id);
+        }
         const nextTask = await update(task, agent);
         const taskRelativePath = relative(options.rootDirectory, taskPath).replace(/\\/g, "/");
         if (event === "claim") {
-            await ensureTaskBaseline(options.rootDirectory, task.id, agent.id, taskRelativePath);
+            await ensureTaskBaseline(options.rootDirectory, task.id, agent.id, taskRelativePath, taskContractHash(task));
         }
         if (event === "release" || event === "block") {
-            await recordTaskHandoff(options.rootDirectory, task.id, agent.id, taskRelativePath, event);
+            await recordTaskHandoff(options.rootDirectory, task.id, agent.id, taskRelativePath, event, taskContractHash(task));
         }
         const durationSec = event === "done"
             ? await durationSinceLastClaim(options.rootDirectory, task.id, agent.id)

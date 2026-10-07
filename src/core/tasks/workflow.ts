@@ -17,12 +17,14 @@ import {
   TaskCompletionGateError,
 } from "./gate.js";
 import {
+  allTaskFiles,
   findTaskFile,
   ensureTaskBaseline,
   loadTaskFile,
   recordTaskHandoff,
   startTaskVerificationEpoch,
   type TaskClaimBaseline,
+  taskContractHash,
   writeTaskFile,
   type ProjectTask,
   type TaskState,
@@ -80,6 +82,22 @@ function appendReason(task: ProjectTask, event: RunEventType, reason: string | u
   };
 }
 
+async function requireNoOtherMutableTask(
+  rootDirectory: string,
+  taskDirectory: string,
+  taskId: string,
+): Promise<void> {
+  const active = (await allTaskFiles(rootDirectory, taskDirectory))
+    .filter(({ task }) => task.id !== taskId && (task.state === "doing" || task.state === "review"))
+    .map(({ task }) => `${task.id} (${task.state})`);
+  if (active.length > 0) {
+    throw new Error(
+      `Task ${taskId} cannot be claimed while another mutable task is active: ${active.join(", ")}. `
+      + "Release the current task first, or use a separate Git worktree for parallel work.",
+    );
+  }
+}
+
 async function transition(
   options: TaskTransitionOptions,
   event: RunEventType,
@@ -93,6 +111,9 @@ async function transition(
       options.taskDirectory,
     );
     const { task } = await loadTaskFile(taskPath);
+    if (event === "claim") {
+      await requireNoOtherMutableTask(options.rootDirectory, options.taskDirectory, task.id);
+    }
     const nextTask = await update(task, agent);
     const taskRelativePath = relative(options.rootDirectory, taskPath).replace(/\\/g, "/");
     if (event === "claim") {
@@ -101,6 +122,7 @@ async function transition(
         task.id,
         agent.id,
         taskRelativePath,
+        taskContractHash(task),
       );
     }
     if (event === "release" || event === "block") {
@@ -110,6 +132,7 @@ async function transition(
         agent.id,
         taskRelativePath,
         event,
+        taskContractHash(task),
       );
     }
     const durationSec = event === "done"

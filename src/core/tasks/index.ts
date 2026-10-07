@@ -2680,6 +2680,7 @@ export async function captureTaskBaseline(
     changedFiles: readonly string[];
     dirtyFiles: Readonly<Record<string, string>>;
   },
+  taskContractHash?: string,
 ): Promise<TaskClaimBaseline> {
   let changedFiles: string[] = [];
   const diagnostics: string[] = [];
@@ -2731,7 +2732,9 @@ export async function captureTaskBaseline(
     ...(epoch?.epochReason ? { epochReason: epoch.epochReason } : {}),
     ...(epoch?.carriedForwardFiles ? { carriedForwardFiles: epoch.carriedForwardFiles } : {}),
     ...(epoch?.carriedForwardCandidateId ? { carriedForwardCandidateId: epoch.carriedForwardCandidateId } : {}),
-    ...(epoch?.taskContractHash ? { taskContractHash: epoch.taskContractHash } : {}),
+    ...(epoch?.taskContractHash ?? taskContractHash
+      ? { taskContractHash: epoch?.taskContractHash ?? taskContractHash }
+      : {}),
   };
   const path = join(rootDirectory, TASK_BASELINES_PATH);
   await mkdir(dirname(path), { recursive: true });
@@ -2750,10 +2753,20 @@ export async function ensureTaskBaseline(
   taskId: string,
   owner: string,
   taskFile: string,
+  taskContractHash?: string,
 ): Promise<TaskClaimBaseline> {
   const records = await readAllTaskBaselineRecords(rootDirectory);
   const epoch = latestTaskEpoch(records.filter((record) => record.taskId === taskId));
-  return captureTaskBaseline(rootDirectory, taskId, owner, taskFile, "claim", epoch ?? undefined);
+  return captureTaskBaseline(
+    rootDirectory,
+    taskId,
+    owner,
+    taskFile,
+    "claim",
+    epoch ?? (taskContractHash ? { taskContractHash } : undefined),
+    undefined,
+    taskContractHash,
+  );
 }
 
 /** Record a release/block handoff snapshot used to detect intervening work. */
@@ -2763,10 +2776,20 @@ export async function recordTaskHandoff(
   owner: string,
   taskFile: string,
   phase: "release" | "block",
+  taskContractHash?: string,
 ): Promise<TaskClaimBaseline> {
   const records = await readAllTaskBaselineRecords(rootDirectory);
   const epoch = latestTaskEpoch(records.filter((record) => record.taskId === taskId));
-  return captureTaskBaseline(rootDirectory, taskId, owner, taskFile, phase, epoch ?? undefined);
+  return captureTaskBaseline(
+    rootDirectory,
+    taskId,
+    owner,
+    taskFile,
+    phase,
+    epoch ?? (taskContractHash ? { taskContractHash } : undefined),
+    undefined,
+    taskContractHash,
+  );
 }
 
 function shortenSha(sha: string | undefined): string {
@@ -3301,6 +3324,10 @@ function comparableTaskContract(task: ProjectTask): string {
   return renderTaskMarkdown({ ...task, state: "doing", owner: "none", notes: [] });
 }
 
+export function taskContractHash(task: ProjectTask): string {
+  return hashCandidatePart(comparableTaskContract(task));
+}
+
 async function gitFileFingerprint(
   rootDirectory: string,
   revision: string,
@@ -3517,9 +3544,9 @@ function walkSingleParentTaskChain(
 
 /**
  * The chain contract is stable when the task file's normalized contract is
- * identical from its anchor through the chain head and to the current task
- * file. The anchor is the baseline when the file exists there, otherwise the
- * first chain commit that introduces the file (first-commit task files).
+ * identical from its anchor through every chain commit and to the current task
+ * file. When the task file is absent at the baseline, the first chain commit
+ * must introduce it; a later introduction cannot prove the earlier commit.
  */
 async function taskChainContractStable(
   rootDirectory: string,
@@ -3541,21 +3568,15 @@ async function taskChainContractStable(
   if (baseContract !== "missing") {
     anchor = baseContract;
   } else {
-    let found: string | undefined;
-    for (const node of chain) {
-      const contract = await comparableAt(node.sha);
-      if (contract !== "missing") {
-        found = contract;
-        break;
-      }
-    }
-    if (!found) return false;
-    anchor = found;
+    const first = chain[0];
+    if (!first) return false;
+    anchor = await comparableAt(first.sha);
+    if (anchor === "missing") return false;
   }
-  const head = chain[chain.length - 1];
-  if (!head) return false;
-  const headContract = await comparableAt(head.sha);
-  return headContract === anchor && anchor === comparableTaskContract(currentTask);
+  for (const node of chain) {
+    if (await comparableAt(node.sha) !== anchor) return false;
+  }
+  return anchor === comparableTaskContract(currentTask);
 }
 
 async function resolveCompletionBookkeepingCommit(
@@ -3609,6 +3630,47 @@ function snapshotDirtyDifference(
   for (const path of [...new Set([...Object.keys(beforeFiles), ...Object.keys(afterFiles)])].sort()) {
     if (beforeFiles[path] !== afterFiles[path]) return path;
   }
+  if (before.taskContractHash && after.taskContractHash) {
+    if (before.taskContractHash !== after.taskContractHash) return before.taskFile;
+  } else if (before.dirtyFiles[before.taskFile] !== after.dirtyFiles[after.taskFile]) {
+    // Legacy baselines did not persist a material-contract hash. A changed
+    // task-file fingerprint cannot be classified as narrative lifecycle
+    // bookkeeping without the missing contract snapshot.
+    return before.taskFile;
+  }
+  return undefined;
+}
+
+async function materialContractChangeInInterval(
+  rootDirectory: string,
+  before: TaskClaimBaseline,
+  commits: readonly GitCommitNode[],
+): Promise<string | undefined> {
+  let anchor = before.taskContractHash;
+  if (!anchor && before.headSha) {
+    try {
+      const historical = parseTaskMarkdown(await gitOutput(
+        rootDirectory,
+        ["show", `${before.headSha}:${before.taskFile}`],
+      ));
+      anchor = taskContractHash(historical);
+    } catch {
+      return before.taskFile;
+    }
+  }
+  if (!anchor) return before.taskFile;
+  for (const commit of commits) {
+    if (!commit.files.includes(before.taskFile)) continue;
+    try {
+      const historical = parseTaskMarkdown(await gitOutput(
+        rootDirectory,
+        ["show", `${commit.sha}:${before.taskFile}`],
+      ));
+      if (taskContractHash(historical) !== anchor) return commit.sha;
+    } catch {
+      return commit.sha;
+    }
+  }
   return undefined;
 }
 
@@ -3648,6 +3710,52 @@ async function resolveTaskBaselineLineage(
   }
 
   const commitBySha = new Map(dagCommits.map((commit) => [commit.sha, commit]));
+
+  const activeTaskBaselines = taskFiles
+    .filter(({ task }) => task.id !== authoritative.taskId && (task.state === "doing" || task.state === "review"))
+    .flatMap(({ task }) => baselineRecords
+      .filter((record) => (
+        record.taskId === task.id
+        && record.repository === "git"
+        && record.headSha
+        && ((record.phase ?? "claim") === "claim" || record.phase === "epoch")
+      ))
+      .map((baseline) => ({ task, baseline })));
+  const activeCompatibilityCache = new Map<string, Promise<ProjectTask | undefined>>();
+  const activeTaskCompatibleWith = (commit: GitCommitNode): Promise<ProjectTask | undefined> => {
+    const existing = activeCompatibilityCache.get(commit.sha);
+    if (existing) return existing;
+    const operation = (async () => {
+      for (const { task, baseline } of activeTaskBaselines) {
+        let descendant = false;
+        try {
+          await execFileAsync("git", ["merge-base", "--is-ancestor", baseline.headSha!, commit.sha], {
+            cwd: rootDirectory,
+            windowsHide: true,
+          });
+          descendant = true;
+        } catch {
+          descendant = false;
+        }
+        if (!descendant) continue;
+        const scopeFiles: string[] = [];
+        for (const path of commit.files) {
+          if (isBookkeepingPath(path, baseline)) continue;
+          const originalFingerprint = baseline.dirtyFiles[path];
+          if (originalFingerprint && originalFingerprint === await gitFileFingerprint(rootDirectory, commit.sha, path)) {
+            continue;
+          }
+          scopeFiles.push(path);
+        }
+        if (scopeFiles.length === 0) continue;
+        const scope = verifyTaskFileScope(task, scopeFiles);
+        if (scope.outOfScopeFiles.length === 0 && scope.forbiddenTouchedFiles.length === 0) return task;
+      }
+      return undefined;
+    })();
+    activeCompatibilityCache.set(commit.sha, operation);
+    return operation;
+  };
 
   // A completed task whose work spans more than one commit is proven as a
   // whole bounded chain from its claim/epoch baseline to the commit its
@@ -3703,6 +3811,15 @@ async function resolveTaskBaselineLineage(
     const chain = walkSingleParentTaskChain(commitBySha, taskBaseline.headSha, chainHead);
     if (!chain) continue;
     if (!(await taskChainContractStable(rootDirectory, relativeTaskFile, taskBaseline.headSha, chain, task))) continue;
+
+    let chainOwnershipAmbiguous = false;
+    for (const node of chain) {
+      if (await activeTaskCompatibleWith(node)) {
+        chainOwnershipAmbiguous = true;
+        break;
+      }
+    }
+    if (chainOwnershipAmbiguous) continue;
 
     let chainScopeValid = true;
     for (const node of chain) {
@@ -3782,6 +3899,8 @@ async function resolveTaskBaselineLineage(
         (proof): proof is ResolvedTaskCommitProof => proof !== undefined,
       );
       if (new Set(proofs.map((proof) => proof.attribution.taskId)).size > 1) return undefined;
+      const commit = dagCommits.find((entry) => entry.sha === sha);
+      if (commit && await activeTaskCompatibleWith(commit)) return undefined;
       return proofs[0];
     })();
     proofAtCache.set(sha, operation);
@@ -3800,6 +3919,17 @@ async function resolveTaskBaselineLineage(
   }
 
   const proven = [...proofByCommit.values()].map((proof) => proof.attribution);
+  for (const commit of dagCommits) {
+    const activeTask = await activeTaskCompatibleWith(commit);
+    if (!activeTask) continue;
+    const nonBookkeepingFiles = commit.files.filter((path) => !isBookkeepingPath(path, authoritative));
+    if (nonBookkeepingFiles.length === 0) continue;
+    return lineageFailure(
+      `Commit ${shortenSha(commit.sha)} (${nonBookkeepingFiles[0]}) is compatible with active task ${activeTask.id} as well as another task; ownership is ambiguous and scope fails closed.`,
+      "intervening",
+      proven,
+    );
+  }
   const provenPathCount = proven.reduce((count, proof) => count + proof.files.length, 0);
   if (
     proven.length > MAX_TASK_ATTRIBUTION_OUTPUT_COMMITS
@@ -3968,8 +4098,23 @@ async function resolveTaskBaselineLineage(
     if (dirtyFile) {
       return lineageFailure(`Working-tree file ${dirtyFile} changed while the task was released; ownership is ambiguous and scope fails closed.`, "intervening", proven);
     }
+    const materialContractCommit = await materialContractChangeInInterval(rootDirectory, record, interval.commits);
+    if (materialContractCommit) {
+      return lineageFailure(
+        `Task contract changed in release/reclaim interval at ${shortenSha(materialContractCommit)}; task-file bookkeeping is not allowed to launder a material contract change.`,
+        "intervening",
+        proven,
+        mergeAttributions,
+      );
+    }
     for (const commit of interval.commits) {
       if (commit.parents.length === 2 && acceptedMergeCommits.has(commit.sha)) continue;
+      const taskDirectory = normalizeRepoPath(dirname(record.taskFile));
+      const taskOnlyLifecycle = commit.files.length > 0 && commit.files.every((path) => (
+        path.endsWith(".md")
+        && (taskDirectory === "." || path.startsWith(`${taskDirectory}/`))
+      ));
+      if (taskOnlyLifecycle) continue;
       if (!proofByCommit.has(commit.sha)) {
         const nonBookkeepingFiles = commit.files.filter((path) => !isBookkeepingPath(path, authoritative));
         if (nonBookkeepingFiles.length === 0) continue;
@@ -4458,6 +4603,51 @@ export async function validateTaskAttributionApproval(options: {
 
   const acceptedFiles = [...new Set((acceptedNodes.filter((commit): commit is GitCommitNode => commit !== undefined)
     .flatMap((commit) => commit.files.map(normalizeRepoPath))))].sort();
+  const approvedShaSet = new Set(acceptedCommits);
+  const approvedByFile = new Map<string, Set<string>>();
+  const unapprovedByFile = new Map<string, Set<string>>();
+  for (const commit of chain) {
+    const target = approvedShaSet.has(commit.sha) ? approvedByFile : unapprovedByFile;
+    for (const path of commit.files.map(normalizeRepoPath)) {
+      if (isDefaultBookkeepingPath(path, baseline?.taskFile ?? "")) continue;
+      const shas = target.get(path) ?? new Set<string>();
+      shas.add(commit.sha);
+      target.set(path, shas);
+    }
+  }
+  for (const [path, approved] of approvedByFile) {
+    if (unapprovedByFile.has(path)) {
+      diagnostics.push(
+        "Attribution approval cannot divide ownership of "
+        + path
+        + " between approved commit(s) "
+        + [...approved].map(shortenSha).join(", ")
+        + " and unapproved commit(s) "
+        + [...(unapprovedByFile.get(path) ?? [])].map(shortenSha).join(", ")
+        + ".",
+      );
+    }
+  }
+  for (const commit of chain) {
+    if (approvedShaSet.has(commit.sha)) continue;
+    const nonBookkeepingFiles = commit.files
+      .map(normalizeRepoPath)
+      .filter((path) => !isDefaultBookkeepingPath(path, baseline?.taskFile ?? ""));
+    const scope = verifyTaskFileScope(options.task, nonBookkeepingFiles);
+    if (scope.outOfScopeFiles.length > 0 || scope.forbiddenTouchedFiles.length > 0) {
+      const paths = [...new Set([
+        ...scope.outOfScopeFiles,
+        ...scope.forbiddenTouchedFiles,
+      ])].sort();
+      diagnostics.push(
+        "Unapproved commit "
+        + commit.sha
+        + " changes forbidden or out-of-scope paths: "
+        + paths.join(", ")
+        + ". Approve that exact commit or repair the history; approval of another commit cannot cover it.",
+      );
+    }
+  }
   const disputedFiles = [...new Set([
     ...options.outOfScopeFiles,
     ...options.forbiddenTouchedFiles,
