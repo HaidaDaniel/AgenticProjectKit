@@ -9,7 +9,7 @@ Scope: performance,measurement,benchmark,privacy,docs
 Risk: high
 Parallel: false
 Depends on: none
-Tags: performance,measurement,contract,privacy,benchmark,research
+Tags: performance,measurement,contract,privacy,research
 
 ## Goal
 
