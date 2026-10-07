@@ -1,6 +1,6 @@
 # APK performance self-dogfood baseline
 
-Generated: 2026-10-07T16:22:28.751Z
+Generated: 2026-10-07T16:23:35.787Z
 Environment: linux/x64, Node v24.21.0
 
 This bounded development baseline uses the released-in-tree profiler on a disposable initialized fixture and on AgenticProjectKit itself. It is evidence for attribution, not a universal performance claim and not an absolute release gate. Cold means the first command group after session start; warm repeats the same command group with the same semantics. The fixture and repository commands are LLM-free.
@@ -9,11 +9,11 @@ Coverage: LLM generation and idle/unobserved gaps are excluded; arbitrary comman
 
 | Workload | Observed wall | APK self | Git | external checks | wrapped tools | APK % | theoretical max gain |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| fixture-cold | 0.086 s | 0.066 s | 0.020 s | 0.000 s | 0.000 s | 76.4% | 76.4% |
-| fixture-warm | 0.217 s | 0.168 s | 0.049 s | 0.000 s | 0.000 s | 77.5% | 77.5% |
-| fixture-wrapped-tool | 0.064 s | 0.003 s | 0.000 s | 0.000 s | 0.061 s | 5.1% | 5.1% |
-| self-cold | 0.343 s | 0.336 s | 0.008 s | 0.000 s | 0.000 s | 97.7% | 97.7% |
-| self-warm | 1.040 s | 1.017 s | 0.023 s | 0.000 s | 0.000 s | 97.8% | 97.8% |
+| fixture-cold | 0.090 s | 0.072 s | 0.018 s | 0.000 s | 0.000 s | 80.0% | 80.0% |
+| fixture-warm | 0.202 s | 0.155 s | 0.047 s | 0.000 s | 0.000 s | 76.7% | 76.7% |
+| fixture-wrapped-tool | 0.060 s | 0.003 s | 0.000 s | 0.000 s | 0.056 s | 5.5% | 5.5% |
+| self-cold | 0.339 s | 0.332 s | 0.007 s | 0.000 s | 0.000 s | 97.8% | 97.8% |
+| self-warm | 1.048 s | 1.022 s | 0.026 s | 0.000 s | 0.000 s | 97.5% | 97.5% |
 
 ## Contract evidence
 
@@ -32,4 +32,3 @@ Each row is one profiler session. APK subprocess intervals are attributed exclus
 The fixture uses `apk init`, status/task listing/doctor commands, and explicit `apk perf exec --category test` for a short non-APK process. The self rows use read-only help/status/task-list/doctor/lint commands. No task lifecycle mutation or external agent session is inferred from this synthetic run.
 
 No Go speed claim is made from this fixture. The data is a self-dogfood baseline for instrumentation and attribution; Task 0209 must collect real downstream workflows before a runtime decision.
-

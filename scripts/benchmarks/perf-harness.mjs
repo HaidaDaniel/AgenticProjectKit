@@ -166,7 +166,6 @@ async function writeReport(path, payload) {
     "The fixture uses `apk init`, status/task listing/doctor commands, and explicit `apk perf exec --category test` for a short non-APK process. The self rows use read-only help/status/task-list/doctor/lint commands. No task lifecycle mutation or external agent session is inferred from this synthetic run.",
     "",
     "No Go speed claim is made from this fixture. The data is a self-dogfood baseline for instrumentation and attribution; Task 0209 must collect real downstream workflows before a runtime decision.",
-    "",
   );
   await writeFile(path, `${lines.join("\n")}\n`, "utf8");
 }
