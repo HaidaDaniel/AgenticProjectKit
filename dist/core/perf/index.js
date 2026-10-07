@@ -162,6 +162,7 @@ export async function runWithPerfInvocation(rootDirectory, commandKind, action, 
     }
     finally {
         const endNs = clock.now();
+        const memory = process.memoryUsage();
         activeInvocation = undefined;
         await safeAppendRecord(rootDirectory, {
             schemaVersion: PERF_SCHEMA_VERSION,
@@ -172,6 +173,10 @@ export async function runWithPerfInvocation(rootDirectory, commandKind, action, 
             interval: interval(invocation.startNs, endNs),
             durationMs: durationMs(invocation.startNs, endNs),
             spans: invocation.spans,
+            memory: {
+                rssBytes: memory.rss,
+                heapUsedBytes: memory.heapUsed,
+            },
         });
     }
 }
@@ -254,6 +259,9 @@ export async function runPerfExec(rootDirectory, category, command, args) {
         child.once("close", (code, signal) => resolve(typeof code === "number" ? code : signal ? 1 : 0));
     }), { normalizedIdentity: safeIdentity(command), wrapped: true, spanKind: "subprocess" });
 }
+function isPerfCategory(value) {
+    return ["apk-process", "apk-internal", "apk-bootstrap", "task-config", "filesystem", "git", "external-check", "external-other", "repo-tool"].includes(value);
+}
 async function readTraceRecords(rootDirectory, sessionId) {
     const text = await readOptional(runtimePath(rootDirectory, TRACE_FILE));
     if (!text)
@@ -270,9 +278,13 @@ async function readTraceRecords(rootDirectory, sessionId) {
             const record = value;
             const start = parseNs(record.interval && typeof record.interval === "object" ? record.interval.startNs : undefined);
             const end = parseNs(record.interval && typeof record.interval === "object" ? record.interval.endNs : undefined);
+            const spans = Array.isArray(record.spans) ? record.spans : [];
             if (record.schemaVersion !== PERF_SCHEMA_VERSION || record.recordType !== "invocation"
                 || typeof record.sessionId !== "string" || (sessionId && record.sessionId !== sessionId)
-                || !start || !end || end < start || !Array.isArray(record.spans))
+                || typeof record.invocationId !== "string" || typeof record.commandKind !== "string"
+                || typeof record.durationMs !== "number" || !Number.isFinite(record.durationMs)
+                || start === undefined || end === undefined || end < start || !Array.isArray(record.spans)
+                || spans.some((span) => !span || typeof span !== "object" || !isPerfCategory(span.category) || !validRange(span)))
                 throw new Error("invalid record");
             records.push(record);
         }
@@ -398,6 +410,8 @@ export function buildPerfReport(records, malformedRecordCount = 0, session) {
     let childUnion = 0n;
     let wrappedToolCount = 0;
     const invocationDurationsMs = [];
+    const rssSamplesBytes = [];
+    const heapUsedSamplesBytes = [];
     for (const record of records) {
         const rootBounds = validRange(record);
         if (!rootBounds)
@@ -405,6 +419,10 @@ export function buildPerfReport(records, malformedRecordCount = 0, session) {
         const root = { ...rootBounds, category: "apk-process", priority: 0, id: record.invocationId };
         roots.push(root);
         invocationDurationsMs.push(record.durationMs);
+        if (record.memory && Number.isFinite(record.memory.rssBytes) && Number.isFinite(record.memory.heapUsedBytes)) {
+            rssSamplesBytes.push(record.memory.rssBytes);
+            heapUsedSamplesBytes.push(record.memory.heapUsedBytes);
+        }
         const spans = [];
         for (const [index, span] of record.spans.entries()) {
             const bounds = validRange(span);
@@ -485,6 +503,8 @@ export function buildPerfReport(records, malformedRecordCount = 0, session) {
         categoryMs,
         invocationDurationsMs,
         invocationStats: stats(invocationDurationsMs),
+        rssSamplesBytes,
+        heapUsedSamplesBytes,
         scenarios,
         exclusions: { llmGeneration: "excluded", idleAndUnobservedGaps: "excluded" },
         warnings,
@@ -516,6 +536,8 @@ export function renderPerfReport(report) {
         `Child duration sum: ${(report.childDurationSumMs / 1000).toFixed(3)} s`,
         `Child wall-clock union: ${(report.childWallClockUnionMs / 1000).toFixed(3)} s`,
         `Invocation stats: ${statsText}`,
+        ...(report.rssSamplesBytes.length > 0 ? [`RSS sample (not peak): ${Math.round(report.rssSamplesBytes.at(-1))} bytes`] : []),
+        ...(report.heapUsedSamplesBytes.length > 0 ? [`Heap used sample: ${Math.round(report.heapUsedSamplesBytes.at(-1))} bytes`] : []),
         `Observed commands: ${report.observedCommandCount}`,
         "Unwrapped external commands: unknown",
         "LLM generation: excluded",

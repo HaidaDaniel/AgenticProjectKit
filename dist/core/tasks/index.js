@@ -1759,7 +1759,7 @@ async function gitPathsBounded(rootDirectory, args, maxPaths) {
                 finish();
             }
         });
-    }));
+    }), { spanKind: "subprocess" });
 }
 function normalizeGitPath(path) {
     if (path.includes("\\")) {

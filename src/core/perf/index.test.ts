@@ -54,6 +54,8 @@ test("session lifecycle records one invocation and preserves privacy", async () 
     assert.equal(report.sessionId, session.sessionId);
     assert.equal(report.gitMs, 100);
     assert.equal(report.externalCheckMs, 100);
+    assert.equal(report.rssSamplesBytes.length, 1);
+    assert.equal(report.heapUsedSamplesBytes.length, 1);
     assert.ok(!JSON.stringify(report).includes("agent-work secret"));
   });
 });
@@ -62,10 +64,23 @@ test("malformed trace records are ignored with an incomplete coverage warning", 
   await withTempDirectory(async (root) => {
     await startPerfSession(root, "malformed");
     const tracePath = await getPerfTracePath(root);
-    await writeFile(tracePath, "not-json\n{\"schemaVersion\":1}\n", "utf8");
+    await writeFile(tracePath, `${[
+      "not-json",
+      JSON.stringify({
+        schemaVersion: 1,
+        recordType: "invocation",
+        sessionId: "bad",
+        invocationId: "bad",
+        commandKind: "status",
+        interval: { startNs: "1", endNs: "2" },
+        durationMs: 0.001,
+        spans: [{ category: "external-check", interval: { startNs: "broken", endNs: "2" } }],
+      }),
+      "{\"schemaVersion\":1}",
+    ].join("\n")}\n`, "utf8");
     const report = await readPerfReport(root);
     assert.equal(report.invocationCount, 0);
-    assert.equal(report.malformedRecordCount, 2);
+    assert.equal(report.malformedRecordCount, 3);
     assert.equal(report.incompleteCoverage, true);
   });
 });

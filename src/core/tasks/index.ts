@@ -2457,7 +2457,7 @@ async function gitPathsBounded(
         finish();
       }
     });
-  }));
+  }), { spanKind: "subprocess" });
 }
 
 function normalizeGitPath(path: string): string {
