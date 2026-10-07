@@ -138,6 +138,23 @@ test("adoptRepository selects the next free task id when tasks already exist", a
   });
 });
 
+test("adoptRepository avoids task ids used by archived tasks", async () => {
+  await withTempRepository(async (directory) => {
+    await createExistingRepository(directory);
+    await mkdir(join(directory, ".tasks", "archive"), { recursive: true });
+    await writeFile(
+      join(directory, ".tasks", "archive", "0196-archived-task.md"),
+      "# Task 0196 - Archived Task\n",
+      "utf8",
+    );
+
+    const result = await adoptRepository(directory);
+
+    assert.ok(result.created.includes(".tasks/0197-document-adopted-repository.md"));
+    assert.ok(!result.created.includes(".tasks/0196-document-adopted-repository.md"));
+  });
+});
+
 test("adoptRepository skips existing files instead of overwriting them", async () => {
   await withTempRepository(async (directory) => {
     await createExistingRepository(directory);

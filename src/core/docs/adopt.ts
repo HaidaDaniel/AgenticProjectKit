@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import {
@@ -179,6 +179,25 @@ function renderAdoptionReport(scan: RepositoryScan, compatibility: Compatibility
 
 const ADOPTION_TASK_SLUG = "document-adopted-repository";
 
+async function listMarkdownFiles(directory: string): Promise<string[]> {
+  try {
+    return (await readdir(directory, { withFileTypes: true }))
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+      .map((entry) => entry.name)
+      .sort();
+  } catch (error: unknown) {
+    if (
+      error
+      && typeof error === "object"
+      && "code" in error
+      && error.code === "ENOENT"
+    ) {
+      return [];
+    }
+    throw error;
+  }
+}
+
 function nextAdoptionTaskId(taskFiles: readonly string[]): string {
   const maxId = taskFiles.reduce((max, file) => {
     const match = /(?:^|\/)(\d+)(?:-|\.md$)/.exec(file);
@@ -278,7 +297,11 @@ async function buildAdoptionPlan(
     );
   }
 
-  const adoptionTask = resolveAdoptionTask(scan.taskFiles);
+  const archivedTaskFiles = await listMarkdownFiles(join(rootDirectory, ".tasks", "archive"));
+  const adoptionTask = resolveAdoptionTask([
+    ...scan.taskFiles,
+    ...archivedTaskFiles.map((file) => `.tasks/archive/${file}`),
+  ]);
 
   const exportFiles = await renderAgentExportFiles({
     ...DEFAULT_AGENT_POLICY,

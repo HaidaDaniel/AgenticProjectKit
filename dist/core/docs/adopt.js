@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { CURRENT_CONFIG_SCHEMA_VERSION, DEFAULT_CONFIG, detectCompatibility, parseAgenticConfigJson, serializeAgenticConfig, } from "../config/index.js";
 import { CONFIG_PATH } from "../config/file.js";
@@ -118,6 +118,23 @@ function renderAdoptionReport(scan, compatibility) {
     ].join("\n");
 }
 const ADOPTION_TASK_SLUG = "document-adopted-repository";
+async function listMarkdownFiles(directory) {
+    try {
+        return (await readdir(directory, { withFileTypes: true }))
+            .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
+            .map((entry) => entry.name)
+            .sort();
+    }
+    catch (error) {
+        if (error
+            && typeof error === "object"
+            && "code" in error
+            && error.code === "ENOENT") {
+            return [];
+        }
+        throw error;
+    }
+}
 function nextAdoptionTaskId(taskFiles) {
     const maxId = taskFiles.reduce((max, file) => {
         const match = /(?:^|\/)(\d+)(?:-|\.md$)/.exec(file);
@@ -202,7 +219,11 @@ async function buildAdoptionPlan(rootDirectory, includeMigration) {
         && (compatibility.config.state === "invalid" || compatibility.config.state === "unsupported")) {
         throw new Error(compatibility.diagnostics[0] ?? `Cannot migrate ${CONFIG_PATH}: unsupported compatibility state.`);
     }
-    const adoptionTask = resolveAdoptionTask(scan.taskFiles);
+    const archivedTaskFiles = await listMarkdownFiles(join(rootDirectory, ".tasks", "archive"));
+    const adoptionTask = resolveAdoptionTask([
+        ...scan.taskFiles,
+        ...archivedTaskFiles.map((file) => `.tasks/archive/${file}`),
+    ]);
     const exportFiles = await renderAgentExportFiles({
         ...DEFAULT_AGENT_POLICY,
         projectName: scan.rootName,
