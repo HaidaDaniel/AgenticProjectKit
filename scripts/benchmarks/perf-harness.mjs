@@ -249,7 +249,7 @@ async function benchmark({ checkOnly = false, output = defaultOutput } = {}) {
 }
 
 function rowStats(value) {
-  return `${seconds(value.median)} (n=${value.repetitions}, p95 ${seconds(value.p95)})`;
+  return `min ${seconds(value.min)}, median ${seconds(value.median)}, p95 ${seconds(value.p95)}, max ${seconds(value.max)} (n=${value.repetitions})`;
 }
 
 function commandKind(value, kind) {

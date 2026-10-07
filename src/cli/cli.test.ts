@@ -139,6 +139,7 @@ test("CLI help lists implemented commands", async () => {
   assert.match(result.stdout, /apkit doctor/);
   assert.match(result.stdout, /apkit quality detect \[directory\] \[--json\]/);
   assert.match(result.stdout, /apkit lint \[--json\]/);
+  assert.match(result.stdout, /apkit perf exec --category <repo-tool\|test\|lint\|typecheck\|build\|git>/);
   assert.match(result.stdout, /apkit context <task-id> \[--level 1\|2\|3\] \[--budget <units>\]/);
   assert.match(result.stdout, /apkit prompt <agent> --task <task-id> \[--level 1\|2\|3\] \[--budget <units>\]/);
   assert.match(result.stdout, /apkit suggest-context/);
