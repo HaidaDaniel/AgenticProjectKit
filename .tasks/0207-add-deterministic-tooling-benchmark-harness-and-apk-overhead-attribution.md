@@ -1,7 +1,7 @@
 # Task 0207 - Add deterministic tooling benchmark harness and APK overhead attribution
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-performance-20261007
 Mode: production
 Lane: verification
 Type: benchmark
@@ -85,7 +85,7 @@ Add deterministic tooling benchmark harness and APK overhead attribution
 
 ## Verification
 
-- `{"id":"benchmark-harness","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node scripts/benchmarks/perf-harness.mjs --check"}`
+- `{"id":"benchmark-harness","type":"automated","required":true,"environment":"local","profile":"deterministic","evidenceType":"benchmark","command":"node scripts/benchmarks/perf-harness.mjs --check"}`
 - `{"id":"perf-regressions","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx --test src/core/perf/*.test.ts"}`
 - `{"id":"contract-lint","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"diff-check","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"git diff --check"}`
