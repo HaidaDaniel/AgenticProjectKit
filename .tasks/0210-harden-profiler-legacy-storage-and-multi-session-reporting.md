@@ -1,7 +1,7 @@
 # Task 0210 - Harden profiler legacy storage and multi-session reporting
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-performance-20261007
 Mode: product
 Lane: bugfix
 Type: bugfix
@@ -87,12 +87,12 @@ Keep opt-in profiler artifacts local and ignored in older downstream checkouts, 
 
 ## Verification
 
-- `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec apk lint --json"}`
-- `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm typecheck"}`
-- `{"id":"check-3","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm lint"}`
-- `{"id":"check-4","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm test:source"}`
-- `{"id":"check-5","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
-- `{"id":"build-current","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"rm -rf dist && pnpm build && test -z \"$(git status --porcelain --untracked-files=all --ignored=matching -- dist)\""}`
+- `{"id":"check-1","type":"automated","required":true,"environment":"local","profile":"deterministic","evidenceType":"automated-test","command":"pnpm exec apk lint --json"}`
+- `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"deterministic","evidenceType":"automated-test","command":"pnpm typecheck"}`
+- `{"id":"check-3","type":"automated","required":true,"environment":"local","profile":"deterministic","evidenceType":"automated-test","command":"pnpm lint"}`
+- `{"id":"check-4","type":"automated","required":true,"environment":"local","profile":"deterministic","evidenceType":"automated-test","command":"pnpm test:source"}`
+- `{"id":"check-5","type":"automated","required":true,"environment":"local","profile":"deterministic","evidenceType":"automated-test","command":"git diff --check"}`
+- `{"id":"build-current","type":"automated","required":true,"environment":"local","profile":"deterministic","evidenceType":"automated-test","command":"rm -rf dist && pnpm build && test -z \"$(git status --porcelain --untracked-files=all --ignored=matching -- dist)\""}`
 
 ## Documentation updates
 
