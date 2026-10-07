@@ -111,6 +111,7 @@ Validate the next public-readiness release
 - `{"id":"check-3","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm test"}`
 - `{"id":"check-4","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm test:coverage","artifact":"coverage/coverage-summary.json"}`
 - `{"id":"check-5","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build"}`
+- `{"id":"build-current","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"rm -rf dist && pnpm build && test -z \"$(git status --porcelain --untracked-files=all --ignored=matching -- dist)\""}`
 - `{"id":"check-6","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm release:check"}`
 - `{"id":"check-7","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"node dist/cli/index.js lint --json"}`
 - `{"id":"check-8","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"node dist/cli/index.js sync"}`
