@@ -32,6 +32,10 @@ Document the v0.4.9 measurement limitations without rewriting its immutable hist
 - docs/research/apk-performance-v050-corrective-plan.md
 - docs/research/apk-performance-downstream-decision.md
 - docs/progress.md
+- .tasks/0212-implement-full-process-v2-apk-performance-attribution.md
+- .tasks/0213-strengthen-apk-tooling-attribution-benchmark-harness.md
+- .tasks/0214-release-corrected-performance-observability-as-v050.md
+- .tasks/0215-measure-real-downstream-workflows-with-released-v050.md
 
 ## Files forbidden to edit
 
