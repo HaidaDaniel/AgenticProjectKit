@@ -149,6 +149,16 @@ async function writeReport(path, payload) {
   }
   lines.push(
     "",
+    "## Contract evidence",
+    "",
+    "- **Baseline:** this report is the current AgenticProjectKit self-dogfood baseline produced by the committed `dist` CLI; raw JSONL traces remain local and ignored.",
+    "- **Comparability:** fixture cold, fixture warm, wrapped-tool, self cold, and self warm rows use the same schemaVersion 1 profiler, category mapping, exclusive attribution, and report formulas. Only root directory and repetition phase differ.",
+    "- **Fixture:** a disposable directory is initialized with `apk init`; its read-only status/task-list/doctor commands and one explicit wrapped test process are the controlled workload.",
+    "- **Metric:** observed tooling wall is the union of invocation intervals; APK self, Git, external checks, and wrapped tools are reported as exclusive categories. Child sum and child union are both retained.",
+    "- **Leakage control:** no LLM, prompts, responses, environment values, secrets, raw argv, stdout/stderr, or file contents enter the report; commands are fixed in this script and arbitrary unwrapped work remains unknown.",
+    "- **Holdout:** this synthetic fixture is not a holdout for real agent workflows. No product or Go decision is made from it; Task 0209 supplies the downstream holdout evidence.",
+    `- **Budget:** each check run uses one repetition; the committed baseline uses cold=1 and warm=${payload.repetitions.warm} with five bounded workloads and no absolute millisecond acceptance threshold.`,
+    "",
     "## Method and interpretation",
     "",
     "Each row is one profiler session. APK subprocess intervals are attributed exclusively, while `child duration sum` and `child wall-clock union` are retained separately so parallel work cannot be presented as wall time. The deterministic harness checks the invariant that union is no greater than duration sum; the profiler unit suite covers overlapping intervals directly.",
