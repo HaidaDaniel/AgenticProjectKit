@@ -1,6 +1,6 @@
 # Task 0206 - Implement opt-in APK performance tracing and reporting
 
-State: doing
+State: review
 Owner: codex-performance-20261007
 Mode: product
 Lane: implementation
