@@ -1,7 +1,7 @@
 # Task 0209 - Measure real downstream workflows and decide whether Go rewrite is justified
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-performance-20261007
 Mode: discovery
 Lane: architecture
 Type: benchmark
@@ -79,7 +79,7 @@ Measure real downstream workflows and decide whether Go rewrite is justified
 
 ## Verification
 
-- `{"id":"benchmark-report","type":"automated","required":true,"environment":"local","profile":"report","command":"test -f docs/research/apk-performance-downstream-decision.md"}`
+- `{"id":"benchmark-report","type":"automated","required":true,"environment":"local","profile":"report","evidenceType":"benchmark","command":"test -f docs/research/apk-performance-downstream-decision.md"}`
 - `{"id":"contract-lint","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"diff-check","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"git diff --check"}`
 

@@ -15,7 +15,9 @@ tests. Task 0207 is complete: its LLM-free disposable-fixture benchmark harness
 and AgenticProjectKit self-dogfood baseline separate child sum from wall-clock
 union. Task 0208 has passed release validation and published v0.4.9 with the
 profiler available from the installed package. Task 0209 is the next step: real
-downstream workflow measurement before any Go decision.
+downstream workflow measurement before any Go decision; its current report finds
+Go workflow speed dominated by external tests and records a legacy downstream
+ignore compatibility gap for follow-up.
 
 Task 0199 is complete: direct and chain foreign proofs share a fail-closed ownership predicate. Candidate `27d4c1a` passed canonical release checks, fresh independent review, and gate; lifecycle closeout is `2eef5d8`. Task 0198 is complete at `b44f904` (closeout `fa611ca`): neutral generated policy now requires release-before-claim in one checkout and separate Git worktrees for true parallel mutable work. Renderer equivalence and canonical static/build checks passed. Task 0170 is complete: the operator verified GitHub Private Vulnerability Reporting as an external non-maintainer, and the truthful `SECURITY.md` policy plus minimal README/docs navigation passed all four declared checks and the completion gate.
 
