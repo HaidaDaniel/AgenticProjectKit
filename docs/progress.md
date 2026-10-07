@@ -8,7 +8,9 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0199 is implementing a shared fail-closed ownership predicate for direct and chain foreign commit proofs. The pre-fix direct-child fixture incorrectly excluded a shared commit after legacy release evidence lost its Git boundary; the chain fixture already rejected attribution.
+Task 0199 is complete: direct and chain foreign proofs share a fail-closed ownership predicate. Candidate `27d4c1a` passed canonical release checks, fresh independent review, and gate; lifecycle closeout is `2eef5d8`. Task 0198 is complete at `b44f904` (closeout `fa611ca`): neutral generated policy now requires release-before-claim in one checkout and separate Git worktrees for true parallel mutable work. Renderer equivalence and canonical static/build checks passed.
+
+Task 0201 is correcting a separately reproduced archive/provenance defect before the final archive pass: a canonical byte-identical task move previously erased direct and chain ownership proof by changing the task path. Eight archive fixtures cover unchanged moves, changed contracts, mutation/restore, and invalid copies; existing lifecycle/ownership counterexamples remain green. Task 0200 was canceled before implementation so the audit can resume from a fresh contract after this prerequisite correction.
 
 Task 0197 is blocked on historical provenance: its corrective attribution, release/reclaim, exact-commit approval, and same-checkout claim-guard implementation is committed and locally verified, but the canonical gate still sees pre-existing Task 0191 history outside its scope. No attribution approval was used to bypass that blocker.
 

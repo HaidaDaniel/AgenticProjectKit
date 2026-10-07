@@ -3751,6 +3751,63 @@ async function materialContractChangeInInterval(
   return undefined;
 }
 
+/**
+ * Completed contracts may move to the canonical archive without changing their
+ * historical claim path. Resolve only a single, committed, byte-identical move
+ * inside the already bounded DAG; archive commits still need their own proof.
+ */
+async function taskFilesForHistoricalProof(
+  rootDirectory: string,
+  taskFiles: readonly ProjectTaskFile[],
+  baselineRecords: readonly TaskClaimBaseline[],
+  commits: readonly GitCommitNode[],
+  currentHead: string,
+): Promise<ProjectTaskFile[]> {
+  const resolved: ProjectTaskFile[] = [];
+  for (const taskFile of taskFiles) {
+    resolved.push(taskFile);
+    if (taskFile.task.state !== "done") continue;
+    const currentPath = normalizeRepoPath(relative(rootDirectory, taskFile.path));
+    const historicalPaths = [...new Set(baselineRecords
+      .filter((record) => record.taskId === taskFile.task.id)
+      .map((record) => record.taskFile))];
+    if (historicalPaths.length !== 1) continue;
+    const historicalPath = historicalPaths[0];
+    if (currentPath === historicalPath) continue;
+    const fileName = historicalPath.split("/").at(-1)!;
+    const expectedArchive = normalizeRepoPath(join(dirname(historicalPath), "archive", fileName));
+    if (currentPath !== expectedArchive) continue;
+    const archiveChanges = commits.filter((commit) => commit.files.includes(currentPath));
+    if (archiveChanges.length !== 1) continue;
+    const move = archiveChanges[0];
+    if (move.parents.length !== 1 || !move.files.includes(historicalPath)) continue;
+    try {
+      const parent = move.parents[0];
+      const before = await gitFileFingerprint(rootDirectory, parent, historicalPath);
+      if (before === "missing" || before === "unreadable") continue;
+      if (await gitFileFingerprint(rootDirectory, parent, currentPath) !== "missing") continue;
+      if (await gitFileFingerprint(rootDirectory, move.sha, historicalPath) !== "missing") continue;
+      if (await gitFileFingerprint(rootDirectory, currentHead, historicalPath) !== "missing") continue;
+      if (commits.some((commit) => (
+        commit.sha !== move.sha
+        && commit.files.includes(historicalPath)
+        && commits.indexOf(commit) > commits.indexOf(move)
+      ))) continue;
+      if (await gitFileFingerprint(rootDirectory, move.sha, currentPath) !== before) continue;
+      if (await gitFileFingerprint(rootDirectory, currentHead, currentPath) !== before) continue;
+      if (!(await lstat(taskFile.path)).isFile()) continue;
+      if (createHash("sha256").update(await readFile(taskFile.path)).digest("hex") !== before) continue;
+      const terminal = parseTaskMarkdown(await gitOutput(rootDirectory, ["show", `${parent}:${historicalPath}`]));
+      if (terminal.id !== taskFile.task.id || terminal.state !== "done" || terminal.owner !== taskFile.task.owner) continue;
+      resolved[resolved.length - 1] = { ...taskFile, path: join(rootDirectory, historicalPath) };
+    } catch {
+      // Missing, modified, unreadable, or noncanonical archive history is not
+      // evidence of the historical task identity.
+    }
+  }
+  return resolved;
+}
+
 async function resolveTaskBaselineLineage(
   rootDirectory: string,
   authoritative: TaskClaimBaseline,
@@ -3785,6 +3842,10 @@ async function resolveTaskBaselineLineage(
   } catch (error: unknown) {
     return lineageFailure(`Canonical task attribution evidence is unreadable (${error instanceof Error ? error.message : String(error)}).`, "unresolved");
   }
+
+  const historicalTaskFiles = await taskFilesForHistoricalProof(
+    rootDirectory, taskFiles, baselineRecords, dagCommits, currentHead,
+  );
 
   const commitBySha = new Map(dagCommits.map((commit) => [commit.sha, commit]));
 
@@ -3851,7 +3912,7 @@ async function resolveTaskBaselineLineage(
   // current scope, and the chain contract must be stable (a task file may be
   // introduced by the chain itself when it is absent at the baseline).
   const chainProofsByTask = new Map<string, ResolvedTaskCommitProof[]>();
-  for (const taskFile of taskFiles) {
+  for (const taskFile of historicalTaskFiles) {
     const task = taskFile.task;
     if (task.id === authoritative.taskId || task.state !== "done") continue;
     const relativeTaskFile = normalizeRepoPath(relative(rootDirectory, taskFile.path));
@@ -3959,7 +4020,7 @@ async function resolveTaskBaselineLineage(
       }
       return resolveTaskCandidateCommit(
         rootDirectory,
-        taskFiles,
+        historicalTaskFiles,
         baselineRecords,
         evidenceRecords,
         runEvents,

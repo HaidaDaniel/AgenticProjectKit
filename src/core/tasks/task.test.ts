@@ -3047,6 +3047,63 @@ test("a task baseline at another candidate HEAD can attribute its later bookkeep
   });
 });
 
+for (const commitCount of [1, 2]) {
+  for (const archiveCase of ["identical", "changed-at-move", "changed-and-restored", "copy-without-removal"]) {
+    test(`archived ${commitCount === 1 ? "direct" : "chain"} proof: ${archiveCase}`, async () => {
+      await withTempDirectory(async (directory) => {
+        await setupReclaimRepo(directory);
+        await writeFile(join(directory, ".gitignore"), ".agentic/\n", "utf8");
+        const git = async (...args: string[]) => execFileAsync("git", args, { cwd: directory });
+        await git("add", ".gitignore");
+        await git("commit", "--quiet", "-m", "ignore operational state");
+        await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+        const commits = commitCount === 1
+          ? await completeBoundedTaskB(directory)
+          : await completeTaskBChain(directory, { commitCount });
+        await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+        assert.ok((await readTaskBaseline(directory, "0007"))?.provenOtherTaskCommits?.some(({ sha }) => sha === commits.candidateSha));
+        const original = ".tasks/0008-bounded-task.md";
+        const archived = ".tasks/archive/0008-bounded-task.md";
+        const contents = await readFile(join(directory, original), "utf8");
+        if (archiveCase === "copy-without-removal") {
+          await mkdir(join(directory, ".tasks", "archive"), { recursive: true });
+          await writeFile(join(directory, archived), contents, "utf8");
+          // Keep one current task ID while modeling an invalid copy: replace
+          // the source with a different task, rather than a proper deletion.
+          const source = (await loadTaskFile(join(directory, original))).task;
+          await writeTaskFile(join(directory, original), { ...source, id: "0009", title: "Replacement" });
+        } else {
+          await archiveTask(directory, ".tasks", "0008");
+        }
+        if (archiveCase === "changed-at-move") {
+          await writeFile(join(directory, archived), contents.replace("Bounded Task B", "Changed Contract"), "utf8");
+        }
+        await git("add", original, archived);
+        await git("commit", "--quiet", "-m", "archive task");
+        if (archiveCase === "changed-and-restored") {
+          await writeFile(join(directory, archived), contents.replace("Bounded Task B", "Temporary Contract"), "utf8");
+          await git("add", archived);
+          await git("commit", "--quiet", "-m", "mutate archive");
+          await writeFile(join(directory, archived), contents, "utf8");
+          await git("add", archived);
+          await git("commit", "--quiet", "-m", "restore archive");
+        }
+        const baseline = await readTaskBaseline(directory, "0007");
+        const proven = baseline?.provenOtherTaskCommits ?? [];
+        assert.equal(proven.some(({ sha }) => sha === commits.candidateSha), archiveCase === "identical");
+        assert.equal(proven.some(({ sha }) => sha === commits.bookkeepingSha), archiveCase === "identical");
+        if (archiveCase === "identical" && "chainShas" in commits) {
+          assert.ok(commits.chainShas.every((sha) => proven.some((commit) => commit.sha === sha)));
+        }
+        // Archival itself needs its own task attribution; the move cannot be
+        // swallowed into the archived task's completion proof.
+        const archiveSha = (await git("rev-parse", "HEAD")).stdout.trim();
+        assert.ok(!proven.some(({ sha }) => sha === archiveSha));
+      });
+    });
+  }
+}
+
 test("completed multi-commit task chain is excluded from a stale baseline scope", async () => {
   await withTempDirectory(async (directory) => {
     await setupReclaimRepo(directory);
