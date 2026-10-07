@@ -2046,6 +2046,61 @@ export async function recordTaskHandoff(rootDirectory, taskId, owner, taskFile, 
 function shortenSha(sha) {
     return sha ? sha.slice(0, 12) : "none";
 }
+async function gitCommitIsAncestor(rootDirectory, ancestorSha, descendantSha) {
+    if (ancestorSha === descendantSha)
+        return true;
+    try {
+        await execFileAsync("git", ["merge-base", "--is-ancestor", ancestorSha, descendantSha], {
+            cwd: rootDirectory,
+            windowsHide: true,
+        });
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+/**
+ * Resolve whether a currently mutable task was active when a historical
+ * commit was made. A task can have an old claim baseline that is an ancestor
+ * of later foreign work while being explicitly released during that interval;
+ * the release boundary must therefore be checked before path compatibility.
+ */
+async function taskActivityAtCommit(rootDirectory, records, commitSha) {
+    const timeline = records.filter((record) => ((record.phase ?? "claim") === "claim"
+        || record.phase === "epoch"
+        || record.phase === "release"
+        || record.phase === "block"));
+    const latest = timeline.at(-1);
+    if (!latest || latest.phase === "release" || latest.phase === "block") {
+        return { status: "ambiguous" };
+    }
+    const starts = timeline.filter((record) => ((record.phase ?? "claim") === "claim" || record.phase === "epoch"));
+    if (starts.length === 0 || starts.some((record) => !record.headSha)) {
+        return { status: "ambiguous" };
+    }
+    for (const start of starts) {
+        if (start.headSha === commitSha)
+            continue;
+        if (!(await gitCommitIsAncestor(rootDirectory, start.headSha, commitSha)))
+            continue;
+        const startIndex = timeline.indexOf(start);
+        const boundary = timeline.slice(startIndex + 1).find((record) => (record.phase === "release" || record.phase === "block"));
+        if (!boundary)
+            return { status: "active", baseline: start };
+        if (!boundary.headSha)
+            return { status: "ambiguous" };
+        if (boundary.headSha === commitSha)
+            return { status: "active", baseline: start };
+        if (await gitCommitIsAncestor(rootDirectory, boundary.headSha, commitSha))
+            continue;
+        if (await gitCommitIsAncestor(rootDirectory, commitSha, boundary.headSha)) {
+            return { status: "active", baseline: start };
+        }
+        return { status: "ambiguous" };
+    }
+    return { status: "inactive" };
+}
 async function boundedGitRangeAncestorGraph(rootDirectory, fromSha, toSha, maxNodes = MAX_TASK_ATTRIBUTION_COMMITS, diagnosticLimit = maxNodes) {
     if (fromSha === toSha)
         return { nodes: new Map([[fromSha, []]]) };
@@ -2824,34 +2879,37 @@ async function resolveTaskBaselineLineage(rootDirectory, authoritative, taskReco
         return lineageFailure(`Canonical task attribution evidence is unreadable (${error instanceof Error ? error.message : String(error)}).`, "unresolved");
     }
     const commitBySha = new Map(dagCommits.map((commit) => [commit.sha, commit]));
-    const activeTaskBaselines = taskFiles
-        .filter(({ task }) => task.id !== authoritative.taskId && (task.state === "doing" || task.state === "review"))
-        .flatMap(({ task }) => baselineRecords
-        .filter((record) => (record.taskId === task.id
-        && record.repository === "git"
-        && record.headSha
-        && ((record.phase ?? "claim") === "claim" || record.phase === "epoch")))
-        .map((baseline) => ({ task, baseline })));
+    const activeTasks = taskFiles
+        .filter(({ task }) => task.state === "doing" || task.state === "review");
+    const activeTaskRecords = new Map(activeTasks.map(({ task }) => [
+        task.id,
+        baselineRecords.filter((record) => record.taskId === task.id),
+    ]));
     const activeCompatibilityCache = new Map();
-    const activeTaskCompatibleWith = (commit) => {
-        const existing = activeCompatibilityCache.get(commit.sha);
+    const activeTaskCompatibleWith = (commit, includeAuthoritativeTask = false) => {
+        const cacheKey = `${commit.sha}:${includeAuthoritativeTask ? "all" : "foreign"}`;
+        const existing = activeCompatibilityCache.get(cacheKey);
         if (existing)
             return existing;
         const operation = (async () => {
-            for (const { task, baseline } of activeTaskBaselines) {
-                let descendant = false;
-                try {
-                    await execFileAsync("git", ["merge-base", "--is-ancestor", baseline.headSha, commit.sha], {
-                        cwd: rootDirectory,
-                        windowsHide: true,
-                    });
-                    descendant = true;
-                }
-                catch {
-                    descendant = false;
-                }
-                if (!descendant)
+            for (const { task } of activeTasks) {
+                if (!includeAuthoritativeTask && task.id === authoritative.taskId)
                     continue;
+                const records = activeTaskRecords.get(task.id) ?? [];
+                const activity = await taskActivityAtCommit(rootDirectory, records, commit.sha);
+                if (activity.status === "ambiguous") {
+                    return {
+                        diagnostic: `Active task ${task.id} has ambiguous lifecycle evidence for commit ${shortenSha(commit.sha)}; ownership fails closed.`,
+                    };
+                }
+                if (activity.status === "inactive")
+                    continue;
+                const baseline = activity.baseline;
+                if (!baseline) {
+                    return {
+                        diagnostic: `Active task ${task.id} has no usable lifecycle baseline for commit ${shortenSha(commit.sha)}; ownership fails closed.`,
+                    };
+                }
                 const scopeFiles = [];
                 for (const path of commit.files) {
                     if (isBookkeepingPath(path, baseline))
@@ -2866,11 +2924,11 @@ async function resolveTaskBaselineLineage(rootDirectory, authoritative, taskReco
                     continue;
                 const scope = verifyTaskFileScope(task, scopeFiles);
                 if (scope.outOfScopeFiles.length === 0 && scope.forbiddenTouchedFiles.length === 0)
-                    return task;
+                    return { task };
             }
-            return undefined;
+            return {};
         })();
-        activeCompatibilityCache.set(commit.sha, operation);
+        activeCompatibilityCache.set(cacheKey, operation);
         return operation;
     };
     // A completed task whose work spans more than one commit is proven as a
@@ -2932,7 +2990,8 @@ async function resolveTaskBaselineLineage(rootDirectory, authoritative, taskReco
             continue;
         let chainOwnershipAmbiguous = false;
         for (const node of chain) {
-            if (await activeTaskCompatibleWith(node)) {
+            const compatibility = await activeTaskCompatibleWith(node, true);
+            if (compatibility.task || compatibility.diagnostic) {
                 chainOwnershipAmbiguous = true;
                 break;
             }
@@ -3013,7 +3072,7 @@ async function resolveTaskBaselineLineage(rootDirectory, authoritative, taskReco
             if (new Set(proofs.map((proof) => proof.attribution.taskId)).size > 1)
                 return undefined;
             const commit = dagCommits.find((entry) => entry.sha === sha);
-            if (commit && await activeTaskCompatibleWith(commit))
+            if (commit && (await activeTaskCompatibleWith(commit, true)).task)
                 return undefined;
             return proofs[0];
         })();
@@ -3033,7 +3092,11 @@ async function resolveTaskBaselineLineage(rootDirectory, authoritative, taskReco
     }
     const proven = [...proofByCommit.values()].map((proof) => proof.attribution);
     for (const commit of dagCommits) {
-        const activeTask = await activeTaskCompatibleWith(commit);
+        const compatibility = await activeTaskCompatibleWith(commit);
+        if (compatibility.diagnostic) {
+            return lineageFailure(compatibility.diagnostic, "intervening", proven);
+        }
+        const activeTask = compatibility.task;
         if (!activeTask)
             continue;
         const nonBookkeepingFiles = commit.files.filter((path) => !isBookkeepingPath(path, authoritative));

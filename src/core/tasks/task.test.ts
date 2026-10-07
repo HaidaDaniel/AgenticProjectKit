@@ -3451,6 +3451,128 @@ test("an active task with an overlapping scope makes a later task chain ambiguou
   });
 });
 
+test("completed task B cannot swallow an authoritative active task A commit", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    const taskBPath = join(directory, ".tasks", "0008-bounded-task.md");
+    const taskB = (await loadTaskFile(taskBPath)).task;
+    await writeTaskFile(taskBPath, {
+      ...taskB,
+      allowedFiles: [...taskB.allowedFiles, "src/core/tasks/**", ".tasks/0007-scoped-task.md"],
+    });
+    await execFileAsync("git", ["add", taskBPath], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "prepare overlapping task scope"], { cwd: directory });
+
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const taskBBaseline = await captureTaskBaseline(
+      directory,
+      "0008",
+      "agent-b",
+      ".tasks/0008-bounded-task.md",
+      "claim",
+    );
+    const sharedPath = join(directory, "src", "core", "tasks", "shared.ts");
+    await writeFile(sharedPath, "task A\n", "utf8");
+    await execFileAsync("git", ["add", "src/core/tasks/shared.ts"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "legacy task A work"], { cwd: directory });
+    const taskACommit = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: directory })).stdout.trim();
+
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const taskBState = await loadTaskFile(taskBPath);
+    await writeTaskFile(taskBPath, {
+      ...taskBState.task,
+      state: "doing",
+      owner: "agent-b",
+    });
+    await writeFile(join(directory, "docs", "task-b", "change.md"), "task B change\n", "utf8");
+    await execFileAsync("git", ["add", taskBPath, "docs/task-b/change.md"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "task B work"], { cwd: directory });
+    const taskBCandidate = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: directory })).stdout.trim();
+
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0008",
+      owner: "agent-b",
+      runCommand: async () => 0,
+    });
+    assert.equal(verification.passed, true, verification.diagnostics.join("; "));
+    await doneTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner: "agent-b" });
+    await execFileAsync("git", ["add", taskBPath], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "completion bookkeeping"], { cwd: directory });
+
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const baselineA = await readTaskBaseline(directory, "0007");
+    assert.equal(baselineA?.lineageStatus, "intervening");
+    assert.ok(!(baselineA?.provenOtherTaskCommits ?? []).some((commit) => (
+      commit.taskId === "0008"
+      && (commit.sha === taskACommit || commit.sha === taskBCandidate)
+    )));
+    assert.ok(
+      (baselineA?.lineageDiagnostic ?? "").match(/active task 0007|ambiguous|scope fails closed/i),
+      baselineA?.lineageDiagnostic,
+    );
+    assert.ok(taskBBaseline.baselineId.length > 0);
+  });
+});
+
+test("a released task is not a competing owner for a foreign commit after reclaim", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    const taskBPath = join(directory, ".tasks", "0008-bounded-task.md");
+    const taskB = (await loadTaskFile(taskBPath)).task;
+    await writeTaskFile(taskBPath, {
+      ...taskB,
+      allowedFiles: [...taskB.allowedFiles, "src/core/tasks/**"],
+    });
+    const taskCPath = join(directory, ".tasks", "0009-stale-task.md");
+    await writeTaskFile(taskCPath, {
+      ...TASK,
+      id: "0009",
+      title: "Stale Task C",
+      allowedFiles: ["docs/task-c/**", ".tasks/0007-scoped-task.md"],
+      forbiddenFiles: [],
+      verificationCommands: [],
+      verification: [
+        { id: "check", type: "automated", required: true, environment: "local", profile: "deterministic", command: "true" },
+      ],
+    });
+    await execFileAsync("git", ["add", taskBPath, taskCPath], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "prepare overlapping stale baseline"], { cwd: directory });
+
+    await captureTaskBaseline(directory, "0009", "agent-c", ".tasks/0009-stale-task.md", "claim");
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner: "agent-b" });
+
+    await writeFile(join(directory, "src", "core", "tasks", "shared.ts"), "task B\n", "utf8");
+    await execFileAsync("git", ["add", "src/core/tasks/shared.ts"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "task B shared work"], { cwd: directory });
+    const taskBCandidate = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: directory })).stdout.trim();
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0008",
+      owner: "agent-b",
+      runCommand: async () => 0,
+    });
+    assert.equal(verification.passed, true, verification.diagnostics.join("; "));
+    await doneTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner: "agent-b" });
+    await execFileAsync("git", ["add", taskBPath], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "task B completion bookkeeping"], { cwd: directory });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const baselineC = await readTaskBaseline(directory, "0009");
+    assert.equal(baselineC?.lineageStatus, "attributed", baselineC?.lineageDiagnostic);
+    assert.ok(baselineC?.provenOtherTaskCommits?.some((commit) => (
+      commit.sha === taskBCandidate && commit.taskId === "0008"
+    )));
+    assert.doesNotMatch(baselineC?.lineageDiagnostic ?? "", /active task 0007.*ambiguous/i);
+  });
+});
+
 test("overlapping completed task chains fail closed as ambiguous", async () => {
   await withTempDirectory(async (directory) => {
     await setupReclaimRepo(directory);
