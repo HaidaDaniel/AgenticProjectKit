@@ -64,6 +64,28 @@ Blank lines between peer items are separators and are discarded. One blank line 
 - Cleanup and recovery share a serialized recovery guard and recheck the caller's owner id before removal, so an old owner or competing recoverer cannot remove a successor lock. A responding local PID is `live` only when its observed process-start identity also matches.
 - Lock reads retry transient Windows `EPERM`/`EBUSY` contention four times with a bounded delay. Persistent unreadability still fails closed and is never projected as an absent lock.
 
+## Switching tasks in one checkout
+
+Before claiming another mutable task in the same checkout, release the current
+`doing`/`review` task first. Use a separate Git worktree for true parallel mutable
+tasks. The claim guard enforces this boundary; generated agent instructions carry
+the same rule from the neutral policy.
+
+A normal interrupt and return uses existing lifecycle commands:
+
+```bash
+pnpm exec apkit release A --owner <agent>
+pnpm exec apkit claim B --owner <agent>
+# Implement, commit, verify, and satisfy B's review/gate requirements.
+pnpm exec apkit done B --owner <agent>
+# Commit B's completion bookkeeping before returning to A.
+pnpm exec apkit claim A --owner <agent>
+```
+
+Release does not reset A's original baseline or waive scope attribution. Commit
+owned changes and preserve unrelated dirty work before switching; verification
+on reclaim still fails closed on ambiguous ownership or material contract changes.
+
 ## Automatic review orchestration
 
 When effective task policy requires review, a primary agent may automatically launch a separate read-only reviewer and continue without routine user confirmation. The reviewer uses a different registered agent identity and isolated review context; changing only the label on the implementation process is not independent review.

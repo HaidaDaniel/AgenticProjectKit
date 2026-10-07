@@ -121,6 +121,8 @@ export const DEFAULT_AGENT_POLICY = { projectName: "Agentic Project Kit",
     taskRules: [
         "Register agent before task work: pnpm exec apk agent register --id <id> --platform <platform> --model <model>.",
         "Claim tasks with registered owner: pnpm exec apk claim <task-id> --owner <agent-id>.",
+        "Before claiming another mutable task in the same checkout, release the current doing/review task first.",
+        "Use a separate Git worktree for true parallel mutable tasks.",
         "Tasks in `doing` and `review` states require a registered owner.",
         "Use pnpm exec apk release, pnpm exec apk block, pnpm exec apk review, pnpm exec apk done, pnpm exec apk cancel with --owner.",
         "Task state changes are protected by .tasks/.apk.lock.",

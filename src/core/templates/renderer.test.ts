@@ -175,6 +175,19 @@ test("canonical AGENTS.md carries the repo-local task workflow and worker contra
   assert.match(agents.content, /apk-worker-v1/);
 });
 
+test("generated policy requires release before same-checkout task switching", async () => {
+  const rules = DEFAULT_AGENT_POLICY.taskRules.join("\n");
+  assert.match(rules, /Before claiming another mutable task in the same checkout, release the current doing\/review task first/);
+  assert.match(rules, /Use a separate Git worktree for true parallel mutable tasks/);
+  const exports = await renderAgentExportFiles();
+  const agents = exports.find((file) => file.outputPath === "AGENTS.md");
+  assert.ok(agents);
+  assert.match(agents.content, /Before claiming another mutable task in the same checkout/);
+  assert.match(agents.content, /release the current doing\/review task first/);
+  assert.match(agents.content, /separate Git worktree for true parallel mutable tasks/);
+  assert.doesNotMatch(agents.content, /apk(?:it)? switch/);
+});
+
 test("canonical agent policy requires safe commit hygiene for successful tasks", async () => {
   const rules = DEFAULT_AGENT_POLICY.taskRules.join("\n");
 
