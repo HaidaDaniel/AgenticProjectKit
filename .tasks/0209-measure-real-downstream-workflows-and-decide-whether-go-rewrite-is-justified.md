@@ -1,6 +1,6 @@
 # Task 0209 - Measure real downstream workflows and decide whether Go rewrite is justified
 
-State: doing
+State: done
 Owner: codex-performance-20261007
 Mode: discovery
 Lane: architecture
