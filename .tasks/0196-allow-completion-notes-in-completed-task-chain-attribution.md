@@ -1,6 +1,6 @@
 # Task 0196 - Allow completion notes in completed task chain attribution
 
-State: doing
+State: done
 Owner: codex-recheck-20261007
 Mode: product
 Lane: workflow
