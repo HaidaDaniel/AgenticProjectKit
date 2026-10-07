@@ -2,7 +2,7 @@
 
 ## Current state
 
-Agentic Project Kit remains the current product identity. The latest validated, installable release is [v0.4.8](releases/v0.4.8.md); its exact tag, candidate, CI result, cold install, and downstream smoke are recorded in the [post-release validation record](delivery/workflow-v0.4.8-post-release.md).
+Agentic Project Kit remains the current product identity. The latest validated, installable release is [v0.4.9](releases/v0.4.9.md); its exact tag, candidate, CI result, cold install, and profiler smoke are recorded in the [post-release validation record](delivery/workflow-v0.4.9-post-release.md).
 
 Public readiness is the current milestone. Its workstreams and ordering are maintained in the [roadmap](roadmap.md#public-readiness-current-work), with task contracts as the source of lifecycle state.
 
@@ -13,8 +13,9 @@ primitives, central CLI/subprocess instrumentation, safe local JSONL storage,
 privacy-preserving records, concurrency-aware attribution, and deterministic
 tests. Task 0207 is complete: its LLM-free disposable-fixture benchmark harness
 and AgenticProjectKit self-dogfood baseline separate child sum from wall-clock
-union. Task 0208 is preparing the next free patch release, while the validated
-release remains v0.4.8 until post-tag validation.
+union. Task 0208 has passed release validation and published v0.4.9 with the
+profiler available from the installed package. Task 0209 is the next step: real
+downstream workflow measurement before any Go decision.
 
 Task 0199 is complete: direct and chain foreign proofs share a fail-closed ownership predicate. Candidate `27d4c1a` passed canonical release checks, fresh independent review, and gate; lifecycle closeout is `2eef5d8`. Task 0198 is complete at `b44f904` (closeout `fa611ca`): neutral generated policy now requires release-before-claim in one checkout and separate Git worktrees for true parallel mutable work. Renderer equivalence and canonical static/build checks passed. Task 0170 is complete: the operator verified GitHub Private Vulnerability Reporting as an external non-maintainer, and the truthful `SECURITY.md` policy plus minimal README/docs navigation passed all four declared checks and the completion gate.
 

@@ -12,7 +12,7 @@ APK currently supports:
 - auditing repository workflow readiness and detecting declared quality capabilities without running the adopted repository's commands;
 - managing task dependencies, ownership, risk, execution profiles, routing, assurance, candidate-bound verification and evidence, independent review, completion gates, provenance, semantic attention, and safe Git worktree lifecycle.
 
-The public CLI and lifecycle are documented in the [architecture](architecture.md), [task system](task-system.md), and [resource-aware execution guide](execution-profiles.md). The latest validated installable release is [v0.4.8](releases/v0.4.8.md). The separate [release validation record](delivery/workflow-v0.4.8-post-release.md) identifies the validated release's exact candidate and downstream checks.
+The public CLI and lifecycle are documented in the [architecture](architecture.md), [task system](task-system.md), and [resource-aware execution guide](execution-profiles.md). The latest validated installable release is [v0.4.9](releases/v0.4.9.md). The separate [release validation record](delivery/workflow-v0.4.9-post-release.md) identifies the validated release's exact candidate and profiler/downstream checks.
 
 ## Current non-goals
 

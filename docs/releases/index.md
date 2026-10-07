@@ -1,11 +1,11 @@
 # Release index
 
-<!-- APK_VALIDATED_RELEASE: v0.4.8 -->
+<!-- APK_VALIDATED_RELEASE: v0.4.9 -->
 
 The current package/candidate version is `0.4.9`.
-Its pre-tag note is [v0.4.9 candidate](v0.4.9.md).
-The latest validated tagged release is [v0.4.8](v0.4.8.md). Its annotated tag peels to
-candidate `c0d1e27b958f3543f4a8746b6a269dad275f400e`.
+Its release note is [v0.4.9](v0.4.9.md), and its separate [post-tag validation record](../delivery/workflow-v0.4.9-post-release.md) records the immutable tag and cold-install observations.
+The latest validated tagged release is [v0.4.9](v0.4.9.md). Its annotated tag peels to
+candidate `719c0ef55134b49987248976b732739bee749327`.
 
 This index lists tags and committed release documentation; the documentation consistency
 checker does not query GitHub, the network, or repository tags. Its validated-release
@@ -25,7 +25,7 @@ post-tag results.
 
 | Tag | Tagged source | Canonical detailed note or retained historical detail | Additional delivery/evidence record |
 | --- | --- | --- | --- |
-| `v0.4.9` | Candidate; tag pending validation | [v0.4.9 candidate note](v0.4.9.md) | Post-tag record will be added after publication |
+| `v0.4.9` | [source](https://github.com/HaidaDaniel/AgenticProjectKit/tree/v0.4.9) | [v0.4.9 release note](v0.4.9.md) | [post-tag validation](../delivery/workflow-v0.4.9-post-release.md) |
 | `v0.4.8` | [source](https://github.com/HaidaDaniel/AgenticProjectKit/tree/v0.4.8) | [v0.4.8 release note](v0.4.8.md) | [post-tag validation](../delivery/workflow-v0.4.8-post-release.md) |
 | `v0.4.7` | [source](https://github.com/HaidaDaniel/AgenticProjectKit/tree/v0.4.7) | [v0.4.7 release note](v0.4.7.md) | [post-tag self-dogfood](../delivery/workflow-v0.4.7-self-dogfood.md) |
 | `v0.4.6` | [source](https://github.com/HaidaDaniel/AgenticProjectKit/tree/v0.4.6) | [v0.4.6 release note](v0.4.6.md) | [post-tag self-dogfood](../delivery/workflow-v0.4.6-self-dogfood.md) |
