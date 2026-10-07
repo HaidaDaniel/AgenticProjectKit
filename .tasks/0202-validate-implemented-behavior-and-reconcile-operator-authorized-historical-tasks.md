@@ -1,6 +1,6 @@
 # Task 0202 - Validate implemented behavior and reconcile operator-authorized historical tasks
 
-State: doing
+State: done
 Owner: codex-main-20261007
 Mode: maintenance
 Lane: workflow
@@ -88,5 +88,4 @@ On a fresh baseline validate already-implemented behavior from operator-canceled
 
 - Keep audit static unless the task says otherwise.
 - Select runnable host-repository checks with --verification-json; template shell commands are examples. Prefer focused feedback and a non-overlapping final set; do not repeat a suite through test, coverage, quality, and release aggregates. Report checks must execute the relevant tests and produce the declared artifact in one host command. Preserve required domain evidence.
-
 - Focused validation passed: all 8 skill materialization tests and 18 lifecycle/attribution regressions; development-candidate packaging/downstream/self-adoption smoke passed at 040440f. Canonical archive moved 8 eligible contracts byte-identically; lint, dependency resolution, and docs consistency passed. Exact historical blockers, actual option-2 authorization, PVR decision, and temporal limits are recorded in docs/delivery/backlog-reassessment-2026-10-07.md.
