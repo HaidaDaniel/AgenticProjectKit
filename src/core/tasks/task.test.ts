@@ -98,6 +98,7 @@ import {
   renderDogfoodResult,
   startDogfoodSession,
   writeTaskFile,
+  type TaskClaimBaseline,
   type ProjectTaskFile,
   type ProjectTask,
   type LocalLockMetadata,
@@ -3517,6 +3518,65 @@ test("completed task B cannot swallow an authoritative active task A commit", as
     assert.ok(taskBBaseline.baselineId.length > 0);
   });
 });
+
+for (const commitCount of [1, 2]) {
+  test(`ambiguous legacy lifecycle rejects a ${commitCount === 1 ? "direct candidate" : "chain"} foreign proof`, async () => {
+    await withTempDirectory(async (directory) => {
+      await setupReclaimRepo(directory);
+      const taskBPath = join(directory, ".tasks", "0008-bounded-task.md");
+      const taskB = (await loadTaskFile(taskBPath)).task;
+      await writeTaskFile(taskBPath, {
+        ...taskB,
+        allowedFiles: [...taskB.allowedFiles, "src/core/tasks/**"],
+      });
+      await execFileAsync("git", ["add", taskBPath], { cwd: directory });
+      await execFileAsync("git", ["commit", "--quiet", "-m", "prepare shared scope"], { cwd: directory });
+      const baselineSha = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: directory })).stdout.trim();
+      await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+      const sharedFile = "src/core/tasks/shared.ts";
+      const commits = commitCount === 1
+        ? await completeBoundedTaskB(directory, { path: sharedFile })
+        : await completeTaskBChain(directory, {
+          commitCount,
+          beforeCommit: async (_root, index) => {
+            if (index === 0) {
+              await writeFile(join(directory, sharedFile), "shared work\n", "utf8");
+              await execFileAsync("git", ["add", sharedFile], { cwd: directory });
+            }
+          },
+        });
+      if (commitCount === 1) {
+        const parent = (await execFileAsync("git", ["rev-parse", `${commits.candidateSha}^`], { cwd: directory })).stdout.trim();
+        assert.equal(parent, baselineSha, "fixture must exercise the direct-child proof");
+      }
+      await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+      const valid = await readTaskBaseline(directory, "0007");
+      assert.ok(valid?.provenOtherTaskCommits?.some(({ sha }) => sha === commits.candidateSha));
+
+      // Model legacy interrupted evidence: the release exists but its Git
+      // boundary is missing. This is fixture corruption, not a valid workflow.
+      const records = (await readFile(join(directory, TASK_BASELINES_PATH), "utf8"))
+        .trim().split("\n").map((line) => JSON.parse(line) as TaskClaimBaseline);
+      const release = records.find((record) => record.taskId === "0007" && record.phase === "release");
+      assert.ok(release);
+      release.repository = "none";
+      delete release.headSha;
+      await writeFile(join(directory, TASK_BASELINES_PATH), `${records.map((record) => JSON.stringify(record)).join("\n")}\n`, "utf8");
+
+      const baselineA = await readTaskBaseline(directory, "0007");
+      assert.ok(!(baselineA?.provenOtherTaskCommits ?? []).some(({ sha }) => sha === commits.candidateSha));
+      assert.equal(baselineA?.lineageStatus, "intervening");
+      assert.match(baselineA?.lineageDiagnostic ?? "", /active task 0007.*ambiguous lifecycle.*ownership fails closed/i);
+      const baselineB = await readTaskBaseline(directory, "0008");
+      assert.ok(!(baselineB?.provenOtherTaskCommits ?? []).some(({ sha }) => sha === commits.candidateSha));
+      assert.match(baselineB?.lineageDiagnostic ?? "", /active task 0007.*ambiguous lifecycle/i);
+      const verification = await verifyScopedTask(directory);
+      assert.equal(verification.passed, false);
+      assert.ok(verification.changedFiles.includes(sharedFile));
+      assert.ok(!verification.attribution?.excludedFiles.includes(sharedFile));
+    });
+  });
+}
 
 test("a released task is not a competing owner for a foreign commit after reclaim", async () => {
   await withTempDirectory(async (directory) => {

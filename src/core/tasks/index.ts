@@ -3840,6 +3840,11 @@ async function resolveTaskBaselineLineage(
     return operation;
   };
 
+  const competingOwnershipUnresolved = async (commit: GitCommitNode): Promise<boolean> => {
+    const compatibility = await activeTaskCompatibleWith(commit, true);
+    return compatibility.task !== undefined || compatibility.diagnostic !== undefined;
+  };
+
   // A completed task whose work spans more than one commit is proven as a
   // whole bounded chain from its claim/epoch baseline to the commit its
   // completion record is bound to. Every chain commit must fit the task's
@@ -3897,8 +3902,7 @@ async function resolveTaskBaselineLineage(
 
     let chainOwnershipAmbiguous = false;
     for (const node of chain) {
-      const compatibility = await activeTaskCompatibleWith(node, true);
-      if (compatibility.task || compatibility.diagnostic) {
+      if (await competingOwnershipUnresolved(node)) {
         chainOwnershipAmbiguous = true;
         break;
       }
@@ -3984,7 +3988,7 @@ async function resolveTaskBaselineLineage(
       );
       if (new Set(proofs.map((proof) => proof.attribution.taskId)).size > 1) return undefined;
       const commit = dagCommits.find((entry) => entry.sha === sha);
-      if (commit && (await activeTaskCompatibleWith(commit, true)).task) return undefined;
+      if (commit && await competingOwnershipUnresolved(commit)) return undefined;
       return proofs[0];
     })();
     proofAtCache.set(sha, operation);
@@ -4004,10 +4008,11 @@ async function resolveTaskBaselineLineage(
 
   const proven = [...proofByCommit.values()].map((proof) => proof.attribution);
   for (const commit of dagCommits) {
-    const compatibility = await activeTaskCompatibleWith(commit);
-    if (compatibility.diagnostic) {
-      return lineageFailure(compatibility.diagnostic, "intervening", proven);
+    const ownership = await activeTaskCompatibleWith(commit, true);
+    if (ownership.diagnostic) {
+      return lineageFailure(ownership.diagnostic, "intervening", proven);
     }
+    const compatibility = await activeTaskCompatibleWith(commit);
     const activeTask = compatibility.task;
     if (!activeTask) continue;
     const nonBookkeepingFiles = commit.files.filter((path) => !isBookkeepingPath(path, authoritative));

@@ -8,6 +8,8 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
+Task 0199 is implementing a shared fail-closed ownership predicate for direct and chain foreign commit proofs. The pre-fix direct-child fixture incorrectly excluded a shared commit after legacy release evidence lost its Git boundary; the chain fixture already rejected attribution.
+
 Task 0197 is blocked on historical provenance: its corrective attribution, release/reclaim, exact-commit approval, and same-checkout claim-guard implementation is committed and locally verified, but the canonical gate still sees pre-existing Task 0191 history outside its scope. No attribution approval was used to bypass that blocker.
 
 Task 0196 is complete: completed-task chain attribution now ignores narrative completion Notes when comparing the material contract, while retaining fail-closed scope and contract checks. Its candidate passed all five canonical checks, independent review, and the completion gate.
