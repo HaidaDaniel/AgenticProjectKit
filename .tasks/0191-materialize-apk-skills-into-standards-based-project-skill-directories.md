@@ -1,6 +1,6 @@
 # Task 0191 - Materialize APK skills into standards-based project skill directories
 
-State: todo
+State: blocked
 Owner: none
 Mode: product
 Lane: tooling
@@ -161,3 +161,4 @@ Do not auto-install project skills during init/adopt. Materialization is an expl
 - Keep Hermes trust/user-global installation outside APK. This task only creates the repo-local standards-based file when explicitly requested.
 - block: Gate blocked on scope attribution, not on implementation: authoritative claim baseline 5d39fdf predates completed Tasks 0193/0194, whose 7 commits cannot be proven as other-task commits (0193 completion bound to dbe5173, a non-baseline child of a 4-commit chain; both 0193 and 0194 task files created inside their own first candidate commit, so parent-commit contract proof fails). Their 27 files (4 forbidden for 0191) are attributed to 0191 scope, so verify/gate fail closed before any check runs. 0191's own work 0415c97..02373d6 is fully in-scope and passed all 5 canonical checks plus a review round at candidate 02373d6. Contract now declares report/artifact evidence categories. Unblocking requires an attribution fix in src/core/tasks (separate task) or operator history intervention.
 - block: Recheck after Task 0196: Tasks 0194-0196 are now attributable, but Task 0193 still changes its material allowed/forbidden contract in the same commit as new source paths; chain attribution remains fail-closed. Requires a separately reviewed provenance repair or explicit operator history decision.
+- block: Canonical verify oq9gxe is blocked by historical provenance: strict 0193 contract-chain proof remains invalid, and unresolved 0197/task-system history is outside the 0191 scope. Implementation candidate is complete, but no gate or done transition is sound until that history receives a separately authorized provenance repair.

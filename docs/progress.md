@@ -8,7 +8,7 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0197 is in progress: APK is gaining an explicit operator-approved attribution boundary for urgent intervening commits. The approval names exact full commit SHAs and cannot replace deterministic verification, review, or current-candidate freshness.
+Task 0197 is blocked on historical provenance: its corrective attribution, release/reclaim, exact-commit approval, and same-checkout claim-guard implementation is committed and locally verified, but the canonical gate still sees pre-existing Task 0191 history outside its scope. No attribution approval was used to bypass that blocker.
 
 Task 0196 is complete: completed-task chain attribution now ignores narrative completion Notes when comparing the material contract, while retaining fail-closed scope and contract checks. Its candidate passed all five canonical checks, independent review, and the completion gate.
 
@@ -28,7 +28,7 @@ Repository maintenance is tracked by [Task 0180](../.tasks/0180-archive-complete
 
 ## Known blockers
 
-- Task 0191 is blocked on scope attribution, not on implementation: its authoritative claim baseline `5d39fdf` predates the completed Tasks 0193/0194, and the recheck now proves and excludes Tasks 0194-0196. Task 0193 still cannot be proven as an uninterrupted completed chain because it changed its material allowed/forbidden contract in the same commit as new source paths. Those historical paths, including forbidden paths for 0191, remain attributed to 0191 and verify/gate fail closed before any check runs. Its own work (`0415c97`..`02373d6`) is fully in-scope and passed all five canonical checks plus a review round at candidate `02373d6`. Resolving requires a separately reviewed provenance repair in `src/core/tasks` or explicit operator history intervention ([task](../.tasks/0191-materialize-apk-skills-into-standards-based-project-skill-directories.md)).
+- Task 0191 is blocked on scope attribution, not on the materialization implementation: its authoritative baseline still exposes the invalid historical Task 0193 chain and unresolved Task 0197/task-system history. The Windows fallback correction is committed in `ad8fe9a`, `5e5bad8`, and `4af239b`, with focused fallback regressions and a fresh native review pass. Canonical verify `oq9gxe` correctly stops before checks on the historical scope blocker. Resolving requires a separately reviewed provenance repair in `src/core/tasks` or explicit operator history intervention ([task](../.tasks/0191-materialize-apk-skills-into-standards-based-project-skill-directories.md)).
 - Tasks 0149 and 0150 remain deferred pending a new explicit human decision about reconsidering the product identity; they are not prerequisites for public readiness ([roadmap](roadmap.md#deep-backlog--deferred-product-identity)).
 - Task 0170 remains blocked until the operator confirms a usable private vulnerability-reporting route ([task](../.tasks/0170-publish-a-truthful-security-reporting-policy.md)).
 - Outside the current milestone, Task 0120 remains blocked on operator guidance for its stale claim baseline, and Task 0133 remains blocked in the task registry. The separately documented v0.4.4 release does not change Task 0133's lifecycle state ([Task 0120](../.tasks/0120-preserve-actionable-task-transition-reasons-and-truncate-only-presentation.md), [Task 0133](../.tasks/0133-release-v044-and-adopt-released-workflow-rules-in-apk-itself.md), [v0.4.4 release](releases/v0.4.4.md)).
