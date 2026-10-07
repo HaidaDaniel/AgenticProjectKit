@@ -166,7 +166,7 @@ test("installed-style CLI records an opt-in performance session and wrapped tool
     const report = await runCli(["perf", "report", "--json"], directory);
     assert.equal(report.exitCode, 0);
     const parsed = JSON.parse(report.stdout) as { schemaVersion: number; invocationCount: number; wrappedToolCount: number };
-    assert.equal(parsed.schemaVersion, 1);
+    assert.equal(parsed.schemaVersion, 2);
     assert.ok(parsed.invocationCount >= 2);
     assert.ok(parsed.wrappedToolCount >= 1);
     const trace = await readFile(join(directory, ".agentic/perf/trace.jsonl"), "utf8");

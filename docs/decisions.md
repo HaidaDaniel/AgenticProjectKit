@@ -1764,3 +1764,36 @@ benefits must be evaluated independently.
 
 The detailed schema, privacy boundary, category vocabulary, and benchmark
 methodology are maintained in [the performance measurement contract](research/apk-performance-measurement-contract.md).
+
+## ADR-0088 - v2 performance traces include a startup-aware rewrite boundary
+
+Status: accepted
+
+Date: 2026-10-07
+
+### Context
+
+The v0.4.9 profiler began timing after CLI modules had loaded. That is useful
+for orchestration attribution but systematically omits part of the runtime
+cost that a Node-to-Go rewrite could change. Its coarse external-check bucket
+also cannot support a verification-heavy rewrite analysis.
+
+### Decision
+
+The corrective profiler generation uses `schemaVersion: 2`. New records retain
+the instrumented invocation interval and add a reconstructed monotonic
+full-process interval. Reports expose startup residual, instrumented APK
+internal time, a disjoint rewrite-sensitive numerator, and command-kind
+attribution. Valid v1 records remain readable but never receive fabricated
+startup or rewrite-sensitive values; their missing metrics are explicitly
+unavailable. Parent-spawn measurements belong to the benchmark harness and
+are compared with, rather than conflated with, the Node-observed boundary.
+
+### Consequences
+
+The v2 report is more useful for runtime economics while preserving the honest
+limits of in-process observation. A full Go decision still requires the paired
+OFF/ON benchmark and released downstream evidence. Existing v0.4.9 tags and
+release notes remain immutable historical artifacts.
+
+Reference: [v2 measurement contract](research/apk-performance-measurement-contract-v2.md).

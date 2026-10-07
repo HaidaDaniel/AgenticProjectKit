@@ -11,6 +11,7 @@ import {
   getPerfStatus,
   getPerfTracePath,
   readPerfReport,
+  runPerfExec,
   runWithPerfInvocation,
   startPerfSession,
   stopPerfSession,
@@ -55,6 +56,8 @@ test("session lifecycle records one invocation and preserves privacy", async () 
     assert.equal((await getPerfStatus(root)).active, false);
     const report = await readPerfReport(root);
     assert.equal(report.invocationCount, 1);
+    assert.equal(report.schemaVersion, 2);
+    assert.equal(report.fullProcessAvailable, true);
     assert.equal(report.sessionId, session.sessionId);
     assert.equal(report.gitMs, 100);
     assert.equal(report.externalCheckMs, 100);
@@ -117,11 +120,12 @@ test("valid records from other sessions are excluded without malformed warnings"
 
 test("concurrent child intervals use union rather than duration sum", () => {
   const record: PerfInvocationRecord = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     recordType: "invocation",
     sessionId: "session",
     invocationId: "invocation",
     commandKind: "verify",
+    fullProcessInterval: { startNs: "0", endNs: "1000000000" },
     interval: { startNs: "0", endNs: "1000000000" },
     durationMs: 1000,
     spans: [
@@ -133,22 +137,60 @@ test("concurrent child intervals use union rather than duration sum", () => {
   assert.equal(report.childDurationSumMs, 1100);
   assert.equal(report.childWallClockUnionMs, 800);
   assert.equal(report.externalCheckMs, 800);
-  assert.equal(report.apkInternalMs, 200);
+  assert.equal(report.apkInternalInstrumentedMs, 200);
+  assert.equal(report.commandKindMs.test! + report.commandKindMs.lint! + report.commandKindMs["apk-internal"]!, 1000);
   assert.equal(report.observedToolingWallMs, 1000);
 });
 
 test("Amdahl scenarios remain finite and bounded", () => {
   const report = buildPerfReport([{
-    schemaVersion: 1,
+    schemaVersion: 2,
     recordType: "invocation",
     sessionId: "session",
     invocationId: "invocation",
     commandKind: "status",
-    interval: { startNs: "0", endNs: "1000000000" },
-    durationMs: 1000,
+    fullProcessInterval: { startNs: "0", endNs: "1000000000" },
+    interval: { startNs: "200000000", endNs: "1000000000" },
+    durationMs: 800,
     spans: [],
   }]);
   const infinite = report.scenarios.find((item) => item.factor === 0)!;
   assert.equal(infinite.improvementPercent, 100);
   assert.ok(report.scenarios.every((item) => Number.isFinite(item.speedup)));
+  assert.equal(report.apkStartupResidualMs, 200);
+  assert.equal(report.apkRewriteSensitiveMs, 1000);
+});
+
+test("v1 traces remain readable without fabricated startup or rewrite ceiling", () => {
+  const report = buildPerfReport([{
+    schemaVersion: 1,
+    recordType: "invocation",
+    sessionId: "legacy",
+    invocationId: "legacy-invocation",
+    commandKind: "status",
+    interval: { startNs: "0", endNs: "1000000000" },
+    durationMs: 1000,
+    spans: [],
+  }]);
+  assert.equal(report.schemaVersion, 2);
+  assert.deepEqual(report.traceSchemaVersions, [1]);
+  assert.equal(report.fullProcessAvailable, false);
+  assert.equal(report.apkFullProcessUnionMs, null);
+  assert.equal(report.apkStartupResidualMs, null);
+  assert.equal(report.apkRewriteSensitiveMs, null);
+  assert.deepEqual(report.scenarios, []);
+  assert.match(report.warnings.join("\n"), /schemaVersion 1/);
+});
+
+test("v2 wrapped commands retain safe command-kind attribution without raw argv", async () => {
+  await withTempDirectory(async (root) => {
+    await startPerfSession(root, "privacy");
+    await runWithPerfInvocation(root, "perf.exec", () => runPerfExec(root, "test", process.execPath, ["-e", "void 'SECRET_VALUE'"]));
+    await stopPerfSession(root);
+    const trace = await readFile(await getPerfTracePath(root), "utf8");
+    const report = await readPerfReport(root);
+    assert.ok(report.commandKindMs.test !== undefined);
+    assert.ok(!trace.includes("SECRET_VALUE"));
+    assert.ok(!JSON.stringify(report).includes("SECRET_VALUE"));
+  });
 });

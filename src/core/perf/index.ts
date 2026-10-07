@@ -4,7 +4,9 @@ import { randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
-export const PERF_SCHEMA_VERSION = 1 as const;
+export const PERF_SCHEMA_VERSION = 2 as const;
+export const LEGACY_PERF_SCHEMA_VERSION = 1 as const;
+type PerfTraceSchemaVersion = typeof LEGACY_PERF_SCHEMA_VERSION | typeof PERF_SCHEMA_VERSION;
 export const PERF_RUNTIME_DIRECTORY = ".agentic/perf";
 const ACTIVE_SESSION_FILE = "session.json";
 const LAST_SESSION_FILE = "last-session.json";
@@ -16,6 +18,7 @@ const MAX_RECORD_BYTES = 64 * 1024;
 export type PerfCategory =
   | "apk-process"
   | "apk-internal"
+  | "apk-startup"
   | "apk-bootstrap"
   | "task-config"
   | "filesystem"
@@ -35,7 +38,7 @@ export const monotonicClock: PerfClock = {
 };
 
 interface PerfSessionState {
-  schemaVersion: typeof PERF_SCHEMA_VERSION;
+  schemaVersion: PerfTraceSchemaVersion;
   sessionId: string;
   label: string;
   startedAt: string;
@@ -57,12 +60,14 @@ export interface PerfSpanRecord {
 }
 
 export interface PerfInvocationRecord {
-  schemaVersion: typeof PERF_SCHEMA_VERSION;
+  schemaVersion: PerfTraceSchemaVersion;
   recordType: "invocation";
   sessionId: string;
   invocationId: string;
   commandKind: string;
   interval: PerfInterval;
+  /** Present only in schema v2: reconstructed monotonic Node process lifetime. */
+  fullProcessInterval?: PerfInterval;
   durationMs: number;
   spans: PerfSpanRecord[];
   memory?: {
@@ -78,6 +83,7 @@ interface ActiveInvocation {
   startNs: bigint;
   spans: PerfSpanRecord[];
   clock: PerfClock;
+  fullProcessStartNs: bigint;
 }
 
 export interface PerfSubprocessMetadata {
@@ -104,6 +110,8 @@ export interface PerfAmdahlScenario {
 
 export interface PerfReport {
   schemaVersion: typeof PERF_SCHEMA_VERSION;
+  traceSchemaVersions: PerfTraceSchemaVersion[];
+  fullProcessAvailable: boolean;
   sessionId?: string;
   label?: string;
   invocationCount: number;
@@ -113,18 +121,23 @@ export interface PerfReport {
   malformedRecordCount: number;
   incompleteCoverage: boolean;
   observedToolingWallMs: number;
-  apkProcessTotalMs: number;
-  apkInvocationDurationSumMs: number;
-  apkInternalMs: number;
+  apkFullProcessUnionMs: number | null;
+  apkInstrumentedUnionMs: number;
+  apkStartupResidualMs: number | null;
+  apkInternalInstrumentedMs: number;
+  apkRewriteSensitiveMs: number | null;
   gitMs: number;
   externalCheckMs: number;
   wrappedRepoToolMs: number;
   otherObservedMs: number;
+  commandKindMs: Record<string, number>;
   childDurationSumMs: number;
   childWallClockUnionMs: number;
   categoryMs: Record<string, number>;
   invocationDurationsMs: number[];
   invocationStats: PerfStats;
+  fullProcessDurationsMs: number[];
+  fullProcessStats: PerfStats;
   rssSamplesBytes: number[];
   heapUsedSamplesBytes: number[];
   scenarios: PerfAmdahlScenario[];
@@ -143,6 +156,14 @@ export interface PerfStats {
 }
 
 let activeInvocation: ActiveInvocation | undefined;
+
+// Node does not expose a process-start hrtime directly. At module evaluation,
+// reconstruct the monotonic boundary from the current monotonic clock and the
+// monotonic process uptime. This is deliberately named reconstructed rather
+// than spawn-to-exit: the parent process remains the independent benchmark
+// boundary for exact process spawn timing.
+const RECONSTRUCTED_PROCESS_START_NS = process.hrtime.bigint()
+  - BigInt(Math.max(0, Math.floor(process.uptime() * 1_000_000_000)));
 
 const execFileAsync = promisify(execFile);
 const execAsync = promisify(exec);
@@ -180,7 +201,7 @@ function parseNs(value: unknown): bigint | undefined {
 function isPerfSessionState(value: unknown): value is PerfSessionState {
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
-  return record.schemaVersion === PERF_SCHEMA_VERSION
+  return (record.schemaVersion === LEGACY_PERF_SCHEMA_VERSION || record.schemaVersion === PERF_SCHEMA_VERSION)
     && typeof record.sessionId === "string"
     && typeof record.label === "string"
     && typeof record.startedAt === "string";
@@ -308,13 +329,17 @@ export async function runWithPerfInvocation<T>(
   if (activeInvocation) return action();
   const session = await readActiveSession(rootDirectory);
   if (!session) return action();
+  const invocationStartNs = clock.now();
   const invocation: ActiveInvocation = {
     session,
     invocationId: randomUUID(),
     commandKind,
-    startNs: clock.now(),
+    startNs: invocationStartNs,
     spans: [],
     clock,
+    fullProcessStartNs: RECONSTRUCTED_PROCESS_START_NS <= invocationStartNs
+      ? RECONSTRUCTED_PROCESS_START_NS
+      : invocationStartNs,
   };
   activeInvocation = invocation;
   try {
@@ -330,6 +355,7 @@ export async function runWithPerfInvocation<T>(
       invocationId: invocation.invocationId,
       commandKind,
       interval: interval(invocation.startNs, endNs),
+      fullProcessInterval: interval(invocation.fullProcessStartNs, endNs),
       durationMs: durationMs(invocation.startNs, endNs),
       spans: invocation.spans,
       memory: {
@@ -450,7 +476,7 @@ export async function runPerfExec(
 }
 
 function isPerfCategory(value: unknown): value is PerfCategory {
-  return ["apk-process", "apk-internal", "apk-bootstrap", "task-config", "filesystem", "git", "external-check", "external-other", "repo-tool"].includes(value as PerfCategory);
+  return ["apk-process", "apk-internal", "apk-startup", "apk-bootstrap", "task-config", "filesystem", "git", "external-check", "external-other", "repo-tool"].includes(value as PerfCategory);
 }
 
 async function readTraceRecords(rootDirectory: string, sessionId?: string): Promise<{ records: PerfInvocationRecord[]; malformed: number }> {
@@ -467,12 +493,17 @@ async function readTraceRecords(rootDirectory: string, sessionId?: string): Prom
       if (sessionId && typeof record.sessionId === "string" && record.sessionId !== sessionId) continue;
       const start = parseNs(record.interval && typeof record.interval === "object" ? record.interval.startNs : undefined);
       const end = parseNs(record.interval && typeof record.interval === "object" ? record.interval.endNs : undefined);
+      const fullStart = parseNs(record.fullProcessInterval && typeof record.fullProcessInterval === "object" ? record.fullProcessInterval.startNs : undefined);
+      const fullEnd = parseNs(record.fullProcessInterval && typeof record.fullProcessInterval === "object" ? record.fullProcessInterval.endNs : undefined);
       const spans = Array.isArray(record.spans) ? record.spans : [];
-      if (record.schemaVersion !== PERF_SCHEMA_VERSION || record.recordType !== "invocation"
+      if ((record.schemaVersion !== LEGACY_PERF_SCHEMA_VERSION && record.schemaVersion !== PERF_SCHEMA_VERSION) || record.recordType !== "invocation"
         || typeof record.sessionId !== "string"
         || typeof record.invocationId !== "string" || typeof record.commandKind !== "string"
         || typeof record.durationMs !== "number" || !Number.isFinite(record.durationMs)
-        || start === undefined || end === undefined || end < start || !Array.isArray(record.spans)
+        || start === undefined || end === undefined || end < start
+        || (record.schemaVersion === PERF_SCHEMA_VERSION
+          && (fullStart === undefined || fullEnd === undefined || fullEnd < fullStart || fullStart > start || fullEnd < end))
+        || !Array.isArray(record.spans)
         || spans.some((span) => !span || typeof span !== "object" || !isPerfCategory((span as PerfSpanRecord).category) || !validRange(span as PerfSpanRecord))) throw new Error("invalid record");
       records.push(record as PerfInvocationRecord);
     } catch {
@@ -486,6 +517,7 @@ interface Range {
   start: bigint;
   end: bigint;
   category: string;
+  commandKind: string;
   priority: number;
   id: string;
   spanKind?: "internal" | "subprocess";
@@ -539,13 +571,22 @@ function categoryPriority(category: string): number {
   if (category === "external-check") return 45;
   if (category === "external-other") return 40;
   if (category === "repo-tool") return 35;
+  if (category === "apk-startup") return 32;
   if (category === "apk-bootstrap") return 30;
   if (category === "task-config") return 25;
   if (category === "filesystem") return 20;
   return 10;
 }
 
-function exclusiveCategoryNs(ranges: readonly Range[]): Map<string, bigint> {
+function commandKindPriority(commandKind: string): number {
+  if (commandKind === "git") return 50;
+  if (["test", "lint", "typecheck", "coverage", "build", "package-manager"].includes(commandKind)) return 45;
+  if (commandKind === "repo-tool" || commandKind === "external-other") return 40;
+  if (commandKind === "apk-startup") return 32;
+  return 10;
+}
+
+function exclusiveRangeNs(ranges: readonly Range[], key: (range: Range) => string, priority: (range: Range) => number): Map<string, bigint> {
   const boundaries = [...new Set(ranges.flatMap((range) => [range.start.toString(), range.end.toString()]))]
     .map((value) => BigInt(value)).sort((a, b) => a < b ? -1 : a > b ? 1 : 0);
   const totals = new Map<string, bigint>();
@@ -554,11 +595,22 @@ function exclusiveCategoryNs(ranges: readonly Range[]): Map<string, bigint> {
     const end = boundaries[index + 1]!;
     if (end <= start) continue;
     const owners = ranges.filter((range) => range.start <= start && range.end >= end)
-      .sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id));
+      .sort((a, b) => priority(b) - priority(a) || a.id.localeCompare(b.id));
     const winner = owners[0];
-    if (winner) totals.set(winner.category, (totals.get(winner.category) ?? 0n) + end - start);
+    if (winner) {
+      const name = key(winner);
+      totals.set(name, (totals.get(name) ?? 0n) + end - start);
+    }
   }
   return totals;
+}
+
+function exclusiveCategoryNs(ranges: readonly Range[]): Map<string, bigint> {
+  return exclusiveRangeNs(ranges, (range) => range.category, (range) => range.priority);
+}
+
+function exclusiveCommandKindNs(ranges: readonly Range[]): Map<string, bigint> {
+  return exclusiveRangeNs(ranges, (range) => range.commandKind, (range) => commandKindPriority(range.commandKind));
 }
 
 function ms(value: bigint): number {
@@ -598,18 +650,44 @@ export function buildPerfReport(
   session?: Pick<PerfSessionState, "sessionId" | "label">,
 ): PerfReport {
   const roots: Range[] = [];
+  const instrumentedRoots: Range[] = [];
+  const fullRoots: Range[] = [];
   const attribution: Range[] = [];
+  const subprocessRanges: Range[] = [];
   let childSum = 0n;
-  let childUnion = 0n;
   let wrappedToolCount = 0;
   const invocationDurationsMs: number[] = [];
+  const fullProcessDurationsMs: number[] = [];
   const rssSamplesBytes: number[] = [];
   const heapUsedSamplesBytes: number[] = [];
   for (const record of records) {
-    const rootBounds = validRange(record);
-    if (!rootBounds) continue;
-    const root: Range = { ...rootBounds, category: "apk-process", priority: 0, id: record.invocationId };
-    roots.push(root);
+    const instrumentedBounds = validRange(record);
+    if (!instrumentedBounds) continue;
+    const instrumentedRoot: Range = {
+      ...instrumentedBounds,
+      category: "apk-process",
+      commandKind: "apk-process",
+      priority: 0,
+      id: `${record.invocationId}:instrumented`,
+    };
+    instrumentedRoots.push(instrumentedRoot);
+    const fullBounds = record.schemaVersion === PERF_SCHEMA_VERSION && record.fullProcessInterval
+      ? validRange({ interval: record.fullProcessInterval })
+      : undefined;
+    const observedRoot: Range = fullBounds
+      ? { ...fullBounds, category: "apk-process", commandKind: "apk-process", priority: 0, id: `${record.invocationId}:full` }
+      : instrumentedRoot;
+    roots.push(observedRoot);
+    if (fullBounds) {
+      fullRoots.push(observedRoot);
+      fullProcessDurationsMs.push(ms(fullBounds.end - fullBounds.start));
+      attribution.push(...subtractNs(observedRoot, [instrumentedRoot]).map((range) => ({
+        ...range,
+        category: "apk-startup",
+        commandKind: "apk-startup",
+        priority: categoryPriority("apk-startup"),
+      })));
+    }
     invocationDurationsMs.push(record.durationMs);
     if (record.memory && Number.isFinite(record.memory.rssBytes) && Number.isFinite(record.memory.heapUsedBytes)) {
       rssSamplesBytes.push(record.memory.rssBytes);
@@ -622,6 +700,7 @@ export function buildPerfReport(
       const range: Range = {
         ...bounds,
         category: span.category,
+        commandKind: span.commandKind,
         priority: categoryPriority(span.category),
         id: `${record.invocationId}:${index}`,
         spanKind: span.spanKind,
@@ -636,16 +715,27 @@ export function buildPerfReport(
       || span.category === "external-other"
       || span.category === "repo-tool"));
     childSum += subprocesses.reduce((total, span) => total + span.end - span.start, 0n);
-    childUnion += unionNs(subprocesses);
-    attribution.push(...subtractNs(root, subprocesses).map((range) => ({ ...range, category: "apk-internal", priority: categoryPriority("apk-internal") })));
+    subprocessRanges.push(...subprocesses);
+    attribution.push(...subtractNs(instrumentedRoot, subprocesses).map((range) => ({
+      ...range,
+      category: "apk-internal",
+      commandKind: "apk-internal",
+      priority: categoryPriority("apk-internal"),
+    })));
     attribution.push(...subprocesses);
     attribution.push(...spans.filter((span) => (span.spanKind === "internal" || span.spanKind === undefined)
       && ["apk-bootstrap", "task-config", "filesystem"].includes(span.category)));
   }
   const observedNs = unionNs(roots);
+  const instrumentedNs = unionNs(instrumentedRoots);
+  const fullNs = unionNs(fullRoots);
+  const childUnion = unionNs(subprocessRanges);
   const exclusive = exclusiveCategoryNs(attribution);
+  const commandKindExclusive = exclusiveCommandKindNs(attribution);
   const categoryMs: Record<string, number> = {};
   for (const [category, value] of exclusive.entries()) categoryMs[category] = ms(value);
+  const commandKindMs: Record<string, number> = {};
+  for (const [commandKind, value] of commandKindExclusive.entries()) commandKindMs[commandKind] = ms(value);
   const apkInternalNs = [...exclusive.entries()]
     .filter(([category]) => ["apk-internal", "apk-bootstrap", "task-config", "filesystem"].includes(category))
     .reduce((total, [, value]) => total + value, 0n);
@@ -655,43 +745,57 @@ export function buildPerfReport(
   const otherNs = (exclusive.get("external-other") ?? 0n);
   const totalMs = ms(observedNs);
   const internalMs = ms(apkInternalNs);
-  const scenarios = [
-    scenario("25% faster APK internals", 0.75, totalMs, internalMs),
-    scenario("50% faster APK internals", 0.5, totalMs, internalMs),
-    scenario("75% faster APK internals", 0.25, totalMs, internalMs),
-    scenario("2x faster APK internals", 0.5, totalMs, internalMs),
-    scenario("3x faster APK internals", 1 / 3, totalMs, internalMs),
-    scenario("5x faster APK internals", 0.2, totalMs, internalMs),
-    scenario("infinite APK internal speedup", 0, totalMs, internalMs),
+  const startupNs = exclusive.get("apk-startup") ?? 0n;
+  const fullProcessAvailable = records.length > 0 && records.every((record) => record.schemaVersion === PERF_SCHEMA_VERSION && record.fullProcessInterval !== undefined);
+  const rewriteSensitiveMs = fullProcessAvailable ? ms(startupNs + apkInternalNs) : null;
+  const scenarios = rewriteSensitiveMs === null ? [] : [
+    scenario("25% faster APK rewrite-sensitive runtime", 0.75, totalMs, rewriteSensitiveMs),
+    scenario("50% faster APK rewrite-sensitive runtime", 0.5, totalMs, rewriteSensitiveMs),
+    scenario("75% faster APK rewrite-sensitive runtime", 0.25, totalMs, rewriteSensitiveMs),
+    scenario("2x faster APK rewrite-sensitive runtime", 0.5, totalMs, rewriteSensitiveMs),
+    scenario("3x faster APK rewrite-sensitive runtime", 1 / 3, totalMs, rewriteSensitiveMs),
+    scenario("5x faster APK rewrite-sensitive runtime", 0.2, totalMs, rewriteSensitiveMs),
+    scenario("infinite APK rewrite-sensitive runtime speedup", 0, totalMs, rewriteSensitiveMs),
   ];
   const warnings = [
     ...(malformedRecordCount > 0 ? [`Ignored ${malformedRecordCount} malformed or incomplete trace record(s).`] : []),
     ...(records.length === 0 ? ["No complete profiling records were observed."] : []),
+    ...(records.some((record) => record.schemaVersion === LEGACY_PERF_SCHEMA_VERSION)
+      ? ["schemaVersion 1 traces do not contain full Node process/startup timing; rewrite-sensitive metrics and ceilings are unavailable."] : []),
+    ...(records.length > 0 && !fullProcessAvailable && records.some((record) => record.schemaVersion === PERF_SCHEMA_VERSION)
+      ? ["Full-process timing is incomplete for this mixed or malformed trace set; rewrite-sensitive metrics are unavailable."] : []),
     "Unwrapped external commands: unknown",
     "LLM generation and idle/unobserved gaps are excluded.",
   ];
   return {
     schemaVersion: PERF_SCHEMA_VERSION,
+    traceSchemaVersions: [...new Set(records.map((record) => record.schemaVersion))].sort((a, b) => a - b),
+    fullProcessAvailable,
     ...(session ? { sessionId: session.sessionId, label: session.label } : {}),
     invocationCount: records.length,
     wrappedToolCount,
     observedCommandCount: records.length + wrappedToolCount,
     unwrappedExternalCommands: "unknown",
     malformedRecordCount,
-    incompleteCoverage: malformedRecordCount > 0,
+    incompleteCoverage: malformedRecordCount > 0 || (records.length > 0 && !fullProcessAvailable),
     observedToolingWallMs: totalMs,
-    apkProcessTotalMs: totalMs,
-    apkInvocationDurationSumMs: invocationDurationsMs.reduce((sum, value) => sum + value, 0),
-    apkInternalMs: internalMs,
+    apkFullProcessUnionMs: fullRoots.length > 0 ? ms(fullNs) : null,
+    apkInstrumentedUnionMs: ms(instrumentedNs),
+    apkStartupResidualMs: fullRoots.length > 0 ? ms(startupNs) : null,
+    apkInternalInstrumentedMs: internalMs,
+    apkRewriteSensitiveMs: rewriteSensitiveMs,
     gitMs: ms(gitNs),
     externalCheckMs: ms(externalNs),
     wrappedRepoToolMs: ms(wrappedNs),
     otherObservedMs: ms(otherNs),
+    commandKindMs,
     childDurationSumMs: ms(childSum),
     childWallClockUnionMs: ms(childUnion),
     categoryMs,
     invocationDurationsMs,
     invocationStats: stats(invocationDurationsMs),
+    fullProcessDurationsMs,
+    fullProcessStats: stats(fullProcessDurationsMs),
     rssSamplesBytes,
     heapUsedSamplesBytes,
     scenarios,
@@ -710,6 +814,7 @@ export const getPerfReport = readPerfReport;
 
 export function renderPerfReport(report: PerfReport): string {
   const percent = (value: number): string => report.observedToolingWallMs > 0 ? `${((value / report.observedToolingWallMs) * 100).toFixed(1)}%` : "0.0%";
+  const seconds = (value: number | null): string => value === null ? "unavailable" : `${(value / 1000).toFixed(3)} s`;
   const statsText = report.invocationStats.medianMs === undefined
     ? "n/a"
     : `min ${report.invocationStats.minMs!.toFixed(1)} ms, median ${report.invocationStats.medianMs.toFixed(1)} ms, p95 ${report.invocationStats.p95Ms!.toFixed(1)} ms, max ${report.invocationStats.maxMs!.toFixed(1)} ms`;
@@ -718,8 +823,12 @@ export function renderPerfReport(report: PerfReport): string {
     `Session: ${report.label ?? "unknown"}`,
     `Observed tooling wall: ${(report.observedToolingWallMs / 1000).toFixed(3)} s`,
     "",
-    `APK invocations: ${report.invocationCount} (process wall ${(report.apkProcessTotalMs / 1000).toFixed(3)} s)`,
-    `  APK internal/self: ${(report.apkInternalMs / 1000).toFixed(3)} s (${percent(report.apkInternalMs)})`,
+    `APK invocations: ${report.invocationCount}`,
+    `  full observed process: ${seconds(report.apkFullProcessUnionMs)}`,
+    `  instrumented invocation wall: ${seconds(report.apkInstrumentedUnionMs)}`,
+    `  startup/import residual: ${seconds(report.apkStartupResidualMs)}`,
+    `  APK internal after instrumentation: ${seconds(report.apkInternalInstrumentedMs)} (${percent(report.apkInternalInstrumentedMs)})`,
+    `  rewrite-sensitive APK runtime: ${seconds(report.apkRewriteSensitiveMs)}${report.apkRewriteSensitiveMs === null ? "" : ` (${percent(report.apkRewriteSensitiveMs)})`}`,
     `  Git: ${(report.gitMs / 1000).toFixed(3)} s (${percent(report.gitMs)})`,
     `  external checks: ${(report.externalCheckMs / 1000).toFixed(3)} s (${percent(report.externalCheckMs)})`,
     `Wrapped repo tools: ${(report.wrappedRepoToolMs / 1000).toFixed(3)} s (${percent(report.wrappedRepoToolMs)})`,
@@ -728,6 +837,7 @@ export function renderPerfReport(report: PerfReport): string {
     `Child duration sum: ${(report.childDurationSumMs / 1000).toFixed(3)} s`,
     `Child wall-clock union: ${(report.childWallClockUnionMs / 1000).toFixed(3)} s`,
     `Invocation stats: ${statsText}`,
+    `Full-process stats: ${report.fullProcessStats.medianMs === undefined ? "unavailable" : `min ${report.fullProcessStats.minMs!.toFixed(1)} ms, median ${report.fullProcessStats.medianMs.toFixed(1)} ms, p95 ${report.fullProcessStats.p95Ms!.toFixed(1)} ms, max ${report.fullProcessStats.maxMs!.toFixed(1)} ms`}`,
     ...(report.rssSamplesBytes.length > 0 ? [`RSS sample (not peak): ${Math.round(report.rssSamplesBytes.at(-1)!)} bytes`] : []),
     ...(report.heapUsedSamplesBytes.length > 0 ? [`Heap used sample: ${Math.round(report.heapUsedSamplesBytes.at(-1)!)} bytes`] : []),
     `Observed commands: ${report.observedCommandCount}`,
@@ -735,7 +845,10 @@ export function renderPerfReport(report: PerfReport): string {
     "LLM generation: excluded",
     "Idle/unobserved gaps: excluded",
     "",
-    `Maximum possible tooling improvement if APK self time became zero: ${infinite ? (infinite.improvementPercent).toFixed(1) : "0.0"}%`,
+    "Primary command-kind attribution:",
+    ...Object.entries(report.commandKindMs).sort(([left], [right]) => left.localeCompare(right)).map(([kind, value]) => `  ${kind}: ${(value / 1000).toFixed(3)} s (${percent(value)})`),
+    "",
+    `Maximum possible tooling improvement if rewrite-sensitive APK runtime became zero: ${infinite ? (infinite.improvementPercent).toFixed(1) : "unavailable"}${infinite ? "%" : ""}`,
     ...report.scenarios.filter((item) => [0.5, 0.2].includes(item.factor)).map((item) => `${item.label} -> overall tooling improvement: ${item.improvementPercent.toFixed(1)}%`),
     ...report.warnings.filter((warning) => !warning.startsWith("Unwrapped") && !warning.startsWith("LLM generation")).map((warning) => `Warning: ${warning}`),
   ].join("\n");
