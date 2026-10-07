@@ -84,6 +84,8 @@ Document the v0.4.9 measurement limitations without rewriting its immutable hist
 
 - `{"id":"plan-report","type":"automated","required":true,"environment":"local","profile":"report","evidenceType":"benchmark","command":"test -f docs/research/apk-performance-v050-corrective-plan.md"}`
 - `{"id":"diff-check","type":"automated","required":true,"environment":"static","profile":"deterministic","evidenceType":"benchmark","command":"git diff --check"}`
+- `{"id":"tag-preflight","type":"manual","required":true,"environment":"live","profile":"trusted","instruction":"Check local and origin refs for v0.5.0 before implementation/release work and confirm the tag is free without creating or moving any tag.","evidence":"observed local and remote v0.5.0 tag absence"}`
+- `{"id":"plan-record","type":"manual","required":true,"environment":"local","profile":"report","instruction":"Review the corrective plan, historical v0.4.9 boundary, and successor dependency graph after the contracts are created.","evidence":"committed corrective plan and task graph reference"}`
 
 ## Documentation updates
 
