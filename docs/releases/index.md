@@ -2,7 +2,8 @@
 
 <!-- APK_VALIDATED_RELEASE: v0.4.7 -->
 
-The current package/candidate version is `0.4.7`.
+The current package/candidate version is `0.4.8`.
+Its pre-tag note is [v0.4.8 candidate](v0.4.8.md).
 The latest validated tagged release is [v0.4.7](v0.4.7.md). Its annotated tag peels to
 candidate `2797556344eb25cc34d3f51afbe10532147aca85`; the release note and separate
 post-tag record are linked below.

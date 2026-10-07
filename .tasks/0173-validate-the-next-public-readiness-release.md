@@ -1,7 +1,7 @@
 # Task 0173 - Validate the next public-readiness release
 
-State: blocked
-Owner: none
+State: doing
+Owner: codex-public-readiness-20261007
 Mode: production
 Lane: release
 Type: release
