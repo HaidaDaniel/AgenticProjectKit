@@ -1,7 +1,7 @@
 # Task 0197 - Add explicit operator-approved attribution recovery for interrupted tasks
 
-State: doing
-Owner: codex-recheck-20261007
+State: todo
+Owner: none
 Mode: maintenance
 Lane: workflow
 Type: bugfix
