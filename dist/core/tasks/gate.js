@@ -1,5 +1,5 @@
 import { listAgents, } from "../agents/index.js";
-import { allTaskFiles, captureTaskScope, captureTaskEvidenceSubject, findTaskFile, getTaskVerification, loadTaskFile, readTaskBaseline, } from "./index.js";
+import { allTaskFiles, captureTaskScope, captureTaskEvidenceSubject, currentTaskAttributionApproval, findTaskFile, getTaskVerification, loadTaskFile, readTaskBaseline, } from "./index.js";
 import { compareTaskEvidenceFreshness, readTaskEvidence, } from "./evidence.js";
 import { assessTaskHumanDecisions, assessTaskReviews, listTaskHumanDecisions, listTaskReviews, MAX_HUMAN_REVIEW_GRANT_PASSES, TASK_DECISION_RESOLVED_BLOCKER, } from "./review.js";
 import { MAX_EFFECTIVE_REVIEW_PASSES, resolveTaskPolicy, } from "./policy.js";
@@ -39,7 +39,7 @@ export async function captureTaskCompletionCandidate(options) {
     const scope = snapshot;
     let capturedSubject;
     try {
-        capturedSubject = await captureTaskEvidenceSubject(options.rootDirectory, task, scope.changedFiles, baseline);
+        capturedSubject = await captureTaskEvidenceSubject(options.rootDirectory, task, scope.changedFiles, baseline, { allowUnresolvedLineage: true });
     }
     catch (error) {
         snapshot.diagnostics.push(error instanceof Error ? error.message : String(error));
@@ -220,6 +220,19 @@ export async function evaluateTaskCompletionGate(options) {
         ...(scope.attribution?.diagnostics ?? []),
         ...policy.diagnostics,
     ];
+    const attributionApproval = await currentTaskAttributionApproval({
+        rootDirectory: options.rootDirectory,
+        task,
+        baseline: candidate.baseline,
+        subject,
+        changedFiles: candidate.changedFiles,
+        outOfScopeFiles: scope.outOfScopeFiles,
+        forbiddenTouchedFiles: scope.forbiddenTouchedFiles,
+    });
+    const attributionApproved = attributionApproval?.valid === true;
+    if (attributionApproval && !attributionApproved) {
+        diagnostics.push(...attributionApproval.diagnostics);
+    }
     const packagedDistContract = await repositoryPackagedDistContract(options.rootDirectory);
     if (packagedDistContract.shipsCommittedDist && candidate.changedFiles.some(isPackagedInputPath)) {
         blockers.push(...packagedDistTaskContractBlockers(task, {
@@ -227,15 +240,20 @@ export async function evaluateTaskCompletionGate(options) {
             checkCommand: packagedDistContract.checkCommand,
         }));
     }
-    if (!candidate.comparisonKnown) {
+    if (!candidate.comparisonKnown && !attributionApproved) {
         blockers.push("Baseline-aware Git comparison could not be established; gate-eligible evidence is blocked.");
     }
     const evidenceIds = [];
-    for (const file of scope.outOfScopeFiles) {
-        blockers.push(`Scope violation: ${file}.`);
+    if (attributionApproved) {
+        appendUnique(evidenceIds, attributionApproval?.evidenceId);
     }
-    for (const file of scope.forbiddenTouchedFiles) {
-        blockers.push(`Forbidden file touched: ${file}.`);
+    else {
+        for (const file of scope.outOfScopeFiles) {
+            blockers.push(`Scope violation: ${file}.`);
+        }
+        for (const file of scope.forbiddenTouchedFiles) {
+            blockers.push(`Forbidden file touched: ${file}.`);
+        }
     }
     const allFiles = await allTaskFiles(options.rootDirectory, options.taskDirectory);
     const dependencies = [];
@@ -509,7 +527,7 @@ export async function evaluateTaskCompletionGate(options) {
         evidenceIds: [...new Set(evidenceIds)],
         blockers: [...new Set(blockers)],
         diagnostics: [...new Set(diagnostics)],
-        comparisonKnown: candidate.comparisonKnown,
+        comparisonKnown: candidate.comparisonKnown || attributionApproved,
     };
 }
 export function renderTaskCompletionGate(result) {

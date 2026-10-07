@@ -26,6 +26,7 @@ export type TaskEvidenceType = (typeof TASK_EVIDENCE_TYPES)[number];
 
 export const TASK_HUMAN_DECISIONS = [
   "accept-current",
+  "accept-attribution",
   "grant-review-passes",
   "changes-required",
 ] as const;
@@ -38,6 +39,9 @@ export const TASK_DECISION_TRUST_MODEL = "operator-asserted" as const;
 
 /** Structured blocker condition id resolved by a human accept-current decision. */
 export const TASK_REVIEW_EXHAUSTION_BLOCKER = "review-budget-exhausted" as const;
+
+/** Structured blocker condition resolved only by explicit attribution approval. */
+export const TASK_ATTRIBUTION_BLOCKER = "scope-attribution" as const;
 
 export const TASK_EVIDENCE_RESULTS = [
   "pass",
@@ -105,6 +109,7 @@ export interface TaskEvidenceRecord {
   decision?: string;
   actor?: string;
   resolvedBlocker?: string;
+  acceptedCommits?: string[];
   reviewBudgetGrant?: number;
   trustModel?: string;
   workerCommitIds?: string[];
@@ -424,6 +429,7 @@ function normalizeEvidenceRecord(
       : oneOf(value.decision, TASK_HUMAN_DECISIONS, `${prefix}.decision`, issues),
     actor: optionalText(value.actor, `${prefix}.actor`, issues, 120),
     resolvedBlocker: optionalText(value.resolvedBlocker, `${prefix}.resolvedBlocker`, issues, 120),
+    acceptedCommits: optionalTextList(value.acceptedCommits, `${prefix}.acceptedCommits`, issues, 128, 64),
     reviewBudgetGrant: optionalNonNegativeInteger(value.reviewBudgetGrant, `${prefix}.reviewBudgetGrant`, issues, 2),
     trustModel: optionalText(value.trustModel, `${prefix}.trustModel`, issues, 60),
     workerCommitIds: optionalTextList(value.workerCommitIds, `${prefix}.workerCommitIds`, issues, 64, 160),
@@ -451,6 +457,19 @@ function normalizeEvidenceRecord(
         issues.push(
           `${prefix}.resolvedBlocker must be ${TASK_REVIEW_EXHAUSTION_BLOCKER} for accept-current decisions.`,
         );
+      }
+    }
+    if (record.decision === "accept-attribution") {
+      if (record.result !== "pass") {
+        issues.push(`${prefix}.result must be pass for accept-attribution decisions.`);
+      }
+      if (record.resolvedBlocker !== TASK_ATTRIBUTION_BLOCKER) {
+        issues.push(
+          `${prefix}.resolvedBlocker must be ${TASK_ATTRIBUTION_BLOCKER} for accept-attribution decisions.`,
+        );
+      }
+      if (!record.acceptedCommits || record.acceptedCommits.length === 0) {
+        issues.push(`${prefix}.acceptedCommits must contain at least one commit for accept-attribution decisions.`);
       }
     }
     if (record.decision === "grant-review-passes") {

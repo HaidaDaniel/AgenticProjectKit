@@ -351,12 +351,13 @@ Reviewers must be registered and cannot equal the implementation owner. Review r
 
 One prepared review presents two explicit axes: **Spec correctness** (goal and acceptance criteria, external and missing behavior, scope creep, invariants, required claims/evidence) and **Engineering quality** (repository conventions, unnecessary complexity or duplication, poor abstraction, speculative generality, primitive obsession, leaky boundaries, coupling/module ownership, avoidable smells or dependencies, maintainability). Reviewers label findings with the axis they concern and disclose coverage limits rather than implying completeness. They submit one conservative Overall outcome: if either axis requires changes or fails, the Overall outcome cannot be pass. This is presentation guidance only—one reviewer, one prepared run, one canonical outcome and evidence record; finding text is never parsed to decide gate semantics, and legacy unlabelled findings remain valid.
 
-## Human decisions for review-budget exhaustion
+## Human decisions for review-budget exhaustion and interrupted attribution
 
 When the bounded semantic-review budget (`maxReviewPasses`) is exhausted without a passing independent review, the completion gate emits a structured `review-budget-exhausted` condition and asks for an explicit human decision. APK supports a first-class, operator-asserted decision record:
 
 ```bash
 pnpm exec apk task decision <task-id> --actor <human-id> --result accept-current --reason "<why>" --owner <recording-agent-id>
+pnpm exec apk task decision <task-id> --actor <human-id> --result accept-attribution --commits <full-sha,full-sha,...> --reason "<why these commits are external urgent work>" --owner <recording-agent-id>
 pnpm exec apk task decision <task-id> --actor <human-id> --result grant-review-passes --passes 1 --reason "<why one more pass>" --owner <recording-agent-id>
 pnpm exec apk task decision <task-id> --actor <human-id> --result changes-required --reason "<what must change>"
 pnpm exec apk task decision <task-id> --actor <human-id> --result cancel --reason "<why>" --owner <task-owner>
@@ -367,13 +368,14 @@ Semantics and boundaries:
 - every decision is an append-only `human-decision` evidence record bound to the exact task candidate (`baseline`/`candidate`/`worktree`/`HEAD`); a decision recorded for candidate A becomes stale and non-resolving after a candidate mutation;
 - gate/status select the latest current decision by timestamp, then evidence ID for ties, regardless of append order. Only when no current decision exists is the latest stale decision displayed as history; stale decisions cannot change grants or blockers;
 - `accept-current` resolves only the structured `review-budget-exhausted` condition. Failed deterministic verification, scope or forbidden-file violations, missing dependencies, missing required evidence or hosted-CI/live evidence, diverse-assurance gaps, and owner-as-reviewer blockers remain hard blockers;
+- `accept-attribution` is a separate emergency boundary for an interrupted Git task. It requires a distinct operator identity and a comma-separated list of full commit SHAs. APK proves that every named commit is a single-parent descendant of the task baseline and that the named commits cover every current disputed out-of-scope or forbidden path. Unlisted paths, current working-tree edits, failed deterministic verification, missing dependencies, missing evidence, review blockers, and candidate mutation remain hard blockers;
 - `grant-review-passes` extends the effective review budget additively by 1-2 passes without resetting review history; per-candidate total extension is bounded at +2 passes and the effective total is capped at 10. Only a current `accept-current` decision with the structured `review-budget-exhausted` marker supersedes earlier current grants;
 - frontier review passes and activated frontier worker runs are counted from the task's append-only review/session records, including stale history. Issued worker packages retain the resource cost class, and review evidence retains the recorded class; legacy resource-bound records whose class is unavailable are counted conservatively. Reaching a frontier cap removes scarce-frontier reviewers from subsequent routing and issuance; exceeding a cap is a hard gate blocker. A current passing review recorded exactly at the cap remains valid, while total-review grants and `accept-current` cannot lift a frontier cap;
 - `changes-required` records a human demand for more changes, never satisfies the gate, and is surfaced in status, gate, and provenance;
 - `cancel` is routed into the canonical `apk cancel` transition rather than duplicating cancellation logic;
 - provenance honestly labels the trust model as `operator-asserted`. APK does not authenticate humans; the implementation agent may only relay a decision the operator explicitly communicated. An agent cannot record itself as the actor, no automatic fallback generates a decision, and absent an operator decision the task stays blocked;
 - gate correctness is driven by structured review/budget/decision state (required, budget, passes used, granted passes, exhaustion, current outcome, current decision), never by matching blocker text; rewording a diagnostic cannot change decision semantics;
-- there is no `--force-done`, `--ignore-gate`, or `--skip-verification` and no generic force-completion path.
+- there is no `--force-done`, `--ignore-gate`, or `--skip-verification`; attribution approval is an explicit, append-only, commit-scoped operator assertion rather than a generic force-completion path.
 
 `apk task gate`, `apk status --detail`, and `apk task provenance` expose the decision, actor, the structured blocker it resolves, and whether it is current or stale.
 

@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { appendRunLog, readRunLog, requireAgent } from "../agents/index.js";
 import {
   appendTaskEvidence,
+  compareTaskEvidenceFreshness,
   readTaskEvidence,
   type TaskEvidenceCandidateSubject,
   type TaskEvidenceRecord,
@@ -4359,13 +4360,141 @@ export async function verifyTaskFileScopeSinceBaseline(
   };
 }
 
+export interface TaskAttributionApprovalResult {
+  valid: boolean;
+  evidenceId?: string;
+  acceptedCommits: string[];
+  acceptedFiles: string[];
+  diagnostics: string[];
+}
+
+/**
+ * Validate an explicit operator approval for an interrupted task's disputed
+ * history. The approval covers complete, named commits only; it never turns a
+ * current working-tree edit into pre-existing work.
+ */
+export async function validateTaskAttributionApproval(options: {
+  rootDirectory: string;
+  task: ProjectTask;
+  baseline?: TaskClaimBaseline;
+  changedFiles: readonly string[];
+  outOfScopeFiles: readonly string[];
+  forbiddenTouchedFiles: readonly string[];
+  acceptedCommits: readonly string[];
+}): Promise<TaskAttributionApprovalResult> {
+  const diagnostics: string[] = [];
+  const acceptedCommits = [...new Set(options.acceptedCommits.map((commit) => commit.trim()).filter(Boolean))];
+  if (acceptedCommits.length === 0) {
+    diagnostics.push("Attribution approval requires at least one commit SHA.");
+  }
+  if (acceptedCommits.length > MAX_TASK_ATTRIBUTION_COMMITS) {
+    diagnostics.push(`Attribution approval names more than ${MAX_TASK_ATTRIBUTION_COMMITS} commits.`);
+  }
+  if (acceptedCommits.some((commit) => !/^[0-9a-f]{40}$/i.test(commit))) {
+    diagnostics.push("Attribution approval requires full 40-character commit SHAs.");
+  }
+  const baseline = options.baseline;
+  if (!baseline || baseline.repository !== "git" || !baseline.headSha) {
+    diagnostics.push("Attribution approval requires a Git task baseline.");
+  }
+  let currentHead = "";
+  let chain: GitCommitNode[] = [];
+  if (baseline?.headSha) {
+    try {
+      currentHead = (await gitOutput(options.rootDirectory, ["rev-parse", "HEAD"])).trim();
+      if (currentHead === baseline.headSha) {
+        diagnostics.push("Attribution approval requires committed history after the task baseline.");
+      }
+      const result = await listGitDagCommits(options.rootDirectory, baseline.headSha, currentHead);
+      if (!result.commits) {
+        diagnostics.push(result.diagnostic ?? "The intervening Git history cannot be proven.");
+      } else {
+        chain = result.commits;
+      }
+    } catch (error: unknown) {
+      diagnostics.push(`The intervening Git history cannot be read (${error instanceof Error ? error.message : String(error)}).`);
+    }
+  }
+
+  const chainBySha = new Map(chain.map((commit) => [commit.sha, commit]));
+  const acceptedNodes = acceptedCommits.map((sha) => chainBySha.get(sha));
+  if (acceptedNodes.some((commit) => commit === undefined)) {
+    diagnostics.push("Attribution approval names a commit outside the task's bounded baseline-to-HEAD history.");
+  }
+  if (acceptedNodes.some((commit) => commit !== undefined && commit.parents.length !== 1)) {
+    diagnostics.push("Attribution approval cannot name merge commits; approve their linear task commits separately.");
+  }
+
+  const acceptedFiles = [...new Set((acceptedNodes.filter((commit): commit is GitCommitNode => commit !== undefined)
+    .flatMap((commit) => commit.files.map(normalizeRepoPath))))].sort();
+  const disputedFiles = [...new Set([
+    ...options.outOfScopeFiles,
+    ...options.forbiddenTouchedFiles,
+  ].map(normalizeRepoPath))].filter(Boolean).sort();
+  const uncoveredFiles = disputedFiles.filter((file) => !acceptedFiles.includes(file));
+  if (uncoveredFiles.length > 0) {
+    diagnostics.push(`Attribution approval does not cover disputed paths: ${uncoveredFiles.join(", ")}.`);
+  }
+
+  if (currentHead) {
+    const workingTreeFiles = (await listGitChangedFiles(options.rootDirectory))
+      .map(normalizeRepoPath)
+      .filter((file) => !isDefaultBookkeepingPath(file, baseline?.taskFile ?? ""));
+    const acceptedWorkingTreeOverlap = workingTreeFiles.filter((file) => acceptedFiles.includes(file));
+    if (acceptedWorkingTreeOverlap.length > 0) {
+      diagnostics.push(`Attribution approval cannot cover current working-tree edits: ${acceptedWorkingTreeOverlap.join(", ")}.`);
+    }
+  }
+
+  return {
+    valid: diagnostics.length === 0,
+    acceptedCommits,
+    acceptedFiles,
+    diagnostics,
+  };
+}
+
+export async function currentTaskAttributionApproval(options: {
+  rootDirectory: string;
+  task: ProjectTask;
+  baseline?: TaskClaimBaseline;
+  subject: TaskEvidenceCandidateSubject;
+  changedFiles: readonly string[];
+  outOfScopeFiles: readonly string[];
+  forbiddenTouchedFiles: readonly string[];
+}): Promise<TaskAttributionApprovalResult | undefined> {
+  const records = (await readTaskEvidence(options.rootDirectory, options.task.id))
+    .filter((record) => (
+      record.type === "human-decision"
+      && record.decision === "accept-attribution"
+      && record.gateEligible === true
+      && Array.isArray(record.acceptedCommits)
+      && compareTaskEvidenceFreshness(record, options.subject).freshness === "current"
+    ))
+    .sort((left, right) => left.time.localeCompare(right.time) || left.id.localeCompare(right.id));
+  const record = records.at(-1);
+  if (!record) return undefined;
+  return validateTaskAttributionApproval({
+    rootDirectory: options.rootDirectory,
+    task: options.task,
+    baseline: options.baseline,
+    changedFiles: options.changedFiles,
+    outOfScopeFiles: options.outOfScopeFiles,
+    forbiddenTouchedFiles: options.forbiddenTouchedFiles,
+    acceptedCommits: record.acceptedCommits ?? [],
+  }).then((approval) => ({ ...approval, evidenceId: record.id }));
+}
+
 export async function captureTaskEvidenceSubject(
   rootDirectory: string,
   task: ProjectTask,
   changedFiles: readonly string[],
   baseline?: TaskClaimBaseline,
+  options: { allowUnresolvedLineage?: boolean } = {},
 ): Promise<TaskEvidenceCandidateSubject> {
-  const beforeLineageCheck = await taskBaselineSnapshotDiagnostic(rootDirectory, baseline);
+  const beforeLineageCheck = options.allowUnresolvedLineage
+    ? undefined
+    : await taskBaselineSnapshotDiagnostic(rootDirectory, baseline);
   if (beforeLineageCheck) {
     throw new TaskGitComparisonError(["baseline lineage"], new Error(beforeLineageCheck));
   }
@@ -4411,7 +4540,9 @@ export async function captureTaskEvidenceSubject(
     diff,
   })}`;
 
-  const afterLineageCheck = await taskBaselineSnapshotDiagnostic(rootDirectory, baseline);
+  const afterLineageCheck = options.allowUnresolvedLineage
+    ? undefined
+    : await taskBaselineSnapshotDiagnostic(rootDirectory, baseline);
   if (afterLineageCheck) {
     throw new TaskGitComparisonError(["baseline lineage"], new Error(afterLineageCheck));
   }
@@ -4554,6 +4685,7 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
       task,
       scope.changedFiles,
       baseline,
+      { allowUnresolvedLineage: true },
     );
   } catch (error: unknown) {
     diagnostics.push(error instanceof Error ? error.message : String(error));
@@ -4563,12 +4695,25 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
   const subject: TaskEvidenceCandidateSubject = baseline
     ? { ...capturedSubject, baselineId: baseline.baselineId }
     : capturedSubject;
+  const attributionApproval = await currentTaskAttributionApproval({
+    rootDirectory: options.rootDirectory,
+    task,
+    baseline,
+    subject,
+    changedFiles: scope.changedFiles,
+    outOfScopeFiles: scope.outOfScopeFiles,
+    forbiddenTouchedFiles: scope.forbiddenTouchedFiles,
+  });
+  const attributionApproved = attributionApproval?.valid === true;
+  if (attributionApproval && !attributionApproved) {
+    diagnostics.push(...attributionApproval.diagnostics);
+  }
   const checks = getTaskVerification(task);
   const commandsRun: TaskVerifyCommandResult[] = [];
   const checkResults: TaskVerifyCheckResult[] = [];
-  let passed = beforeSnapshot.comparisonKnown
-    && scope.outOfScopeFiles.length === 0
-    && scope.forbiddenTouchedFiles.length === 0;
+  let passed = (beforeSnapshot.comparisonKnown || attributionApproved)
+    && (attributionApproved
+      || (scope.outOfScopeFiles.length === 0 && scope.forbiddenTouchedFiles.length === 0));
 
   for (const check of checks) {
     let status: TaskVerifyCheckStatus = "not-run";
@@ -4656,6 +4801,7 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
       task,
       afterSnapshot.changedFiles,
       baseline,
+      { allowUnresolvedLineage: true },
     );
   } catch (error: unknown) {
     diagnostics.push(error instanceof Error ? error.message : String(error));
@@ -4663,7 +4809,7 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
     afterSubject = unknownTaskEvidenceSubject(task, baseline);
   }
 
-  if (!afterSnapshot.comparisonKnown) {
+  if (!afterSnapshot.comparisonKnown && !attributionApproved) {
     for (const check of checkResults) {
       if (check.status === "pass") {
         check.status = "fail";
@@ -4685,7 +4831,7 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
     passed = false;
   }
 
-  if (afterSnapshot.outOfScopeFiles.length > 0 || afterSnapshot.forbiddenTouchedFiles.length > 0) {
+  if (!attributionApproved && (afterSnapshot.outOfScopeFiles.length > 0 || afterSnapshot.forbiddenTouchedFiles.length > 0)) {
     passed = false;
   }
 
@@ -4693,11 +4839,11 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
     passed = false;
   }
 
-  const candidateStable = beforeSnapshot.comparisonKnown
-    && afterSnapshot.comparisonKnown
+  const candidateStable = (beforeSnapshot.comparisonKnown || attributionApproved)
+    && (afterSnapshot.comparisonKnown || attributionApproved)
     && sameTaskEvidenceSubject(subject, normalizedAfterSubject)
-    && afterSnapshot.outOfScopeFiles.length === 0
-    && afterSnapshot.forbiddenTouchedFiles.length === 0;
+    && (attributionApproved
+      || (afterSnapshot.outOfScopeFiles.length === 0 && afterSnapshot.forbiddenTouchedFiles.length === 0));
 
   let evidenceWritten = 0;
   for (const [index, check] of checks.entries()) {

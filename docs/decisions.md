@@ -1686,3 +1686,40 @@ suite four times. Removing duplication and loader work preserves proof while red
 Reference:
 
 Task 0193 and [verification research](research/fast-proportional-verification.md).
+
+## ADR-0086 - Interrupted tasks use explicit commit-scoped attribution approval
+
+Status: accepted
+
+Decision:
+
+Long-lived tasks may remain open while urgent work from other tasks is committed. When
+completed-task attribution cannot prove that intervening history belongs to another task,
+APK provides a separate `accept-attribution` decision. A distinct operator names the full
+commit SHAs that are external to the active task. APK verifies that those commits are
+single-parent descendants of the task baseline and that their paths cover every disputed
+out-of-scope or forbidden path. The approval is bound to the exact current candidate and
+becomes stale after any candidate mutation.
+
+Deterministic verification, independent review, dependencies, current working-tree edits,
+unlisted paths, and candidate freshness remain hard requirements. The existing
+`accept-current` decision continues to resolve review-budget exhaustion only.
+
+Reason:
+
+Priority interrupts are a normal repository workflow. Treating every later commit as an
+unattributable blocker can strand a finished task, while a generic force bypass would hide
+ownership errors. A commit-scoped operator assertion records the exceptional ownership
+decision with enough Git identity and path evidence for later audit and keeps the normal
+candidate and assurance checks intact.
+
+Boundary:
+
+The operator assertion is not automatic approval, does not rewrite baselines or history,
+does not classify arbitrary dirty files as pre-existing, and cannot approve partial or
+merge commits. Repeated use that indicates a workflow problem belongs in task scheduling
+and handoff practice rather than in a broader bypass.
+
+Reference:
+
+Task 0197 and [task-system human decisions](task-system.md#human-decisions-for-review-budget-exhaustion-and-interrupted-attribution).

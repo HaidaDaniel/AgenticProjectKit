@@ -3015,6 +3015,7 @@ test("CLI task decision --help exposes the operator decision surface", async () 
 
   assert.equal(result.exitCode, 0);
   assert.match(result.stdout, /apk task decision <task-id> --actor <human-id>/);
+  assert.match(result.stdout, /accept-attribution/);
   assert.match(result.stdout, /operator-asserted/);
 });
 

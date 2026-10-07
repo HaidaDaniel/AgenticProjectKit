@@ -76,7 +76,7 @@ const TASK_HELP_TEXT = [
   "  apk task policy <task-id>",
   "  apk task gate <task-id>",
   "  apk task epoch <task-id> --owner <agent-id> --reason <text>",
-  "  apk task decision <task-id> --actor <human-id> --result <decision> --reason <text> [--passes <1-2>] [--owner <agent-id>]",
+  "  apk task decision <task-id> --actor <human-id> --result <decision> --reason <text> [--passes <1-2>] [--commits <sha,sha,...>] [--owner <agent-id>]",
   "  apk task provenance <task-id> [--json]",
   "  apk task dogfood start <task-id> --owner <agent-id> --tool <tool> --scenario <text>",
   "  apk task dogfood result <task-id> --owner <agent-id> --session <session-id> --outcome <pass|fail>",
@@ -1008,10 +1008,11 @@ const TASK_DECISION_HELP_TEXT = [
   "Agentic Project Kit",
   "",
   "Usage:",
-  "  apk task decision <task-id> --actor <human-id> --result <accept-current|grant-review-passes|changes-required> --reason <text> [--passes <1-2>] [--owner <agent-id>]",
+  "  apk task decision <task-id> --actor <human-id> --result <accept-current|accept-attribution|grant-review-passes|changes-required> --reason <text> [--passes <1-2>] [--commits <sha,sha,...>] [--owner <agent-id>]",
   "",
   "Record a bounded, operator-asserted human decision bound to the current task candidate.",
   "accept-current resolves only the review-budget-exhausted condition; verification, scope, dependency, and evidence blockers stay separate.",
+  "accept-attribution approves only the named full commit SHAs for an intervening scope lineage; unlisted paths remain blockers.",
   "grant-review-passes adds a bounded (1-2) extension to the review budget without resetting review history.",
   "changes-required records a human requirement for further changes and never satisfies the gate.",
   "No generic bypass exists; --force-done, --ignore-gate, and --skip-verification are not supported.",
@@ -1028,7 +1029,7 @@ async function runDecisionSubcommand(argv: string[]): Promise<number> {
     return 0;
   }
 
-  const allowedFlags = ["--actor", "--result", "--reason", "--passes", "--owner"];
+  const allowedFlags = ["--actor", "--result", "--reason", "--passes", "--commits", "--owner"];
   for (const arg of argv) {
     if (arg.startsWith("-") && arg !== "--help" && arg !== "-h" && !allowedFlags.includes(arg)) {
       throw new Error(`Unknown option: ${arg}`);
@@ -1054,6 +1055,7 @@ async function runDecisionSubcommand(argv: string[]): Promise<number> {
   const reason = readDecisionFlag(argv, "--reason");
   const owner = readDecisionFlag(argv, "--owner");
   const passesValue = readDecisionFlag(argv, "--passes");
+  const commitsValue = readDecisionFlag(argv, "--commits");
 
   if (decision === "cancel") {
     if (!owner) {
@@ -1080,7 +1082,7 @@ async function runDecisionSubcommand(argv: string[]): Promise<number> {
     throw new Error("--actor is required: the explicit human/operator identity making the decision.");
   }
   if (!decision || !(TASK_HUMAN_DECISIONS as readonly string[]).includes(decision) && decision !== "cancel") {
-    throw new Error(`--result must be one of: accept-current, grant-review-passes, changes-required, cancel.`);
+    throw new Error(`--result must be one of: accept-current, accept-attribution, grant-review-passes, changes-required, cancel.`);
   }
   if (!reason) {
     throw new Error("--reason is required so the decision stays explainable.");
@@ -1094,6 +1096,9 @@ async function runDecisionSubcommand(argv: string[]): Promise<number> {
   if (passesValue !== undefined && (!Number.isInteger(passes) || (passes as number) < 1 || (passes as number) > MAX_HUMAN_REVIEW_GRANT_PASSES)) {
     throw new Error(`--passes must be an integer between 1 and ${MAX_HUMAN_REVIEW_GRANT_PASSES}.`);
   }
+  const acceptedCommits = commitsValue === undefined
+    ? undefined
+    : commitsValue.split(",").map((commit) => commit.trim()).filter(Boolean);
 
   const rootDirectory = resolve(process.cwd());
   const config = await readAgenticConfigFile(rootDirectory);
@@ -1106,6 +1111,7 @@ async function runDecisionSubcommand(argv: string[]): Promise<number> {
     decision: decision as TaskHumanDecisionKind,
     reason,
     ...(passes !== undefined ? { reviewBudgetGrant: passes } : {}),
+    ...(acceptedCommits !== undefined ? { acceptedCommits } : {}),
   });
   console.log(renderTaskHumanDecisionResult(result.evidence));
   return 0;

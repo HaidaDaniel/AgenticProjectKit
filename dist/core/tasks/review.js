@@ -2,8 +2,8 @@ import { appendRunLog, requireAgent } from "../agents/index.js";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { readAgenticConfigFile } from "../config/file.js";
-import { captureTaskEvidenceSubject, findTaskFile, loadTaskFile, readTaskBaseline, captureTaskScope, } from "./index.js";
-import { TASK_DECISION_TRUST_MODEL, TASK_HUMAN_DECISIONS, TASK_REVIEW_EXHAUSTION_BLOCKER, appendTaskEvidence, compareTaskEvidenceFreshness, readTaskEvidence, } from "./evidence.js";
+import { captureTaskEvidenceSubject, findTaskFile, loadTaskFile, readTaskBaseline, captureTaskScope, validateTaskAttributionApproval, } from "./index.js";
+import { TASK_DECISION_TRUST_MODEL, TASK_ATTRIBUTION_BLOCKER, TASK_HUMAN_DECISIONS, TASK_REVIEW_EXHAUSTION_BLOCKER, appendTaskEvidence, compareTaskEvidenceFreshness, readTaskEvidence, } from "./evidence.js";
 import { isSafeRunId } from "../work/contract.js";
 import { resolveTaskPolicy } from "./policy.js";
 import { readActiveWorkerSession, withWorkerReviewLifecycleLock, } from "../work/session.js";
@@ -565,6 +565,15 @@ export async function recordTaskHumanDecision(options) {
     else if (options.reviewBudgetGrant !== undefined) {
         throw new Error("--passes is only valid for grant-review-passes decisions.");
     }
+    const acceptedCommits = options.acceptedCommits === undefined
+        ? undefined
+        : [...new Set(options.acceptedCommits.map((commit) => commit.trim()).filter((commit) => commit.length > 0))];
+    if (options.decision === "accept-attribution" && (!acceptedCommits || acceptedCommits.length === 0)) {
+        throw new Error("--commits must name at least one intervening commit for accept-attribution.");
+    }
+    if (options.decision !== "accept-attribution" && acceptedCommits !== undefined) {
+        throw new Error("--commits is only valid for accept-attribution.");
+    }
     const baseline = await readTaskBaseline(options.rootDirectory, task.id);
     const snapshot = await captureTaskScope({
         rootDirectory: options.rootDirectory,
@@ -572,11 +581,27 @@ export async function recordTaskHumanDecision(options) {
         taskPath,
         baseline,
     });
-    const captured = await captureTaskEvidenceSubject(options.rootDirectory, task, snapshot.changedFiles);
+    const captured = await captureTaskEvidenceSubject(options.rootDirectory, task, snapshot.changedFiles, baseline, { allowUnresolvedLineage: options.decision === "accept-attribution" });
     const subject = baseline ? { ...captured, baselineId: baseline.baselineId } : captured;
-    const gateEligible = snapshot.comparisonKnown
-        && snapshot.outOfScopeFiles.length === 0
-        && snapshot.forbiddenTouchedFiles.length === 0;
+    const attributionApproval = options.decision === "accept-attribution"
+        ? await validateTaskAttributionApproval({
+            rootDirectory: options.rootDirectory,
+            task,
+            baseline,
+            changedFiles: snapshot.changedFiles,
+            outOfScopeFiles: snapshot.outOfScopeFiles,
+            forbiddenTouchedFiles: snapshot.forbiddenTouchedFiles,
+            acceptedCommits: acceptedCommits ?? [],
+        })
+        : { valid: false, diagnostics: [] };
+    if (options.decision === "accept-attribution" && !attributionApproval.valid) {
+        throw new Error(attributionApproval.diagnostics.join(" ") || "Attribution approval does not cover the current scope blocker.");
+    }
+    const gateEligible = options.decision === "accept-attribution"
+        ? attributionApproval.valid
+        : snapshot.comparisonKnown
+            && snapshot.outOfScopeFiles.length === 0
+            && snapshot.forbiddenTouchedFiles.length === 0;
     const runId = `decision-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const appended = await appendTaskEvidence(options.rootDirectory, {
         taskId: task.id,
@@ -590,6 +615,9 @@ export async function recordTaskHumanDecision(options) {
         actor,
         ...(options.decision === "accept-current"
             ? { resolvedBlocker: TASK_REVIEW_EXHAUSTION_BLOCKER }
+            : {}),
+        ...(options.decision === "accept-attribution"
+            ? { resolvedBlocker: TASK_ATTRIBUTION_BLOCKER, acceptedCommits }
             : {}),
         ...(grant !== undefined ? { reviewBudgetGrant: grant } : {}),
         trustModel: TASK_DECISION_TRUST_MODEL,

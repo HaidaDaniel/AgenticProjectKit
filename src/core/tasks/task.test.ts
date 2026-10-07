@@ -8290,6 +8290,101 @@ test("accept-current on a scope-violated candidate records no gate-eligible reso
   });
 });
 
+test("accept-attribution runs checks for explicitly approved intervening commits", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupDecisionRepo(directory);
+    const outsidePath = join(directory, "urgent-hotfix.md");
+    await writeFile(outsidePath, "urgent work\n", "utf8");
+    await execFileAsync("git", ["add", "urgent-hotfix.md"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "urgent hotfix"], { cwd: directory });
+    const acceptedCommit = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: directory })).stdout.trim();
+
+    const before = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(before.passed, false);
+    assert.ok(before.blockers.some((blocker) => blocker.startsWith("Scope violation:")));
+
+    const decision = await recordTaskHumanDecision({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      recorder: "codex-recorder",
+      actor: "fixture-operator",
+      decision: "accept-attribution",
+      acceptedCommits: [acceptedCommit],
+      reason: "Urgent hotfix was explicitly approved as an intervening commit.",
+    });
+    assert.equal(decision.gateEligible, true);
+    assert.deepEqual(decision.evidence.acceptedCommits, [acceptedCommit]);
+
+    const verification = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "codex-owner",
+      runCommand: async () => 0,
+    });
+    assert.equal(verification.passed, true, verification.diagnostics.join("; "));
+    await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "codex-reviewer",
+      outcome: "pass",
+      implementationRunId: verification.runId,
+    });
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(gate.passed, true, gate.blockers.join("; "));
+    assert.ok(gate.evidenceIds.includes(decision.evidence.id));
+    assert.equal(gate.comparisonKnown, true);
+
+    await writeFile(join(directory, "new-unapproved.md"), "unapproved\n", "utf8");
+    const stale = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(stale.passed, false);
+    assert.ok(stale.blockers.some((blocker) => blocker.startsWith("Scope violation:")));
+    assert.ok(!stale.evidenceIds.includes(decision.evidence.id));
+  });
+});
+
+test("accept-attribution rejects a partial commit list and self-authorization", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupDecisionRepo(directory);
+    await writeFile(join(directory, "urgent-hotfix-1.md"), "one\n", "utf8");
+    await execFileAsync("git", ["add", "urgent-hotfix-1.md"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "urgent one"], { cwd: directory });
+    const firstCommit = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: directory })).stdout.trim();
+    await writeFile(join(directory, "urgent-hotfix-2.md"), "two\n", "utf8");
+    await execFileAsync("git", ["add", "urgent-hotfix-2.md"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "urgent two"], { cwd: directory });
+
+    await assert.rejects(
+      () => recordTaskHumanDecision({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        recorder: "codex-recorder",
+        actor: "fixture-operator",
+        decision: "accept-attribution",
+        acceptedCommits: [firstCommit],
+        reason: "The incomplete approval must fail closed.",
+      }),
+      /does not cover disputed paths/,
+    );
+    await assert.rejects(
+      () => recordTaskHumanDecision({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        recorder: "codex-owner",
+        actor: "codex-owner",
+        decision: "accept-attribution",
+        acceptedCommits: [firstCommit],
+        reason: "The implementation owner cannot self-authorize.",
+      }),
+      /distinct from the recording agent/,
+    );
+  });
+});
+
 test("grant-review-passes extends the budget once and exhausts again after one more pass", async () => {
   await withTempDirectory(async (directory) => {
     await setupDecisionRepo(directory);
