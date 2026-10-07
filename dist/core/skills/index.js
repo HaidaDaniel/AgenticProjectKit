@@ -231,11 +231,12 @@ async function writePathBasedFile(projectRoot, destinationPath, fileName, conten
         }
         catch (error) {
             const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
-            if (code !== "EEXIST" && code !== "EPERM" && code !== "ENOTEMPTY")
+            if (code !== "EEXIST" && code !== "EPERM" && code !== "EACCES" && code !== "ENOTEMPTY")
                 throw error;
             await assertSafeDestinationAncestors(projectRoot, safeDestination, platform);
-            await readExistingSkill(safeDestination);
-            await unlink(safeDestination);
+            const existing = await readExistingSkill(safeDestination);
+            if (existing !== undefined)
+                await unlink(safeDestination);
             await rename(temporaryPath, safeDestination);
         }
     }
