@@ -2740,10 +2740,14 @@ async function resolveCompletionBookkeepingCommit(rootDirectory, commit, proofFo
     }
 }
 function snapshotDirtyDifference(before, after) {
+    const taskDirectory = normalizeRepoPath(dirname(before.taskFile));
+    const isTaskLifecycleFile = (path) => (taskDirectory !== "."
+        && path.startsWith(`${taskDirectory}/`)
+        && path.endsWith(".md"));
     const beforeFiles = Object.fromEntries(Object.entries(before.dirtyFiles)
-        .filter(([path]) => !isBookkeepingPath(path, before)));
+        .filter(([path]) => !isBookkeepingPath(path, before) && !isTaskLifecycleFile(path)));
     const afterFiles = Object.fromEntries(Object.entries(after.dirtyFiles)
-        .filter(([path]) => !isBookkeepingPath(path, before)));
+        .filter(([path]) => !isBookkeepingPath(path, before) && !isTaskLifecycleFile(path)));
     for (const path of [...new Set([...Object.keys(beforeFiles), ...Object.keys(afterFiles)])].sort()) {
         if (beforeFiles[path] !== afterFiles[path])
             return path;

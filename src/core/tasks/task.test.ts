@@ -2888,6 +2888,24 @@ test("release and reclaim keeps files that were dirty before the first claim pre
   });
 });
 
+test("release and reclaim treats another task's lifecycle file as bookkeeping", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const taskBPath = join(directory, ".tasks", "0008-bounded-task.md");
+    const taskB = await readFile(taskBPath, "utf8");
+    await writeFile(taskBPath, taskB.replace("State: todo", "State: blocked"), "utf8");
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.equal(baseline?.lineageStatus, "clean", baseline?.lineageDiagnostic);
+    const result = await verifyScopedTask(directory);
+    assert.equal(result.passed, false);
+    assert.ok(result.outOfScopeFiles.includes(".tasks/0008-bounded-task.md"));
+  });
+});
+
 test("different-owner reclaim preserves the authoritative baseline and attribution", async () => {
   await withTempDirectory(async (directory) => {
     await setupReclaimRepo(directory);
