@@ -2,7 +2,7 @@
 
 ## Current state
 
-Agentic Project Kit remains the current product identity. The latest validated, installable release is [v0.4.9](releases/v0.4.9.md); its exact tag, candidate, CI result, cold install, and profiler smoke are recorded in the [post-release validation record](delivery/workflow-v0.4.9-post-release.md).
+Agentic Project Kit remains the current product identity. The latest validated, installable release is [v0.5.0](releases/v0.5.0.md); its exact tag, candidate, CI result, cold install, and profiler smoke are recorded in the [post-release validation record](delivery/workflow-v0.5.0-post-release.md).
 
 Public readiness is the current milestone. Its workstreams and ordering are maintained in the [roadmap](roadmap.md#public-readiness-current-work), with task contracts as the source of lifecycle state.
 
@@ -20,6 +20,9 @@ legacy profiler storage/session-reporting gaps. The operator-directed v0.5.0
 corrective milestone is now tracked by Tasks 0211–0215: v2 full-process
 attribution, stronger OFF/ON and verification-heavy benchmarking, release, then
 final downstream evidence from the released v0.5.0 profiler.
+Task 0214 has now published v0.5.0 with exact-SHA Quality and separate actual-tag
+v2/v1 smoke; Task 0215 remains the downstream evidence gate for the
+Node-versus-Go decision.
 Task 0213's v2 self baseline now measures identical profiling OFF/ON groups,
 parent spawn-to-exit versus Node-observed lifetime, short-command startup, real
 AgenticProjectKit test/lint/typecheck/build commands, and a disposable claimed

@@ -9,7 +9,7 @@ APK gives maintainers a repeatable way to describe work, limit the files a task 
 Install the validated release tag in the repository where you want to use APK:
 
 ```bash
-pnpm add -D agentic-project-kit@git+https://github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.9
+pnpm add -D agentic-project-kit@git+https://github.com/HaidaDaniel/AgenticProjectKit.git#v0.5.0
 pnpm exec apkit --help
 ```
 
@@ -42,7 +42,7 @@ APK prepares and records the workflow around coding agents; it does not launch o
 
 ## Maturity and compatibility
 
-The current validated installable release is [v0.4.9](docs/releases/v0.4.9.md). The package declares Node.js `>=22.22.1`; release validation used Node.js `22.22.1`, pnpm `10.28.1`, and an Ubuntu runner. Other Node.js or pnpm versions and end-to-end macOS or Windows installs are unverified. A first Git-tag install requires Git and network access; offline use requires the release and dependencies to be cached.
+The current validated installable release is [v0.5.0](docs/releases/v0.5.0.md). The package declares Node.js `>=22.22.1`; release validation used Node.js `22.22.1`, pnpm `10.28.1`, and an Ubuntu runner. Other Node.js or pnpm versions and end-to-end macOS or Windows installs are unverified. A first Git-tag install requires Git and network access; offline use requires the release and dependencies to be cached.
 
 See the [maturity and compatibility policy](docs/product/maturity-and-compatibility.md) for the evidence and support limits.
 
