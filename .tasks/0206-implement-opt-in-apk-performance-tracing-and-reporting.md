@@ -29,8 +29,6 @@ Implement opt-in APK performance tracing and reporting
 - src/cli/command-registry.ts
 - src/cli/index.ts
 - src/core/tasks/index.ts
-- src/core/doctor/index.ts
-- src/core/quality/index.ts
 - src/core/audit/index.ts
 - src/core/status/index.ts
 
@@ -40,13 +38,24 @@ Implement opt-in APK performance tracing and reporting
 - src/cli/commands/perf.ts
 - src/cli/command-registry.ts
 - src/cli/index.ts
+- src/core/agents/index.ts
+- src/core/context-suggestions/index.ts
+- src/core/docs/context.ts
+- src/core/doctor/index.ts
+- src/core/init/index.ts
+- src/core/quality/index.ts
+- src/core/tasks/lock.ts
+- src/core/tasks/provenance.ts
 - src/core/tasks/index.ts
+- src/core/workspaces/index.ts
 - src/core/doctor/index.ts
 - src/core/quality/index.ts
 - src/core/audit/index.ts
 - src/core/status/index.ts
 - src/cli/command.test.ts
 - src/cli/cli.test.ts
+- src/core/init/init.test.ts
+- src/core/tasks/task.test.ts
 - src/core/perf/**
 - docs/research/**
 - docs/cli-commands.md
