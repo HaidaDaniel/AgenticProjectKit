@@ -1,7 +1,7 @@
 # Task 0213 - Strengthen APK tooling attribution benchmark harness
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-performance-20261007
 Mode: mvp
 Lane: architecture
 Type: benchmark
@@ -30,6 +30,12 @@ Replace the v0.4.9 synthetic-only baseline with a repeatable v2 harness that mea
 ## Files allowed to edit
 
 - scripts/benchmarks/perf-harness.mjs
+- src/cli/commands/perf.ts
+- src/core/perf/index.ts
+- src/core/perf/index.test.ts
+- src/cli/cli.test.ts
+- dist/**
+- docs/cli-commands.md
 - docs/benchmarks/**
 - docs/research/**
 - docs/progress.md
@@ -37,8 +43,6 @@ Replace the v0.4.9 synthetic-only baseline with a repeatable v2 harness that mea
 ## Files forbidden to edit
 
 - .agentic/**
-- src/**
-- dist/**
 - .github/**
 - package.json
 - pnpm-lock.yaml
@@ -83,6 +87,8 @@ Replace the v0.4.9 synthetic-only baseline with a repeatable v2 harness that mea
 ## Verification
 
 - `{"id":"harness-check","type":"automated","required":true,"environment":"local","profile":"report","evidenceType":"benchmark","command":"node scripts/benchmarks/perf-harness.mjs --check"}`
+- `{"id":"typecheck-category","type":"automated","required":true,"environment":"local","profile":"deterministic","evidenceType":"benchmark","command":"pnpm typecheck && pnpm exec tsx --test src/core/perf/index.test.ts src/cli/cli.test.ts"}`
+- `{"id":"build-current","type":"automated","required":true,"environment":"local","profile":"deterministic","evidenceType":"benchmark","command":"rm -rf dist && pnpm build && test -z \"$(git status --porcelain --untracked-files=all --ignored=matching -- dist)\""}`
 - `{"id":"benchmark-report","type":"automated","required":true,"environment":"local","profile":"report","evidenceType":"benchmark","command":"test -f docs/benchmarks/apk-performance-v050-self-baseline.md"}`
 - `{"id":"contract-lint","type":"automated","required":true,"environment":"static","profile":"deterministic","evidenceType":"benchmark","command":"pnpm exec apk lint --json"}`
 - `{"id":"diff-check","type":"automated","required":true,"environment":"static","profile":"deterministic","evidenceType":"benchmark","command":"git diff --check"}`

@@ -27,7 +27,7 @@ export type PerfCategory =
   | "external-other"
   | "repo-tool";
 
-export type PerfExecCategory = "repo-tool" | "test" | "lint" | "build" | "git";
+export type PerfExecCategory = "repo-tool" | "test" | "lint" | "typecheck" | "build" | "git";
 
 export interface PerfClock {
   now(): bigint;

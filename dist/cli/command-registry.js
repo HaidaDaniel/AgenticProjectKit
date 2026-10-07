@@ -171,7 +171,7 @@ export const PUBLIC_COMMANDS = [
             { usage: "perf status", description: "show the active local performance session." },
             { usage: "perf stop", description: "stop the active local performance session." },
             { usage: "perf report [--json]", description: "report observed tooling wall, attribution, coverage, and Amdahl scenarios." },
-            { usage: "perf exec --category <repo-tool|test|lint|build|git> -- <command...>", description: "include one direct repository command in the active local performance session." },
+            { usage: "perf exec --category <repo-tool|test|lint|typecheck|build|git> -- <command...>", description: "include one direct repository command in the active local performance session." },
         ],
     },
     {

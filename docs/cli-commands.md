@@ -64,7 +64,7 @@ The command synopsis and option list below are rendered from `src/cli/command-re
 - `apkit perf status` - show the active local performance session.
 - `apkit perf stop` - stop the active local performance session.
 - `apkit perf report [--json]` - report observed tooling wall, attribution, coverage, and Amdahl scenarios.
-- `apkit perf exec --category <repo-tool|test|lint|build|git> -- <command...>` - include one direct repository command in the active local performance session.
+- `apkit perf exec --category <repo-tool|test|lint|typecheck|build|git> -- <command...>` - include one direct repository command in the active local performance session.
 - `apkit prompt <agent> --task <task-id> [--level 1|2|3] [--budget <units>] [--language <tag>]` - render bounded task context and an optional invocation-only language override.
 - `apkit quality detect [directory] [--json]` - read declared quality signals and evaluate explicit policy without executing project commands.
 - `apkit resources [--json]` - render configured model, harness, and worker records without probing providers.

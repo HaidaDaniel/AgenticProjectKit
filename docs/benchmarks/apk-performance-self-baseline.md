@@ -1,4 +1,6 @@
-# APK performance self-dogfood baseline
+# Historical v0.4.9 APK performance self-dogfood baseline
+
+> Historical note: this schemaVersion 1 report records the first profiler generation released in v0.4.9. It remains immutable release evidence and is superseded for runtime-rewrite analysis by the v2 [v0.5.0 self-dogfood baseline](apk-performance-v050-self-baseline.md). It does not observe full Node process/startup cost or provide the corrected verification-heavy attribution model.
 
 Generated: 2026-10-07T16:23:35.787Z
 Environment: linux/x64, Node v24.21.0

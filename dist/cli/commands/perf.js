@@ -1,13 +1,13 @@
 import { resolve } from "node:path";
 import { getPerfReport, getPerfStatus, renderPerfReport, runPerfExec, startPerfSession, stopPerfSession, } from "../../core/perf/index.js";
-const PERF_EXEC_CATEGORIES = ["repo-tool", "test", "lint", "build", "git"];
+const PERF_EXEC_CATEGORIES = ["repo-tool", "test", "lint", "typecheck", "build", "git"];
 const PERF_HELP = [
     "Usage:",
     "  apk perf start --label <label>",
     "  apk perf status",
     "  apk perf stop",
     "  apk perf report [--json]",
-    "  apk perf exec --category <repo-tool|test|lint|build|git> -- <command...>",
+    "  apk perf exec --category <repo-tool|test|lint|typecheck|build|git> -- <command...>",
     "",
     "Profiling is opt-in and local. LLM generation and idle/unobserved gaps are excluded.",
 ].join("\n");
@@ -72,12 +72,12 @@ export async function runPerfCommand(args) {
             const categoryIndex = rest.indexOf("--category");
             const separator = rest.indexOf("--");
             if (categoryIndex !== 0 || separator !== 2 || !rest[1] || separator + 1 >= rest.length) {
-                console.error("Usage: apk perf exec --category <repo-tool|test|lint|build|git> -- <command...>");
+                console.error("Usage: apk perf exec --category <repo-tool|test|lint|typecheck|build|git> -- <command...>");
                 return 1;
             }
             const category = rest[1];
             if (!PERF_EXEC_CATEGORIES.includes(category)) {
-                console.error("Invalid perf exec category; use repo-tool, test, lint, build, or git.");
+                console.error("Invalid perf exec category; use repo-tool, test, lint, typecheck, build, or git.");
                 return 1;
             }
             const [command, ...commandArgs] = rest.slice(separator + 1);

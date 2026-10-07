@@ -169,7 +169,7 @@ apk perf status
 apk perf stop
 apk perf report
 apk perf report --json
-apk perf exec --category <repo-tool|test|lint|build|git> -- <command...>
+apk perf exec --category <repo-tool|test|lint|typecheck|build|git> -- <command...>
 ```
 
 While a session is active, APK invocations record automatically. `start`
