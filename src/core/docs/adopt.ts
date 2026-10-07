@@ -207,15 +207,18 @@ function nextAdoptionTaskId(taskFiles: readonly string[]): string {
   return String(maxId + 1).padStart(4, "0");
 }
 
-function resolveAdoptionTask(taskFiles: readonly string[]): { id: string; fileName: string } {
-  for (const file of taskFiles) {
+function resolveAdoptionTask(
+  activeTaskFiles: readonly string[],
+  allTaskFiles: readonly string[] = activeTaskFiles,
+): { id: string; fileName: string } {
+  for (const file of activeTaskFiles) {
     const match = new RegExp(`(?:^|/)(\\d+)-${ADOPTION_TASK_SLUG}\\.md$`).exec(file);
     if (match) {
       return { id: match[1]!, fileName: `${match[1]}-${ADOPTION_TASK_SLUG}.md` };
     }
   }
 
-  const id = nextAdoptionTaskId(taskFiles);
+  const id = nextAdoptionTaskId(allTaskFiles);
   return { id, fileName: `${id}-${ADOPTION_TASK_SLUG}.md` };
 }
 
@@ -298,10 +301,11 @@ async function buildAdoptionPlan(
   }
 
   const archivedTaskFiles = await listMarkdownFiles(join(rootDirectory, ".tasks", "archive"));
-  const adoptionTask = resolveAdoptionTask([
+  const allTaskFiles = [
     ...scan.taskFiles,
     ...archivedTaskFiles.map((file) => `.tasks/archive/${file}`),
-  ]);
+  ];
+  const adoptionTask = resolveAdoptionTask(scan.taskFiles, allTaskFiles);
 
   const exportFiles = await renderAgentExportFiles({
     ...DEFAULT_AGENT_POLICY,

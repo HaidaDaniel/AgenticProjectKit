@@ -143,8 +143,8 @@ test("adoptRepository avoids task ids used by archived tasks", async () => {
     await createExistingRepository(directory);
     await mkdir(join(directory, ".tasks", "archive"), { recursive: true });
     await writeFile(
-      join(directory, ".tasks", "archive", "0196-archived-task.md"),
-      "# Task 0196 - Archived Task\n",
+      join(directory, ".tasks", "archive", "0196-document-adopted-repository.md"),
+      "# Task 0196 - Document Adopted Repository\n",
       "utf8",
     );
 

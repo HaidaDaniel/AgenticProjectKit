@@ -143,14 +143,14 @@ function nextAdoptionTaskId(taskFiles) {
     }, 0);
     return String(maxId + 1).padStart(4, "0");
 }
-function resolveAdoptionTask(taskFiles) {
-    for (const file of taskFiles) {
+function resolveAdoptionTask(activeTaskFiles, allTaskFiles = activeTaskFiles) {
+    for (const file of activeTaskFiles) {
         const match = new RegExp(`(?:^|/)(\\d+)-${ADOPTION_TASK_SLUG}\\.md$`).exec(file);
         if (match) {
             return { id: match[1], fileName: `${match[1]}-${ADOPTION_TASK_SLUG}.md` };
         }
     }
-    const id = nextAdoptionTaskId(taskFiles);
+    const id = nextAdoptionTaskId(allTaskFiles);
     return { id, fileName: `${id}-${ADOPTION_TASK_SLUG}.md` };
 }
 function createDocumentationCleanupTask(id) {
@@ -220,10 +220,11 @@ async function buildAdoptionPlan(rootDirectory, includeMigration) {
         throw new Error(compatibility.diagnostics[0] ?? `Cannot migrate ${CONFIG_PATH}: unsupported compatibility state.`);
     }
     const archivedTaskFiles = await listMarkdownFiles(join(rootDirectory, ".tasks", "archive"));
-    const adoptionTask = resolveAdoptionTask([
+    const allTaskFiles = [
         ...scan.taskFiles,
         ...archivedTaskFiles.map((file) => `.tasks/archive/${file}`),
-    ]);
+    ];
+    const adoptionTask = resolveAdoptionTask(scan.taskFiles, allTaskFiles);
     const exportFiles = await renderAgentExportFiles({
         ...DEFAULT_AGENT_POLICY,
         projectName: scan.rootName,
