@@ -182,6 +182,28 @@ test("v1 traces remain readable without fabricated startup or rewrite ceiling", 
   assert.match(report.warnings.join("\n"), /schemaVersion 1/);
 });
 
+test("reader preserves v1 compatibility warning for an actual v1 trace fixture", async () => {
+  await withTempDirectory(async (root) => {
+    await startPerfSession(root, "legacy-fixture");
+    const status = await getPerfStatus(root);
+    await writeFile(await getPerfTracePath(root), `${JSON.stringify({
+      schemaVersion: 1,
+      recordType: "invocation",
+      sessionId: status.sessionId,
+      invocationId: "legacy-fixture-invocation",
+      commandKind: "status",
+      interval: { startNs: "0", endNs: "1000000" },
+      durationMs: 1,
+      spans: [],
+    })}\n`, "utf8");
+    await stopPerfSession(root);
+    const report = await readPerfReport(root);
+    assert.deepEqual(report.traceSchemaVersions, [1]);
+    assert.equal(report.apkRewriteSensitiveMs, null);
+    assert.match(report.warnings.join("\n"), /schemaVersion 1/);
+  });
+});
+
 test("v2 wrapped commands retain safe command-kind attribution without raw argv", async () => {
   await withTempDirectory(async (root) => {
     await startPerfSession(root, "privacy");

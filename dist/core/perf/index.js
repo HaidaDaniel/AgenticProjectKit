@@ -579,7 +579,7 @@ export function buildPerfReport(records, malformedRecordCount = 0, session) {
     const totalMs = ms(observedNs);
     const internalMs = ms(apkInternalNs);
     const startupNs = exclusive.get("apk-startup") ?? 0n;
-    const fullProcessAvailable = records.length > 0 && records.every((record) => record.schemaVersion === PERF_SCHEMA_VERSION && record.fullProcessInterval !== undefined);
+    const fullProcessAvailable = records.length > 0 && fullRoots.length === records.length;
     const rewriteSensitiveMs = fullProcessAvailable ? ms(startupNs + apkInternalNs) : null;
     const scenarios = rewriteSensitiveMs === null ? [] : [
         scenario("25% faster APK rewrite-sensitive runtime", 0.75, totalMs, rewriteSensitiveMs),
@@ -612,9 +612,9 @@ export function buildPerfReport(records, malformedRecordCount = 0, session) {
         malformedRecordCount,
         incompleteCoverage: malformedRecordCount > 0 || (records.length > 0 && !fullProcessAvailable),
         observedToolingWallMs: totalMs,
-        apkFullProcessUnionMs: fullRoots.length > 0 ? ms(fullNs) : null,
+        apkFullProcessUnionMs: fullProcessAvailable ? ms(fullNs) : null,
         apkInstrumentedUnionMs: ms(instrumentedNs),
-        apkStartupResidualMs: fullRoots.length > 0 ? ms(startupNs) : null,
+        apkStartupResidualMs: fullProcessAvailable ? ms(startupNs) : null,
         apkInternalInstrumentedMs: internalMs,
         apkRewriteSensitiveMs: rewriteSensitiveMs,
         gitMs: ms(gitNs),

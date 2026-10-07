@@ -71,6 +71,13 @@ or secrets are stored. Runtime traces stay under `.agentic/perf/`, including a
 local Git exclude fallback for legacy downstream checkouts. Malformed data is
 ignored with a warning and never blocks ordinary APK work.
 
-The v2 execution inventory remains bounded: central APK subprocess boundaries
-use `observedExec`/`observedExecFile`; direct paths outside those wrappers are
-documented as coverage gaps rather than claimed as observed.
+## Execution-path coverage
+
+The v2 inventory checked the central boundaries used by task verification,
+provenance/Git, doctor, quality, audit, sync, scanners, init, context/docs,
+workspaces, and agent/resource helpers. Those paths use the shared
+`observedExec`/`observedExecFile` wrappers where APK launches subprocesses;
+`apk perf exec` is the explicit `spawn` boundary for direct repository tools.
+Any direct `child_process` path outside those wrappers remains an explicit
+coverage gap and is not claimed as observed. This inventory is a bounded
+coverage statement, not a claim that arbitrary agent shell commands are visible.
