@@ -1,7 +1,8 @@
 # APK performance v0.5.0 self-dogfood baseline
 
-Generated: 2026-10-07T18:14:29.140Z
+Generated: 2026-10-07T18:23:52.134Z
 Environment: linux/x64, Node v24.21.0
+Trace/report schema: v2
 
 This bounded, LLM-free development baseline uses the v2 profiler on AgenticProjectKit and a disposable task-verification fixture. It is decision-quality self evidence for attribution, not a universal Go conclusion and not an absolute release gate.
 
@@ -13,8 +14,8 @@ First-run means the first command group after a session starts. Repeated-run mea
 
 | Group | repetitions | parent process wall | Node full process | startup residual | instrumented APK internal | Git |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| short first-run group | 5 | 2.482 s (n=5, p95 2.497 s) | 0.438 s (n=5, p95 0.452 s) | 0.323 s (n=5, p95 0.333 s) | 0.108 s (n=5, p95 0.117 s) | 0.008 s (n=5, p95 0.008 s) |
-| short repeated-run group | 10 | 2.451 s (n=10, p95 2.465 s) | 0.443 s (n=10, p95 0.459 s) | 0.325 s (n=10, p95 0.342 s) | 0.108 s (n=10, p95 0.115 s) | 0.008 s (n=10, p95 0.010 s) |
+| short first-run group | 5 | min 2.504 s, median 2.512 s, p95 2.837 s, max 2.837 s (n=5) | min 0.449 s, median 0.451 s, p95 0.456 s, max 0.456 s (n=5) | min 0.322 s, median 0.332 s, p95 0.337 s, max 0.337 s (n=5) | min 0.109 s, median 0.110 s, p95 0.121 s, max 0.121 s (n=5) | min 0.007 s, median 0.008 s, p95 0.008 s, max 0.008 s (n=5) |
+| short repeated-run group | 10 | min 2.478 s, median 2.509 s, p95 2.546 s, max 2.546 s (n=10) | min 0.431 s, median 0.444 s, p95 0.459 s, max 0.459 s (n=10) | min 0.315 s, median 0.321 s, p95 0.333 s, max 0.333 s (n=10) | min 0.104 s, median 0.108 s, p95 0.122 s, max 0.122 s (n=10) | min 0.007 s, median 0.008 s, p95 0.008 s, max 0.008 s (n=10) |
 
 ## Verification-heavy workload
 
@@ -22,8 +23,8 @@ The AgenticProjectKit row runs the same four commands in OFF and ON groups throu
 
 | Workload | repetitions | wall | rewrite-sensitive APK | Git | tests | lint | typecheck | build | other |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| AgenticProjectKit test/lint/typecheck/build | 3 | 12.807 s (n=3, p95 12.909 s) | 0.555 s (n=3, p95 0.562 s) | 0.000 s | 0.736 s | 4.128 s | 3.993 s | 3.399 s | 0.000 s |
-| Disposable task verify | 3 | 0.331 s (n=3, p95 0.332 s) | 0.248 s (n=3, p95 0.253 s) | 0.052 s | 0.000 s | 0.000 s | 0.000 s | 0.000 s | 0.030 s |
+| AgenticProjectKit test/lint/typecheck/build | 3 | min 12.799 s, median 12.842 s, p95 12.852 s, max 12.852 s (n=3) | min 0.547 s, median 0.555 s, p95 0.562 s, max 0.562 s (n=3) | 0.000 s | 0.743 s | 4.116 s | 3.984 s | 3.418 s | 0.000 s |
+| Disposable task verify | 3 | min 0.325 s, median 0.326 s, p95 0.332 s, max 0.332 s (n=3) | min 0.248 s, median 0.249 s, p95 0.253 s, max 0.253 s (n=3) | 0.049 s | 0.000 s | 0.000 s | 0.000 s | 0.000 s | 0.029 s |
 
 Child duration sum and child wall-clock union remain separate diagnostics. Primary command-kind attribution is disjoint, so overlapping children are not added as wall-clock percentages.
 
@@ -33,10 +34,10 @@ OFF and ON use identical command sequences, fixtures, Node version, and environm
 
 | Workload | OFF parent wall | ON parent wall | delta ms | delta % |
 | --- | ---: | ---: | ---: | ---: |
-| short first-run group | 2.482 s | 2.477 s | -4.5 ms | -0.2% |
-| short repeated-run group | 2.451 s | 2.467 s | 15.0 ms | 0.6% |
-| verification-heavy | 12.682 s | 12.733 s | 50.6 ms | 0.4% |
-| disposable task verify | 0.226 s | 0.228 s | 1.6 ms | 0.7% |
+| short first-run group | 2.512 s | 2.543 s | 30.2 ms | 1.2% |
+| short repeated-run group | 2.509 s | 2.521 s | 11.5 ms | 0.5% |
+| verification-heavy | 12.701 s | 12.764 s | 62.7 ms | 0.5% |
+| disposable task verify | 0.227 s | 0.223 s | -3.3 ms | -1.5% |
 
 ## Go ceilings
 
@@ -44,17 +45,17 @@ These are Amdahl-style mathematical scenarios for the measured rewrite-sensitive
 
 | Workload | APK rewrite-sensitive share | 2x gain | 5x gain | zero-cost maximum |
 | --- | ---: | ---: | ---: | ---: |
-| short first-run group | 98.2% | 49.1% | 78.6% | 98.2% |
-| short repeated-run group | 98.0% | 49.1% | 78.6% | 98.2% |
-| verification-heavy | 4.3% | 2.2% | 3.5% | 4.4% |
-| disposable task verify | 74.9% | 37.6% | 60.2% | 75.3% |
+| short first-run group | 98.3% | 49.2% | 78.7% | 98.3% |
+| short repeated-run group | 98.3% | 49.1% | 78.6% | 98.3% |
+| verification-heavy | 4.3% | 2.2% | 3.5% | 4.3% |
+| disposable task verify | 76.1% | 38.0% | 60.9% | 76.1% |
 
 ## Evidence controls and limits
 
 - **Baseline:** this report replaces the v0.4.9 synthetic-only self baseline for v2 self measurement; v0.4.9 remains immutable historical evidence.
 - **Comparability:** every OFF/ON pair uses the same fixed command list, fixture, Node version, and working directory. The ON report uses schemaVersion 2; the OFF side is independently observed by the parent because no trace is expected.
 - **Process boundary:** parent spawn-to-exit is not required to equal reconstructed Node process lifetime. The two measurements are reported as different observation boundaries.
-- **Repetitions:** short first-run groups use at least five runs and repeated-run groups use at least ten in the committed baseline; verification-heavy groups use three bounded runs because they execute real project tooling. Min/median/p95/max are retained in the generator payload, while the compact report shows median and p95.
+- **Repetitions:** short first-run groups use at least five runs and repeated-run groups use at least ten in the committed baseline; verification-heavy groups use three bounded runs because they execute real project tooling. The committed tables show min/median/p95/max for repeated workload measurements.
 - **Fixture:** the disposable task fixture proves APK orchestration, Git/provenance, and an external verification subprocess. The repository workload exercises test, lint, typecheck, and build through explicit wrappers.
 - **Privacy:** the harness fixes commands in source, does not commit stdout/stderr or raw traces, and the profiler stores neither raw argv nor environment values. Temporary fixtures are removed after each run.
 - **Holdout:** this self benchmark is not representative downstream evidence. Task 0215 must collect real sessions using the released v0.5.0 package before any Go decision.
