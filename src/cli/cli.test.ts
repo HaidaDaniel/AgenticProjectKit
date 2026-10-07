@@ -1926,7 +1926,7 @@ test("CLI work blocks non-review scarce-frontier issuance after the task run cap
   });
 });
 
-test("CLI work warns about unsettled mutable runs in the same worktree", async () => {
+test("CLI work rejects another mutable task in the same worktree", async () => {
   await withTempDirectory(async (directory) => {
     const git = async (...args: string[]) => {
       await execFileAsync("git", args, { cwd: directory });
@@ -1944,12 +1944,12 @@ test("CLI work warns about unsettled mutable runs in the same worktree", async (
     }
     assert.equal((await runCli(["work", "0001", "--owner", "codex-a", "--target", "codex"], directory)).exitCode, 0);
     const second = await runCli(["work", "0002", "--owner", "codex-b", "--target", "codex"], directory);
-    assert.equal(second.exitCode, 0, `${second.stdout}${second.stderr}`);
-    assert.match(second.stdout, /same Git worktree/);
+    assert.equal(second.exitCode, 1);
+    assert.match(second.stderr + second.stdout, /release the current task|separate Git worktree/i);
   });
 });
 
-test("CLI work ignores unactivated sessions in same-worktree warnings", async () => {
+test("CLI work keeps the mutable-task guard independent of session activation", async () => {
   await withTempDirectory(async (directory) => {
     const git = async (...args: string[]) => {
       await execFileAsync("git", args, { cwd: directory });
@@ -1973,8 +1973,8 @@ test("CLI work ignores unactivated sessions in same-worktree warnings", async ()
     await rm(join(directory, firstPayload.session.activation), { force: true });
 
     const second = await runCli(["work", "0002", "--owner", "codex-b", "--target", "codex"], directory);
-    assert.equal(second.exitCode, 0, `${second.stdout}${second.stderr}`);
-    assert.doesNotMatch(second.stdout, /same Git worktree/);
+    assert.equal(second.exitCode, 1);
+    assert.match(second.stderr + second.stdout, /release the current task|separate Git worktree/i);
   });
 });
 
