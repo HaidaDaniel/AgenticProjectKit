@@ -55,7 +55,7 @@ Each row repeats its contract's lifecycle state so readers can compare the roadm
 | Documentation consistency and release gate | 0178 | done | [0178](../.tasks/0178-separate-release-candidate-version-from-latest-validated-release.md) |
 | Documentation consistency and release gate | 0179 | done | [0179](../.tasks/0179-require-externally-observed-ci-for-every-declared-ci-verification-check.md) |
 | Workflow decision correctness | 0181 | done | [0181](../.tasks/0181-prefer-current-operator-decisions-over-stale-candidate-history.md) |
-| Documentation consistency and release gate | 0173 | todo | [0173](../.tasks/0173-validate-the-next-public-readiness-release.md) |
+| Documentation consistency and release gate | 0173 | blocked | [0173](../.tasks/0173-validate-the-next-public-readiness-release.md) |
 
 Task contracts carry the exact prerequisite graph; use `apk task deps <task-id>` to inspect it. In particular, Task 0173 depends on completed Tasks 0178 and 0179, and its existing guide, CLI, contribution, consistency, and security prerequisites. Task 0181 completed the current-versus-stale operator decision correction after 0179; it remains a separate workflow correctness task, not an added release prerequisite. Task 0173 validates an exact frozen candidate only after its dependencies pass; it does not assign a version or date in advance. Its PRE-TAG state may have `packageVersion` ahead of `validatedReleaseVersion`; promotion follows successful post-tag validation in a separate change on `main`.
 
@@ -67,9 +67,9 @@ The external-runtime dogfood recorded by Task 0097 is deferred until the APK bac
 
 ## Blocked work
 
-Task 0170 cannot be completed until the operator confirms a usable private vulnerability-reporting route. The task contract remains blocked while that external decision is missing.
+The operator selected GitHub Private Vulnerability Reporting for Task 0170, with no separate security email. Its remaining blocker is enabling the real route after publication and verifying external non-maintainer discoverability. No SECURITY.md claims that the route already works. Repository visibility observations and the exact activation order are recorded in [progress](progress.md#known-blockers).
 
-Task 0173 still depends on Task 0170, so the final release gate cannot pass until the operator confirms a usable private reporting route and Task 0170 is completed. The new release semantics and hosted-CI policy corrections are separate prerequisites.
+Task 0173 explicitly depends on completed Task 0170, so its public-readiness release gate remains blocked. Independent development-candidate packaging, executable/skill assets, downstream adoption, and self-adoption checks passed without publishing a release or claiming post-tag validation ([reassessment](delivery/backlog-reassessment-2026-10-07.md)). The new release semantics and hosted-CI policy corrections are completed separate prerequisites.
 
 ## Excluded from current scope
 

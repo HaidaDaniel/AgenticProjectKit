@@ -1,6 +1,6 @@
 # Task 0197 - Add explicit operator-approved attribution recovery for interrupted tasks
 
-State: blocked
+State: canceled
 Owner: none
 Mode: maintenance
 Lane: workflow
@@ -115,3 +115,5 @@ Allow an explicit operator to approve specific intervening commit attribution wh
 - Select runnable host-repository checks with --verification-json; template shell commands are examples. Prefer focused feedback and a non-overlapping final set; do not repeat a suite through test, coverage, quality, and release aggregates. Report checks must execute the relevant tests and produce the declared artifact in one host command. Preserve required domain evidence.
 - block: Canonical verify mnczvs is blocked by pre-existing 0191 history outside this task scope. Attribution and release-reclaim regressions are implemented and green, but completing this task requires a separately authorized historical provenance decision; accept-attribution is not being used as a bypass.
 - block: Canonical verification still finds historical provenance outside Task 0197 scope; corrective edge-case implementation and fresh native review passed, but completion remains blocked pending separately authorized provenance repair.
+- block: Fresh verify verify-1791378158802-wtgv1i at fa611ca excludes completed 0198/0199 correctly but fails on unfinished 0191 commits changing forbidden src/core/skills/** and legacy release/reclaim snapshots without material-contract hashes. No current operator attribution decision exists for 0197; exact commit/path investigation is required, not a scope expansion.
+- cancel: Operator explicitly selected option 2 on 2026-10-07: cancel this mixed historical contract and validate existing interrupted-attribution behavior on a fresh baseline. Preserve all prior evidence and fail-closed scope/ownership semantics; no generic approval or fabricated done.

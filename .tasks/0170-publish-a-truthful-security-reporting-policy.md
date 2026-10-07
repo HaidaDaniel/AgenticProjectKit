@@ -11,6 +11,10 @@ Parallel: true
 Depends on: 0152,0158,0163,0168
 Tags: docs
 
+## Goal
+
+Publish truthful vulnerability reporting guidance after the operator selects or verifies a private reporting channel.
+
 ## Context files
 
 - AGENTS.md
@@ -37,10 +41,6 @@ Tags: docs
 - docs/releases/**
 - docs/decisions.md
 - CONTRIBUTING.md
-
-## Goal
-
-Publish truthful vulnerability reporting guidance after the operator selects or verifies a private reporting channel.
 
 ## Steps
 
@@ -89,6 +89,7 @@ Publish truthful vulnerability reporting guidance after the operator selects or 
 - `{"id":"check-2","type":"automated","required":true,"environment":"local","profile":"report","command":"test -s SECURITY.md","artifact":"SECURITY.md"}`
 - `{"id":"check-3","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
 - `{"id":"check-4","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node scripts/check-docs-consistency.mjs"}`
+
 ## Documentation updates
 
 - Update the relevant canonical guide or source document when user-visible behavior or policy changes.
@@ -97,3 +98,4 @@ Publish truthful vulnerability reporting guidance after the operator selects or 
 ## Notes
 
 - Intentionally blocked pending operator input; the public release depends on an honest working path.
+- block: Operator decision 2026-10-07: GitHub Private Vulnerability Reporting is the chosen official private channel after publication; no separate security email, SLA, bounty, or deadlines. Operator reports repository still private: publish then enable PVR and verify Report a vulnerability as external non-maintainer before claim/reverify, truthful SECURITY.md/navigation, review/gate/done. Current public API reports private=false but the security page offers no Report a vulnerability: route remains unavailable/unverified.

@@ -1,6 +1,6 @@
 # Task 0120 - Preserve actionable task transition reasons and truncate only presentation
 
-State: blocked
+State: canceled
 Owner: none
 Mode: maintenance
 Lane: workflow
@@ -128,3 +128,5 @@ Preserve the full bounded reason in the authoritative records (task note/state r
 - Non-goals: do not turn task Notes into arbitrary blobs, add external storage, add database persistence, redesign run logging, or make blocker reasons multiline documents.
 - If provenance/evidence already has a better canonical location for the full reason, use the smallest coherent design rather than duplicating storage.
 - block: Implementation commit 129cf82 and ADR-0056 verification are already recorded; authoritative earliest claim baseline now fails closed because later unrelated backlog commits (task contracts 0123-0130) are attributed as out-of-scope changed files and release/reclaim cannot rebase the baseline without laundering attribution. Needs operator guidance on rebaseline before verification can be candidate-bound.
+- block: Fresh verify verify-1791378254886-l4xl9s at fa611ca fails scope before checks: earliest baseline 327d4ae is 297 commits behind HEAD, exceeding the 128-commit provenance bound; 475 changed paths include forbidden workflow/gate/work files. The implemented reason-preservation regressions remain covered by current green suite. Requires explicit operator lifecycle/recovery resolution; no automatic rebaseline or limit increase.
+- cancel: Operator explicitly selected option 2 on 2026-10-07: cancel this contaminated historical contract and validate its already-implemented bounded lifecycle-reason behavior against a fresh contract. Preserve original evidence/baseline/history; no attribution exception or retroactive done.

@@ -1,6 +1,6 @@
 # Task 0173 - Validate the next public-readiness release
 
-State: todo
+State: blocked
 Owner: none
 Mode: production
 Lane: release
@@ -129,3 +129,5 @@ Validate the next public-readiness release
 
 - Treat pre-tag evidence as the gate for tag creation and post-tag evidence as a separate record; never fabricate future facts inside an immutable commit.
 - Tasks 0149 and 0150 are optional deferred product-identity work and are outside this release's dependency path. Any future naming/rebrand investigation requires a new explicit human decision before activation and remains a separate optional milestone.
+- block: Task 0170 is an explicit prerequisite and remains blocked until GitHub PVR is enabled and verified by an external non-maintainer. Independent technical/package/install checks are being performed separately; they cannot substitute for the security dependency or exact pre-tag/post-tag release chronology. No release/tag is being created while the prerequisite is unmet.
+- block: Operator selected GitHub PVR, but Task 0170 remains blocked until the official route is enabled and externally verified. Existing explicit dependency prevents release/tag completion. Technical package/bin/assets, downstream Go adoption, materialization/no-op and exact-candidate self-adoption passed at 040440f; development-package smoke does not claim publication or post-tag validation.
