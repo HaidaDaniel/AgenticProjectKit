@@ -1,7 +1,7 @@
 # Task 0191 - Materialize APK skills into standards-based project skill directories
 
-State: review
-Owner: codex-recheck-20261007
+State: todo
+Owner: none
 Mode: product
 Lane: tooling
 Type: feature
