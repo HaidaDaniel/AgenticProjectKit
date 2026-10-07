@@ -59,6 +59,7 @@ See the [maturity and compatibility policy](docs/product/maturity-and-compatibil
 
 - [GitHub repository](https://github.com/HaidaDaniel/AgenticProjectKit)
 - [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
 - [MIT License](LICENSE)
 
 ## Install APK in another repository

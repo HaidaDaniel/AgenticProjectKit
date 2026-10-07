@@ -47,7 +47,7 @@ Each row repeats its contract's lifecycle state so readers can compare the roadm
 | CLI consistency | 0165 | done | [0165](../.tasks/archive/0165-establish-one-canonical-public-cli-name.md) |
 | CLI consistency | 0167 | done | [0167](../.tasks/archive/0167-keep-cli-reference-aligned-with-the-command-registry.md) |
 | OSS contribution readiness | 0169 | done | [0169](../.tasks/archive/0169-add-contributor-docs-and-lightweight-github-contribution-ux.md) |
-| OSS contribution readiness | 0170 | blocked | [0170](../.tasks/0170-publish-a-truthful-security-reporting-policy.md) |
+| OSS contribution readiness | 0170 | doing | [0170](../.tasks/0170-publish-a-truthful-security-reporting-policy.md) |
 | OSS contribution readiness | 0171 | done | [0171](../.tasks/archive/0171-establish-a-release-changelog-and-index-strategy.md) |
 | Acquisition and examples | 0166 | done | [0166](../.tasks/archive/0166-simplify-first-run-acquisition-while-keeping-exact-pins.md) |
 | Acquisition and examples | 0172 | done | [0172](../.tasks/archive/0172-add-runnable-greenfield-brownfield-and-local-first-showcases.md) |
@@ -67,7 +67,7 @@ The external-runtime dogfood recorded by Task 0097 is deferred until the APK bac
 
 ## Blocked work
 
-The operator selected GitHub Private Vulnerability Reporting for Task 0170, with no separate security email. Its remaining blocker is enabling the real route after publication and verifying external non-maintainer discoverability. No SECURITY.md claims that the route already works. Repository visibility observations and the exact activation order are recorded in [progress](progress.md#known-blockers).
+The operator confirmed that GitHub Private Vulnerability Reporting is enabled for Task 0170 and verified the `Report a vulnerability` form as an external non-maintainer. The task is completing its truthful policy and navigation; no separate security email, SLA, bounty, or deadline is promised. The operator decision and lifecycle order are recorded in [progress](progress.md#known-blockers).
 
 Task 0173 explicitly depends on completed Task 0170, so its public-readiness release gate remains blocked. Independent development-candidate packaging, executable/skill assets, downstream adoption, and self-adoption checks passed without publishing a release or claiming post-tag validation ([reassessment](delivery/backlog-reassessment-2026-10-07.md)). The new release semantics and hosted-CI policy corrections are completed separate prerequisites.
 

@@ -32,6 +32,7 @@ Use this index to find the canonical guide for starting, understanding, adopting
 - [Decisions and ADRs](decisions.md) — review accepted and superseded architecture decisions.
 - [Documentation Maintenance Checks](engineering/documentation-maintenance.md) — see the exact consistency rules and their limits.
 - [Contributing](../CONTRIBUTING.md) — set up a source checkout, propose bounded changes, and run repository checks.
+- [Security policy](../SECURITY.md) — report suspected vulnerabilities through GitHub Private Vulnerability Reporting.
 
 ## Releases and project history
 

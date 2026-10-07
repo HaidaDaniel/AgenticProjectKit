@@ -1,7 +1,7 @@
 # Task 0170 - Publish a truthful security reporting policy
 
-State: blocked
-Owner: none
+State: doing
+Owner: codex-public-readiness-20261007
 Mode: maintenance
 Lane: security
 Type: docs
@@ -22,6 +22,7 @@ Publish truthful vulnerability reporting guidance after the operator selects or 
 - README.md
 - docs/index.md (future output of prerequisite Task 0158)
 - docs/product/maturity-and-compatibility.md (future output of prerequisite Task 0152)
+- docs/roadmap.md
 - docs/engineering/testing-strategy.md
 - .github/workflows/quality.yml
 - LICENSE
@@ -31,6 +32,7 @@ Publish truthful vulnerability reporting guidance after the operator selects or 
 - SECURITY.md
 - README.md
 - docs/index.md
+- docs/roadmap.md
 - docs/progress.md
 
 ## Files forbidden to edit
