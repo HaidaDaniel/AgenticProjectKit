@@ -61,6 +61,7 @@ Define APK performance measurement contract
 ## Verification
 
 - `{"id":"contract-lint","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"pnpm exec apk lint --json"}`
+- `{"id":"contract-report","type":"automated","required":true,"environment":"local","profile":"report","command":"test -s docs/research/apk-performance-measurement-contract.md","artifact":"docs/research/apk-performance-measurement-contract.md"}`
 - `{"id":"diff-check","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"git diff --check"}`
 
 ## Documentation updates
