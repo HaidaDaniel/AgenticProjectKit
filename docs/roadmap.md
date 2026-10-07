@@ -47,7 +47,7 @@ Each row repeats its contract's lifecycle state so readers can compare the roadm
 | CLI consistency | 0165 | done | [0165](../.tasks/archive/0165-establish-one-canonical-public-cli-name.md) |
 | CLI consistency | 0167 | done | [0167](../.tasks/archive/0167-keep-cli-reference-aligned-with-the-command-registry.md) |
 | OSS contribution readiness | 0169 | done | [0169](../.tasks/archive/0169-add-contributor-docs-and-lightweight-github-contribution-ux.md) |
-| OSS contribution readiness | 0170 | doing | [0170](../.tasks/0170-publish-a-truthful-security-reporting-policy.md) |
+| OSS contribution readiness | 0170 | review | [0170](../.tasks/0170-publish-a-truthful-security-reporting-policy.md) |
 | OSS contribution readiness | 0171 | done | [0171](../.tasks/archive/0171-establish-a-release-changelog-and-index-strategy.md) |
 | Acquisition and examples | 0166 | done | [0166](../.tasks/archive/0166-simplify-first-run-acquisition-while-keeping-exact-pins.md) |
 | Acquisition and examples | 0172 | done | [0172](../.tasks/archive/0172-add-runnable-greenfield-brownfield-and-local-first-showcases.md) |

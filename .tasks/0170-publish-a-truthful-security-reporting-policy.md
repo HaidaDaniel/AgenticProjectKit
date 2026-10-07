@@ -1,6 +1,6 @@
 # Task 0170 - Publish a truthful security reporting policy
 
-State: doing
+State: review
 Owner: codex-public-readiness-20261007
 Mode: maintenance
 Lane: security
