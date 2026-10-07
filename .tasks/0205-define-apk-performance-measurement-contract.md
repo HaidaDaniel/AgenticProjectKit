@@ -1,6 +1,6 @@
 # Task 0205 - Define APK performance measurement contract
 
-State: doing
+State: done
 Owner: codex-performance-20261007
 Mode: discovery
 Lane: architecture
