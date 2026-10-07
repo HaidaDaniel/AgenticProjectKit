@@ -44,10 +44,12 @@ Validate the next public-readiness release
 - docs/**
 - .github/**
 - dist/**
+- .tasks/0203-avoid-archived-task-id-collisions-during-adoption.md
+- src/core/docs/adopt.ts
+- src/core/docs/adopt.test.ts
 
 ## Files forbidden to edit
 
-- src/**
 - LICENSE
 - .tasks/archive/**
 
@@ -132,3 +134,4 @@ Validate the next public-readiness release
 - block: Task 0170 is an explicit prerequisite and remains blocked until GitHub PVR is enabled and verified by an external non-maintainer. Independent technical/package/install checks are being performed separately; they cannot substitute for the security dependency or exact pre-tag/post-tag release chronology. No release/tag is being created while the prerequisite is unmet.
 - block: Operator selected GitHub PVR, but Task 0170 remains blocked until the official route is enabled and externally verified. Existing explicit dependency prevents release/tag completion. Technical package/bin/assets, downstream Go adoption, materialization/no-op and exact-candidate self-adoption passed at 040440f; development-package smoke does not claim publication or post-tag validation.
 - block: Required candidate self-adoption fails after apply: generated .tasks/0196-document-adopted-repository.md collides with existing archived Task 0196, so exact-candidate lint reports duplicate-task-id. Source correction and regression verification required before release validation can continue.
+- note: Completed Task 0203 corrected adoption task-ID allocation. Its exact source, committed dist output, and lifecycle contract remain carried-forward candidate paths so this release task can validate the corrected frozen tree without rewriting prior provenance.
