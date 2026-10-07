@@ -1,6 +1,6 @@
 # Task 0213 - Strengthen APK tooling attribution benchmark harness
 
-State: doing
+State: done
 Owner: codex-performance-20261007
 Mode: mvp
 Lane: architecture
