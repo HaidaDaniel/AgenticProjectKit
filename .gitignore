@@ -13,6 +13,7 @@ coverage/
 .agentic/evidence.append.lock
 .agentic/reviews/*
 .agentic/sessions/*
+.agentic/perf/*
 .agentic/workspaces/*
 .apk-workspaces/
 docs/audit-report.md

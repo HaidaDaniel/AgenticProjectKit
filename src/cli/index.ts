@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { dispatchPublicCommand, renderCliHelp } from "./command-registry.js";
+import { runWithPerfInvocation, withPerfSpan } from "../core/perf/index.js";
 
 const argv = process.argv.slice(2);
 
@@ -15,7 +16,11 @@ async function main(): Promise<number> {
     console.log(renderCliHelp());
     return 0;
   }
-  const result = await dispatchPublicCommand(command, commandArgs);
+  const result = await runWithPerfInvocation(process.cwd(), command, () => withPerfSpan(
+    "apk-bootstrap",
+    "cli.dispatch",
+    () => dispatchPublicCommand(command, commandArgs),
+  ));
   if (result !== undefined) {
     return result;
   }

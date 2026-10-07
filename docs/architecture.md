@@ -39,6 +39,13 @@ APK is a repository-local semantic workflow/control plane. It is not a terminal,
 
 APK owns tasks, dependencies, claim/ownership, scope, risk, execution profile, resources, routing, assurance, verification, review, evidence, provenance, gate, semantic attention, and safe Git worktree ownership/lifecycle.
 
+Optional performance observability is a local diagnostic projection, not a
+second provenance or runtime system. When explicitly started, it records
+bounded monotonic APK/subprocess intervals under ignored `.agentic/perf/`
+storage and reports only observed tooling wall-clock. LLM generation, idle
+gaps, and unwrapped direct shell commands remain outside its claims. The
+measurement contract is maintained in [the performance research artifact](research/apk-performance-measurement-contract.md).
+
 An external runtime owns PTY, terminal panes, persistent shells, detach/reattach, live process lifetime, remote-machine connectivity, SSH/session UI, and operator navigation.
 
 APK does not implement a terminal emulator, a tmux clone, a Herdr clone, an SSH manager, a global process supervisor, a global APK daemon, cloud coordination, or a generic swarm.

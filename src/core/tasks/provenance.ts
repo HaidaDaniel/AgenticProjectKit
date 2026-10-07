@@ -1,7 +1,5 @@
-import { execFile } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { promisify } from "node:util";
 
 import {
   listAgents,
@@ -25,10 +23,10 @@ import {
   type TaskEvidenceSubject,
 } from "./evidence.js";
 import { isSafeRunId } from "../work/contract.js";
+import { observedExecFile } from "../perf/index.js";
 import { readActiveWorkerSession } from "../work/session.js";
 import { listWorkspaceStatuses, type WorkspaceStatusEntry } from "../workspaces/index.js";
 
-const execFileAsync = promisify(execFile);
 const MAX_COMMITS = 64;
 const MAX_DIFF_FILES = 256;
 const MAX_RUNS = 128;
@@ -182,7 +180,7 @@ function provenanceRun(event: RunLogEvent): TaskProvenanceRun {
 
 async function gitLines(rootDirectory: string, args: string[]): Promise<string[] | undefined> {
   try {
-    const result = await execFileAsync("git", args, {
+    const result = await observedExecFile("git", args, {
       cwd: rootDirectory,
       maxBuffer: 2 * 1024 * 1024,
       windowsHide: true,

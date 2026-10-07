@@ -2,6 +2,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { CONFIG_PATH, RUNTIME_MANIFEST_ROLES } from "../config/index.js";
 import { listAgentExporters } from "../exporters/index.js";
+import { withPerfSpan } from "../perf/index.js";
 const IGNORED_DIRECTORIES = new Set([
     ".git",
     "node_modules",
@@ -416,48 +417,50 @@ async function scanReadiness(rootDirectory, topLevelDirectories, topLevelFiles) 
     };
 }
 export async function scanRepository(rootDirectory) {
-    const entries = await readdir(rootDirectory, { withFileTypes: true });
-    const allTopLevelDirectories = entries
-        .filter((entry) => entry.isDirectory())
-        .map((entry) => entry.name)
-        .sort();
-    const topLevelDirectories = allTopLevelDirectories
-        .filter((name) => !IGNORED_DIRECTORIES.has(name))
-        .sort();
-    const topLevelFiles = entries
-        .filter((entry) => entry.isFile())
-        .map((entry) => entry.name)
-        .sort();
-    const detectedStack = new Set(await detectPackageStack(rootDirectory));
-    if (await fileExists(join(rootDirectory, "tsconfig.json"))) {
-        detectedStack.add("TypeScript");
-    }
-    if (await fileExists(join(rootDirectory, "pnpm-lock.yaml"))) {
-        detectedStack.add("pnpm");
-    }
-    const runtimeManifestRole = await readRuntimeManifestRole(rootDirectory);
-    const runtimeDiscovery = await discoverRuntimeCandidates(rootDirectory);
-    for (const candidate of runtimeDiscovery.candidates) {
-        if (candidate.packageJson) {
-            packageStack(candidate.packageJson).forEach((value) => detectedStack.add(value));
+    return withPerfSpan("filesystem", "repository.scan", async () => {
+        const entries = await readdir(rootDirectory, { withFileTypes: true });
+        const allTopLevelDirectories = entries
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => entry.name)
+            .sort();
+        const topLevelDirectories = allTopLevelDirectories
+            .filter((name) => !IGNORED_DIRECTORIES.has(name))
+            .sort();
+        const topLevelFiles = entries
+            .filter((entry) => entry.isFile())
+            .map((entry) => entry.name)
+            .sort();
+        const detectedStack = new Set(await detectPackageStack(rootDirectory));
+        if (await fileExists(join(rootDirectory, "tsconfig.json"))) {
+            detectedStack.add("TypeScript");
         }
-        if (hasPythonMarkers(candidate.files))
-            detectedStack.add("Python");
-        if (hasGoMarkers(candidate.files))
-            detectedStack.add("Go");
-    }
-    const runtime = scanRuntimeEvidence(runtimeDiscovery.candidates, topLevelFiles.includes("pnpm-lock.yaml") ? "pnpm" : undefined, runtimeManifestRole, runtimeDiscovery.discoveryLimited);
-    const agentExportPaths = listAgentExporters().map((exporter) => exporter.outputPath);
-    return {
-        rootName: rootDirectory.split(/[\\/]/).filter(Boolean).at(-1) ?? rootDirectory,
-        topLevelDirectories,
-        topLevelFiles,
-        detectedStack: [...detectedStack].sort(),
-        runtime,
-        readiness: await scanReadiness(rootDirectory, allTopLevelDirectories, topLevelFiles),
-        kitDocs: await scanFileSet(rootDirectory, REQUIRED_KIT_DOCS),
-        agentExports: await scanFileSet(rootDirectory, agentExportPaths),
-        hasAgenticConfig: await fileExists(join(rootDirectory, CONFIG_PATH)),
-        taskFiles: await listMarkdownFiles(rootDirectory, ".tasks"),
-    };
+        if (await fileExists(join(rootDirectory, "pnpm-lock.yaml"))) {
+            detectedStack.add("pnpm");
+        }
+        const runtimeManifestRole = await readRuntimeManifestRole(rootDirectory);
+        const runtimeDiscovery = await discoverRuntimeCandidates(rootDirectory);
+        for (const candidate of runtimeDiscovery.candidates) {
+            if (candidate.packageJson) {
+                packageStack(candidate.packageJson).forEach((value) => detectedStack.add(value));
+            }
+            if (hasPythonMarkers(candidate.files))
+                detectedStack.add("Python");
+            if (hasGoMarkers(candidate.files))
+                detectedStack.add("Go");
+        }
+        const runtime = scanRuntimeEvidence(runtimeDiscovery.candidates, topLevelFiles.includes("pnpm-lock.yaml") ? "pnpm" : undefined, runtimeManifestRole, runtimeDiscovery.discoveryLimited);
+        const agentExportPaths = listAgentExporters().map((exporter) => exporter.outputPath);
+        return {
+            rootName: rootDirectory.split(/[\\/]/).filter(Boolean).at(-1) ?? rootDirectory,
+            topLevelDirectories,
+            topLevelFiles,
+            detectedStack: [...detectedStack].sort(),
+            runtime,
+            readiness: await scanReadiness(rootDirectory, allTopLevelDirectories, topLevelFiles),
+            kitDocs: await scanFileSet(rootDirectory, REQUIRED_KIT_DOCS),
+            agentExports: await scanFileSet(rootDirectory, agentExportPaths),
+            hasAgenticConfig: await fileExists(join(rootDirectory, CONFIG_PATH)),
+            taskFiles: await listMarkdownFiles(rootDirectory, ".tasks"),
+        };
+    });
 }

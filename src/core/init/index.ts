@@ -1,8 +1,6 @@
-import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 
 import {
   CURRENT_CONFIG_SCHEMA_VERSION,
@@ -10,8 +8,7 @@ import {
   serializeAgenticConfig,
 } from "../config/index.js";
 import { renderTemplateFile } from "../templates/index.js";
-
-const execFileAsync = promisify(execFile);
+import { observedExecFile } from "../perf/index.js";
 const initTemplateDirectory = join(
   dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -39,6 +36,7 @@ export const APK_OPERATIONAL_IGNORE_ENTRIES = [
   ".agentic/evidence.append.lock",
   ".agentic/reviews/*",
   ".agentic/sessions/*",
+  ".agentic/perf/*",
   ".agentic/workspaces/*",
   ".apk-workspaces/",
   "docs/audit-report.md",
@@ -56,6 +54,7 @@ const TRACKED_OPERATIONAL_SPECS = [
   ".agentic/evidence.append.lock",
   ".agentic/reviews",
   ".agentic/sessions",
+  ".agentic/perf",
   ".agentic/workspaces",
   ".apk-workspaces",
   "docs/audit-report.md",
@@ -132,7 +131,7 @@ async function readOptionalText(path: string): Promise<string | undefined> {
  */
 export async function detectTrackedApkOperationalPaths(rootDirectory: string): Promise<string[]> {
   try {
-    const { stdout } = await execFileAsync(
+    const { stdout } = await observedExecFile(
       "git",
       ["ls-files", "--", ...TRACKED_OPERATIONAL_SPECS],
       { cwd: rootDirectory, maxBuffer: 4 * 1024 * 1024 },

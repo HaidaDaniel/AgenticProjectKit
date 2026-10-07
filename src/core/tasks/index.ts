@@ -1,8 +1,7 @@
-import { exec, execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFile, link, lstat, mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
-import { promisify } from "node:util";
 
 import { appendRunLog, readRunLog, requireAgent } from "../agents/index.js";
 import {
@@ -23,9 +22,8 @@ import {
   type TaskApkOperationRunner,
 } from "./apk-verification.js";
 import { withLocalMutationLock } from "./lock.js";
+import { observedExec, observedExecFile, withPerfSpan } from "../perf/index.js";
 
-const execAsync = promisify(exec);
-const execFileAsync = promisify(execFile);
 const DEFAULT_TASK_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 export const TASK_VERIFICATION_REFERENCE_MAX_LENGTH = TASK_EVIDENCE_REFERENCE_MAX_LENGTH;
 export const TASK_VERIFICATION_SUMMARY_MAX_LENGTH = TASK_EVIDENCE_SUMMARY_MAX_LENGTH;
@@ -970,10 +968,10 @@ function taskSortValue(task: ProjectTask): number {
 }
 
 export async function loadTaskFile(path: string): Promise<ProjectTaskFile> {
-  return {
+  return withPerfSpan("task-config", "task.parse", async () => ({
     path,
     task: parseTaskMarkdown(await readFile(path, "utf8")),
-  };
+  }));
 }
 
 export async function writeTaskFile(path: string, task: ProjectTask): Promise<void> {
@@ -985,17 +983,19 @@ export async function listTaskFiles(
   rootDirectory: string,
   taskDirectory = ".tasks",
 ): Promise<ProjectTaskFile[]> {
-  const directory = join(rootDirectory, taskDirectory);
-  const entries = await readdir(directory).catch(() => []);
-  const files: ProjectTaskFile[] = [];
+  return withPerfSpan("task-config", "task.list", async () => {
+    const directory = join(rootDirectory, taskDirectory);
+    const entries = await readdir(directory).catch(() => []);
+    const files: ProjectTaskFile[] = [];
 
-  for (const entry of entries.filter((name) => name.endsWith(".md")).sort()) {
-    files.push(await loadTaskFile(join(directory, entry)));
-  }
+    for (const entry of entries.filter((name) => name.endsWith(".md")).sort()) {
+      files.push(await loadTaskFile(join(directory, entry)));
+    }
 
-  return files.sort((left, right) => {
-    const byId = taskSortValue(left.task) - taskSortValue(right.task);
-    return byId === 0 ? left.path.localeCompare(right.path) : byId;
+    return files.sort((left, right) => {
+      const byId = taskSortValue(left.task) - taskSortValue(right.task);
+      return byId === 0 ? left.path.localeCompare(right.path) : byId;
+    });
   });
 }
 
@@ -1004,19 +1004,21 @@ export async function listArchivedTaskFiles(
   taskDirectory = ".tasks",
   excludedPaths: readonly string[] = [],
 ): Promise<ProjectTaskFile[]> {
-  const archiveDirectory = join(rootDirectory, taskDirectory, "archive");
-  const excluded = new Set(excludedPaths.map((path) => normalizeRepoPath(path)));
-  const entries = await readdir(archiveDirectory).catch(() => []);
-  const files: ProjectTaskFile[] = [];
+  return withPerfSpan("task-config", "task.archive-list", async () => {
+    const archiveDirectory = join(rootDirectory, taskDirectory, "archive");
+    const excluded = new Set(excludedPaths.map((path) => normalizeRepoPath(path)));
+    const entries = await readdir(archiveDirectory).catch(() => []);
+    const files: ProjectTaskFile[] = [];
 
-  for (const entry of entries.filter((name) => name.endsWith(".md")).sort()) {
-    const path = join(archiveDirectory, entry);
-    if (!excluded.has(normalizeRepoPath(path))) files.push(await loadTaskFile(path));
-  }
+    for (const entry of entries.filter((name) => name.endsWith(".md")).sort()) {
+      const path = join(archiveDirectory, entry);
+      if (!excluded.has(normalizeRepoPath(path))) files.push(await loadTaskFile(path));
+    }
 
-  return files.sort((left, right) => {
-    const byId = taskSortValue(left.task) - taskSortValue(right.task);
-    return byId === 0 ? left.path.localeCompare(right.path) : byId;
+    return files.sort((left, right) => {
+      const byId = taskSortValue(left.task) - taskSortValue(right.task);
+      return byId === 0 ? left.path.localeCompare(right.path) : byId;
+    });
   });
 }
 
@@ -1164,7 +1166,7 @@ async function listArchiveReferencePaths(
 ): Promise<string[]> {
   let isGitRepository = false;
   try {
-    const result = await execFileAsync("git", ["rev-parse", "--is-inside-work-tree"], {
+    const result = await observedExecFile("git", ["rev-parse", "--is-inside-work-tree"], {
       cwd: rootDirectory,
       encoding: "utf8",
       maxBuffer: 1024,
@@ -2353,7 +2355,7 @@ export function verifyTaskFileScope(
 }
 
 async function gitPaths(rootDirectory: string, args: readonly string[]): Promise<string[]> {
-  const result = await execFileAsync("git", args, {
+  const result = await observedExecFile("git", args, {
     cwd: rootDirectory,
     encoding: "buffer",
     maxBuffer: 8 * 1024 * 1024,
@@ -2385,7 +2387,7 @@ async function gitPathsBounded(
   args: readonly string[],
   maxPaths: number,
 ): Promise<string[]> {
-  return new Promise((resolve, reject) => {
+  return withPerfSpan("git", "git", () => new Promise((resolve, reject) => {
     const child = spawn("git", args, {
       cwd: rootDirectory,
       stdio: ["ignore", "pipe", "pipe"],
@@ -2455,7 +2457,7 @@ async function gitPathsBounded(
         finish();
       }
     });
-  });
+  }));
 }
 
 function normalizeGitPath(path: string): string {
@@ -2470,7 +2472,7 @@ async function gitOutput(
   args: readonly string[],
 ): Promise<string> {
   try {
-    const result = await execFileAsync("git", args, { cwd: rootDirectory, maxBuffer: 8 * 1024 * 1024 });
+    const result = await observedExecFile("git", args, { cwd: rootDirectory, maxBuffer: 8 * 1024 * 1024 });
     return result.stdout;
   } catch (error: unknown) {
     throw new TaskGitComparisonError(args, error);
@@ -2822,7 +2824,7 @@ async function gitCommitIsAncestor(
 ): Promise<boolean> {
   if (ancestorSha === descendantSha) return true;
   try {
-    await execFileAsync("git", ["merge-base", "--is-ancestor", ancestorSha, descendantSha], {
+    await observedExecFile("git", ["merge-base", "--is-ancestor", ancestorSha, descendantSha], {
       cwd: rootDirectory,
       windowsHide: true,
     });
@@ -3411,7 +3413,7 @@ async function gitFileFingerprint(
   path: string,
 ): Promise<string> {
   try {
-    const result = await execFileAsync("git", ["show", `${revision}:${path}`], {
+    const result = await observedExecFile("git", ["show", `${revision}:${path}`], {
       cwd: rootDirectory,
       encoding: "buffer",
       maxBuffer: 8 * 1024 * 1024,
@@ -3434,7 +3436,7 @@ async function gitTreeEntryFingerprint(
   path: string,
 ): Promise<string> {
   try {
-    const result = await execFileAsync("git", ["ls-tree", "-z", revision, "--", path], {
+    const result = await observedExecFile("git", ["ls-tree", "-z", revision, "--", path], {
       cwd: rootDirectory,
       encoding: "buffer",
       maxBuffer: 8 * 1024 * 1024,
@@ -4948,7 +4950,7 @@ async function defaultRunCommand(
   timeoutMs = DEFAULT_TASK_COMMAND_TIMEOUT_MS,
 ): Promise<number> {
   try {
-    await execAsync(command, {
+    await observedExec(command, {
       cwd: rootDirectory,
       windowsHide: true,
       timeout: timeoutMs,

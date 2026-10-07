@@ -1,11 +1,8 @@
-import { execFile } from "node:child_process";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { promisify } from "node:util";
 
+import { observedExecFile } from "../perf/index.js";
 import type { TaskState } from "../tasks/index.js";
-
-const execFileAsync = promisify(execFile);
 
 export const AGENTS_PATH = ".agentic/agents.jsonl";
 export const RUNS_PATH = ".agentic/runs.jsonl";
@@ -126,7 +123,7 @@ export function normalizeDeveloperId(value: string | undefined): string {
 
 async function readGitConfig(rootDirectory: string, key: string): Promise<string | undefined> {
   try {
-    const result = await execFileAsync("git", ["config", "--get", key], {
+    const result = await observedExecFile("git", ["config", "--get", key], {
       cwd: rootDirectory,
     });
     const value = result.stdout.trim();

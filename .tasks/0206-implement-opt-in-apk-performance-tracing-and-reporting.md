@@ -1,7 +1,7 @@
 # Task 0206 - Implement opt-in APK performance tracing and reporting
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-performance-20261007
 Mode: product
 Lane: implementation
 Type: feature
@@ -44,6 +44,7 @@ Implement opt-in APK performance tracing and reporting
 - src/core/doctor/index.ts
 - src/core/init/index.ts
 - src/core/quality/index.ts
+- src/core/scanners/index.ts
 - src/core/tasks/lock.ts
 - src/core/tasks/provenance.ts
 - src/core/tasks/index.ts
@@ -94,6 +95,7 @@ Implement opt-in APK performance tracing and reporting
 - `{"id":"focused-perf-tests","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx --test src/core/perf/*.test.ts src/cli/command.test.ts"}`
 - `{"id":"cli-smoke","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm exec tsx --test src/cli/cli.test.ts"}`
 - `{"id":"build","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"pnpm build"}`
+- `{"id":"docs-consistency","type":"automated","required":true,"environment":"static","profile":"report","command":"node scripts/check-docs-consistency.mjs","artifact":"docs/cli-commands.md"}`
 - `{"id":"contract-lint","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"dist-current","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"test -z \"$(git status --porcelain --untracked-files=all -- dist)\""}`
 - `{"id":"diff-check","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"git diff --check"}`

@@ -3,6 +3,7 @@ import { join } from "node:path";
 
 import { CONFIG_PATH, RUNTIME_MANIFEST_ROLES, type RuntimeManifestRole } from "../config/index.js";
 import { listAgentExporters } from "../exporters/index.js";
+import { withPerfSpan } from "../perf/index.js";
 
 export interface RepositoryFileSet {
   expected: string[];
@@ -554,6 +555,7 @@ async function scanReadiness(
 }
 
 export async function scanRepository(rootDirectory: string): Promise<RepositoryScan> {
+  return withPerfSpan("filesystem", "repository.scan", async () => {
   const entries = await readdir(rootDirectory, { withFileTypes: true });
   const allTopLevelDirectories = entries
     .filter((entry) => entry.isDirectory())
@@ -606,4 +608,5 @@ export async function scanRepository(rootDirectory: string): Promise<RepositoryS
     hasAgenticConfig: await fileExists(join(rootDirectory, CONFIG_PATH)),
     taskFiles: await listMarkdownFiles(rootDirectory, ".tasks"),
   };
+  });
 }

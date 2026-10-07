@@ -1,17 +1,14 @@
-import { execFile } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { promisify } from "node:util";
 
 import { CONFIG_PATH, readAgenticConfigFile } from "../config/index.js";
+import { observedExecFile } from "../perf/index.js";
 import { detectQualityCapabilities } from "../quality/index.js";
 import { listAgents } from "../agents/index.js";
 import { syncAgentExports } from "../sync/index.js";
 import { listTaskFiles } from "../tasks/index.js";
 import { TASK_EVIDENCE_LOCK_PATH } from "../tasks/evidence.js";
 import { inspectLocalMutationLock, renderLocalLockInspection } from "../tasks/lock.js";
-
-const execFileAsync = promisify(execFile);
 
 export type DoctorLevel = "pass" | "warn" | "fail";
 
@@ -51,13 +48,13 @@ async function readJson(path: string): Promise<unknown | undefined> {
 
 async function gitCheck(rootDirectory: string): Promise<DoctorCheck[]> {
   try {
-    await execFileAsync("git", ["--version"], { cwd: rootDirectory });
+    await observedExecFile("git", ["--version"], { cwd: rootDirectory });
   } catch {
     return [{ level: "warn", label: "git", message: "git is not available" }];
   }
 
   try {
-    await execFileAsync("git", ["rev-parse", "--is-inside-work-tree"], { cwd: rootDirectory });
+    await observedExecFile("git", ["rev-parse", "--is-inside-work-tree"], { cwd: rootDirectory });
     return [{ level: "pass", label: "git", message: "inside git worktree" }];
   } catch {
     return [{ level: "warn", label: "git", message: "not inside git worktree" }];

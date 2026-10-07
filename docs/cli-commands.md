@@ -60,6 +60,11 @@ The command synopsis and option list below are rendered from `src/cli/command-re
 - `apkit lint [--json]` - run read-only contract lint; JSON output is stable for automation.
 - `apkit mode [mode]` - inspect or set the repository's current workflow mode.
 - `apkit next-task` - select a todo task whose dependencies are complete.
+- `apkit perf start --label <label>` - start an opt-in local performance session; APK invocations are recorded automatically.
+- `apkit perf status` - show the active local performance session.
+- `apkit perf stop` - stop the active local performance session.
+- `apkit perf report [--json]` - report observed tooling wall, attribution, coverage, and Amdahl scenarios.
+- `apkit perf exec --category <repo-tool|test|lint|build|git> -- <command...>` - include one direct repository command in the active local performance session.
 - `apkit prompt <agent> --task <task-id> [--level 1|2|3] [--budget <units>] [--language <tag>]` - render bounded task context and an optional invocation-only language override.
 - `apkit quality detect [directory] [--json]` - read declared quality signals and evaluate explicit policy without executing project commands.
 - `apkit resources [--json]` - render configured model, harness, and worker records without probing providers.
@@ -123,6 +128,10 @@ pnpm exec apkit doctor
 pnpm exec apkit quality detect --json
 pnpm exec apkit sync cursor
 pnpm exec apkit status
+pnpm exec apkit perf start --label agent-work
+pnpm exec apkit perf exec --category test -- pnpm test
+pnpm exec apkit perf stop
+pnpm exec apkit perf report
 pnpm exec apkit suggest-context "Add auth middleware"
 pnpm exec apkit work 0043 --owner codex-a --target codex
 pnpm exec apkit workspaces create --task 0043 --owner codex-a --resource local-worker --run run-123

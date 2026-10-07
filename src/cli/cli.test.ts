@@ -150,6 +150,30 @@ test("CLI help lists implemented commands", async () => {
   assert.doesNotMatch(result.stdout, /^\s+apk /m);
 });
 
+test("installed-style CLI records an opt-in performance session and wrapped tool", async () => {
+  await withTempDirectory(async (directory) => {
+    const started = await runCli(["perf", "start", "--label", "cli-smoke"], directory);
+    assert.equal(started.exitCode, 0);
+    const status = await runCli(["perf", "status"], directory);
+    assert.equal(status.exitCode, 0);
+    assert.match(status.stdout, /Performance session active/);
+    const wrapped = await runCli([
+      "perf", "exec", "--category", "test", "--", process.execPath, "-e", "process.exit(0)",
+    ], directory);
+    assert.equal(wrapped.exitCode, 0);
+    const stopped = await runCli(["perf", "stop"], directory);
+    assert.equal(stopped.exitCode, 0);
+    const report = await runCli(["perf", "report", "--json"], directory);
+    assert.equal(report.exitCode, 0);
+    const parsed = JSON.parse(report.stdout) as { schemaVersion: number; invocationCount: number; wrappedToolCount: number };
+    assert.equal(parsed.schemaVersion, 1);
+    assert.ok(parsed.invocationCount >= 2);
+    assert.ok(parsed.wrappedToolCount >= 1);
+    const trace = await readFile(join(directory, ".agentic/perf/trace.jsonl"), "utf8");
+    assert.doesNotMatch(trace, /process\.exit\(0\)/);
+  });
+});
+
 test("CLI skills list, show, preview, apply, and protect customized project files", async () => {
   await withTempDirectory(async (directory) => {
     const list = await runCli(["skills", "list", "--json"], directory);

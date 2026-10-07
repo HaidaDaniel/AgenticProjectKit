@@ -1,13 +1,10 @@
-import { execFile } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { promisify } from "node:util";
 
 import { readAgenticConfigFile } from "../config/index.js";
+import { observedExecFile } from "../perf/index.js";
 import type { RepositoryScan } from "../scanners/index.js";
 import type { ProjectTask, TaskMode } from "../tasks/index.js";
-
-const execFileAsync = promisify(execFile);
 
 export type ContextLevel = 1 | 2 | 3;
 export type ContextTier = "required" | "relevant" | "optional";
@@ -426,7 +423,7 @@ async function listFilesystemRepositoryFiles(
  */
 async function listRepositoryFiles(rootDirectory: string): Promise<string[]> {
   try {
-    const { stdout } = await execFileAsync(
+    const { stdout } = await observedExecFile(
       "git",
       ["ls-files", "--cached", "--others", "--exclude-standard"],
       { cwd: rootDirectory, maxBuffer: 8 * 1024 * 1024 },

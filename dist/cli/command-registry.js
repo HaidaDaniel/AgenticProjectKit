@@ -13,6 +13,7 @@ import { runLintCommand } from "./commands/lint.js";
 import { runModeCommand } from "./commands/mode.js";
 import { runNextTaskCommand } from "./commands/next-task.js";
 import { runPromptCommand } from "./commands/prompt.js";
+import { runPerfCommand } from "./commands/perf.js";
 import { runQualityCommand } from "./commands/quality.js";
 import { runResourcesCommand } from "./commands/resources.js";
 import { runSkillsCommand } from "./commands/skills.js";
@@ -160,6 +161,18 @@ export const PUBLIC_COMMANDS = [
         summary: "Print the next actionable task.",
         handler: simple(runNextTaskCommand),
         variants: [{ usage: "next-task", description: "select a todo task whose dependencies are complete." }],
+    },
+    {
+        command: "perf",
+        summary: "Profile observed APK and wrapped tooling locally.",
+        handler: simple(runPerfCommand),
+        variants: [
+            { usage: "perf start --label <label>", description: "start an opt-in local performance session; APK invocations are recorded automatically." },
+            { usage: "perf status", description: "show the active local performance session." },
+            { usage: "perf stop", description: "stop the active local performance session." },
+            { usage: "perf report [--json]", description: "report observed tooling wall, attribution, coverage, and Amdahl scenarios." },
+            { usage: "perf exec --category <repo-tool|test|lint|build|git> -- <command...>", description: "include one direct repository command in the active local performance session." },
+        ],
     },
     {
         command: "prompt",

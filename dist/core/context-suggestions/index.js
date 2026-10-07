@@ -1,8 +1,6 @@
-import { execFile } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { promisify } from "node:util";
-const execFileAsync = promisify(execFile);
+import { observedExecFile } from "../perf/index.js";
 const IGNORE_DIRS = new Set([
     ".git",
     "node_modules",
@@ -155,8 +153,8 @@ async function importedDependencyMap(rootDirectory, files) {
 }
 async function gitChangedFiles(rootDirectory) {
     try {
-        const diff = await execFileAsync("git", ["diff", "--name-only", "HEAD"], { cwd: rootDirectory });
-        const status = await execFileAsync("git", ["status", "--short", "--untracked-files=all"], { cwd: rootDirectory });
+        const diff = await observedExecFile("git", ["diff", "--name-only", "HEAD"], { cwd: rootDirectory });
+        const status = await observedExecFile("git", ["status", "--short", "--untracked-files=all"], { cwd: rootDirectory });
         const changed = [
             ...diff.stdout.split(/\r?\n/),
             ...status.stdout.split(/\r?\n/).map((line) => line.slice(3)),

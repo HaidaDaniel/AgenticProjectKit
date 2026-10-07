@@ -1,14 +1,12 @@
-import { exec, execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFile, link, lstat, mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
-import { promisify } from "node:util";
 import { appendRunLog, readRunLog, requireAgent } from "../agents/index.js";
 import { appendTaskEvidence, compareTaskEvidenceFreshness, readTaskEvidence, TASK_EVIDENCE_REFERENCE_MAX_LENGTH, TASK_EVIDENCE_SUMMARY_MAX_LENGTH, } from "./evidence.js";
 import { TASK_APK_OPERATIONS, runTaskApkOperation, } from "./apk-verification.js";
 import { withLocalMutationLock } from "./lock.js";
-const execAsync = promisify(exec);
-const execFileAsync = promisify(execFile);
+import { observedExec, observedExecFile, withPerfSpan } from "../perf/index.js";
 const DEFAULT_TASK_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 export const TASK_VERIFICATION_REFERENCE_MAX_LENGTH = TASK_EVIDENCE_REFERENCE_MAX_LENGTH;
 export const TASK_VERIFICATION_SUMMARY_MAX_LENGTH = TASK_EVIDENCE_SUMMARY_MAX_LENGTH;
@@ -663,40 +661,44 @@ function taskSortValue(task) {
     return Number.isNaN(numeric) ? Number.MAX_SAFE_INTEGER : numeric;
 }
 export async function loadTaskFile(path) {
-    return {
+    return withPerfSpan("task-config", "task.parse", async () => ({
         path,
         task: parseTaskMarkdown(await readFile(path, "utf8")),
-    };
+    }));
 }
 export async function writeTaskFile(path, task) {
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, renderTaskMarkdown(task), "utf8");
 }
 export async function listTaskFiles(rootDirectory, taskDirectory = ".tasks") {
-    const directory = join(rootDirectory, taskDirectory);
-    const entries = await readdir(directory).catch(() => []);
-    const files = [];
-    for (const entry of entries.filter((name) => name.endsWith(".md")).sort()) {
-        files.push(await loadTaskFile(join(directory, entry)));
-    }
-    return files.sort((left, right) => {
-        const byId = taskSortValue(left.task) - taskSortValue(right.task);
-        return byId === 0 ? left.path.localeCompare(right.path) : byId;
+    return withPerfSpan("task-config", "task.list", async () => {
+        const directory = join(rootDirectory, taskDirectory);
+        const entries = await readdir(directory).catch(() => []);
+        const files = [];
+        for (const entry of entries.filter((name) => name.endsWith(".md")).sort()) {
+            files.push(await loadTaskFile(join(directory, entry)));
+        }
+        return files.sort((left, right) => {
+            const byId = taskSortValue(left.task) - taskSortValue(right.task);
+            return byId === 0 ? left.path.localeCompare(right.path) : byId;
+        });
     });
 }
 export async function listArchivedTaskFiles(rootDirectory, taskDirectory = ".tasks", excludedPaths = []) {
-    const archiveDirectory = join(rootDirectory, taskDirectory, "archive");
-    const excluded = new Set(excludedPaths.map((path) => normalizeRepoPath(path)));
-    const entries = await readdir(archiveDirectory).catch(() => []);
-    const files = [];
-    for (const entry of entries.filter((name) => name.endsWith(".md")).sort()) {
-        const path = join(archiveDirectory, entry);
-        if (!excluded.has(normalizeRepoPath(path)))
-            files.push(await loadTaskFile(path));
-    }
-    return files.sort((left, right) => {
-        const byId = taskSortValue(left.task) - taskSortValue(right.task);
-        return byId === 0 ? left.path.localeCompare(right.path) : byId;
+    return withPerfSpan("task-config", "task.archive-list", async () => {
+        const archiveDirectory = join(rootDirectory, taskDirectory, "archive");
+        const excluded = new Set(excludedPaths.map((path) => normalizeRepoPath(path)));
+        const entries = await readdir(archiveDirectory).catch(() => []);
+        const files = [];
+        for (const entry of entries.filter((name) => name.endsWith(".md")).sort()) {
+            const path = join(archiveDirectory, entry);
+            if (!excluded.has(normalizeRepoPath(path)))
+                files.push(await loadTaskFile(path));
+        }
+        return files.sort((left, right) => {
+            const byId = taskSortValue(left.task) - taskSortValue(right.task);
+            return byId === 0 ? left.path.localeCompare(right.path) : byId;
+        });
     });
 }
 export async function allTaskFiles(rootDirectory, taskDirectory = ".tasks") {
@@ -781,7 +783,7 @@ async function listFallbackArchiveReferencePaths(rootDirectory, activeFiles) {
 async function listArchiveReferencePaths(rootDirectory, taskDirectory, activeFiles, archivedFiles) {
     let isGitRepository = false;
     try {
-        const result = await execFileAsync("git", ["rev-parse", "--is-inside-work-tree"], {
+        const result = await observedExecFile("git", ["rev-parse", "--is-inside-work-tree"], {
             cwd: rootDirectory,
             encoding: "utf8",
             maxBuffer: 1024,
@@ -1650,7 +1652,7 @@ export function verifyTaskFileScope(task, changedFiles) {
     };
 }
 async function gitPaths(rootDirectory, args) {
-    const result = await execFileAsync("git", args, {
+    const result = await observedExecFile("git", args, {
         cwd: rootDirectory,
         encoding: "buffer",
         maxBuffer: 8 * 1024 * 1024,
@@ -1679,7 +1681,7 @@ async function gitPaths(rootDirectory, args) {
 }
 /** Read only enough Git path output to establish that the attribution limit is exceeded. */
 async function gitPathsBounded(rootDirectory, args, maxPaths) {
-    return new Promise((resolve, reject) => {
+    return withPerfSpan("git", "git", () => new Promise((resolve, reject) => {
         const child = spawn("git", args, {
             cwd: rootDirectory,
             stdio: ["ignore", "pipe", "pipe"],
@@ -1757,7 +1759,7 @@ async function gitPathsBounded(rootDirectory, args, maxPaths) {
                 finish();
             }
         });
-    });
+    }));
 }
 function normalizeGitPath(path) {
     if (path.includes("\\")) {
@@ -1767,7 +1769,7 @@ function normalizeGitPath(path) {
 }
 async function gitOutput(rootDirectory, args) {
     try {
-        const result = await execFileAsync("git", args, { cwd: rootDirectory, maxBuffer: 8 * 1024 * 1024 });
+        const result = await observedExecFile("git", args, { cwd: rootDirectory, maxBuffer: 8 * 1024 * 1024 });
         return result.stdout;
     }
     catch (error) {
@@ -2050,7 +2052,7 @@ async function gitCommitIsAncestor(rootDirectory, ancestorSha, descendantSha) {
     if (ancestorSha === descendantSha)
         return true;
     try {
-        await execFileAsync("git", ["merge-base", "--is-ancestor", ancestorSha, descendantSha], {
+        await observedExecFile("git", ["merge-base", "--is-ancestor", ancestorSha, descendantSha], {
             cwd: rootDirectory,
             windowsHide: true,
         });
@@ -2546,7 +2548,7 @@ export function taskContractHash(task) {
 }
 async function gitFileFingerprint(rootDirectory, revision, path) {
     try {
-        const result = await execFileAsync("git", ["show", `${revision}:${path}`], {
+        const result = await observedExecFile("git", ["show", `${revision}:${path}`], {
             cwd: rootDirectory,
             encoding: "buffer",
             maxBuffer: 8 * 1024 * 1024,
@@ -2566,7 +2568,7 @@ async function gitFileFingerprint(rootDirectory, revision, path) {
 }
 async function gitTreeEntryFingerprint(rootDirectory, revision, path) {
     try {
-        const result = await execFileAsync("git", ["ls-tree", "-z", revision, "--", path], {
+        const result = await observedExecFile("git", ["ls-tree", "-z", revision, "--", path], {
             cwd: rootDirectory,
             encoding: "buffer",
             maxBuffer: 8 * 1024 * 1024,
@@ -3867,7 +3869,7 @@ export async function captureTaskEvidenceSubject(rootDirectory, task, changedFil
 }
 async function defaultRunCommand(rootDirectory, command, timeoutMs = DEFAULT_TASK_COMMAND_TIMEOUT_MS) {
     try {
-        await execAsync(command, {
+        await observedExec(command, {
             cwd: rootDirectory,
             windowsHide: true,
             timeout: timeoutMs,

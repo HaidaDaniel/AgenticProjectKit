@@ -1,9 +1,7 @@
-import { execFile } from "node:child_process";
 import { readdir, readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { promisify } from "node:util";
 import { readAgenticConfigFile } from "../config/index.js";
-const execFileAsync = promisify(execFile);
+import { observedExecFile } from "../perf/index.js";
 const DEFAULT_DOCS_DIRECTORY = "docs";
 const DEFAULT_TASK_DIRECTORY = ".tasks";
 function docsPath(docsDirectory, fileName) {
@@ -323,7 +321,7 @@ async function listFilesystemRepositoryFiles(rootDirectory, relativeDirectory = 
  */
 async function listRepositoryFiles(rootDirectory) {
     try {
-        const { stdout } = await execFileAsync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { cwd: rootDirectory, maxBuffer: 8 * 1024 * 1024 });
+        const { stdout } = await observedExecFile("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { cwd: rootDirectory, maxBuffer: 8 * 1024 * 1024 });
         return normalizeRepositoryFiles(stdout.split(/\r?\n/));
     }
     catch {

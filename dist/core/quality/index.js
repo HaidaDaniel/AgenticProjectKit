@@ -1,8 +1,6 @@
-import { execFile } from "node:child_process";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { promisify } from "node:util";
-const execFileAsync = promisify(execFile);
+import { observedExecFile } from "../perf/index.js";
 export const QUALITY_CAPABILITY_IDS = [
     "typecheck",
     "lint",
@@ -150,7 +148,7 @@ function isSkippedGoTestPath(path) {
  */
 async function gitInventoryGoTestFiles(rootDirectory) {
     try {
-        const { stdout } = await execFileAsync("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { cwd: rootDirectory, windowsHide: true, maxBuffer: 8 * 1024 * 1024 });
+        const { stdout } = await observedExecFile("git", ["ls-files", "--cached", "--others", "--exclude-standard"], { cwd: rootDirectory, windowsHide: true, maxBuffer: 8 * 1024 * 1024 });
         return stdout
             .split(/\r?\n/)
             .map((line) => line.trim())

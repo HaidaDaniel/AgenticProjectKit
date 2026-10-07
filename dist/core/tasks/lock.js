@@ -1,11 +1,9 @@
-import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { link, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { hostname as readHostname } from "node:os";
 import { dirname } from "node:path";
-import { promisify } from "node:util";
+import { observedExecFile } from "../perf/index.js";
 export const LOCAL_LOCK_STALE_AFTER_MS = 5 * 60 * 1000;
-const execFileAsync = promisify(execFile);
 const PROCESS_START = new Date(Date.now() - process.uptime() * 1000).toISOString();
 const PROCESS_START_TOLERANCE_MS = 5_000;
 const LOCK_READ_MAX_ATTEMPTS = 4;
@@ -30,13 +28,13 @@ async function defaultProcessStartIdentity(pid) {
         return PROCESS_START;
     try {
         const result = process.platform === "win32"
-            ? await execFileAsync("powershell.exe", [
+            ? await observedExecFile("powershell.exe", [
                 "-NoProfile",
                 "-NonInteractive",
                 "-Command",
                 `[System.Diagnostics.Process]::GetProcessById(${pid}).StartTime.ToUniversalTime().ToString('O')`,
             ], { windowsHide: true })
-            : await execFileAsync("ps", ["-o", "lstart=", "-p", String(pid)]);
+            : await observedExecFile("ps", ["-o", "lstart=", "-p", String(pid)]);
         const timestamp = Date.parse(String(result.stdout).trim());
         return Number.isNaN(timestamp) ? undefined : new Date(timestamp).toISOString();
     }

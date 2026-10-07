@@ -1,16 +1,13 @@
-import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { mkdir, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import { promisify } from "node:util";
 
 import { readAgenticConfigFile } from "../config/index.js";
+import { observedExecFile } from "../perf/index.js";
 import { findTaskFile, loadTaskFile, type TaskState } from "../tasks/index.js";
 import { withLocalMutationLock } from "../tasks/lock.js";
 import { isSafeRunId } from "../work/contract.js";
 import { resolveCanonicalRunBinding } from "../work/session.js";
-
-const execFileAsync = promisify(execFile);
 
 export const WORKSPACE_PROTOCOL = "apk-workspace-v1";
 export const WORKSPACE_RECORDS_DIR = ".agentic/workspaces";
@@ -161,7 +158,7 @@ function requireSafeSegment(name: string): string {
 }
 
 async function git(rootDirectory: string, args: readonly string[]): Promise<string> {
-  const result = await execFileAsync("git", args, {
+  const result = await observedExecFile("git", args, {
     cwd: rootDirectory,
     maxBuffer: 4 * 1024 * 1024,
     windowsHide: true,
