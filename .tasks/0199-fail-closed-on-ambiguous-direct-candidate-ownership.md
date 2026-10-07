@@ -1,6 +1,6 @@
 # Task 0199 - Fail closed on ambiguous direct candidate ownership
 
-State: doing
+State: done
 Owner: codex-main-20261007
 Mode: maintenance
 Lane: workflow
