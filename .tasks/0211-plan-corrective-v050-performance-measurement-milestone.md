@@ -1,6 +1,6 @@
 # Task 0211 - Plan corrective v0.5.0 performance measurement milestone
 
-State: doing
+State: done
 Owner: codex-performance-20261007
 Mode: discovery
 Lane: architecture
