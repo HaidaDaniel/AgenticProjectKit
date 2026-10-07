@@ -120,10 +120,14 @@ to replace a conflicting customized or older generated file. Re-running an uncha
 is a no-op. The source remains the packaged `SKILL.md.hbs`; the project-local file is a derived
 copy that the repository may commit or ignore according to its own policy.
 
-Apply is fail-closed on platforms where Node does not expose descriptor-relative
-directory traversal with no-follow flags. Preview and show remain available
-there; APK does not fall back to path-based writes that could follow a changed
-parent symlink or reparse point.
+On Unix platforms where Node exposes descriptor-relative directory traversal and no-follow flags,
+apply anchors the write to opened directory descriptors. Windows and other platforms without that
+API use a bounded path-based fallback: APK rejects detectable pre-existing symlink, junction, and
+reparse redirects, validates the canonical parent immediately before mutation, creates files
+exclusively, and updates through a same-parent temporary file and replacement. Node core cannot
+prevent a hostile concurrent namespace replacement in this fallback, so that threat model is
+outside the guarantee. Customized content, final symlinks, and detectable hardlinks remain
+refusals, and preview/show remain available on every supported platform.
 
 Materialization never runs from `init` or `adopt`, never changes ignore rules, and never installs
 anything under `~/.hermes/skills` or another provider-global directory. Start Hermes in the

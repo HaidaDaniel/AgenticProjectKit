@@ -564,10 +564,15 @@ pnpm exec apkit skills materialize apk-task-author --apply
 The first command previews the canonical source, `.agents/skills/apk-task-author/SKILL.md`
 destination, and create/update/no-op/conflict status. `--apply` is the explicit write path and is
 idempotent; a differing project-local file is preserved and requires `--force` for replacement
-after review. Rendered output is a literal `SKILL.md` with no unresolved template syntax. APK does
-not materialize from `init`/`adopt`, alter ignore rules, install provider-global skills, or change
-Hermes trust/configuration. The repository decides whether its generated project-local file is
-committed or ignored, while the packaged asset remains APK's source of truth.
+after review. Rendered output is a literal `SKILL.md` with no unresolved template syntax. On Unix,
+APK uses descriptor-relative traversal with no-follow flags when Node exposes it. Windows and
+other platforms without that API use a bounded fallback that rejects detectable pre-existing
+redirects, validates the canonical parent immediately before mutation, creates exclusively, and
+updates through a same-parent temporary file. Node core cannot prevent hostile concurrent namespace
+replacement in that fallback. APK does not materialize from `init`/`adopt`, alter ignore rules,
+install provider-global skills, or change Hermes trust/configuration. The repository decides
+whether its generated project-local file is committed or ignored, while the packaged asset remains
+APK's source of truth.
 
 ## Optional task-split decomposition
 

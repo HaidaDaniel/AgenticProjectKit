@@ -86,6 +86,70 @@ test("materialization previews without mutation, applies idempotently, and prote
   });
 });
 
+test("Windows fallback materializes paths with spaces and rejects redirects", async () => {
+  await withTempDirectory(async (directory) => {
+    const project = join(directory, "Windows project with spaces");
+    await mkdir(project, { recursive: true });
+    const platform = "win32" as const;
+    const destination = join(project, ".agents/skills/apk-task-author/SKILL.md");
+
+    const preview = await materializePackagedSkill(project, "apk-task-author", { platform });
+    assert.equal(preview.status, "create");
+    assert.equal(preview.written, false);
+    const applied = await materializePackagedSkill(project, "apk-task-author", { apply: true, platform });
+    assert.equal(applied.status, "create");
+    assert.equal(applied.written, true);
+    const generated = await readFile(destination, "utf8");
+    assert.equal(
+      (await materializePackagedSkill(project, "apk-task-author", { apply: true, platform })).status,
+      "no-op",
+    );
+
+    await writeFile(destination, "customized\n", "utf8");
+    assert.equal(
+      (await materializePackagedSkill(project, "apk-task-author", { apply: true, platform })).status,
+      "customized-conflict",
+    );
+    const forced = await materializePackagedSkill(project, "apk-task-author", { apply: true, force: true, platform });
+    assert.equal(forced.status, "update");
+    assert.equal(await readFile(destination, "utf8"), generated);
+
+    const parentRedirectProject = join(directory, "parent redirect");
+    const outside = join(directory, "outside");
+    await mkdir(outside, { recursive: true });
+    await mkdir(join(parentRedirectProject, ".agents"), { recursive: true });
+    await symlink(outside, join(parentRedirectProject, ".agents/skills"), "dir");
+    await assert.rejects(
+      materializePackagedSkill(parentRedirectProject, "apk-task-author", { apply: true, platform }),
+      /symbolic-link directory|redirected destination ancestor/,
+    );
+
+    const finalRedirectProject = join(directory, "final redirect");
+    const finalDirectory = join(finalRedirectProject, ".agents/skills/apk-task-author");
+    const finalOutside = join(directory, "final-outside.md");
+    await mkdir(finalDirectory, { recursive: true });
+    await writeFile(finalOutside, "outside\n", "utf8");
+    await symlink(finalOutside, join(finalDirectory, "SKILL.md"), "file");
+    await assert.rejects(
+      materializePackagedSkill(finalRedirectProject, "apk-task-author", { apply: true, force: true, platform }),
+      /symbolic link/,
+    );
+    assert.equal(await readFile(finalOutside, "utf8"), "outside\n");
+
+    const hardlinkProject = join(directory, "hardlink project");
+    const hardlinkDirectory = join(hardlinkProject, ".agents/skills/apk-task-author");
+    const hardlinkOutside = join(directory, "hardlink-outside.md");
+    await mkdir(hardlinkDirectory, { recursive: true });
+    await writeFile(hardlinkOutside, "outside\n", "utf8");
+    await link(hardlinkOutside, join(hardlinkDirectory, "SKILL.md"));
+    await assert.rejects(
+      materializePackagedSkill(hardlinkProject, "apk-task-author", { apply: true, force: true, platform }),
+      /hard-linked destination/,
+    );
+    assert.equal(await readFile(hardlinkOutside, "utf8"), "outside\n");
+  });
+});
+
 test("every materialized skill matches its canonical rendered source", async () => {
   await withTempDirectory(async (directory) => {
     for (const skill of await listPackagedSkills()) {

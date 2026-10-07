@@ -90,7 +90,7 @@ async function readExistingSkill(path) {
         throw error;
     }
 }
-async function assertSafeDestinationAncestors(rootDirectory, destinationPath) {
+async function assertSafeDestinationAncestors(rootDirectory, destinationPath, platform = process.platform) {
     const rootPath = resolve(rootDirectory);
     const parentPath = dirname(destinationPath);
     const relativeParent = relative(rootPath, parentPath);
@@ -110,6 +110,12 @@ async function assertSafeDestinationAncestors(rootDirectory, destinationPath) {
             if (realPath !== rootRealPath && !realPath.startsWith(`${rootRealPath}${sep}`)) {
                 throw new Error(`Skill destination resolves outside the project root: ${currentPath}`);
             }
+            const logicalPath = resolve(currentPath);
+            const normalizedRealPath = platform === "win32" ? realPath.toLowerCase() : realPath;
+            const normalizedLogicalPath = platform === "win32" ? logicalPath.toLowerCase() : logicalPath;
+            if (normalizedRealPath !== normalizedLogicalPath) {
+                throw new Error(`Refusing to materialize through redirected destination ancestor: ${currentPath}`);
+            }
         }
         catch (error) {
             if (error &&
@@ -122,17 +128,17 @@ async function assertSafeDestinationAncestors(rootDirectory, destinationPath) {
         }
     }
 }
-function descriptorChildPath(fileDescriptor, component) {
-    if (process.platform === "linux" || process.platform === "android") {
+function descriptorChildPath(platform, fileDescriptor, component) {
+    if (platform === "linux" || platform === "android") {
         return `/proc/self/fd/${fileDescriptor}/${component}`;
     }
-    if (process.platform === "darwin" || process.platform === "freebsd") {
+    if (platform === "darwin" || platform === "freebsd") {
         return `/dev/fd/${fileDescriptor}/${component}`;
     }
     return undefined;
 }
-async function openDirectoryChild(parent, component, directoryFlags) {
-    const childPath = descriptorChildPath(parent.fd, component);
+async function openDirectoryChild(platform, parent, component, directoryFlags) {
+    const childPath = descriptorChildPath(platform, parent.fd, component);
     if (!childPath) {
         throw new Error("This platform does not expose descriptor-relative directory traversal.");
     }
@@ -163,19 +169,8 @@ async function writeOpenFile(destinationPath, content, status, noFollow) {
         await handle.close();
     }
 }
-async function resolveSafePathBasedDestination(projectRoot, destinationPath, fileName) {
-    await mkdir(dirname(destinationPath), { recursive: true });
-    await assertSafeDestinationAncestors(projectRoot, destinationPath);
-    // Anchor later path operations to the canonical parent directory. If a
-    // logical ancestor is swapped for a symlink after this check, the write
-    // still addresses the already-resolved directory inside the project root.
-    const canonicalParent = await realpath(dirname(destinationPath));
-    const safeDestination = join(canonicalParent, fileName);
-    await assertSafeDestinationAncestors(projectRoot, safeDestination);
-    return safeDestination;
-}
-async function writeDescriptorRelativeFile(parent, fileName, content, status, noFollow) {
-    const destinationPath = descriptorChildPath(parent.fd, fileName);
+async function writeDescriptorRelativeFile(platform, parent, fileName, content, status, noFollow) {
+    const destinationPath = descriptorChildPath(platform, parent.fd, fileName);
     if (!destinationPath) {
         throw new Error("This platform does not expose safe descriptor-relative skill materialization.");
     }
@@ -184,14 +179,12 @@ async function writeDescriptorRelativeFile(parent, fileName, content, status, no
         return;
     }
     const temporaryName = `.${fileName}.${randomUUID()}.tmp`;
-    const temporaryPath = descriptorChildPath(parent.fd, temporaryName);
+    const temporaryPath = descriptorChildPath(platform, parent.fd, temporaryName);
     if (!temporaryPath) {
         throw new Error("This platform does not expose safe descriptor-relative skill materialization.");
     }
     try {
         await writeOpenFile(temporaryPath, content, "create", noFollow);
-        // Same-parent rename replaces the final directory entry, so a concurrent
-        // hardlink or symlink replacement cannot redirect the write to its target.
         await rename(temporaryPath, destinationPath);
     }
     finally {
@@ -199,16 +192,65 @@ async function writeDescriptorRelativeFile(parent, fileName, content, status, no
             await unlink(temporaryPath);
         }
         catch (error) {
-            if (!(error &&
-                typeof error === "object" &&
-                "code" in error &&
-                error.code === "ENOENT")) {
+            if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
                 throw error;
             }
         }
     }
 }
-async function writeMaterializedSkill(rootDirectory, destination, content, status) {
+async function resolveSafePathBasedDestination(projectRoot, destinationPath, fileName, platform) {
+    await mkdir(dirname(destinationPath), { recursive: true });
+    await assertSafeDestinationAncestors(projectRoot, destinationPath, platform);
+    const canonicalParent = await realpath(dirname(destinationPath));
+    const canonicalRoot = await realpath(projectRoot);
+    const normalizedRoot = platform === "win32" ? canonicalRoot.toLowerCase() : canonicalRoot;
+    const normalizedParent = platform === "win32" ? canonicalParent.toLowerCase() : canonicalParent;
+    if (normalizedParent !== normalizedRoot && !normalizedParent.startsWith(`${normalizedRoot}${sep}`)) {
+        throw new Error(`Skill destination resolves outside the project root: ${destinationPath}`);
+    }
+    const safeDestination = join(canonicalParent, fileName);
+    await assertSafeDestinationAncestors(projectRoot, safeDestination, platform);
+    return safeDestination;
+}
+async function writePathBasedFile(projectRoot, destinationPath, fileName, content, status, platform) {
+    // This fallback is for platforms where Node core has no openat-like API.
+    // The parent is canonicalized immediately before mutation, but a hostile
+    // concurrent namespace replacement cannot be ruled out by these path APIs.
+    const safeDestination = await resolveSafePathBasedDestination(projectRoot, destinationPath, fileName, platform);
+    if (status === "create") {
+        await writeOpenFile(safeDestination, content, "create", 0);
+        return;
+    }
+    const canonicalParent = dirname(safeDestination);
+    await assertSafeDestinationAncestors(projectRoot, safeDestination, platform);
+    const temporaryPath = join(canonicalParent, `.${fileName}.${randomUUID()}.tmp`);
+    try {
+        await writeOpenFile(temporaryPath, content, "create", 0);
+        try {
+            await rename(temporaryPath, safeDestination);
+        }
+        catch (error) {
+            const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+            if (code !== "EEXIST" && code !== "EPERM" && code !== "ENOTEMPTY")
+                throw error;
+            await assertSafeDestinationAncestors(projectRoot, safeDestination, platform);
+            await readExistingSkill(safeDestination);
+            await unlink(safeDestination);
+            await rename(temporaryPath, safeDestination);
+        }
+    }
+    finally {
+        try {
+            await unlink(temporaryPath);
+        }
+        catch (error) {
+            if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
+                throw error;
+            }
+        }
+    }
+}
+async function writeMaterializedSkill(rootDirectory, destination, content, status, platform) {
     const noFollow = constants.O_NOFOLLOW ?? 0;
     const directoryFlags = constants.O_RDONLY
         | (constants.O_DIRECTORY ?? 0)
@@ -221,28 +263,8 @@ async function writeMaterializedSkill(rootDirectory, destination, content, statu
     if (!fileName || components.length === 0) {
         throw new Error(`Invalid packaged skill destination: ${destination}`);
     }
-    if (!descriptorChildPath(0, components[0]) || noFollow === 0) {
-        // Node does not expose descriptor-relative traversal on Windows. The
-        // path-based fallback repeats the ancestor and destination checks after
-        // creating missing directories so Windows can use the same workflow. An
-        // update removes only the final directory entry, then recreates it with
-        // CREATE_NEW/O_EXCL so a replacement symlink or hardlink is never opened.
-        const safeDestination = await resolveSafePathBasedDestination(projectRoot, destinationPath, fileName);
-        await readExistingSkill(safeDestination);
-        if (status === "update") {
-            try {
-                await unlink(safeDestination);
-            }
-            catch (error) {
-                if (!(error &&
-                    typeof error === "object" &&
-                    "code" in error &&
-                    error.code === "ENOENT")) {
-                    throw error;
-                }
-            }
-        }
-        await writeOpenFile(safeDestination, content, "create", 0);
+    if (!descriptorChildPath(platform, 0, components[0]) || noFollow === 0) {
+        await writePathBasedFile(projectRoot, destinationPath, fileName, content, status, platform);
         return;
     }
     const rootHandle = await open(projectRoot, directoryFlags);
@@ -250,11 +272,11 @@ async function writeMaterializedSkill(rootDirectory, destination, content, statu
     try {
         let parent = rootHandle;
         for (const component of components) {
-            const child = await openDirectoryChild(parent, component, directoryFlags);
+            const child = await openDirectoryChild(platform, parent, component, directoryFlags);
             handles.push(child);
             parent = child;
         }
-        await writeDescriptorRelativeFile(parent, fileName, content, status, noFollow);
+        await writeDescriptorRelativeFile(platform, parent, fileName, content, status, noFollow);
     }
     finally {
         for (const handle of handles.reverse()) {
@@ -267,9 +289,10 @@ export async function materializePackagedSkill(rootDirectory, skillId, options =
         throw new Error("--force requires --apply; preview never overwrites a project skill.");
     }
     const { skill, content } = await readPackagedSkillContent(skillId);
+    const platform = options.platform ?? process.platform;
     const projectRoot = resolve(rootDirectory);
     const destinationPath = join(projectRoot, skill.destination);
-    await assertSafeDestinationAncestors(projectRoot, destinationPath);
+    await assertSafeDestinationAncestors(projectRoot, destinationPath, platform);
     const existing = await readExistingSkill(destinationPath);
     const applied = options.apply ?? false;
     let status;
@@ -287,7 +310,7 @@ export async function materializePackagedSkill(rootDirectory, skillId, options =
     }
     const shouldWrite = applied && (status === "create" || status === "update");
     if (shouldWrite) {
-        await writeMaterializedSkill(projectRoot, skill.destination, content, status === "create" ? "create" : "update");
+        await writeMaterializedSkill(projectRoot, skill.destination, content, status === "create" ? "create" : "update", platform);
     }
     return {
         skill,
