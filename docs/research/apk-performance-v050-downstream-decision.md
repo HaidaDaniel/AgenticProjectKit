@@ -17,9 +17,13 @@ in a disposable clone; the source downstream checkouts were not modified.
 - translator-agent was inspected at `9ba4bf79fcd892dd6d0e0d68e1289e7076de82f7`.
 - The downstream repositories still declare older APK pins where applicable;
   those manifests were not changed. The profiler used for every row was the
-  separately installed GitHub `v0.5.0` package.
+  separately installed GitHub `github:HaidaDaniel/AgenticProjectKit#v0.5.0`
+  package, version `0.5.0`, using a fresh pnpm store.
 - APK status/tasks/doctor and Git activity were included where they ran. Direct
-  repository checks were wrapped with `apk perf exec`.
+  repository checks were wrapped with `apk perf exec`. In resledger, `apk
+  tasks` and `apk doctor` failed because its task file has an invalid empty
+  section; those setup failures are disclosed and do not invalidate the
+  successful Go checks or get replaced by synthetic timings.
 - LLM generation, model/API waits, user think time, idle gaps, and arbitrary
   unwrapped commands are excluded. The report warning remains
   `Unwrapped external commands: unknown`.
