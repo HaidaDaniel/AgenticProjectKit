@@ -1,6 +1,6 @@
 # Task 0201 - Preserve completed task provenance after canonical archival
 
-State: doing
+State: done
 Owner: codex-main-20261007
 Mode: maintenance
 Lane: workflow
@@ -87,6 +87,5 @@ Retain direct and chain completed-task proof after canonical byte-identical arch
 ## Notes
 
 - Pre-fix canonical archive fixtures on Node 24.21.0 failed for both direct and two-commit proofs: provenance required current archive path to equal the historical baseline task path. After bounded byte-identical move resolution, 8 archive cases and 4 focused ownership/lifecycle regressions pass. Archive moves themselves require their own task proof.
-
 - Keep the fix narrow. Reproduction is best-effort, not a forced completion gate.
 - Select runnable host-repository checks with --verification-json; template shell commands are examples. Prefer focused feedback and a non-overlapping final set; do not repeat a suite through test, coverage, quality, and release aggregates. Report checks must execute the relevant tests and produce the declared artifact in one host command. Preserve required domain evidence.
