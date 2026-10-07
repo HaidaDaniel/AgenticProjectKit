@@ -38,7 +38,7 @@ Use this index to find the canonical guide for starting, understanding, adopting
 
 - [Changelog](../CHANGELOG.md) — find the latest validated release and release-note entrypoints.
 - [Release Index](releases/index.md) — browse versioned notes, tags, and separate validation records.
-- [Latest Release: v0.4.7](releases/v0.4.7.md) — review the current installable release and its pre-tag facts.
+- [Latest Release: v0.4.8](releases/v0.4.8.md) — review the current installable release and its pre-tag facts.
 - [Roadmap](roadmap.md) — distinguish shipped work, current public readiness, blocked items, and deferred plans.
 - [Historical Progress](history/progress-history.md) — locate older progress records.
 - [Delivery Milestones](delivery/milestones.md) — browse historical milestone plans and release evidence.

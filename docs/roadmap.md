@@ -6,7 +6,7 @@ This page separates released capabilities from work on `main` and future plans. 
 
 ### Latest validated installable release
 
-[v0.4.7](releases/v0.4.7.md) is the latest validated installable release. Its correctness foundation is Tasks 0145-0148; the [post-release validation record](delivery/workflow-v0.4.7-self-dogfood.md) records the exact candidate, successful exact-SHA CI, tag peel, cold install, and downstream smoke.
+[v0.4.8](releases/v0.4.8.md) is the latest validated installable release. Its exact candidate, successful exact-SHA CI, immutable tag peel, cold install, and downstream smoke are recorded in the [post-release validation record](delivery/workflow-v0.4.8-post-release.md). Its correctness foundation includes the prior v0.4.7 work and the public-readiness security/navigation corrections.
 
 ### Gated workflow foundation
 
@@ -18,7 +18,7 @@ Tasks 0082-0088 are complete and included in the [v0.4.0 release](releases/v0.4.
 
 ## Current state
 
-AgenticProjectKit remains the product identity. The latest validated installable release is v0.4.7; a newer package version may be a pre-tag candidate and does not change that release record. The next release version and date have not been decided.
+AgenticProjectKit remains the product identity. The latest validated installable release is v0.4.8. Tasks 0149 and 0150 remain deferred identity work and were not reopened.
 
 ## Public Readiness (current work)
 
@@ -56,6 +56,7 @@ Each row repeats its contract's lifecycle state so readers can compare the roadm
 | Documentation consistency and release gate | 0179 | done | [0179](../.tasks/0179-require-externally-observed-ci-for-every-declared-ci-verification-check.md) |
 | Workflow decision correctness | 0181 | done | [0181](../.tasks/0181-prefer-current-operator-decisions-over-stale-candidate-history.md) |
 | Documentation consistency and release gate | 0173 | done | [0173](../.tasks/0173-validate-the-next-public-readiness-release.md) |
+| Post-release documentation promotion | 0204 | doing | [0204](../.tasks/0204-promote-validated-v048-release-documentation.md) |
 
 Task contracts carry the exact prerequisite graph; use `apk task deps <task-id>` to inspect it. In particular, Task 0173 depends on completed Tasks 0178 and 0179, and its existing guide, CLI, contribution, consistency, and security prerequisites. Task 0181 completed the current-versus-stale operator decision correction after 0179; it remains a separate workflow correctness task, not an added release prerequisite. Task 0173 validates an exact frozen candidate only after its dependencies pass; it does not assign a version or date in advance. Its PRE-TAG state may have `packageVersion` ahead of `validatedReleaseVersion`; promotion follows successful post-tag validation in a separate change on `main`.
 
@@ -67,7 +68,7 @@ The external-runtime dogfood recorded by Task 0097 is deferred until the APK bac
 
 ## Blocked work
 
-Task 0173 completed its declared prerequisites, exact PRE-TAG checks, exact-SHA hosted CI, independent review, immutable v0.4.8 tag peel, and POST-TAG cold-install/self-adoption validation. The separate post-release promotion task must update the validated-release sentinel and stable docs; the immutable tagged candidate remains unchanged ([reassessment](delivery/backlog-reassessment-2026-10-07.md)).
+Task 0173 completed its declared prerequisites, exact PRE-TAG checks, exact-SHA hosted CI, independent review, immutable v0.4.8 tag peel, and POST-TAG cold-install/self-adoption validation. Task 0204 records the separate post-release artifact and promotes the validated-release sentinel; the immutable tagged candidate remains unchanged ([reassessment](delivery/backlog-reassessment-2026-10-07.md)).
 
 ## Excluded from current scope
 
