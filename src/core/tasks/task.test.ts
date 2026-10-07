@@ -8393,11 +8393,11 @@ test("accept-attribution rejects side-branch commits and forged self-authored ev
     await writeFile(join(directory, "urgent-side.md"), "side branch\n", "utf8");
     await execFileAsync("git", ["add", "urgent-side.md"], { cwd: directory });
     await execFileAsync("git", ["commit", "--quiet", "-m", "urgent side"], { cwd: directory });
-    const sideCommit = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: directory })).stdout.trim();
     await execFileAsync("git", ["checkout", "--quiet", baseBranch], { cwd: directory });
-    await writeFile(join(directory, "src", "core", "tasks", "main.ts"), "main\n", "utf8");
-    await execFileAsync("git", ["add", "src/core/tasks/main.ts"], { cwd: directory });
+    await writeFile(join(directory, "urgent-side.md"), "side branch\n", "utf8");
+    await execFileAsync("git", ["add", "urgent-side.md"], { cwd: directory });
     await execFileAsync("git", ["commit", "--quiet", "-m", "main work"], { cwd: directory });
+    const mainCommit = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: directory })).stdout.trim();
     await execFileAsync("git", ["merge", "--quiet", "--no-ff", "urgent-side", "-m", "merge urgent side"], { cwd: directory });
 
     await assert.rejects(
@@ -8408,10 +8408,10 @@ test("accept-attribution rejects side-branch commits and forged self-authored ev
         recorder: "codex-recorder",
         actor: "fixture-operator",
         decision: "accept-attribution",
-        acceptedCommits: [sideCommit],
-        reason: "Side-branch attribution must fail closed.",
+        acceptedCommits: [mainCommit],
+        reason: "Overlapping side-branch and merge attribution must fail closed.",
       }),
-      /first-parent history|side-branch/i,
+      /merge history|side-branch/i,
     );
   });
 

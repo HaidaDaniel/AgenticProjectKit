@@ -3440,6 +3440,12 @@ export async function validateTaskAttributionApproval(options) {
     if (acceptedNodes.some((commit) => commit !== undefined && !firstParentChain.has(commit.sha))) {
         diagnostics.push("Attribution approval can name only commits on the task baseline's first-parent history; side-branch commits fail closed.");
     }
+    if (chain.some((commit) => !firstParentChain.has(commit.sha))) {
+        diagnostics.push("Attribution approval cannot bypass unapproved side-branch history, even when its paths overlap approved commits.");
+    }
+    if (chain.some((commit) => commit.parents.length > 1)) {
+        diagnostics.push("Attribution approval cannot bypass merge history or merge-resolution changes; resolve merges before approval.");
+    }
     const acceptedFiles = [...new Set((acceptedNodes.filter((commit) => commit !== undefined)
             .flatMap((commit) => commit.files.map(normalizeRepoPath))))].sort();
     const disputedFiles = [...new Set([
