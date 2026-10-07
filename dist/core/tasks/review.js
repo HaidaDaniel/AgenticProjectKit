@@ -2,7 +2,7 @@ import { appendRunLog, requireAgent } from "../agents/index.js";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { readAgenticConfigFile } from "../config/file.js";
-import { captureTaskEvidenceSubject, findTaskFile, loadTaskFile, readTaskBaseline, captureTaskScope, validateTaskAttributionApproval, } from "./index.js";
+import { captureTaskEvidenceSubject, findTaskFile, loadTaskFile, readTaskBaseline, captureTaskScope, currentTaskAttributionApproval, validateTaskAttributionApproval, } from "./index.js";
 import { TASK_DECISION_TRUST_MODEL, TASK_ATTRIBUTION_BLOCKER, TASK_HUMAN_DECISIONS, TASK_REVIEW_EXHAUSTION_BLOCKER, appendTaskEvidence, compareTaskEvidenceFreshness, readTaskEvidence, } from "./evidence.js";
 import { isSafeRunId } from "../work/contract.js";
 import { resolveTaskPolicy } from "./policy.js";
@@ -250,12 +250,23 @@ export async function prepareTaskReview(options) {
         baseline,
         changedFiles: options.changedFiles,
     });
-    if (!snapshot.comparisonKnown) {
-        throw new Error(`Cannot prepare review for an ambiguous candidate: ${snapshot.diagnostics.join(" ")}`);
-    }
     const changedFiles = snapshot.changedFiles;
-    const capturedSubject = await captureTaskEvidenceSubject(options.rootDirectory, task, changedFiles);
+    const capturedSubject = await captureTaskEvidenceSubject(options.rootDirectory, task, changedFiles, baseline, { allowUnresolvedLineage: true });
     const subject = reviewSubject(capturedSubject, baseline?.baselineId);
+    if (!snapshot.comparisonKnown) {
+        const attributionApproval = await currentTaskAttributionApproval({
+            rootDirectory: options.rootDirectory,
+            task,
+            baseline,
+            subject,
+            changedFiles,
+            outOfScopeFiles: snapshot.outOfScopeFiles,
+            forbiddenTouchedFiles: snapshot.forbiddenTouchedFiles,
+        });
+        if (!attributionApproval?.valid) {
+            throw new Error(`Cannot prepare review for an ambiguous candidate: ${snapshot.diagnostics.join(" ")}`);
+        }
+    }
     const preparedAt = new Date().toISOString();
     const preparedRunId = validateReviewRunId(options.reviewRunId ?? reviewRunId());
     const origin = options.origin ?? "standalone";
@@ -353,11 +364,22 @@ export async function recordTaskReview(options) {
             taskPath: relative(options.rootDirectory, taskPath).replace(/\\/g, "/"),
             baseline,
         });
-        if (!snapshot.comparisonKnown) {
-            throw new Error(`Cannot record review for an ambiguous candidate: ${snapshot.diagnostics.join(" ")}`);
-        }
-        const currentCaptured = await captureTaskEvidenceSubject(options.rootDirectory, task, snapshot.changedFiles);
+        const currentCaptured = await captureTaskEvidenceSubject(options.rootDirectory, task, snapshot.changedFiles, baseline, { allowUnresolvedLineage: true });
         const currentSubject = reviewSubject(currentCaptured, baseline?.baselineId);
+        if (!snapshot.comparisonKnown) {
+            const attributionApproval = await currentTaskAttributionApproval({
+                rootDirectory: options.rootDirectory,
+                task,
+                baseline,
+                subject: currentSubject,
+                changedFiles: snapshot.changedFiles,
+                outOfScopeFiles: snapshot.outOfScopeFiles,
+                forbiddenTouchedFiles: snapshot.forbiddenTouchedFiles,
+            });
+            if (!attributionApproval?.valid) {
+                throw new Error(`Cannot record review for an ambiguous candidate: ${snapshot.diagnostics.join(" ")}`);
+            }
+        }
         if (!sameReviewSubject(stored.subject, currentSubject)) {
             throw new Error(`Review run ${stored.reviewRunId} is stale/mixed-revision: prepared candidate ${stored.subject.candidateId} differs from current candidate ${currentSubject.candidateId}. Prepare a new review prompt.`);
         }

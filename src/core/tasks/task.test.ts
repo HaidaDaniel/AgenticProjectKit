@@ -3344,6 +3344,47 @@ test("a dirty file introduced during release keeps reclaim lineage ambiguous", a
   });
 });
 
+test("operator-approved attribution permits review after released lineage ambiguity", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const commits = await completeBoundedTaskB(directory);
+    await writeFile(join(directory, "src", "core", "tasks", "released-dirty.ts"), "changed while released\n", "utf8");
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.equal(baseline?.lineageStatus, "intervening");
+    const decision = await recordTaskHumanDecision({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      recorder: "agent-a",
+      actor: "repo-operator",
+      decision: "accept-attribution",
+      acceptedCommits: [commits.candidateSha, commits.bookkeepingSha],
+      reason: "Urgent hotfix execution.",
+    });
+    assert.equal(decision.gateEligible, true);
+
+    const prepared = await prepareTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "agent-b",
+    });
+    const review = await recordTaskReview({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      reviewer: "agent-b",
+      reviewRunId: prepared.reviewRunId,
+      outcome: "pass",
+    });
+    assert.equal(review.outcome, "pass");
+  });
+});
+
 test("active task keeps its own earlier commit and excludes a later proven task candidate", async () => {
   await withTempDirectory(async (directory) => {
     await setupReclaimRepo(directory);
