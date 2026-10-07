@@ -1,7 +1,7 @@
 # Task 0208 - Release performance observability in the next stable tag
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-performance-20261007
 Mode: production
 Lane: release
 Type: release
@@ -95,6 +95,9 @@ Release performance observability in the next stable tag
 - `{"id":"release-check","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"pnpm release:check"}`
 - `{"id":"contract-lint","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"pnpm exec apk lint --json"}`
 - `{"id":"diff-check","type":"automated","required":true,"environment":"static","profile":"deterministic","command":"git diff --check"}`
+- `{"id":"exact-sha-hosted-ci","type":"manual","required":true,"environment":"ci","profile":"report","instruction":"Before tag creation, observe a successful hosted Quality workflow for the exact frozen candidate SHA and record its head SHA, run URL or ID, and conclusion.","evidence":"exact candidate SHA plus successful hosted Quality run URL or ID"}`
+- `{"id":"tag-cold-install","type":"manual","required":true,"environment":"live","profile":"trusted","instruction":"After publication, verify the annotated v0.4.9 tag peels to the frozen candidate SHA; cold-install that actual tag with a fresh consumer and fresh store; prove all bin aliases, profiler commands, schemaVersion 1 JSON report, ignored local trace storage, and a disposable downstream smoke.","evidence":"post-tag artifact with tag object, peel, install, aliases, profiler smoke, and downstream transcript"}`
+- `{"id":"post-release-record","type":"manual","required":true,"environment":"local","profile":"report","instruction":"After tag validation, record the immutable tag, exact-SHA CI, cold install, package payload, profiler smoke, and downstream observations in a separate docs/delivery/workflow-v0.4.9-post-release.md file without changing the tagged release note.","evidence":"committed separate v0.4.9 post-release artifact and promotion reference"}`
 
 ## Documentation updates
 
