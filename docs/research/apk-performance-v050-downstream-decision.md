@@ -79,10 +79,11 @@ combined observation, while its APK share is below 1%.
 These released measurements do not justify a full APK rewrite to Go for general
 agent workflow speed. The first optimization targets should be the observed
 repository checks and, for short commands, local startup/module-loading work.
-The thresholds remain guidance: a repeated representative share above 15% would
-justify a bounded hotspot prototype, and above 20% across representative
-workflows would strongly justify that prototype. The current representative
-downstream evidence does not meet that condition.
+The heavy verification workflows remain below the prototype guidance. The
+short-command evidence is different: the AgenticProjectKit short baseline and
+the translator-agent lint/typecheck session are startup-heavy and exceed 20%
+rewrite-sensitive share. That repeated fast-path signal justifies a separate
+bounded hotspot prototype, not a rewrite.
 
 ### Startup / short-command case
 
@@ -103,11 +104,13 @@ research remains relevant background, not new prototype evidence.
 
 ### Go outcome
 
-No full rewrite and no Go hotspot prototype are started by this task. A future
-bounded prototype would require a separately scoped task with the same fixture,
-inputs, semantic output, and measurements for the selected hotspot. The current
-result is an evidence-based no-go for a workflow-speed rewrite, while leaving a
-separate distribution/runtime investigation possible.
+No full rewrite is started. The evidence-based workflow-speed decision is
+negative for the heavy representative workflows, while the repeated fast-path
+signal meets the bounded-prototype guidance. Task 0216,
+`Prototype the measured APK startup hotspot in Go`, was created but not started.
+It must compare one selected startup/import hotspot with matched inputs and
+semantic output before any migration architecture is considered. Distribution
+and runtime-footprint motivations remain separate from the workflow-speed case.
 
 ## Reproduction shape
 

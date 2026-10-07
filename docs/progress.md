@@ -30,8 +30,9 @@ task-verification fixture. Its self numbers are not a downstream Go verdict.
 Task 0215 has now collected released-v0.5.0 evidence from AgenticProjectKit,
 resledger, and translator-agent in disposable clones. The downstream report
 shows repository verification dominates the representative workflows; no full
-Go rewrite or hotspot prototype was started. `llama-ops` was unavailable and is
-reported as such.
+Go rewrite was started. Fast startup-heavy paths crossed the bounded prototype
+guidance, so Task 0216 was created to compare one measured hotspot without
+starting migration work. `llama-ops` was unavailable and is reported as such.
 
 Task 0199 is complete: direct and chain foreign proofs share a fail-closed ownership predicate. Candidate `27d4c1a` passed canonical release checks, fresh independent review, and gate; lifecycle closeout is `2eef5d8`. Task 0198 is complete at `b44f904` (closeout `fa611ca`): neutral generated policy now requires release-before-claim in one checkout and separate Git worktrees for true parallel mutable work. Renderer equivalence and canonical static/build checks passed. Task 0170 is complete: the operator verified GitHub Private Vulnerability Reporting as an external non-maintainer, and the truthful `SECURITY.md` policy plus minimal README/docs navigation passed all four declared checks and the completion gate.
 
