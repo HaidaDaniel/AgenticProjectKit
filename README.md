@@ -31,6 +31,9 @@ For an existing project, preview adoption first with `pnpm exec apkit adopt --pr
 - Optional packaged planning skills, including `apk-task-author`, `apk-task-split`, and task/project clarification assets; they are manually invoked and never replace the task lifecycle.
 - `apkit skills` lists and previews packaged skills; `apkit skills materialize <skill> --apply` explicitly writes a project-local `.agents/skills/<skill>/SKILL.md` without touching provider-global state.
 
+Skill apply is fail-closed on platforms without safe descriptor-relative filesystem traversal;
+preview and show remain available there instead of using an unsafe path-based write fallback.
+
 APK prepares and records the workflow around coding agents; it does not launch or supervise their models, sessions, or processes. It has no hosted account or project database. The task system keeps unavailable or stale evidence visible instead of treating it as a pass.
 
 ## Maturity and compatibility

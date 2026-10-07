@@ -120,6 +120,11 @@ to replace a conflicting customized or older generated file. Re-running an uncha
 is a no-op. The source remains the packaged `SKILL.md.hbs`; the project-local file is a derived
 copy that the repository may commit or ignore according to its own policy.
 
+Apply is fail-closed on platforms where Node does not expose descriptor-relative
+directory traversal with no-follow flags. Preview and show remain available
+there; APK does not fall back to path-based writes that could follow a changed
+parent symlink or reparse point.
+
 Materialization never runs from `init` or `adopt`, never changes ignore rules, and never installs
 anything under `~/.hermes/skills` or another provider-global directory. Start Hermes in the
 repository, let Hermes apply its own project trust rules, and invoke the materialized skill through
