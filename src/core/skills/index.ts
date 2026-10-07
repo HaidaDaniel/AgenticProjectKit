@@ -6,6 +6,7 @@ import {
   readFile,
   readdir,
   realpath,
+  unlink,
   type FileHandle,
 } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -266,11 +267,29 @@ async function writeMaterializedSkill(
   if (!descriptorChildPath(0, components[0]!) || noFollow === 0) {
     // Node does not expose descriptor-relative traversal on Windows. The
     // path-based fallback repeats the ancestor and destination checks after
-    // creating missing directories so Windows can use the same workflow.
+    // creating missing directories so Windows can use the same workflow. An
+    // update removes only the final directory entry, then recreates it with
+    // CREATE_NEW/O_EXCL so a replacement symlink or hardlink is never opened.
     await mkdir(dirname(destinationPath), { recursive: true });
     await assertSafeDestinationAncestors(projectRoot, destinationPath);
     await readExistingSkill(destinationPath);
-    await writeOpenFile(destinationPath, content, status, 0);
+    if (status === "update") {
+      try {
+        await unlink(destinationPath);
+      } catch (error: unknown) {
+        if (
+          !(
+            error &&
+            typeof error === "object" &&
+            "code" in error &&
+            error.code === "ENOENT"
+          )
+        ) {
+          throw error;
+        }
+      }
+    }
+    await writeOpenFile(destinationPath, content, "create", 0);
     return;
   }
 
