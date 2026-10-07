@@ -8,7 +8,9 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0195 is in progress: completed-task scope attribution now proves a whole bounded single-parent commit chain (baseline to bound candidate), not only a single direct-baseline child, with per-commit scope fit, contract stability from first appearance, and fail-closed ambiguity when two completed tasks' chains cover one commit. This unblocks stale-baseline tasks whose later completed work spanned multiple commits, including Task 0191.
+Task 0196 is in progress: completed-task chain attribution now needs to ignore narrative completion notes when comparing the material contract, while retaining fail-closed scope and contract checks. This follows the recheck of Task 0195 and is required before Task 0191 can be re-verified.
+
+Task 0195 completed the bounded single-parent chain attribution change, but its first-commit proof did not account for completion notes appended after the candidate. Task 0191 remains blocked until that corrective path and the unresolved Task 0193 history are handled.
 
 Task 0194 is complete: 44 existing CLI behavior scenarios now run in an isolated command layer; all 148 original test bodies and real-process boundary, concurrency, source/dist parity, and environment coverage are preserved. The selected 30-test group took 23.63 seconds before and 7.71 seconds after; observed fresh CLI processes in coverage fell from 382 to 287. Candidate `3215f99` passed all four canonical checks in 123.77 seconds, independent fresh-context review, and the completion gate ([research](research/cli-test-layering.md)). These are local observations, not controlled hosted-CI benchmarks; Task 0193 also required a separate build-current check.
 

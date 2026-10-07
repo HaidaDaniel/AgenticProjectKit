@@ -2480,7 +2480,9 @@ function sameEvidenceCandidate(left, right) {
         && left.worktreeId === right.worktreeId;
 }
 function comparableTaskContract(task) {
-    return renderTaskMarkdown({ ...task, state: "doing", owner: "none" });
+    // Notes are narrative lifecycle context. They may be added while a task is
+    // completed without changing the material contract used for scope proof.
+    return renderTaskMarkdown({ ...task, state: "doing", owner: "none", notes: [] });
 }
 async function gitFileFingerprint(rootDirectory, revision, path) {
     try {

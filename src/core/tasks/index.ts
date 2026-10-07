@@ -3295,7 +3295,9 @@ function sameEvidenceCandidate(
 }
 
 function comparableTaskContract(task: ProjectTask): string {
-  return renderTaskMarkdown({ ...task, state: "doing", owner: "none" });
+  // Notes are narrative lifecycle context. They may be added while a task is
+  // completed without changing the material contract used for scope proof.
+  return renderTaskMarkdown({ ...task, state: "doing", owner: "none", notes: [] });
 }
 
 async function gitFileFingerprint(

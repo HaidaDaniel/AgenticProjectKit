@@ -2655,6 +2655,7 @@ async function completeTaskBChain(
   options: {
     commitCount?: number;
     includeTaskFileInFirstCommit?: boolean;
+    addCompletionNote?: boolean;
   } = {},
 ): Promise<{ firstSha: string; candidateSha: string; bookkeepingSha: string; chainShas: string[]; files: string[] }> {
   const commitCount = options.commitCount ?? 1;
@@ -2684,6 +2685,11 @@ async function completeTaskBChain(
   });
   assert.equal(verification.passed, true, verification.diagnostics.join("; "));
   await doneTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner });
+  if (options.addCompletionNote) {
+    const taskPath = join(directory, ".tasks", "0008-bounded-task.md");
+    const taskMarkdown = await readFile(taskPath, "utf8");
+    await writeFile(taskPath, taskMarkdown.replace("\n## Notes\n", "\n## Notes\n- Completion evidence note.\n"), "utf8");
+  }
   await execFileAsync("git", ["add", ".tasks/0008-bounded-task.md"], { cwd: directory });
   await execFileAsync("git", ["commit", "--quiet", "-m", "completion bookkeeping"], { cwd: directory });
   const bookkeepingSha = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: directory })).stdout.trim();
@@ -3050,6 +3056,32 @@ test("completed task with a first-commit task file is excluded from a stale base
       verified.attribution?.excludedFiles?.sort(),
       [...commits.files, ".tasks/0008-bounded-task.md"].sort(),
     );
+  });
+});
+
+test("completed first-commit task chain accepts terminal completion notes", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepoWithUntrackedTaskB(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const commits = await completeTaskBChain(directory, {
+      commitCount: 1,
+      includeTaskFileInFirstCommit: true,
+      addCompletionNote: true,
+    });
+    await releaseTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.equal(baseline?.lineageStatus, "attributed", baseline?.lineageDiagnostic);
+    assert.deepEqual(baseline?.provenOtherTaskCommits?.map(({ sha, taskId, kind }) => ({ sha, taskId, kind })), [
+      { sha: commits.candidateSha, taskId: "0008", kind: "task-candidate" },
+      { sha: commits.bookkeepingSha, taskId: "0008", kind: "completion-bookkeeping" },
+    ]);
+
+    const verified = await verifyScopedTask(directory);
+    assert.equal(verified.passed, true, verified.diagnostics.join("; "));
+    assert.deepEqual(verified.changedFiles, []);
   });
 });
 
