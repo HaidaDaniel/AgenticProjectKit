@@ -1,6 +1,6 @@
 # Task 0204 - Promote validated v0.4.8 release documentation
 
-State: doing
+State: done
 Owner: codex-public-readiness-20261007
 Mode: production
 Lane: release

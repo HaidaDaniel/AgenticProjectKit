@@ -56,7 +56,7 @@ Each row repeats its contract's lifecycle state so readers can compare the roadm
 | Documentation consistency and release gate | 0179 | done | [0179](../.tasks/0179-require-externally-observed-ci-for-every-declared-ci-verification-check.md) |
 | Workflow decision correctness | 0181 | done | [0181](../.tasks/0181-prefer-current-operator-decisions-over-stale-candidate-history.md) |
 | Documentation consistency and release gate | 0173 | done | [0173](../.tasks/0173-validate-the-next-public-readiness-release.md) |
-| Post-release documentation promotion | 0204 | doing | [0204](../.tasks/0204-promote-validated-v048-release-documentation.md) |
+| Post-release documentation promotion | 0204 | done | [0204](../.tasks/0204-promote-validated-v048-release-documentation.md) |
 
 Task contracts carry the exact prerequisite graph; use `apk task deps <task-id>` to inspect it. In particular, Task 0173 depends on completed Tasks 0178 and 0179, and its existing guide, CLI, contribution, consistency, and security prerequisites. Task 0181 completed the current-versus-stale operator decision correction after 0179; it remains a separate workflow correctness task, not an added release prerequisite. Task 0173 validates an exact frozen candidate only after its dependencies pass; it does not assign a version or date in advance. Its PRE-TAG state may have `packageVersion` ahead of `validatedReleaseVersion`; promotion follows successful post-tag validation in a separate change on `main`.
 
@@ -68,7 +68,7 @@ The external-runtime dogfood recorded by Task 0097 is deferred until the APK bac
 
 ## Blocked work
 
-Task 0173 completed its declared prerequisites, exact PRE-TAG checks, exact-SHA hosted CI, independent review, immutable v0.4.8 tag peel, and POST-TAG cold-install/self-adoption validation. Task 0204 records the separate post-release artifact and promotes the validated-release sentinel; the immutable tagged candidate remains unchanged ([reassessment](delivery/backlog-reassessment-2026-10-07.md)).
+Task 0173 completed its declared prerequisites, exact PRE-TAG checks, exact-SHA hosted CI, independent review, immutable v0.4.8 tag peel, and POST-TAG cold-install/self-adoption validation. Task 0204 records the separate post-release artifact and promotes the validated-release sentinel; the immutable tagged candidate remains unchanged ([reassessment](delivery/backlog-reassessment-2026-10-07.md)). Public readiness is complete; Tasks 0149 and 0150 remain deferred identity work.
 
 ## Excluded from current scope
 
