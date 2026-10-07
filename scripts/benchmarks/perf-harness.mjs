@@ -90,6 +90,15 @@ function sumParentWall(session) {
 
 function aggregatePaired(pairs) {
   const onReports = pairs.map((pair) => pair.on.report);
+  for (const value of onReports) {
+    const primaryCommandKindMs = Object.values(value.commandKindMs).reduce((total, item) => total + item, 0);
+    if (primaryCommandKindMs > value.observedToolingWallMs + 0.001) {
+      throw new Error("primary command-kind attribution exceeded observed tooling wall");
+    }
+    if (value.childWallClockUnionMs > value.childDurationSumMs + 0.001) {
+      throw new Error("child wall-clock union exceeded child duration sum");
+    }
+  }
   const offWalls = pairs.map((pair) => sumParentWall(pair.off));
   const onWalls = pairs.map((pair) => sumParentWall(pair.on));
   const reportMetric = (selector) => stats(onReports.map(selector));
