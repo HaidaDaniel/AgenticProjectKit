@@ -1,7 +1,7 @@
 # Task 0212 - Implement full-process v2 APK performance attribution
 
-State: todo
-Owner: none
+State: done
+Owner: codex-performance-20261007
 Mode: mvp
 Lane: implementation
 Type: feature
@@ -22,6 +22,7 @@ Add schemaVersion 2 performance tracing and reporting that exposes a truthful No
 - docs/task-system.md
 - docs/engineering/testing-strategy.md
 - docs/research/apk-performance-measurement-contract.md
+- docs/research/apk-performance-measurement-contract-v2.md
 - docs/research/apk-performance-v050-corrective-plan.md
 - docs/research/non-node-apk-installation-and-distribution.md
 - .tasks/archive/0206-implement-opt-in-apk-performance-tracing-and-reporting.md
