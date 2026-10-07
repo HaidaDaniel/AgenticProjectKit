@@ -1,6 +1,6 @@
 # Task 0207 - Add deterministic tooling benchmark harness and APK overhead attribution
 
-State: doing
+State: done
 Owner: codex-performance-20261007
 Mode: production
 Lane: verification
