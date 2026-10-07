@@ -1,5 +1,11 @@
 # APK performance downstream decision report
 
+> Historical preliminary report from the v0.4.9 profiler (`schemaVersion: 1`).
+> This report is retained for measurement history, but it is not the final
+> Node-versus-Go decision evidence. The final downstream decision must use the
+> released v0.5.0 profiler after its full-process and verification-heavy
+> measurement corrections.
+
 ## Scope and evidence boundary
 
 This report uses the released `v0.4.9` CLI and `schemaVersion: 1` profiler from the immutable
@@ -95,10 +101,11 @@ canonical ignore rule, but upgrade compatibility for older adopted repositories 
 follow-up before broad profiler dogfood. This report does not count that artifact visibility as
 agent workflow time or hide it from the decision.
 
-## Conclusion
+## Historical conclusion
 
-The evidence supports two separate conclusions: APK self overhead can dominate short commands,
-but it is negligible beside a real Go verification workload; and Go remains an optional
-distribution/runtime-footprint investigation, not a justified full rewrite for agent wall-clock
-speed. The next engineering action is to close the legacy ignore compatibility gap, then collect
-more real sessions if a broader migration decision is needed.
+The v0.4.9 evidence supports only a preliminary observation: APK self overhead can dominate some
+short commands, while the measured Go verification workload was dominated by the wrapped external
+test. Because v0.4.9 did not observe full Node startup/import cost, did not provide paired OFF/ON
+instrumentation overhead, and did not provide sufficiently fine-grained verification attribution,
+it is not a final Go speed decision. The corrected v0.5.0 measurement generation and its released
+downstream evidence supersede this report for that decision.
