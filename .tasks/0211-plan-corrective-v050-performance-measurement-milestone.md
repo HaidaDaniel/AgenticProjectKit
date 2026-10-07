@@ -1,7 +1,7 @@
 # Task 0211 - Plan corrective v0.5.0 performance measurement milestone
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-performance-20261007
 Mode: discovery
 Lane: architecture
 Type: docs
@@ -30,6 +30,7 @@ Document the v0.4.9 measurement limitations without rewriting its immutable hist
 ## Files allowed to edit
 
 - docs/research/apk-performance-v050-corrective-plan.md
+- docs/research/apk-performance-downstream-decision.md
 - docs/progress.md
 
 ## Files forbidden to edit
@@ -82,7 +83,7 @@ Document the v0.4.9 measurement limitations without rewriting its immutable hist
 
 ## Documentation updates
 
-- Add the corrective plan and concise current-state note.
+- Add the corrective plan, mark the v0.4.9 downstream report as historical preliminary evidence, and add a concise current-state note.
 
 ## Notes
 
