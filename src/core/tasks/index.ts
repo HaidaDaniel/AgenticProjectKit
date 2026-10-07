@@ -4399,6 +4399,7 @@ export async function validateTaskAttributionApproval(options: {
   }
   let currentHead = "";
   let chain: GitCommitNode[] = [];
+  let firstParentChain = new Set<string>();
   if (baseline?.headSha) {
     try {
       currentHead = (await gitOutput(options.rootDirectory, ["rev-parse", "HEAD"])).trim();
@@ -4410,6 +4411,19 @@ export async function validateTaskAttributionApproval(options: {
         diagnostics.push(result.diagnostic ?? "The intervening Git history cannot be proven.");
       } else {
         chain = result.commits;
+      }
+      const firstParentLines = (await gitOutput(options.rootDirectory, [
+        "rev-list",
+        "--first-parent",
+        "--ancestry-path",
+        `--max-count=${MAX_TASK_ATTRIBUTION_COMMITS + 1}`,
+        "--parents",
+        `${baseline.headSha}..${currentHead}`,
+      ])).split(/\r?\n/).filter((line) => line.length > 0);
+      if (firstParentLines.length > MAX_TASK_ATTRIBUTION_COMMITS) {
+        diagnostics.push(`Git first-parent history exceeds the ${MAX_TASK_ATTRIBUTION_COMMITS}-commit attribution limit.`);
+      } else {
+        firstParentChain = new Set(firstParentLines.map((line) => line.split(" ")[0]));
       }
     } catch (error: unknown) {
       diagnostics.push(`The intervening Git history cannot be read (${error instanceof Error ? error.message : String(error)}).`);
@@ -4423,6 +4437,9 @@ export async function validateTaskAttributionApproval(options: {
   }
   if (acceptedNodes.some((commit) => commit !== undefined && commit.parents.length !== 1)) {
     diagnostics.push("Attribution approval cannot name merge commits; approve their linear task commits separately.");
+  }
+  if (acceptedNodes.some((commit) => commit !== undefined && !firstParentChain.has(commit.sha))) {
+    diagnostics.push("Attribution approval can name only commits on the task baseline's first-parent history; side-branch commits fail closed.");
   }
 
   const acceptedFiles = [...new Set((acceptedNodes.filter((commit): commit is GitCommitNode => commit !== undefined)
@@ -4472,7 +4489,17 @@ export async function currentTaskAttributionApproval(options: {
       && compareTaskEvidenceFreshness(record, options.subject).freshness === "current"
     ))
     .sort((left, right) => left.time.localeCompare(right.time) || left.id.localeCompare(right.id));
-  const record = records.at(-1);
+  const eligibleRecords: TaskEvidenceRecord[] = [];
+  for (const record of records) {
+    if (record.actor === record.agent) continue;
+    try {
+      await requireAgent(options.rootDirectory, record.agent);
+    } catch {
+      continue;
+    }
+    eligibleRecords.push(record);
+  }
+  const record = eligibleRecords.at(-1);
   if (!record) return undefined;
   return validateTaskAttributionApproval({
     rootDirectory: options.rootDirectory,

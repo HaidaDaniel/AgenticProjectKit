@@ -159,6 +159,7 @@ export interface AddTaskEvidenceInput {
   decision?: TaskHumanDecisionKind;
   actor?: string;
   resolvedBlocker?: string;
+  acceptedCommits?: string[];
   reviewBudgetGrant?: number;
   trustModel?: string;
   workerCommitIds?: string[];

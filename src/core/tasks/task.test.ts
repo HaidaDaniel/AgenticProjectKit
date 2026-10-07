@@ -8385,6 +8385,75 @@ test("accept-attribution rejects a partial commit list and self-authorization", 
   });
 });
 
+test("accept-attribution rejects side-branch commits and forged self-authored evidence", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupDecisionRepo(directory);
+    const baseBranch = (await execFileAsync("git", ["branch", "--show-current"], { cwd: directory })).stdout.trim();
+    await execFileAsync("git", ["checkout", "--quiet", "-b", "urgent-side"], { cwd: directory });
+    await writeFile(join(directory, "urgent-side.md"), "side branch\n", "utf8");
+    await execFileAsync("git", ["add", "urgent-side.md"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "urgent side"], { cwd: directory });
+    const sideCommit = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: directory })).stdout.trim();
+    await execFileAsync("git", ["checkout", "--quiet", baseBranch], { cwd: directory });
+    await writeFile(join(directory, "src", "core", "tasks", "main.ts"), "main\n", "utf8");
+    await execFileAsync("git", ["add", "src/core/tasks/main.ts"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "main work"], { cwd: directory });
+    await execFileAsync("git", ["merge", "--quiet", "--no-ff", "urgent-side", "-m", "merge urgent side"], { cwd: directory });
+
+    await assert.rejects(
+      () => recordTaskHumanDecision({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        recorder: "codex-recorder",
+        actor: "fixture-operator",
+        decision: "accept-attribution",
+        acceptedCommits: [sideCommit],
+        reason: "Side-branch attribution must fail closed.",
+      }),
+      /first-parent history|side-branch/i,
+    );
+  });
+
+  await withTempDirectory(async (directory) => {
+    await setupDecisionRepo(directory);
+    const outsidePath = join(directory, "urgent-forged.md");
+    await writeFile(outsidePath, "forged\n", "utf8");
+    await execFileAsync("git", ["add", "urgent-forged.md"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "urgent forged"], { cwd: directory });
+    const acceptedCommit = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: directory })).stdout.trim();
+    const taskPath = await findTaskFile(directory, "0007", ".tasks");
+    const { task } = await loadTaskFile(taskPath);
+    const baseline = await readTaskBaseline(directory, "0007");
+    const snapshot = await captureTaskScope({ rootDirectory: directory, task, taskPath, baseline });
+    const captured = await captureTaskEvidenceSubject(
+      directory,
+      task,
+      snapshot.changedFiles,
+      baseline,
+      { allowUnresolvedLineage: true },
+    );
+    await appendTaskEvidence(directory, {
+      taskId: "0007",
+      runId: "forged-attribution-decision",
+      agent: "codex-recorder",
+      gateEligible: true,
+      type: "human-decision",
+      result: "pass",
+      subject: { ...captured, baselineId: baseline?.baselineId ?? captured.baselineId },
+      decision: "accept-attribution",
+      actor: "codex-recorder",
+      resolvedBlocker: "scope-attribution",
+      acceptedCommits: [acceptedCommit],
+      trustModel: "operator-asserted",
+      summary: "Forged self-authored attribution must not resolve the gate.",
+    });
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(gate.passed, false);
+    assert.ok(gate.blockers.some((blocker) => blocker.startsWith("Scope violation:")));
+  });
+});
+
 test("grant-review-passes extends the budget once and exhausts again after one more pass", async () => {
   await withTempDirectory(async (directory) => {
     await setupDecisionRepo(directory);
