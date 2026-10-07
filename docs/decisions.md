@@ -94,6 +94,7 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0083](#adr-0083---application-runtime-and-repository-tooling-are-separate-scanner-semantics) | accepted | Application runtime and repository tooling are separate scanner semantics | — |
 | [ADR-0084](#adr-0084---keep-tracked-markdown-task-lifecycle-state-despite-bookkeeping-noise) | accepted | Keep tracked Markdown task lifecycle state despite bookkeeping noise | — |
 | [ADR-0085](#adr-0085---verification-is-proportional-and-full-suites-run-once-per-boundary) | accepted | Verification is proportional and full suites run once per boundary | — |
+| [ADR-0087](#adr-0087---apk-performance-observability-is-opt-in-local-and-interval-based) | accepted | APK performance observability is opt-in, local, and interval-based | — |
 
 ### ADR index cross-check
 
@@ -1723,3 +1724,43 @@ and handoff practice rather than in a broader bypass.
 Reference:
 
 Task 0197 and [task-system human decisions](task-system.md#human-decisions-for-review-budget-exhaustion-and-interrupted-attribution).
+
+## ADR-0087 - APK performance observability is opt-in, local, and interval-based
+
+Status: accepted
+
+Date: 2026-10-07
+
+### Context
+
+The project needs evidence about APK orchestration overhead versus Git and
+external project checks before considering a Node-to-Go rewrite. APK cannot
+observe LLM generation, user idle time, or direct shell commands outside its
+process. Adding a daemon, telemetry service, database, or mandatory workflow
+step would change the product boundary and create privacy and provenance
+risks.
+
+### Decision
+
+The performance profiler is opt-in and local. It stores bounded versioned
+JSONL records under the ignored `.agentic/perf/` runtime area, uses monotonic
+intervals, records only safe structured metadata, and is excluded from task
+evidence, provenance, candidate hashing, generated files, and package payload.
+APK invocations are observed automatically during an active session; arbitrary
+repository commands are included only through `apk perf exec -- ...`.
+
+Reports calculate parallel child wall-clock by interval union and distinguish
+that value from child duration sum. APK internal/self is the invocation
+residual after external child union. LLM generation, idle/unobserved gaps, and
+unwrapped commands are explicitly excluded rather than estimated.
+
+### Consequences
+
+The feature can provide an honest Amdahl bound and reproducible local
+benchmarks without claiming whole-agent coverage. Trace corruption must never
+block normal APK workflows. A future Go decision remains a downstream
+measurement question; runtime/distribution benefits and agent wall-clock
+benefits must be evaluated independently.
+
+The detailed schema, privacy boundary, category vocabulary, and benchmark
+methodology are maintained in [the performance measurement contract](research/apk-performance-measurement-contract.md).
