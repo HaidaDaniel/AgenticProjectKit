@@ -203,6 +203,51 @@ test("contract lint proves glob overlaps instead of using shared prefixes", asyn
   });
 });
 
+test("contract lint reports original interior and repeated dot patterns in both scope fields", async () => {
+  await withTempDirectory(async (directory) => {
+    await initProject(directory);
+    await writeAllAgentExports(directory, undefined, { force: true });
+
+    const invalidPatterns = [
+      { id: "0020", kind: "allowed", pattern: "src/./file.ts" },
+      { id: "0021", kind: "allowed", pattern: "././src/file.ts" },
+      { id: "0022", kind: "forbidden", pattern: "src/./file.ts" },
+      { id: "0023", kind: "forbidden", pattern: "././src/file.ts" },
+    ] as const;
+    for (const entry of invalidPatterns) {
+      await writeTask(directory, `${entry.id}-invalid-dot-pattern.md`, task(entry.id, {
+        allowedFiles: entry.kind === "allowed" ? [entry.pattern] : ["docs/**"],
+        forbiddenFiles: entry.kind === "forbidden" ? [entry.pattern] : [],
+      }));
+    }
+    const commandSentinel = join(directory, "verification-command-ran");
+    await writeTask(directory, "0024-single-prefix.md", task("0024", {
+      allowedFiles: ["./src/file.ts"],
+      forbiddenFiles: [],
+      verificationCommands: [`touch ${commandSentinel}`],
+    }));
+    await writeTask(directory, "0025-canonical.md", task("0025", {
+      allowedFiles: ["src/file.ts"],
+      forbiddenFiles: [],
+    }));
+
+    const result = await lintRepositoryContracts(directory);
+    const pathFindings = result.findings.filter((finding) => finding.code === "path-pattern-invalid");
+
+    assert.equal(pathFindings.length, invalidPatterns.length);
+    for (const entry of invalidPatterns) {
+      const finding = pathFindings.find((candidate) => candidate.taskId === entry.id);
+      assert.ok(finding, `missing invalid-pattern finding for task ${entry.id}`);
+      assert.equal(finding.level, "error");
+      assert.match(finding.message, new RegExp(`${entry.kind} pattern`));
+      assert.ok(finding.message.includes(JSON.stringify(entry.pattern)));
+      assert.match(finding.message, /canonical repository-relative pattern/);
+    }
+    assert.ok(!pathFindings.some((finding) => finding.taskId === "0024" || finding.taskId === "0025"));
+    await assert.rejects(() => readFile(commandSentinel, "utf8"), { code: "ENOENT" });
+  });
+});
+
 test("contract lint rejects active packaged-source scope contradictions but leaves docs-only tasks clear", async () => {
   await withTempDirectory(async (directory) => {
     await initProject(directory);
