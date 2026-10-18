@@ -3169,6 +3169,31 @@ test("candidate evidence detects staged executable-bit drift when core.filemode 
   });
 });
 
+test("candidate path discovery detects unstaged executable-bit changes when core.filemode is disabled", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    const relativePath = "docs/task-b/candidate-unstaged-mode.txt";
+    const candidatePath = join(directory, relativePath);
+    await writeFile(candidatePath, "same bytes\n", "utf8");
+    await execFileAsync("git", ["add", relativePath], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "seed unstaged mode candidate"], { cwd: directory });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner: "agent-b" });
+    const baseline = await readTaskBaseline(directory, "0008");
+    assert.ok(baseline);
+    const { task } = await loadTaskFile(join(directory, ".tasks", "0008-bounded-task.md"));
+
+    await execFileAsync("git", ["config", "core.filemode", "false"], { cwd: directory });
+    const beforePaths = await listTaskChangedFilesSinceBaseline(directory, baseline);
+    const before = await captureTaskEvidenceSubject(directory, task, beforePaths, baseline);
+    await chmod(candidatePath, 0o755);
+
+    const changedPaths = await listTaskChangedFilesSinceBaseline(directory, baseline);
+    assert.ok(changedPaths.includes(relativePath));
+    const after = await captureTaskEvidenceSubject(directory, task, changedPaths, baseline);
+    assert.notEqual(after.candidateId, before.candidateId);
+  });
+});
+
 test("a task baseline at another candidate HEAD can attribute its later bookkeeping commit", async () => {
   await withTempDirectory(async (directory) => {
     await setupReclaimRepo(directory);

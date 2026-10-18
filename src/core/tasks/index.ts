@@ -2525,8 +2525,8 @@ async function gitOutput(
 
 export async function listGitChangedFiles(rootDirectory: string): Promise<string[]> {
   const files = await Promise.all([
-    gitPaths(rootDirectory, ["diff", "--name-only", "-z"]),
-    gitPaths(rootDirectory, ["diff", "--name-only", "--cached", "-z"]),
+    gitPaths(rootDirectory, ["-c", "core.filemode=true", "diff", "--name-only", "-z"]),
+    gitPaths(rootDirectory, ["-c", "core.filemode=true", "diff", "--name-only", "--cached", "-z"]),
     gitPaths(rootDirectory, ["ls-files", "--others", "--exclude-standard", "-z"]),
   ]);
 
@@ -4458,6 +4458,8 @@ export async function listTaskChangedFilesSinceBaseline(
 ): Promise<string[]> {
   if (baseline.repository === "git" && baseline.headSha) {
     const committedAndWorking = await gitPaths(rootDirectory, [
+      "-c",
+      "core.filemode=true",
       "diff",
       "--name-only",
       "--no-renames",
@@ -4527,7 +4529,7 @@ async function listTaskEpochChangedFilesSinceBaseline(
   }
 
   const workingTreePaths = await gitPaths(rootDirectory, [
-    "diff", "--name-only", "--no-renames", "-z", baseline.headSha,
+    "-c", "core.filemode=true", "diff", "--name-only", "--no-renames", "-z", baseline.headSha,
   ]);
   const untracked = await gitPaths(rootDirectory, ["ls-files", "--others", "--exclude-standard", "-z"]);
   const workingTree = [...new Set([...workingTreePaths, ...untracked].map(normalizeGitPath))].sort();
@@ -4978,12 +4980,12 @@ export async function captureTaskEvidenceSubject(
     let indexWorktreeDifferences: string[];
     try {
       stagedPaths = await gitPaths(rootDirectory, [
-        "diff", "--cached", "--name-only", "--no-ext-diff", "-z", "--",
+        "-c", "core.filemode=true", "diff", "--cached", "--name-only", "--no-ext-diff", "-z", "--",
         ...[...candidateFiles, taskFile].map((path) => `:(literal)${path}`),
       ]);
       const stagedCandidatePaths = stagedPaths.filter((path) => candidateFiles.includes(path));
       indexWorktreeDifferences = stagedCandidatePaths.length === 0 ? [] : await gitPaths(rootDirectory, [
-        "diff", "--name-only", "--no-ext-diff", "-z", "--",
+        "-c", "core.filemode=true", "diff", "--name-only", "--no-ext-diff", "-z", "--",
         ...stagedCandidatePaths.map((path) => `:(literal)${path}`),
       ]);
       const stagedTaskContract = stagedPaths.includes(taskFile)
