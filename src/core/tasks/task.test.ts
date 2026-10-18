@@ -2400,12 +2400,18 @@ test("verifyTaskFileScope accepts allowed exact and glob paths", () => {
 });
 
 test("verifyTaskFileScope keeps one leading dot prefix compatible and rejects malformed dot segments", () => {
-  for (const pattern of ["src/./file.ts", "././src/file.ts", "./././src/file.ts"]) {
+  for (const pattern of [
+    "src/./file.ts",
+    "././src/file.ts",
+    "./././src/file.ts",
+    "src\\.\\file.ts",
+    ".\\.\\src\\file.ts",
+  ]) {
     const result = verifyTaskFileScope({ ...TASK, allowedFiles: [pattern], forbiddenFiles: [] }, ["src/file.ts"]);
     assert.deepEqual(result.outOfScopeFiles, ["src/file.ts"], pattern);
   }
 
-  for (const pattern of ["./src/file.ts", "src/file.ts"]) {
+  for (const pattern of ["./src/file.ts", "src/file.ts", "src\\file.ts"]) {
     const result = verifyTaskFileScope({ ...TASK, allowedFiles: [pattern], forbiddenFiles: [] }, ["src/file.ts"]);
     assert.deepEqual(result.outOfScopeFiles, [], pattern);
     assert.deepEqual(result.forbiddenTouchedFiles, [], pattern);
