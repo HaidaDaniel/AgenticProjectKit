@@ -21,6 +21,8 @@ Fix the mismatch between documented content-derived candidate identity and exact
 - docs/task-system.md
 - docs/decisions.md
 - src/core/tasks/evidence.ts
+- src/core/tasks/dogfood.ts
+- src/core/tasks/gate.ts
 - src/core/tasks/index.ts
 - src/core/tasks/provenance.ts
 - src/core/tasks/task.test.ts
@@ -63,6 +65,7 @@ Fix the mismatch between documented content-derived candidate identity and exact
 - Changes to source, tests, task contract, or an experiment plan change the evidence candidate and produce stale freshness.
 - Symlink target/type and executable-bit changes remain material even if dereferenced file bytes are identical; target bytes are fingerprinted without lossy decoding.
 - Candidate evidence capture fails closed when a staged scoped tracked path has additional unstaged worktree changes, a staged task contract differs from the worktree contract, or staged Git mode/type differs from the worktree even with `core.filemode=false`; ordinary unstaged-only candidate changes remain verifiable.
+- Internal verification, review, gate, and dogfood paths identify the exact task file when candidate capture is called, including custom task directories.
 - Exact `headSha` remains recorded as historical provenance; baseline lineage and ambiguous ownership checks remain fail-closed.
 - Existing evidence records are not rewritten or re-labelled.
 
