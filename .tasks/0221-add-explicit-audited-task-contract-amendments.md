@@ -1,7 +1,7 @@
 # Task 0221 - Add explicit audited task-contract amendments
 
-State: doing
-Owner: codex-task-amendment-0221
+State: blocked
+Owner: none
 Mode: maintenance
 Lane: verification
 Type: bugfix
@@ -106,3 +106,4 @@ Provide an explicit, append-only operator-authorized path for material task-cont
 
 - Keep the fix narrow. Reproduction is best-effort, not a forced completion gate.
 - Select runnable host-repository checks with --verification-json; template shell commands are examples. Prefer focused feedback and a non-overlapping final set; do not repeat a suite through test, coverage, quality, and release aggregates. Report checks must execute the relevant tests and produce the declared artifact in one host command. Preserve required domain evidence.
+- block: Blocked: the immutable claim baseline is cc58a39, while current main attributes commits e012972/126dea1 foreign Task 0222 and Task 0223 contracts outside this task scope. The gate rejects those two paths; completing 0221 would require unsupported attribution or replacing its baseline. Existing verification and review evidence is stale. Continue only through bounded successor 0224 with a fresh baseline.
