@@ -4787,6 +4787,62 @@ test("authorized contract amendment appends an epoch, preserves claim history, s
   });
 });
 
+test("verification epoch history rejects duplicate, replayed, and forked ordinary epochs", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const startEpoch = (reason: string) => startTaskEpoch({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "agent-a",
+      reason,
+    });
+    await startEpoch("first ordinary verification epoch");
+    await startEpoch("second ordinary verification epoch");
+
+    const journalPath = join(directory, TASK_BASELINES_PATH);
+    const originalLines = (await readFile(journalPath, "utf8")).trim().split("\n");
+    const rows = originalLines.map((line) => JSON.parse(line) as Record<string, unknown>);
+    assert.equal(rows.length, 3);
+    const [claim, firstEpoch, secondEpoch] = rows as [
+      Record<string, unknown>,
+      Record<string, unknown>,
+      Record<string, unknown>,
+    ];
+
+    await writeFile(journalPath, `${originalLines.join("\n")}\n${JSON.stringify(secondEpoch)}\n`, "utf8");
+    await assert.rejects(
+      () => readTaskBaselineHistory(directory, "0007"),
+      /duplicate verification epoch record/i,
+    );
+
+    const forkedEpoch: Record<string, unknown> = {
+      ...secondEpoch,
+      predecessorBaselineId: claim.baselineId,
+    };
+    delete forkedEpoch.predecessorEpochId;
+    await writeFile(journalPath, [claim, firstEpoch, forkedEpoch].map((row) => JSON.stringify(row)).join("\n") + "\n", "utf8");
+    await assert.rejects(
+      () => readTaskBaselineHistory(directory, "0007"),
+      /does not extend the latest verification epoch chain/i,
+    );
+
+    const wrongEpochLink: Record<string, unknown> = {
+      ...secondEpoch,
+      predecessorEpochId: "epoch:unrelated",
+    };
+    await writeFile(journalPath, [claim, firstEpoch, wrongEpochLink].map((row) => JSON.stringify(row)).join("\n") + "\n", "utf8");
+    await assert.rejects(
+      () => readTaskBaselineHistory(directory, "0007"),
+      /does not extend the latest verification epoch chain/i,
+    );
+
+    await writeFile(journalPath, `${originalLines.join("\n")}\n`, "utf8");
+    assert.equal((await readTaskBaselineHistory(directory, "0007")).length, 3);
+  });
+});
+
 test("epoch baselines prove completed candidates for later task attribution", async () => {
   await withTempDirectory(async (directory) => {
     await setupReclaimRepo(directory);

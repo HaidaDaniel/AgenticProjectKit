@@ -170,7 +170,7 @@ const TASK_AMENDMENT_HELP_TEXT = [
   "  apk task amendment preview <task-id> --actor <human-id> --reason <text> [--prior-snapshot <path>]",
   "",
   "Print the complete normalized before/after contract and exact approval digest without writing evidence. The digest binds the actor and reason as well as the contract change.",
-  "For legacy claims without stored snapshots, provide a prior snapshot whose normalized contract hash matches the recorded claim hash.",
+  "For legacy claims without stored snapshots, provide --prior-snapshot only when APK cannot recover the claim contract from its Git anchor; any supplied snapshot must match the recorded contract hash.",
 ].join("\n");
 
 const TASK_PROVENANCE_HELP_TEXT = [

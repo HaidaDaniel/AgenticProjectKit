@@ -3256,16 +3256,30 @@ async function readAllTaskBaselineRecords(rootDirectory: string): Promise<TaskCl
 function validateTaskContractAmendmentHistory(records: readonly TaskClaimBaseline[]): void {
   const byTask = new Map<string, Map<string, Array<{ record: TaskClaimBaseline; index: number }>>>();
   const amendmentIds = new Set<string>();
+  const epochIds = new Map<string, Set<string>>();
+  const epochBaselineIds = new Map<string, Set<string>>();
+  const firstClaimByTask = new Map<string, TaskClaimBaseline>();
+  const firstRecordByTask = new Map<string, TaskClaimBaseline>();
+  const latestEpochByTask = new Map<string, TaskClaimBaseline>();
   for (const [index, record] of records.entries()) {
     let history = byTask.get(record.taskId);
     if (!history) {
       history = new Map();
       byTask.set(record.taskId, history);
+      firstRecordByTask.set(record.taskId, record);
+    }
+    if ((record.phase ?? "claim") === "claim" && !firstClaimByTask.has(record.taskId)) {
+      firstClaimByTask.set(record.taskId, record);
     }
     const sameIdRecords = history.get(record.baselineId) ?? [];
     if (record.phase === "epoch") {
+      const taskEpochIds = epochIds.get(record.taskId) ?? new Set<string>();
+      const taskEpochBaselineIds = epochBaselineIds.get(record.taskId) ?? new Set<string>();
       if (record.contractAmendment && (sameIdRecords.length > 0 || amendmentIds.has(record.contractAmendment.amendmentId))) {
         throw new TaskBaselineFormatError([`Task ${record.taskId} has a duplicate contract amendment record.`]);
+      }
+      if (taskEpochIds.has(record.epochId!) || taskEpochBaselineIds.has(record.baselineId)) {
+        throw new TaskBaselineFormatError([`Task ${record.taskId} has a duplicate verification epoch record.`]);
       }
       const predecessorId = record.predecessorBaselineId;
       const predecessors = predecessorId ? history.get(predecessorId) : undefined;
@@ -3273,6 +3287,14 @@ function validateTaskContractAmendmentHistory(records: readonly TaskClaimBaselin
         throw new TaskBaselineFormatError([`Task ${record.taskId} epoch does not follow its recorded predecessor baseline.`]);
       }
       const predecessor = predecessors[0]!;
+      const expectedPredecessor = latestEpochByTask.get(record.taskId)
+        ?? firstClaimByTask.get(record.taskId)
+        ?? firstRecordByTask.get(record.taskId);
+      if (!expectedPredecessor
+        || record.predecessorBaselineId !== expectedPredecessor.baselineId
+        || record.predecessorEpochId !== expectedPredecessor.epochId) {
+        throw new TaskBaselineFormatError([`Task ${record.taskId} epoch does not extend the latest verification epoch chain.`]);
+      }
       const predecessorHash = predecessor.record.taskContractHash
         ?? predecessor.record.contractAmendment?.toContractHash;
       if (record.contractAmendment) {
@@ -3287,6 +3309,11 @@ function validateTaskContractAmendmentHistory(records: readonly TaskClaimBaselin
       } else if (predecessorHash && record.taskContractHash !== predecessorHash) {
         throw new TaskBaselineFormatError([`Task ${record.taskId} epoch changes the contract without an exact amendment record.`]);
       }
+      taskEpochIds.add(record.epochId!);
+      taskEpochBaselineIds.add(record.baselineId);
+      epochIds.set(record.taskId, taskEpochIds);
+      epochBaselineIds.set(record.taskId, taskEpochBaselineIds);
+      latestEpochByTask.set(record.taskId, record);
     }
     history.set(record.baselineId, [...sameIdRecords, { record, index }]);
   }
