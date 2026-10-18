@@ -184,6 +184,14 @@ The command:
 - Rejects duplicate slugs, invalid metadata, missing dependencies, and cycles.
 - Preflights path contracts before writing: an allowed pattern overlapping a forbidden pattern remains an error. Keep the positive `allowedFiles` list as the edit boundary; remove or narrow a broad forbidden parent such as `internal/app/**` when allowing `internal/app/assets/**`.
 
+### Scope path patterns
+
+`allowedFiles` and `forbiddenFiles` are repository-relative path patterns. Literal paths and the existing `*`/`**` operators are supported. Interior `.` segments such as `src/./file.ts` and repeated leading prefixes such as `././src/file.ts` are invalid because they look like repository paths but do not match the corresponding canonical Git path. Validation reports the original pattern; it never rewrites it or broadens its match set.
+
+Exactly one leading `./` remains a backward-compatible alias: `./src/file.ts` has the same match set as `src/file.ts`. This preserves the existing `normalizeRepoPath` behavior, which removes one leading prefix. A second prefix is not an alias and remains invalid.
+
+Task 0220's read-only preflight at main commit `139826621d33d7d2051e912e03672c5198fbcfd0` parsed all 224 active and archived task contracts (65 active, 159 archived). The active contracts contained 704 allowed and 525 forbidden patterns; archived contracts contained 1,464 allowed and 830 forbidden patterns. All patterns were canonical: there were zero single-leading-`./`, interior-dot, or repeated-leading-`./` cases. The task-template source had no `allowedFiles`/`forbiddenFiles` pattern entries or examples. A temporary fixture on Node 22.22.1 reproduced the authoring gap: task creation wrote contracts for `src/./file.ts` and `././src/file.ts`, and lint emitted no `path-pattern-invalid` finding for either pattern in either field. `verifyTaskFileScope` then rejected `src/file.ts` as out of scope for both malformed allowed patterns, while the single-prefix and canonical forms both matched it. The code normalizes by removing only one initial `./`, leaves interior dots untouched, and did not previously reject either case.
+
 Task templates reduce repetitive flags for common work:
 
 ```bash

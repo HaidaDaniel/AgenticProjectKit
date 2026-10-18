@@ -2232,12 +2232,30 @@ export interface TaskPathContractOverlap {
 }
 
 export function taskPathPatternIssue(pattern: string): string | undefined {
-  const normalized = normalizeRepoPath(pattern);
-  if (normalized.length === 0) return "path pattern must not be empty";
-  if (normalized.includes("\n") || normalized.includes("\r")) return "path pattern must be single-line";
-  if (isAbsolute(pattern) || /^[A-Za-z]:\//.test(normalized) || normalized.startsWith("/")) {
+  const slashNormalizedPattern = pattern.replace(/\\/g, "/");
+  if (slashNormalizedPattern.includes("\n") || slashNormalizedPattern.includes("\r")) {
+    return "path pattern must be single-line";
+  }
+  if (
+    isAbsolute(pattern)
+    || /^[A-Za-z]:\//.test(slashNormalizedPattern)
+    || slashNormalizedPattern.startsWith("/")
+  ) {
     return "absolute paths are not allowed";
   }
+  if (pattern.length === 0 || slashNormalizedPattern === "./") return "path pattern must not be empty";
+  // Inspect the original spelling before normalizeRepoPath removes its supported one-prefix alias.
+  if (/^(?:\.\/){2,}/.test(slashNormalizedPattern)) {
+    return "repeated leading ./ prefixes are not allowed; use a canonical repository-relative pattern";
+  }
+  const pathAfterSupportedPrefix = slashNormalizedPattern.startsWith("./")
+    ? slashNormalizedPattern.slice(2)
+    : slashNormalizedPattern;
+  if (pathAfterSupportedPrefix.split("/").includes(".")) {
+    return "dot path segments are not allowed; use a canonical repository-relative pattern";
+  }
+  const normalized = normalizeRepoPath(pattern);
+  if (normalized.length === 0) return "path pattern must not be empty";
   if (normalized.split("/").includes("..")) return "parent traversal is not allowed";
   if (/[?\[\]{}]/.test(normalized)) return "only * and ** glob operators are supported";
   if (normalized.includes("//")) return "empty path segments are not allowed";

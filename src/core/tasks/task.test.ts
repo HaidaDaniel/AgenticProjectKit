@@ -2399,6 +2399,30 @@ test("verifyTaskFileScope accepts allowed exact and glob paths", () => {
   assert.deepEqual(result.forbiddenTouchedFiles, []);
 });
 
+test("verifyTaskFileScope keeps one leading dot prefix compatible and rejects malformed dot segments", () => {
+  for (const pattern of [
+    "src/./file.ts",
+    "././src/file.ts",
+    "./././src/file.ts",
+    "src\\.\\file.ts",
+    ".\\.\\src\\file.ts",
+  ]) {
+    const result = verifyTaskFileScope({ ...TASK, allowedFiles: [pattern], forbiddenFiles: [] }, ["src/file.ts"]);
+    assert.deepEqual(result.outOfScopeFiles, ["src/file.ts"], pattern);
+  }
+
+  for (const pattern of ["./src/file.ts", "src/file.ts", "src\\file.ts"]) {
+    const result = verifyTaskFileScope({ ...TASK, allowedFiles: [pattern], forbiddenFiles: [] }, ["src/file.ts"]);
+    assert.deepEqual(result.outOfScopeFiles, [], pattern);
+    assert.deepEqual(result.forbiddenTouchedFiles, [], pattern);
+  }
+
+  for (const [pattern, path] of [["src/*.ts", "src/file.ts"], ["src/**", "src/nested/file.ts"]]) {
+    const result = verifyTaskFileScope({ ...TASK, allowedFiles: [pattern], forbiddenFiles: [] }, [path]);
+    assert.deepEqual(result.outOfScopeFiles, [], pattern);
+  }
+});
+
 test("verifyTaskFileScope reports out-of-allowed files", () => {
   const result = verifyTaskFileScope(TASK, [
     "README.md",
@@ -8166,6 +8190,80 @@ test("createTask rejects an allowed child inside a forbidden parent before writi
       () => readFile(join(directory, ".tasks", "0001-scoped-internal-app-change.md"), "utf8"),
       /ENOENT/,
     );
+  });
+});
+
+test("createTask rejects interior and repeated leading dot segments before writing", async () => {
+  const invalidPatterns = [
+    { kind: "allowed", pattern: "src/./file.ts" },
+    { kind: "allowed", pattern: "././src/file.ts" },
+    { kind: "forbidden", pattern: "src/./file.ts" },
+    { kind: "forbidden", pattern: "././src/file.ts" },
+  ] as const;
+
+  for (const [index, entry] of invalidPatterns.entries()) {
+    await withTempDirectory(async (directory) => {
+      await mkdir(join(directory, ".agentic"), { recursive: true });
+      await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({}), "utf8");
+      const title = `Invalid Dot Scope ${index}`;
+      const taskFile = join(directory, ".tasks", buildTaskFileName("0001", title));
+
+      await assert.rejects(
+        () => createTask(directory, ".tasks", {
+          title,
+          mode: "mvp",
+          lane: "implementation",
+          scope: ["tasks"],
+          risk: "low",
+          parallel: false,
+          dependsOn: [],
+          tags: [],
+          goal: "Reject malformed path patterns without rewriting them.",
+          contextFiles: ["AGENTS.md"],
+          allowedFiles: entry.kind === "allowed" ? [entry.pattern] : ["docs/**"],
+          forbiddenFiles: entry.kind === "forbidden" ? [entry.pattern] : [],
+          steps: ["Run task creation preflight."],
+          acceptanceCriteria: ["No task file is written for a malformed pattern."],
+          verificationCommands: ["pnpm test"],
+          documentationUpdates: [],
+          notes: [],
+        }),
+        (error: unknown) => {
+          assert.ok(error instanceof Error);
+          assert.match(error.message, /Path contract validation failed before writing task/);
+          assert.ok(error.message.includes(`${entry.kind} pattern ${JSON.stringify(entry.pattern)}`));
+          return true;
+        },
+      );
+
+      await assert.rejects(() => readFile(taskFile, "utf8"), { code: "ENOENT" });
+    });
+  }
+
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({}), "utf8");
+    const commandSentinel = join(directory, "verification-command-ran");
+    await createTask(directory, ".tasks", {
+      title: "Valid Scope Does Not Execute Checks",
+      mode: "mvp",
+      lane: "implementation",
+      scope: ["tasks"],
+      risk: "low",
+      parallel: false,
+      dependsOn: [],
+      tags: [],
+      goal: "Task creation validates metadata without running declared commands.",
+      contextFiles: ["AGENTS.md"],
+      allowedFiles: ["src/file.ts"],
+      forbiddenFiles: [],
+      steps: ["Create the task contract."],
+      acceptanceCriteria: ["The verification command has not run."],
+      verificationCommands: [`touch ${commandSentinel}`],
+      documentationUpdates: [],
+      notes: [],
+    });
+    await assert.rejects(() => readFile(commandSentinel, "utf8"), { code: "ENOENT" });
   });
 });
 
