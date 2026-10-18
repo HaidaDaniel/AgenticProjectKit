@@ -334,6 +334,14 @@ For release/reclaim intervals, every intervening commit must satisfy that comple
 
 `verifyTask`, the completion gate, and task provenance share the same `TaskScopeAttribution`: baseline ID, lineage status, task-attributed files, pre-existing files, bookkeeping files, excluded files and commit/task/kind references, and diagnostics. The task candidate hashes only its attributed/previously established file set, while repository activity in provenance continues to show the broad baseline-to-HEAD range. This changes neither HEAD-bound candidate identity nor evidence/review freshness rules. No-git or unavailable-HEAD work remains supported but reports limited attribution instead of claiming certainty.
 
+### Historical epoch identity compatibility
+
+The original snapshot-free epoch writer hashed a timestamp before Git validation, then stored a second timestamp when capturing the baseline. Carried paths were written in default JavaScript string order; reading must preserve that order rather than apply locale sorting. Current writing and reading share the same identity function and use one exact timestamp. Epoch paths must be canonical, unique, and in the writer's order; aliases, duplicates, and reordered lists are rejected without silently normalizing identity inputs.
+
+For an epoch and predecessor that both omit contract snapshots and amendments, the reader can recover the earlier timestamp by testing the preceding 1–1000 milliseconds. It accepts only an exact match to the stored epoch digest, including all carried paths and fingerprints, and first checks the baseline digest against the unchanged stored timestamp and dirty-path set. Both timestamps must be canonical ISO values. Recovery preserves stored records, timestamps, IDs, chain checks, contract checks, scope, ownership, and evidence freshness. It does not grant operator approval or establish authenticated writer identity: the existing local hashes are unkeyed.
+
+Compatibility is deliberately bounded to 100000 UTF-8 bytes per legacy record and 10000 recovery hash attempts across one history read. Larger records, a timestamp outside the window, exhausted attempts, malformed data, or an unmatched digest fail closed. Snapshot-bearing and amended records require the exact stored timestamp and never use this compatibility search. Historical records are never rewritten to make validation pass.
+
 ### Externally observed manual, live, and benchmark evidence
 
 `apk task verify` never infers a pass for a manual or `live` check; those remain `unavailable`. When such a required check can only be observed outside APK, the task owner records the observed outcome explicitly:

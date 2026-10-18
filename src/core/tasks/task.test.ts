@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { appendFile, chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -4427,6 +4428,161 @@ test("legacy multiple-claim baseline history selects the earliest authoritative 
     assert.equal(result.passed, false);
     assert.deepEqual(result.outOfScopeFiles, ["src/bootstrap/setup.ts"]);
     assert.deepEqual(result.attribution?.preExistingFiles, []);
+  });
+});
+
+// Synthetic equivalents of the six historical two-clock records: four tasks,
+// one three-epoch chain, empty carries, and mixed-case carried paths. No real
+// operator identity, repository SHA, or historical evidence is copied here.
+function historicalEpochFixture(taskCases: ReadonlyArray<readonly [string, readonly number[]]> = [
+  ["0001", [12]], ["0002", [13, 13, 13]], ["0003", [12]], ["0004", [11]],
+]): TaskClaimBaseline[] {
+  const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  const records: TaskClaimBaseline[] = [];
+  for (const [taskId, offsets] of taskCases) {
+    let predecessor: TaskClaimBaseline = {
+      baselineId: `baseline:claim-${taskId}`, taskId, owner: "legacy-owner",
+      time: "2026-01-02T03:04:00.000Z", repository: "git", headSha: "1".repeat(40),
+      taskFile: `.tasks/${taskId}-legacy.md`, dirtyFiles: {}, bookkeepingPaths: [], diagnostics: [],
+      phase: "claim", taskContractHash: "a".repeat(64),
+    };
+    records.push(predecessor);
+    for (const [index, offset] of offsets.entries()) {
+      const identityTime = new Date(Date.parse("2026-01-02T03:05:00.000Z") + index * 1000).toISOString();
+      const time = new Date(Date.parse(identityTime) + offset).toISOString();
+      const carriedForwardFiles = taskId === "0001" || index > 0
+        ? [{ path: "README.md", sha256: "b".repeat(64) }, { path: "docs/guide.md", sha256: "c".repeat(64) }]
+        : [];
+      const dirtyFiles = Object.fromEntries(carriedForwardFiles.map(({ path, sha256 }) => [path, sha256]));
+      const epoch: TaskClaimBaseline = {
+        ...predecessor, time, dirtyFiles, phase: "epoch",
+        baselineId: `baseline:${digest({ taskId, owner: predecessor.owner, time, headSha: predecessor.headSha, changedFiles: Object.keys(dirtyFiles).sort(), phase: "epoch" })}`,
+        predecessorBaselineId: predecessor.baselineId,
+        ...(predecessor.epochId ? { predecessorEpochId: predecessor.epochId } : {}),
+        epochReason: "Refresh the historical task anchor.", carriedForwardFiles,
+        carriedForwardCandidateId: `candidate:carried:${digest({ taskId, predecessorBaselineId: predecessor.baselineId, carriedForwardFiles })}`,
+        epochId: `epoch:${digest({ taskId, predecessorBaselineId: predecessor.baselineId, predecessorEpochId: predecessor.epochId, owner: predecessor.owner, reason: "Refresh the historical task anchor.", time: identityTime, headSha: predecessor.headSha, carriedForwardFiles })}`,
+      };
+      records.push(epoch);
+      predecessor = epoch;
+    }
+  }
+  return records;
+}
+
+test("historical two-clock epochs preserve all six identities and stored path order without writes", async () => {
+  await withTempDirectory(async (directory) => {
+    const records = historicalEpochFixture();
+    const journalPath = join(directory, TASK_BASELINES_PATH);
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    const journal = records.map((record) => JSON.stringify(record)).join("\n") + "\n";
+    await writeFile(journalPath, journal, "utf8");
+    const history = await readTaskBaselineHistory(directory);
+    assert.deepEqual(history, records);
+    assert.equal(history.filter((record) => record.phase === "epoch").length, 6);
+    assert.equal(await readFile(journalPath, "utf8"), journal);
+  });
+});
+
+test("historical two-clock epochs reject identity, carry, timestamp, and format tampering", async () => {
+  await withTempDirectory(async (directory) => {
+    const [claim, epoch] = historicalEpochFixture();
+    assert.ok(claim && epoch?.carriedForwardFiles);
+    const journalPath = join(directory, TASK_BASELINES_PATH);
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    const cases: Array<[string, (record: TaskClaimBaseline) => void]> = [
+      ["damaged ID", (record) => { record.epochId = `epoch:${"0".repeat(64)}`; }],
+      ["changed carried hash", (record) => { record.carriedForwardFiles![0]!.sha256 = "d".repeat(64); }],
+      ["erased carry", (record) => { record.carriedForwardFiles = []; }],
+      ["forged carry", (record) => { record.carriedForwardFiles!.push({ path: "secrets/foreign.txt", sha256: "e".repeat(64) }); }],
+      ["reordered carry", (record) => { record.carriedForwardFiles!.reverse(); }],
+      ["noncanonical carry", (record) => { record.carriedForwardFiles![0]!.path = "./README.md"; }],
+      ["duplicate carry", (record) => { record.carriedForwardFiles!.push({ ...record.carriedForwardFiles![0]! }); }],
+      ["changed contract hash", (record) => { record.taskContractHash = "f".repeat(64); }],
+      ["changed stored time", (record) => { record.time = "2026-01-02T03:05:00.013Z"; }],
+      ["noncanonical time", (record) => { record.time = "2026-01-02T03:05:00.012+00:00"; }],
+      ["changed dirty path set", (record) => { record.dirtyFiles = {}; }],
+      ["aliased dirty path", (record) => { record.dirtyFiles["./README.md"] = record.dirtyFiles["README.md"]!; delete record.dirtyFiles["README.md"]; }],
+      ["outside bounded time recovery", (record) => { record.time = "2026-01-02T03:05:02.000Z"; }],
+      ["future identity time", (record) => { record.time = "2026-01-02T03:04:59.999Z"; }],
+    ];
+    for (const [label, mutate] of cases) {
+      const tampered = structuredClone(epoch);
+      mutate(tampered);
+      const journal = [claim, tampered].map((record) => JSON.stringify(record)).join("\n") + "\n";
+      await writeFile(journalPath, journal, "utf8");
+      await assert.rejects(() => readTaskBaselineHistory(directory), { name: "TaskBaselineFormatError" }, label);
+      assert.equal(await readFile(journalPath, "utf8"), journal, label);
+    }
+  });
+});
+
+test("historical two-clock epochs bound clock recovery and total digest work", async () => {
+  await withTempDirectory(async (directory) => {
+    const journalPath = join(directory, TASK_BASELINES_PATH);
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    const save = async (records: TaskClaimBaseline[]) => writeFile(journalPath, records.map((record) => JSON.stringify(record)).join("\n") + "\n", "utf8");
+    await save(historicalEpochFixture([["0001", [0, 1000]]]));
+    assert.equal((await readTaskBaselineHistory(directory)).length, 3);
+    for (const offset of [-1, 1001]) {
+      await save(historicalEpochFixture([["0001", [offset]]]));
+      await assert.rejects(() => readTaskBaselineHistory(directory), /epoch ID does not match/i);
+    }
+    const oversized = historicalEpochFixture([["0001", [12]]]);
+    oversized.at(-1)!.diagnostics = ["界".repeat(34_000)];
+    await save(oversized);
+    await assert.rejects(() => readTaskBaselineHistory(directory), /epoch ID does not match/i);
+    await save(historicalEpochFixture(Array.from({ length: 11 }, (_, index) => [String(index + 1).padStart(4, "0"), [1000]] as const)));
+    await assert.rejects(() => readTaskBaselineHistory(directory), /bounded hash-attempt budget/i);
+  });
+});
+
+test("recovered historical epochs keep forbidden paths blocked and old evidence stale", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const verification = await verifyTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a", runCommand: async () => 0 });
+    assert.equal(verification.passed, true);
+    await writeFile(join(directory, "secrets", "carried.txt"), "must stay forbidden\n", "utf8");
+    const epoch = await startTaskEpoch({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a", reason: "Synthetic historical carry." });
+    const journalPath = join(directory, TASK_BASELINES_PATH);
+    const records = (await readFile(journalPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line) as TaskClaimBaseline);
+    // Reproduce the old writer only inside this disposable synthetic repository.
+    for (const record of records) delete record.taskContractSnapshot;
+    const legacy = records.at(-1)!;
+    legacy.time = new Date(Date.parse(epoch.time) + 12).toISOString();
+    legacy.baselineId = `baseline:${createHash("sha256").update(JSON.stringify({ taskId: legacy.taskId, owner: legacy.owner, time: legacy.time, headSha: legacy.headSha, changedFiles: Object.keys(legacy.dirtyFiles).sort(), phase: "epoch" })).digest("hex")}`;
+    await writeFile(journalPath, records.map((record) => JSON.stringify(record)).join("\n") + "\n", "utf8");
+    const journal = await readFile(journalPath, "utf8");
+    const gate = await evaluateTaskCompletionGate({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" });
+    assert.equal(gate.passed, false);
+    assert.ok(gate.blockers.some((blocker) => blocker.includes("Forbidden file touched: secrets/carried.txt")));
+    const provenance = await buildTaskProvenance(directory, ".tasks", "0007");
+    assert.equal(provenance.evidence.find((record) => record.runId === verification.runId)?.freshness, "stale");
+    assert.equal(await readFile(journalPath, "utf8"), journal);
+    const next = await startTaskEpoch({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a", reason: "Continue from a recovered legacy epoch." });
+    assert.equal(next.predecessorEpochId, epoch.epochId);
+    assert.ok(next.taskContractSnapshot);
+    assert.ok(next.carriedForwardFiles?.some(({ path }) => path === "secrets/carried.txt"));
+  });
+});
+
+test("new verification epochs round-trip mixed-case paths and one exact timestamp", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    for (const path of ["Upper.ts", "lower.ts"]) {
+      await writeFile(join(directory, "src/core/tasks", path), "owned\n", "utf8");
+    }
+    const epoch = await startTaskEpoch({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a", reason: "Round-trip mixed-case carried paths." });
+    assert.deepEqual((await readTaskBaselineHistory(directory, "0007")).at(-1), epoch);
+    assert.equal((await buildTaskProvenance(directory, ".tasks", "0007")).epochs.at(-1)?.epochId, epoch.epochId);
+    const journalPath = join(directory, TASK_BASELINES_PATH);
+    const journal = await readFile(journalPath, "utf8");
+    const records = journal.trim().split("\n").map((line) => JSON.parse(line) as TaskClaimBaseline);
+    records.at(-1)!.time = new Date(Date.parse(epoch.time) + 12).toISOString();
+    await writeFile(journalPath, records.map((record) => JSON.stringify(record)).join("\n") + "\n", "utf8");
+    await assert.rejects(() => readTaskBaselineHistory(directory, "0007"), /epoch ID does not match/i);
   });
 });
 
