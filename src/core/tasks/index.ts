@@ -1892,6 +1892,10 @@ export interface TaskClaimBaseline {
   carriedForwardCandidateId?: string;
   /** Contract identity captured at the epoch boundary. */
   taskContractHash?: string;
+  /** Canonical material contract snapshot captured at claim/epoch time. */
+  taskContractSnapshot?: string;
+  /** Exact operator-authorized contract transition recorded on an amendment epoch. */
+  contractAmendment?: TaskContractAmendmentRecord;
   /** Authoritative baseline lineage result; only set by `readTaskBaseline`. */
   lineageStatus?: TaskBaselineLineageStatus;
   lineageDiagnostic?: string;
@@ -1901,6 +1905,21 @@ export interface TaskClaimBaseline {
   provenOtherTaskCommits?: TaskCommitAttribution[];
   /** Merge nodes whose changed paths were inherited from already-proven parents. */
   mergeCommits?: TaskMergeAttribution[];
+}
+
+export interface TaskContractAmendmentRecord {
+  schemaVersion: 1;
+  amendmentId: string;
+  fromContractHash: string;
+  toContractHash: string;
+  fromSnapshot: string;
+  toSnapshot: string;
+  diffSha256: string;
+  approvalDigest: string;
+  actor: string;
+  recorder: string;
+  reason: string;
+  time: string;
 }
 
 export class TaskBaselineFormatError extends Error {
@@ -2540,6 +2559,19 @@ function hashCandidatePart(value: unknown): string {
     .digest("hex");
 }
 
+function taskContractAmendmentApprovalDigest(input: {
+  taskId: string;
+  taskFile: string;
+  baselineId: string;
+  fromContractHash: string;
+  toContractHash: string;
+  diffSha256: string;
+  actor: string;
+  reason: string;
+}): string {
+  return hashCandidatePart({ protocol: "apk-task-contract-amendment-v1", ...input });
+}
+
 async function fingerprintChangedFiles(
   rootDirectory: string,
   changedFiles: readonly string[],
@@ -2710,6 +2742,99 @@ function normalizeBaseline(value: unknown, lineNumber: number): TaskClaimBaselin
   const epochReason = optionalBaselineText("epochReason", 2048);
   const carriedForwardCandidateId = optionalBaselineText("carriedForwardCandidateId");
   const taskContractHash = optionalBaselineText("taskContractHash");
+  const taskContractSnapshot = typeof raw.taskContractSnapshot === "string"
+    ? raw.taskContractSnapshot
+    : undefined;
+  if (raw.taskContractSnapshot !== undefined && taskContractSnapshot === undefined) {
+    issues.push(`Baseline line ${lineNumber}.taskContractSnapshot must be a string when provided.`);
+  }
+  if (taskContractSnapshot !== undefined && taskContractSnapshot.length > 100_000) {
+    issues.push(`Baseline line ${lineNumber}.taskContractSnapshot must be at most 100000 characters.`);
+  }
+  if (taskContractSnapshot !== undefined && taskContractHash && hashCandidatePart(taskContractSnapshot) !== taskContractHash) {
+    issues.push(`Baseline line ${lineNumber}.taskContractSnapshot does not match taskContractHash.`);
+  }
+  let contractAmendment: TaskContractAmendmentRecord | undefined;
+  if (raw.contractAmendment !== undefined) {
+    const value = raw.contractAmendment;
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      issues.push(`Baseline line ${lineNumber}.contractAmendment must be an object when provided.`);
+    } else {
+      const amendment = value as Record<string, unknown>;
+      const amendmentText = (field: string, max = 240): string => {
+        const fieldValue = amendment[field];
+        if (typeof fieldValue !== "string" || fieldValue.trim().length === 0 || fieldValue.length > max) {
+          issues.push(`Baseline line ${lineNumber}.contractAmendment.${field} must be a non-empty string of at most ${max} characters.`);
+          return "";
+        }
+        return fieldValue;
+      };
+      const schemaVersion = amendment.schemaVersion;
+      if (schemaVersion !== 1) issues.push(`Baseline line ${lineNumber}.contractAmendment.schemaVersion must be 1.`);
+      const fromSnapshot = amendment.fromSnapshot;
+      const toSnapshot = amendment.toSnapshot;
+      if (typeof fromSnapshot !== "string" || fromSnapshot.length > 100_000) {
+        issues.push(`Baseline line ${lineNumber}.contractAmendment.fromSnapshot must be a string of at most 100000 characters.`);
+      }
+      if (typeof toSnapshot !== "string" || toSnapshot.length > 100_000) {
+        issues.push(`Baseline line ${lineNumber}.contractAmendment.toSnapshot must be a string of at most 100000 characters.`);
+      }
+      if (typeof fromSnapshot === "string" && typeof toSnapshot === "string") {
+        const fromContractHash = amendmentText("fromContractHash");
+        const toContractHash = amendmentText("toContractHash");
+        const diffSha256 = amendmentText("diffSha256");
+        const approvalDigest = amendmentText("approvalDigest");
+        const actor = amendmentText("actor", 120);
+        const recorder = amendmentText("recorder", 200);
+        const reason = amendmentText("reason", 2048);
+        const time = amendmentText("time", 40);
+        const amendmentId = amendmentText("amendmentId");
+        if (hashCandidatePart(fromSnapshot) !== fromContractHash) {
+          issues.push(`Baseline line ${lineNumber}.contractAmendment.fromSnapshot hash mismatch.`);
+        }
+        if (hashCandidatePart(toSnapshot) !== toContractHash || toContractHash !== taskContractHash) {
+          issues.push(`Baseline line ${lineNumber}.contractAmendment.toSnapshot hash mismatch.`);
+        }
+        const expectedDiffHash = hashCandidatePart({ fromSnapshot, toSnapshot });
+        if (expectedDiffHash !== diffSha256) {
+          issues.push(`Baseline line ${lineNumber}.contractAmendment.diffSha256 mismatch.`);
+        }
+        const expectedApproval = taskContractAmendmentApprovalDigest({
+          taskId: typeof raw.taskId === "string" ? raw.taskId : "",
+          taskFile: typeof raw.taskFile === "string" ? normalizeRepoPath(raw.taskFile) : "",
+          baselineId: typeof raw.predecessorBaselineId === "string" ? raw.predecessorBaselineId : "",
+          fromContractHash,
+          toContractHash,
+          diffSha256,
+          actor,
+          reason,
+        });
+        if (expectedApproval !== approvalDigest) {
+          issues.push(`Baseline line ${lineNumber}.contractAmendment.approvalDigest mismatch.`);
+        }
+        if (actor === recorder) issues.push(`Baseline line ${lineNumber}.contractAmendment.actor must differ from recorder.`);
+        if (recorder !== raw.owner) issues.push(`Baseline line ${lineNumber}.contractAmendment.recorder must match baseline owner.`);
+        if (reason !== epochReason) issues.push(`Baseline line ${lineNumber}.contractAmendment.reason must match epochReason.`);
+        if (time !== raw.time) issues.push(`Baseline line ${lineNumber}.contractAmendment.time must match baseline time.`);
+        const expectedId = hashCandidatePart({ approvalDigest, actor, recorder, reason, time });
+        if (amendmentId !== expectedId) issues.push(`Baseline line ${lineNumber}.contractAmendment.amendmentId mismatch.`);
+        contractAmendment = {
+          schemaVersion: 1,
+          amendmentId,
+          fromContractHash,
+          toContractHash,
+          fromSnapshot,
+          toSnapshot,
+          diffSha256,
+          approvalDigest,
+          actor,
+          recorder,
+          reason,
+          time,
+        };
+      }
+    }
+  }
   const baseline: TaskClaimBaseline = {
     baselineId: text("baselineId", 240),
     taskId: text("taskId"),
@@ -2729,6 +2854,8 @@ function normalizeBaseline(value: unknown, lineNumber: number): TaskClaimBaselin
     ...(carriedForwardFiles ? { carriedForwardFiles } : {}),
     ...(carriedForwardCandidateId ? { carriedForwardCandidateId } : {}),
     ...(taskContractHash ? { taskContractHash } : {}),
+    ...(taskContractSnapshot !== undefined ? { taskContractSnapshot } : {}),
+    ...(contractAmendment ? { contractAmendment } : {}),
   };
   if (baseline.repository === "git" && !baseline.headSha) {
     issues.push(`Baseline line ${lineNumber}.headSha is required for git baselines.`);
@@ -2740,6 +2867,15 @@ function normalizeBaseline(value: unknown, lineNumber: number): TaskClaimBaselin
     if (!carriedForwardFiles) issues.push(`Baseline line ${lineNumber}.carriedForwardFiles is required for epoch records.`);
     if (!carriedForwardCandidateId) issues.push(`Baseline line ${lineNumber}.carriedForwardCandidateId is required for epoch records.`);
     if (!taskContractHash) issues.push(`Baseline line ${lineNumber}.taskContractHash is required for epoch records.`);
+  }
+  if (contractAmendment) {
+    if (phase !== "epoch") issues.push(`Baseline line ${lineNumber}.contractAmendment is allowed only on an epoch record.`);
+    if (!taskContractSnapshot || taskContractSnapshot !== contractAmendment.toSnapshot) {
+      issues.push(`Baseline line ${lineNumber}.taskContractSnapshot must equal the amended target snapshot.`);
+    }
+    if (contractAmendment.fromContractHash === contractAmendment.toContractHash) {
+      issues.push(`Baseline line ${lineNumber}.contractAmendment must change the material contract.`);
+    }
   }
   if (issues.length > 0) {
     throw new TaskBaselineFormatError(issues);
@@ -2753,13 +2889,14 @@ export async function captureTaskBaseline(
   owner: string,
   taskFile: string,
   phase: TaskBaselinePhase = "claim",
-  epoch?: Pick<TaskClaimBaseline, "epochId" | "predecessorBaselineId" | "predecessorEpochId" | "epochReason" | "carriedForwardFiles" | "carriedForwardCandidateId" | "taskContractHash">,
+  epoch?: Partial<Pick<TaskClaimBaseline, "time" | "epochId" | "predecessorBaselineId" | "predecessorEpochId" | "epochReason" | "carriedForwardFiles" | "carriedForwardCandidateId" | "taskContractHash" | "taskContractSnapshot" | "contractAmendment">>,
   validation?: {
     headSha: string;
     changedFiles: readonly string[];
     dirtyFiles: Readonly<Record<string, string>>;
   },
   taskContractHash?: string,
+  taskContractSnapshot?: string,
 ): Promise<TaskClaimBaseline> {
   let changedFiles: string[] = [];
   const diagnostics: string[] = [];
@@ -2790,7 +2927,15 @@ export async function captureTaskBaseline(
       throw new Error("Git HEAD or working-tree paths changed while the verification epoch snapshot was being validated; retry.");
     }
   }
-  const time = new Date().toISOString();
+  const contractHash = epoch?.taskContractHash ?? taskContractHash;
+  const contractSnapshot = epoch?.taskContractSnapshot ?? taskContractSnapshot;
+  if (contractSnapshot !== undefined && contractSnapshot.length > 100_000) {
+    throw new Error("Task contract snapshot exceeds the 100000-character safety bound.");
+  }
+  if (contractSnapshot !== undefined && contractHash && hashCandidatePart(contractSnapshot) !== contractHash) {
+    throw new Error("Task contract snapshot does not match its immutable contract hash.");
+  }
+  const time = phase === "epoch" && epoch?.time ? epoch.time : new Date().toISOString();
   const bookkeepingPaths = [...DEFAULT_BOOKKEEPING_PATHS];
   const baselineId = `baseline:${hashCandidatePart({ taskId, owner, time, headSha, changedFiles, phase })}`;
   const baseline: TaskClaimBaseline = {
@@ -2811,9 +2956,13 @@ export async function captureTaskBaseline(
     ...(epoch?.epochReason ? { epochReason: epoch.epochReason } : {}),
     ...(epoch?.carriedForwardFiles ? { carriedForwardFiles: epoch.carriedForwardFiles } : {}),
     ...(epoch?.carriedForwardCandidateId ? { carriedForwardCandidateId: epoch.carriedForwardCandidateId } : {}),
-    ...(epoch?.taskContractHash ?? taskContractHash
-      ? { taskContractHash: epoch?.taskContractHash ?? taskContractHash }
+    ...(contractHash
+      ? { taskContractHash: contractHash }
       : {}),
+    ...(contractSnapshot !== undefined
+      ? { taskContractSnapshot: contractSnapshot }
+      : {}),
+    ...(phase === "epoch" && epoch?.contractAmendment ? { contractAmendment: epoch.contractAmendment } : {}),
   };
   const path = join(rootDirectory, TASK_BASELINES_PATH);
   await mkdir(dirname(path), { recursive: true });
@@ -2833,6 +2982,7 @@ export async function ensureTaskBaseline(
   owner: string,
   taskFile: string,
   taskContractHash?: string,
+  taskContractSnapshot?: string,
 ): Promise<TaskClaimBaseline> {
   const records = await readAllTaskBaselineRecords(rootDirectory);
   const epoch = latestTaskEpoch(records.filter((record) => record.taskId === taskId));
@@ -2845,6 +2995,7 @@ export async function ensureTaskBaseline(
     epoch ?? (taskContractHash ? { taskContractHash } : undefined),
     undefined,
     taskContractHash,
+    taskContractSnapshot,
   );
 }
 
@@ -3098,7 +3249,47 @@ async function readAllTaskBaselineRecords(rootDirectory: string): Promise<TaskCl
     }
     records.push(normalizeBaseline(value, index + 1));
   }
+  validateTaskContractAmendmentHistory(records);
   return records;
+}
+
+function validateTaskContractAmendmentHistory(records: readonly TaskClaimBaseline[]): void {
+  const byTask = new Map<string, Map<string, Array<{ record: TaskClaimBaseline; index: number }>>>();
+  const amendmentIds = new Set<string>();
+  for (const [index, record] of records.entries()) {
+    let history = byTask.get(record.taskId);
+    if (!history) {
+      history = new Map();
+      byTask.set(record.taskId, history);
+    }
+    const sameIdRecords = history.get(record.baselineId) ?? [];
+    if (record.phase === "epoch") {
+      if (record.contractAmendment && (sameIdRecords.length > 0 || amendmentIds.has(record.contractAmendment.amendmentId))) {
+        throw new TaskBaselineFormatError([`Task ${record.taskId} has a duplicate contract amendment record.`]);
+      }
+      const predecessorId = record.predecessorBaselineId;
+      const predecessors = predecessorId ? history.get(predecessorId) : undefined;
+      if (!predecessors || predecessors.length !== 1 || predecessors[0]!.index >= index) {
+        throw new TaskBaselineFormatError([`Task ${record.taskId} epoch does not follow its recorded predecessor baseline.`]);
+      }
+      const predecessor = predecessors[0]!;
+      const predecessorHash = predecessor.record.taskContractHash
+        ?? predecessor.record.contractAmendment?.toContractHash;
+      if (record.contractAmendment) {
+        amendmentIds.add(record.contractAmendment.amendmentId);
+        if (predecessorHash && predecessorHash !== record.contractAmendment.fromContractHash) {
+          throw new TaskBaselineFormatError([`Task ${record.taskId} contract amendment does not continue the predecessor contract hash.`]);
+        }
+        if (predecessor.record.taskContractSnapshot
+          && predecessor.record.taskContractSnapshot !== record.contractAmendment.fromSnapshot) {
+          throw new TaskBaselineFormatError([`Task ${record.taskId} contract amendment does not continue the predecessor snapshot.`]);
+        }
+      } else if (predecessorHash && record.taskContractHash !== predecessorHash) {
+        throw new TaskBaselineFormatError([`Task ${record.taskId} epoch changes the contract without an exact amendment record.`]);
+      }
+    }
+    history.set(record.baselineId, [...sameIdRecords, { record, index }]);
+  }
 }
 
 function latestTaskEpoch(records: readonly TaskClaimBaseline[]): TaskClaimBaseline | undefined {
@@ -3121,6 +3312,25 @@ export interface StartTaskVerificationEpochOptions {
   taskPath: string;
   owner: string;
   reason: string;
+  contractAmendment?: {
+    priorSnapshot?: string;
+    actor?: string;
+    approvalDigest?: string;
+  };
+}
+
+export interface TaskContractAmendmentPreview {
+  taskId: string;
+  taskFile: string;
+  baselineId: string;
+  actor: string;
+  reason: string;
+  fromContractHash: string;
+  toContractHash: string;
+  fromSnapshot: string;
+  toSnapshot: string;
+  diffSha256: string;
+  approvalDigest: string;
 }
 
 /**
@@ -3159,26 +3369,85 @@ export async function startTaskVerificationEpoch(
     throw new Error("Task contract path changed; epoch continuity cannot be proven.");
   }
 
-  const contractHash = hashCandidatePart(comparableTaskContract(options.task));
-  if (predecessor.taskContractHash && predecessor.taskContractHash !== contractHash) {
-    throw new Error("Task contract changed since the predecessor epoch; epoch recovery fails closed.");
-  }
-  if (!predecessor.taskContractHash && predecessor.repository !== "git") {
-    throw new Error("Legacy non-Git baseline has no durable task contract anchor; epoch recovery fails closed.");
-  }
-  if (!predecessor.taskContractHash && predecessor.headSha) {
+  const contractHash = taskContractHash(options.task);
+  const contractSnapshot = taskContractSnapshot(options.task);
+  let predecessorContractHash = predecessor.taskContractHash;
+  let historicalContractSnapshot: string | undefined;
+  if (!predecessorContractHash && predecessor.headSha) {
     try {
       const historical = parseTaskMarkdown(await gitOutput(
         options.rootDirectory,
         ["show", `${predecessor.headSha}:${predecessor.taskFile}`],
       ));
-      if (comparableTaskContract(historical) !== comparableTaskContract(options.task)) {
-        throw new Error("Task contract changed since the predecessor baseline; epoch recovery fails closed.");
-      }
-    } catch (error: unknown) {
-      if (error instanceof Error && error.message.includes("epoch recovery fails closed")) throw error;
-      throw new Error(`Task contract at predecessor baseline is unreadable; epoch recovery fails closed.`);
+      historicalContractSnapshot = taskContractSnapshot(historical);
+      predecessorContractHash = taskContractHash(historical);
+    } catch {
+      // A legacy untracked task may have no Git snapshot; an exact supplied
+      // snapshot can still be checked against a stored taskContractHash.
     }
+  }
+  if (!predecessorContractHash) {
+    throw new Error("Task contract at predecessor baseline is unavailable; epoch recovery fails closed.");
+  }
+  const contractChanged = predecessorContractHash !== contractHash;
+  let amendmentPreview: TaskContractAmendmentPreview | undefined;
+  let amendmentActor: string | undefined;
+  if (contractChanged) {
+    const requested = options.contractAmendment;
+    if (!requested) {
+      throw new Error("Task contract changed since the predecessor epoch; epoch recovery fails closed without an exact operator-authorized amendment.");
+    }
+    amendmentActor = requested.actor?.replace(/\s+/g, " ").trim();
+    if (!amendmentActor || amendmentActor.length > 120) {
+      throw new Error("A distinct explicit operator actor (1-120 characters) is required for a task-contract amendment.");
+    }
+    if (amendmentActor === options.owner) {
+      throw new Error("Task-contract amendment actor must differ from the recording task owner.");
+    }
+    const sourceSnapshot = requested.priorSnapshot ?? predecessor.taskContractSnapshot ?? historicalContractSnapshot;
+    if (!sourceSnapshot) {
+      throw new Error("The predecessor contract snapshot is unavailable; provide an exact --prior-snapshot whose normalized hash matches the original baseline.");
+    }
+    let fromSnapshot: string;
+    try {
+      fromSnapshot = taskContractSnapshot(parseTaskContractSnapshot(sourceSnapshot));
+    } catch (error: unknown) {
+      throw new Error(`Prior contract snapshot is not valid task Markdown: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (predecessor.taskContractSnapshot && fromSnapshot !== predecessor.taskContractSnapshot) {
+      throw new Error("Supplied prior snapshot differs from the immutable snapshot stored at claim/epoch.");
+    }
+    if (hashCandidatePart(fromSnapshot) !== predecessorContractHash) {
+      throw new Error("Prior snapshot does not match the predecessor contract hash; amendment fails closed.");
+    }
+    const diffSha256 = hashCandidatePart({ fromSnapshot, toSnapshot: contractSnapshot });
+    amendmentPreview = {
+      taskId: options.task.id,
+      taskFile: predecessor.taskFile,
+      baselineId: predecessor.baselineId,
+      actor: amendmentActor,
+      reason,
+      fromContractHash: predecessorContractHash,
+      toContractHash: contractHash,
+      fromSnapshot,
+      toSnapshot: contractSnapshot,
+      diffSha256,
+      approvalDigest: taskContractAmendmentApprovalDigest({
+        taskId: options.task.id,
+        taskFile: predecessor.taskFile,
+        baselineId: predecessor.baselineId,
+        fromContractHash: predecessorContractHash,
+        toContractHash: contractHash,
+        diffSha256,
+        actor: amendmentActor,
+        reason,
+      }),
+    };
+    if (requested.approvalDigest !== amendmentPreview.approvalDigest) {
+      throw new Error(`Exact task-contract amendment approval is required. Preview digest: ${amendmentPreview.approvalDigest}`);
+    }
+  } else if (options.contractAmendment) {
+    throw new Error("An amendment approval was supplied, but the task contract has no material change.");
   }
 
   const current = await readTaskBaseline(options.rootDirectory, options.task.id);
@@ -3282,6 +3551,7 @@ export async function startTaskVerificationEpoch(
     time,
     headSha: currentHeadSha,
     carriedForwardFiles: carriedFingerprints,
+    ...(amendmentPreview ? { contractAmendmentApprovalDigest: amendmentPreview.approvalDigest } : {}),
   })}`;
   const validationHeadSha = (await gitOutput(options.rootDirectory, ["rev-parse", "HEAD"])).trim();
   if (validationHeadSha !== currentHeadSha) {
@@ -3294,6 +3564,7 @@ export async function startTaskVerificationEpoch(
     predecessor.taskFile,
     "epoch",
     {
+      time,
       epochId,
       predecessorBaselineId: predecessor.baselineId,
       ...(predecessor.epochId ? { predecessorEpochId: predecessor.epochId } : {}),
@@ -3301,6 +3572,29 @@ export async function startTaskVerificationEpoch(
       carriedForwardFiles: carriedFingerprints,
       carriedForwardCandidateId,
       taskContractHash: contractHash,
+      taskContractSnapshot: contractSnapshot,
+      ...(amendmentPreview && amendmentActor ? {
+        contractAmendment: {
+          schemaVersion: 1,
+          amendmentId: hashCandidatePart({
+            approvalDigest: amendmentPreview.approvalDigest,
+            actor: amendmentActor,
+            recorder: options.owner,
+            reason,
+            time,
+          }),
+          fromContractHash: amendmentPreview.fromContractHash,
+          toContractHash: amendmentPreview.toContractHash,
+          fromSnapshot: amendmentPreview.fromSnapshot,
+          toSnapshot: amendmentPreview.toSnapshot,
+          diffSha256: amendmentPreview.diffSha256,
+          approvalDigest: amendmentPreview.approvalDigest,
+          actor: amendmentActor,
+          recorder: options.owner,
+          reason,
+          time,
+        },
+      } : {}),
     },
     {
       headSha: validationHeadSha,
@@ -3474,14 +3768,108 @@ function sameEvidenceCandidate(
     && left.worktreeId === right.worktreeId;
 }
 
-function comparableTaskContract(task: ProjectTask): string {
+export function taskContractSnapshot(task: ProjectTask): string {
   // Notes are narrative lifecycle context. They may be added while a task is
   // completed without changing the material contract used for scope proof.
   return renderTaskMarkdown({ ...task, state: "doing", owner: "none", notes: [] });
 }
 
+function parseTaskContractSnapshot(snapshot: string): ProjectTask {
+  const task = parseTaskMarkdown(snapshot.replace(/^State: doing$/m, "State: todo"));
+  if (taskContractSnapshot(task) !== snapshot) {
+    throw new Error("Task contract snapshot is not in canonical material-contract form.");
+  }
+  return task;
+}
+
+function comparableTaskContract(task: ProjectTask): string {
+  return taskContractSnapshot(task);
+}
+
 export function taskContractHash(task: ProjectTask): string {
-  return hashCandidatePart(comparableTaskContract(task));
+  return hashCandidatePart(taskContractSnapshot(task));
+}
+
+export async function previewTaskContractAmendment(options: {
+  rootDirectory: string;
+  taskDirectory: string;
+  taskId: string;
+  actor: string;
+  reason: string;
+  priorSnapshot?: string;
+}): Promise<TaskContractAmendmentPreview> {
+  const taskPath = await findTaskFile(options.rootDirectory, options.taskId, options.taskDirectory);
+  const { task } = await loadTaskFile(taskPath);
+  if (task.state !== "doing" && task.state !== "review") {
+    throw new Error(`Task ${task.id} is ${task.state}; contract amendment preview requires an active task.`);
+  }
+  const actor = options.actor.replace(/\s+/g, " ").trim();
+  if (!actor || actor.length > 120) throw new Error("Amendment preview requires an explicit actor of 1-120 characters.");
+  if (actor === task.owner) throw new Error("Task-contract amendment actor must differ from the recording task owner.");
+  const reason = options.reason.replace(/\s+/g, " ").trim();
+  if (!reason || reason.length > 2048) throw new Error("Amendment preview requires a reason of 1-2048 characters.");
+  const predecessor = await readTaskBaseline(options.rootDirectory, task.id);
+  if (!predecessor) throw new Error(`Task ${task.id} has no claim baseline to amend.`);
+  const baselineContractHash = predecessor.taskContractHash;
+  if (!baselineContractHash) {
+    if (!predecessor.headSha) throw new Error("Legacy baseline has no contract hash or Git anchor; amendment preview fails closed.");
+  }
+  let historicalSnapshot: string | undefined;
+  if (!baselineContractHash && predecessor.headSha) {
+    try {
+      historicalSnapshot = taskContractSnapshot(parseTaskMarkdown(await gitOutput(
+        options.rootDirectory,
+        ["show", `${predecessor.headSha}:${predecessor.taskFile}`],
+      )));
+    } catch {
+      throw new Error("Legacy task contract at the predecessor Git baseline is unreadable; amendment preview fails closed.");
+    }
+  }
+  const sourceSnapshot = options.priorSnapshot ?? predecessor.taskContractSnapshot ?? historicalSnapshot;
+  if (!sourceSnapshot) {
+    throw new Error("No immutable prior snapshot is stored; provide --prior-snapshot and bind it to the original contract hash.");
+  }
+  let fromSnapshot: string;
+  try {
+    fromSnapshot = taskContractSnapshot(parseTaskContractSnapshot(sourceSnapshot));
+  } catch (error: unknown) {
+    throw new Error(`Prior contract snapshot is not valid task Markdown: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const fromContractHash = hashCandidatePart(fromSnapshot);
+  if (baselineContractHash && baselineContractHash !== fromContractHash) {
+    throw new Error("Prior snapshot does not match the immutable predecessor contract hash.");
+  }
+  if (predecessor.taskContractSnapshot && fromSnapshot !== predecessor.taskContractSnapshot) {
+    throw new Error("Supplied prior snapshot differs from the immutable claim/epoch snapshot.");
+  }
+  const toSnapshot = taskContractSnapshot(task);
+  const toContractHash = hashCandidatePart(toSnapshot);
+  if (fromContractHash === toContractHash) {
+    throw new Error("Task contract has no material change; amendment preview is unnecessary.");
+  }
+  const diffSha256 = hashCandidatePart({ fromSnapshot, toSnapshot });
+  return {
+    taskId: task.id,
+    taskFile: predecessor.taskFile,
+    baselineId: predecessor.baselineId,
+    actor,
+    reason,
+    fromContractHash,
+    toContractHash,
+    fromSnapshot,
+    toSnapshot,
+    diffSha256,
+    approvalDigest: taskContractAmendmentApprovalDigest({
+      taskId: task.id,
+      taskFile: predecessor.taskFile,
+      baselineId: predecessor.baselineId,
+      fromContractHash,
+      toContractHash,
+      diffSha256,
+      actor,
+      reason,
+    }),
+  };
 }
 
 async function gitFileFingerprint(

@@ -10,6 +10,8 @@ The downstream backlog preflight added three `todo` contracts with no task depen
 
 ## Active work
 
+Task 0221 adds an append-only, exact-digest procedure for operator-authorized material task-contract amendments after claim. It stores canonical snapshots for new claims, keeps legacy claims fail-closed unless their prior snapshot can be verified, and preserves carried-path scope checks; no downstream task baseline has been amended.
+
 Task 0206 is complete: the opt-in local profiler has bounded session/report
 primitives, central CLI/subprocess instrumentation, safe local JSONL storage,
 privacy-preserving records, concurrency-aware attribution, and deterministic

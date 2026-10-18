@@ -25,6 +25,7 @@ import {
   startTaskVerificationEpoch,
   type TaskClaimBaseline,
   taskContractHash,
+  taskContractSnapshot,
   writeTaskFile,
   type ProjectTask,
   type TaskState,
@@ -41,6 +42,11 @@ export interface TaskTransitionOptions {
 
 export interface TaskEpochOptions extends TaskTransitionOptions {
   reason: string;
+  contractAmendment?: {
+    priorSnapshot?: string;
+    actor?: string;
+    approvalDigest?: string;
+  };
 }
 
 async function withTaskLock<T>(
@@ -123,6 +129,7 @@ async function transition(
         agent.id,
         taskRelativePath,
         taskContractHash(task),
+        taskContractSnapshot(task),
       );
     }
     if (event === "release" || event === "block") {
@@ -182,6 +189,7 @@ export async function startTaskEpoch(options: TaskEpochOptions): Promise<TaskCla
       taskPath,
       owner: agent.id,
       reason: options.reason,
+      ...(options.contractAmendment ? { contractAmendment: options.contractAmendment } : {}),
     });
     await appendRunLog(options.rootDirectory, {
       event: "work",
