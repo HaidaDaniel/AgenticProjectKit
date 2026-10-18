@@ -1,6 +1,6 @@
 # Task 0217 - Preserve candidate freshness across lifecycle-only commits
 
-State: doing
+State: done
 Owner: codex-b3-lifecycle-freshness-0217
 Mode: maintenance
 Lane: implementation

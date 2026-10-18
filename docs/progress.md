@@ -8,24 +8,6 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
-Task 0217 is correcting a candidate-freshness mismatch: current candidate hashing
-included repository HEAD and lifecycle diffs despite the documented content-based
-contract. The fix retains exact HEAD as provenance while deriving freshness from
-the normalized task contract and material scoped file contents; lifecycle-only
-task/progress commits remain identity-neutral. Existing evidence records are not
-rewritten.
-Candidate fingerprints preserve Git entry semantics: raw symlink target bytes and
-executable status remain material even when dereferenced bytes match. Capture also
-rejects staged scoped paths with further unstaged changes, while ordinary
-unstaged-only candidate edits remain verifiable. The follow-up review found that
-staged task-contract content and mode-only index/worktree drift under
-`core.filemode=false` also need explicit checks; candidate capture now compares
-normalized task contracts and Git index entry modes, and internal evidence paths
-carry the actual task file so lifecycle edits stay excluded correctly. A later
-integration review exposed staged-only paths disappearing when the worktree was
-restored to claim-baseline state; baseline-aware discovery now includes the
-index inventory, with integration regressions for content and mode drift.
-
 Task 0206 is complete: the opt-in local profiler has bounded session/report
 primitives, central CLI/subprocess instrumentation, safe local JSONL storage,
 privacy-preserving records, concurrency-aware attribution, and deterministic
@@ -85,6 +67,8 @@ The operator's required order is: define and implement opt-in local performance 
 Task 0178 was created after preflight confirmed HEAD `8b21762a1feccec11db1225fd7c723889a3f4a1b` and successful exact-HEAD hosted Quality run [36339811645](https://github.com/HaidaDaniel/AgenticProjectKit/actions/runs/36339811645). Local quality, coverage, and build passed at that baseline. Its failing candidate-state fixture showed the checker requiring current release claims, the release-index tag row, and the README install pin to advance with `package.json.version` from `0.4.7` to `0.5.0`, even while the validated release remained `0.4.7`.
 
 ## Recently completed
+
+- Task 0217 fixed candidate freshness so lifecycle-only task/progress commits preserve evidence while exact HEAD remains provenance. Material task/source/plan content, symlink targets, executable modes, staged-only index paths, and submodule revisions remain identity-bearing or fail closed on index/worktree divergence. Canonical verification, independent review, and the completion gate passed at candidate `a4c1606`; candidate commits: `3079a6f`, `2264000`, `389f38e`, `60aca1c`, `1962e1e`, `eb26ff6`, `821e282`, `db1b43d`, `a4c1606` ([task](../.tasks/0217-preserve-candidate-freshness-across-lifecycle-only-commits.md)).
 
 - Task 0170 published the GitHub Private Vulnerability Reporting route, discouraged public disclosure of exploit details, aligned supported-version wording with the maturity policy, and made no unapproved contact, SLA, bounty, or deadline claim ([security policy](../SECURITY.md), [task](../.tasks/0170-publish-a-truthful-security-reporting-policy.md)).
 
