@@ -1,7 +1,8 @@
+import { readFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { readAgenticConfigFile } from "../../core/config/index.js";
 import { getTaskTemplate, resolveTaskTemplateType, TASK_TEMPLATE_TYPES, } from "../../core/templates/task-templates.js";
-import { TASK_HUMAN_DECISIONS, MAX_HUMAN_REVIEW_GRANT_PASSES, recordTaskHumanDecision, renderTaskHumanDecisionResult, cancelTask, startTaskEpoch, } from "../../core/tasks/index.js";
+import { TASK_HUMAN_DECISIONS, MAX_HUMAN_REVIEW_GRANT_PASSES, recordTaskHumanDecision, renderTaskHumanDecisionResult, cancelTask, previewTaskContractAmendment, startTaskEpoch, } from "../../core/tasks/index.js";
 import { archiveAllTasks, archiveTask, previewArchiveTask, previewArchiveTasks, buildTaskProvenance, buildTaskDeps, createTask, evaluateTaskCompletionGate, findTaskFile, listArchivedTaskFiles, listTaskFiles, loadTaskFile, readTaskEvidence, renderTaskPolicy, renderTaskDeps, renderTaskEvidence, renderTaskCompletionGate, renderTaskProvenance, renderTaskVerifyResult, renderRecordManualVerificationResult, recordManualVerification, renderDogfoodResult, renderDogfoodSession, recordDogfoodResult, resolveTaskPolicy, startDogfoodSession, TASK_MODES, TASK_RISKS, TASK_VERIFICATION_PROFILES, PACKAGED_DIST_CHECK_ID, mayIncludePackagedSource, repositoryPackagedDistContract, normalizeVerificationCommands, taskPathPatternMayMatchDistOutput, verifyTask, } from "../../core/tasks/index.js";
 import { TASK_EVIDENCE_LOCK_PATH } from "../../core/tasks/evidence.js";
 import { inspectLocalMutationLock, recoverLocalLock, renderLocalLockInspection, } from "../../core/tasks/lock.js";
@@ -16,7 +17,8 @@ const TASK_HELP_TEXT = [
     "  apk task lock recover --kind <task|evidence> [--force]",
     "  apk task policy <task-id>",
     "  apk task gate <task-id>",
-    "  apk task epoch <task-id> --owner <agent-id> --reason <text>",
+    "  apk task amendment preview <task-id> --actor <human-id> --reason <text> [--prior-snapshot <path>]",
+    "  apk task epoch <task-id> --owner <agent-id> --reason <text> [--prior-snapshot <path> --actor <human-id> --approval-digest <sha256>]",
     "  apk task decision <task-id> --actor <human-id> --result <decision> --reason <text> [--passes <1-2>] [--commits <sha,sha,...>] [--owner <agent-id>]",
     "  apk task provenance <task-id> [--json]",
     "  apk task dogfood start <task-id> --owner <agent-id> --tool <tool> --scenario <text>",
@@ -88,10 +90,20 @@ const TASK_EPOCH_HELP_TEXT = [
     "Agentic Project Kit",
     "",
     "Usage:",
-    "  apk task epoch <task-id> --owner <agent-id> --reason <text>",
+    "  apk task epoch <task-id> --owner <agent-id> --reason <text> [--prior-snapshot <path> --actor <human-id> --approval-digest <sha256>]",
     "",
     "Start a fresh verification baseline without deleting the predecessor history.",
     "The full discoverable predecessor delta is carried forward conservatively; scope violations remain visible.",
+    "A material task-contract change requires a prior `task amendment preview` and an exact operator-approved digest; the original claim baseline remains append-only history.",
+].join("\n");
+const TASK_AMENDMENT_HELP_TEXT = [
+    "Agentic Project Kit",
+    "",
+    "Usage:",
+    "  apk task amendment preview <task-id> --actor <human-id> --reason <text> [--prior-snapshot <path>]",
+    "",
+    "Print the complete normalized before/after contract and exact approval digest without writing evidence. The digest binds the actor and reason as well as the contract change.",
+    "For legacy claims without stored snapshots, provide a prior snapshot whose normalized contract hash matches the recorded claim hash.",
 ].join("\n");
 const TASK_PROVENANCE_HELP_TEXT = [
     "Agentic Project Kit",
@@ -752,7 +764,7 @@ async function runEpochSubcommand(argv) {
         console.log(TASK_EPOCH_HELP_TEXT);
         return 0;
     }
-    const allowedFlags = new Set(["--owner", "--reason"]);
+    const allowedFlags = new Set(["--owner", "--reason", "--prior-snapshot", "--actor", "--approval-digest"]);
     const positional = [];
     for (let index = 0; index < argv.length; index += 1) {
         const arg = argv[index];
@@ -776,6 +788,19 @@ async function runEpochSubcommand(argv) {
     if (!owner || !reason) {
         throw new Error(TASK_EPOCH_HELP_TEXT);
     }
+    const priorSnapshotPath = parseFlag(argv, "--prior-snapshot");
+    const actor = parseFlag(argv, "--actor");
+    const approvalDigest = parseFlag(argv, "--approval-digest");
+    const amendmentFlagsPresent = priorSnapshotPath !== undefined || actor !== undefined || approvalDigest !== undefined;
+    if (amendmentFlagsPresent && (!actor || !approvalDigest)) {
+        throw new Error("A task-contract amendment epoch requires both --actor and --approval-digest from a reviewed amendment preview.");
+    }
+    if (approvalDigest !== undefined && !/^[a-f0-9]{64}$/.test(approvalDigest)) {
+        throw new Error("--approval-digest must be a 64-character lowercase SHA-256 digest.");
+    }
+    const priorSnapshot = priorSnapshotPath
+        ? await readFile(resolve(process.cwd(), priorSnapshotPath), "utf8")
+        : undefined;
     const rootDirectory = resolve(process.cwd());
     const config = await readAgenticConfigFile(rootDirectory);
     const baseline = await startTaskEpoch({
@@ -784,6 +809,13 @@ async function runEpochSubcommand(argv) {
         taskId: positional[0],
         owner,
         reason,
+        ...(amendmentFlagsPresent ? {
+            contractAmendment: {
+                ...(priorSnapshot !== undefined ? { priorSnapshot } : {}),
+                actor,
+                approvalDigest,
+            },
+        } : {}),
     });
     console.log([
         `Task: ${baseline.taskId}`,
@@ -791,6 +823,65 @@ async function runEpochSubcommand(argv) {
         `Baseline: ${baseline.baselineId}`,
         `Predecessor: ${baseline.predecessorBaselineId ?? "legacy"}`,
         `Carried paths: ${baseline.carriedForwardFiles?.length ?? 0}`,
+        ...(baseline.contractAmendment ? [`Contract amendment: ${baseline.contractAmendment.amendmentId}`, `Approval digest: ${baseline.contractAmendment.approvalDigest}`] : []),
+    ].join("\n"));
+    return 0;
+}
+async function runAmendmentSubcommand(argv) {
+    if (hasHelpFlag(argv)) {
+        console.log(TASK_AMENDMENT_HELP_TEXT);
+        return 0;
+    }
+    const [action, taskId, ...rest] = argv;
+    if (action !== "preview" || !taskId)
+        throw new Error(TASK_AMENDMENT_HELP_TEXT);
+    const allowedFlags = new Set(["--prior-snapshot", "--actor", "--reason"]);
+    const seenFlags = new Set();
+    for (let index = 0; index < rest.length; index += 1) {
+        const arg = rest[index];
+        if (!allowedFlags.has(arg))
+            throw new Error(`Unexpected amendment preview argument: ${arg}`);
+        if (seenFlags.has(arg))
+            throw new Error(`Duplicate amendment preview option: ${arg}`);
+        seenFlags.add(arg);
+        if (index === rest.length - 1 || rest[index + 1].startsWith("-"))
+            throw new Error(`${arg} requires a value.`);
+        index += 1;
+    }
+    const priorSnapshotPath = parseFlag(rest, "--prior-snapshot");
+    const actor = parseFlag(rest, "--actor");
+    const reason = parseFlag(rest, "--reason");
+    if (!actor || !reason)
+        throw new Error(TASK_AMENDMENT_HELP_TEXT);
+    const priorSnapshot = priorSnapshotPath
+        ? await readFile(resolve(process.cwd(), priorSnapshotPath), "utf8")
+        : undefined;
+    const rootDirectory = resolve(process.cwd());
+    const config = await readAgenticConfigFile(rootDirectory);
+    const preview = await previewTaskContractAmendment({
+        rootDirectory,
+        taskDirectory: config.taskDirectory,
+        taskId,
+        actor,
+        reason,
+        ...(priorSnapshot !== undefined ? { priorSnapshot } : {}),
+    });
+    const fromLines = preview.fromSnapshot.replace(/\n$/, "").split("\n");
+    const toLines = preview.toSnapshot.replace(/\n$/, "").split("\n");
+    console.log([
+        `Task: ${preview.taskId}`,
+        `Baseline: ${preview.baselineId}`,
+        `Operator actor: ${preview.actor}`,
+        `Reason: ${preview.reason}`,
+        `From contract SHA: ${preview.fromContractHash}`,
+        `To contract SHA: ${preview.toContractHash}`,
+        `Contract pair SHA: ${preview.diffSha256}`,
+        `Exact operator approval digest: ${preview.approvalDigest}`,
+        "Complete before contract:",
+        ...fromLines.map((line) => `- ${line}`),
+        "Complete proposed contract:",
+        ...toLines.map((line) => `+ ${line}`),
+        "No files or task evidence were changed by this preview.",
     ].join("\n"));
     return 0;
 }
@@ -962,7 +1053,7 @@ async function runDecisionSubcommand(argv) {
 export async function runTaskCommand(argv) {
     try {
         if (argv.length === 0) {
-            console.error("Error: Usage: apk task <archive|deps|evidence|lock|policy|gate|epoch|dogfood|verify|create>");
+            console.error("Error: Usage: apk task <archive|deps|evidence|lock|policy|gate|amendment|epoch|dogfood|verify|create>");
             return 1;
         }
         const [subcommand, ...subArgs] = argv;
@@ -996,6 +1087,9 @@ export async function runTaskCommand(argv) {
         }
         if (subcommand === "gate") {
             return await runGateSubcommand(subArgs);
+        }
+        if (subcommand === "amendment") {
+            return await runAmendmentSubcommand(subArgs);
         }
         if (subcommand === "epoch") {
             return await runEpochSubcommand(subArgs);
