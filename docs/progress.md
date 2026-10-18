@@ -12,6 +12,8 @@ The downstream backlog preflight added three `todo` contracts with no task depen
 
 Task 0221 is blocked. Its immutable claim baseline is `cc58a39`; current main includes Task 0222 and Task 0223 contract changes from `e012972` and `126dea1` outside its scope. The gate rejects those two paths, while its verification and review evidence are stale. Do not grant attribution or replace the baseline. Task 0224 is the bounded successor for the remaining epoch-identity compatibility work, with a fresh baseline; Task 0223 now depends on 0224 instead of the blocked 0221.
 
+Task 0222 is doing from baseline `14e71b4`. Its pre-fix reproduction showed the same `candidateId` (`candidate:5658b3f...`) for two different candidate revisions (`2d29edc...` and `9895429...`): the test changed `README.md` while declaring no candidate files. The correction remains test-only and declares the changed file as candidate input.
+
 Task 0206 is complete: the opt-in local profiler has bounded session/report
 primitives, central CLI/subprocess instrumentation, safe local JSONL storage,
 privacy-preserving records, concurrency-aware attribution, and deterministic
