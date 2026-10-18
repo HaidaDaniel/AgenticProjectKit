@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFile, link, lstat, mkdir, readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { appendFile, link, lstat, mkdir, readFile, readlink, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative } from "node:path";
 
 import { appendRunLog, readRunLog, requireAgent } from "../agents/index.js";
@@ -2502,10 +2502,25 @@ async function fingerprintChangedFiles(
   const fingerprints: Array<{ path: string; sha256: string }> = [];
   for (const path of changedFiles) {
     try {
-      const content = await readFile(join(rootDirectory, path));
+      const absolutePath = join(rootDirectory, path);
+      const metadata = await lstat(absolutePath);
+      let material: unknown;
+      if (metadata.isSymbolicLink()) {
+        material = { type: "symlink", target: await readlink(absolutePath) };
+      } else if (metadata.isFile()) {
+        material = {
+          type: "file",
+          executable: (metadata.mode & 0o111) !== 0,
+          contentSha256: createHash("sha256").update(await readFile(absolutePath)).digest("hex"),
+        };
+      } else if (metadata.isDirectory()) {
+        material = { type: "directory" };
+      } else {
+        material = { type: "other", mode: metadata.mode & 0o170000 };
+      }
       fingerprints.push({
         path,
-        sha256: createHash("sha256").update(content).digest("hex"),
+        sha256: hashCandidatePart(material),
       });
     } catch {
       fingerprints.push({ path, sha256: "missing" });

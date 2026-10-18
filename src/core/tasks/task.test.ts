@@ -3072,6 +3072,32 @@ test("candidate evidence survives lifecycle-only commits but stales on plan and 
   });
 });
 
+test("candidate freshness detects symlink target changes when linked contents match", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    const taskPath = join(directory, ".tasks", "0008-bounded-task.md");
+    const { task } = await loadTaskFile(taskPath);
+    await writeFile(join(directory, "docs", "task-b", "target-a.txt"), "same bytes\n", "utf8");
+    await writeFile(join(directory, "docs", "task-b", "target-b.txt"), "same bytes\n", "utf8");
+    const linkPath = join(directory, "docs", "task-b", "current.txt");
+    await symlink("target-a.txt", linkPath);
+
+    const before = await captureTaskEvidenceSubject(directory, task, ["docs/task-b/current.txt"]);
+    await rm(linkPath);
+    await symlink("target-b.txt", linkPath);
+    const after = await captureTaskEvidenceSubject(directory, task, ["docs/task-b/current.txt"]);
+
+    assert.notEqual(before.candidateId, after.candidateId);
+    assert.equal(
+      compareTaskEvidenceFreshness(
+        { taskId: task.id, subject: before } as Parameters<typeof compareTaskEvidenceFreshness>[0],
+        after,
+      ).freshness,
+      "stale",
+    );
+  });
+});
+
 test("a task baseline at another candidate HEAD can attribute its later bookkeeping commit", async () => {
   await withTempDirectory(async (directory) => {
     await setupReclaimRepo(directory);

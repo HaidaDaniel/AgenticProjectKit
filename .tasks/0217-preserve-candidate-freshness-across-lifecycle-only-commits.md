@@ -61,6 +61,7 @@ Fix the mismatch between documented content-derived candidate identity and exact
 
 - Candidate-bound evidence remains current across lifecycle-only task/progress commits when the normalized task contract and all material scoped files are unchanged.
 - Changes to source, tests, task contract, or an experiment plan change the evidence candidate and produce stale freshness.
+- Symlink target/type and executable-bit changes remain material even if dereferenced file bytes are identical.
 - Exact `headSha` remains recorded as historical provenance; baseline lineage and ambiguous ownership checks remain fail-closed.
 - Existing evidence records are not rewritten or re-labelled.
 
