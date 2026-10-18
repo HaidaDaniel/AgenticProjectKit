@@ -21,16 +21,18 @@ Fix the mismatch between documented content-derived candidate identity and exact
 - docs/task-system.md
 - docs/decisions.md
 - src/core/tasks/evidence.ts
-- src/core/tasks/dogfood.ts
-- src/core/tasks/gate.ts
 - src/core/tasks/index.ts
 - src/core/tasks/provenance.ts
 - src/core/tasks/task.test.ts
+- src/core/tasks/dogfood.ts
+- src/core/tasks/gate.ts
 
 ## Files allowed to edit
 
 - .tasks/0217-preserve-candidate-freshness-across-lifecycle-only-commits.md
 - src/core/tasks/evidence.ts
+- src/core/tasks/dogfood.ts
+- src/core/tasks/gate.ts
 - src/core/tasks/index.ts
 - src/core/tasks/review.ts
 - src/core/tasks/task.test.ts
