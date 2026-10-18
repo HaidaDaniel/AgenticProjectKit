@@ -249,6 +249,12 @@ pnpm exec apk task create --title "Release smoke" --mode product --lane release 
 
 Malformed JSON or check metadata reports the check number and invalid field. An overlong evidence/evidenceRef error directs narrative text to summary or Notes. Structured summaries are copied into the existing bounded evidence-record summary; the short reference is copied to the record's evidence field. Prompts include the full structured requirement and retain the flat command list for compatible workflows.
 
+### Verification process termination outcomes
+
+Verification keeps the numeric `exitCode` field and the injected `runCommand` callback contract. Runner errors may add a structured `processOutcome` with `kind` `exit`, `timeout`, `signal`, `spawn-failure`, or `unknown`, plus only observed details. Timeout is recognized only when the runner supplies `timedOut: true` or `code: "ETIMEDOUT"`; `killed: true`, a signal, a timeout option, or timeout-like message alone is not authoritative. A signal with `killed: true` but no timeout metadata is reported as signal termination with the timeout cause unconfirmed. Unknown and contradictory runner data stay `unknown`.
+
+The legacy numeric `exitCode` remains the observed code when available. For outcomes without an observed process exit code, APK keeps the numeric field as compatibility projection `1` and adds `exitCodeObserved: false`; the agent-facing reason names the structured outcome. When the `exec` runner does not expose authoritative timeout metadata, APK reports only the observed signal and explicitly leaves the timeout cause unconfirmed.
+
 ## Correctness contract
 
 Tasks may add optional Markdown list sections for `Correctness assumptions`, `Invariants`, `Required evidence`, `Review questions`, and `Counterexample searches`. These fields describe claims an implementation and independent reviewer must inspect; they do not add mandatory ceremony to low-risk tasks by themselves.

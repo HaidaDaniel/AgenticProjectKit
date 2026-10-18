@@ -5008,6 +5008,211 @@ test("verifyTask records failed check and continues eligible checks", async () =
   });
 });
 
+test("verifyTask preserves process failure categories and marks projected exit codes", async () => {
+  await withTempDirectory(async (directory) => {
+    const task = {
+      ...TASK,
+      risk: "low" as const,
+      dependsOn: [],
+      allowedFiles: ["src/core/tasks/**"],
+      forbiddenFiles: [],
+      verificationCommands: [],
+      verification: [{
+        id: "process-result",
+        type: "automated" as const,
+        required: true,
+        environment: "local" as const,
+        profile: "deterministic" as const,
+        command: "controlled-runner",
+      }],
+    };
+    await writeTaskFile(join(directory, ".tasks", "0007-process-outcome.md"), task);
+    const cases: Array<{
+      name: string;
+      error: Error;
+      kind: "timeout" | "signal" | "spawn-failure" | "unknown";
+      reason: RegExp;
+      timeoutUnconfirmed?: boolean;
+    }> = [
+      {
+        name: "timeout",
+        error: Object.assign(new Error("runner reported command timeout"), {
+          code: "ETIMEDOUT", timedOut: true, timeoutMs: 600_000, signal: "SIGTERM", killed: true,
+        }),
+        kind: "timeout",
+        reason: /command timed out after 600000 ms \(terminated with SIGTERM\)/,
+      },
+      {
+        name: "signal",
+        error: Object.assign(new Error("runner reported signal termination"), {
+          code: null, signal: "SIGTERM", killed: false,
+        }),
+        kind: "signal",
+        reason: /command was terminated by SIGTERM/,
+      },
+      {
+        name: "killed signal without timeout metadata",
+        error: Object.assign(new Error("Command failed after runner killed the child"), {
+          code: null, signal: "SIGTERM", killed: true,
+        }),
+        kind: "signal",
+        timeoutUnconfirmed: true,
+        reason: /runner did not identify the cause as a timeout/,
+      },
+      {
+        name: "spawn failure",
+        error: Object.assign(new Error("spawn missing-tool ENOENT"), {
+          code: "ENOENT", path: "missing-tool", syscall: "spawn missing-tool",
+        }),
+        kind: "spawn-failure",
+        reason: /command failed to start \(ENOENT\): missing-tool/,
+      },
+      {
+        name: "ambiguous timeout-like message",
+        error: Object.assign(new Error("Command timed out"), { code: null, killed: true }),
+        kind: "unknown",
+        reason: /unknown process outcome: Command timed out/,
+      },
+      {
+        name: "contradictory timeout flag and code",
+        error: Object.assign(new Error("contradictory timeout metadata"), {
+          code: "ETIMEDOUT", timedOut: false,
+        }),
+        kind: "unknown",
+        reason: /unknown process outcome: contradictory timeout metadata/,
+      },
+      {
+        name: "invalid signal name",
+        error: Object.assign(new Error("invalid signal metadata"), {
+          code: null, signal: "SIG_NOT_REAL",
+        }),
+        kind: "unknown",
+        reason: /unknown process outcome: invalid signal metadata/,
+      },
+      {
+        name: "contradictory exit and signal fields",
+        error: Object.assign(new Error("contradictory runner fields"), {
+          code: 7, signal: "SIGTERM", killed: true,
+        }),
+        kind: "unknown",
+        reason: /unknown process outcome: contradictory runner fields/,
+      },
+      {
+        name: "unknown runner error",
+        error: new Error("runner failed without process metadata"),
+        kind: "unknown",
+        reason: /unknown process outcome: runner failed without process metadata/,
+      },
+    ];
+    for (const item of cases) {
+      const result = await verifyTask({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        changedFiles: ["src/core/tasks/index.ts"],
+        runCommand: async () => { throw item.error; },
+      });
+      const command = result.commandsRun[0];
+      const check = result.checkResults[0];
+      assert.equal(result.passed, false, item.name);
+      assert.equal(command?.exitCode, 1, item.name);
+      assert.equal(command?.exitCodeObserved, false, item.name);
+      assert.equal(command?.processOutcome?.kind, item.kind, item.name);
+      assert.equal(check?.processOutcome?.kind, item.kind, item.name);
+      assert.equal(check?.exitCodeObserved, false, item.name);
+      assert.match(check?.reason ?? "", item.reason, item.name);
+      const rendered = renderTaskVerifyResult(result);
+      assert.match(rendered, item.reason, item.name);
+      assert.match(rendered, /compatibility exit code 1; not observed/, item.name);
+      if (item.timeoutUnconfirmed) {
+        assert.equal(check?.processOutcome?.kind === "signal" && check.processOutcome.timeoutUnconfirmed, true);
+      }
+    }
+    const evidence = await readTaskEvidence(directory, "0007");
+    assert.match(evidence.at(-1)?.summary ?? "", /unknown process outcome: runner failed without process metadata/);
+  });
+});
+
+test("verifyTask preserves numeric callback results and reports observed default process exits", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeTaskFile(join(directory, ".tasks", "0007-numeric-result.md"), {
+      ...TASK,
+      risk: "low",
+      dependsOn: [],
+      allowedFiles: ["src/core/tasks/**"],
+      forbiddenFiles: [],
+      verificationCommands: ["numeric"],
+    });
+    const numeric = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      changedFiles: ["src/core/tasks/index.ts"],
+      runCommand: async () => 7,
+    });
+    assert.equal(numeric.commandsRun[0]?.exitCode, 7);
+    assert.equal(numeric.commandsRun[0]?.exitCodeObserved, undefined);
+    assert.equal(numeric.commandsRun[0]?.processOutcome, undefined);
+    assert.equal(numeric.checkResults[0]?.reason, "command exited with code 7");
+
+    const numericSuccess = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      changedFiles: ["src/core/tasks/index.ts"],
+      runCommand: async () => 0,
+    });
+    assert.equal(numericSuccess.passed, true);
+    assert.deepEqual(numericSuccess.commandsRun[0], { command: "numeric", exitCode: 0 });
+
+    await writeTaskFile(join(directory, ".tasks", "0007-numeric-result.md"), {
+      ...TASK,
+      risk: "low",
+      dependsOn: [],
+      allowedFiles: ["src/core/tasks/**"],
+      forbiddenFiles: [],
+      verificationCommands: [],
+      verification: [{
+        id: "default-exit",
+        type: "automated",
+        required: true,
+        environment: "local",
+        profile: "deterministic",
+        command: "exit 7",
+      }],
+    });
+    const defaultRun = await verifyTask({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      changedFiles: ["src/core/tasks/index.ts"],
+    });
+    assert.equal(defaultRun.commandsRun[0]?.exitCode, 7);
+    assert.equal(defaultRun.commandsRun[0]?.exitCodeObserved, true);
+    assert.equal(defaultRun.commandsRun[0]?.processOutcome?.kind, "exit");
+    assert.equal(defaultRun.checkResults[0]?.reason, "command exited with code 7");
+  });
+});
+
+test("verification keeps the ten-minute timeout and lint does not execute task commands", async () => {
+  const source = await readFile(new URL("./index.ts", import.meta.url), "utf8");
+  assert.match(source, /const DEFAULT_TASK_COMMAND_TIMEOUT_MS = 10 \* 60 \* 1000;/);
+
+  await withTempDirectory(async (directory) => {
+    const sentinel = join(directory, "verification-command-ran");
+    await writeTaskFile(join(directory, ".tasks", "0007-static-lint.md"), {
+      ...TASK,
+      risk: "low",
+      dependsOn: [],
+      allowedFiles: ["src/core/tasks/**"],
+      forbiddenFiles: [],
+      verificationCommands: [`touch ${sentinel}`],
+    });
+    await runTaskApkOperation(directory, "lint");
+    await assert.rejects(readFile(sentinel), { code: "ENOENT" });
+  });
+});
+
 test("verifyTask selects profiles and keeps manual/live requirements unresolved", async () => {
   await withTempDirectory(async (directory) => {
     const task: ProjectTask = {

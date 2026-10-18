@@ -1,7 +1,7 @@
 # Task 0219 - Preserve verification process termination reasons
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-task-0219
 Mode: maintenance
 Lane: verification
 Type: bugfix
