@@ -76,6 +76,7 @@ import {
   readTaskBaselineHistory,
   previewTaskContractAmendment,
   taskContractHash,
+  taskContractSnapshot,
   listGitChangedFiles,
   renderTasksTable,
   resolveTaskPolicy,
@@ -4703,6 +4704,77 @@ test("task-contract amendment preview binds exact operator, reason, and snapshot
   });
 });
 
+test("legacy contract amendment recovers a Git snapshot and verifies its stored hash", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const taskPath = join(directory, ".tasks", "0007-scoped-task.md");
+    const originalTask = (await loadTaskFile(taskPath)).task;
+    const originalSnapshot = taskContractSnapshot(originalTask);
+    const baseline = await readTaskBaseline(directory, "0007");
+    assert.equal(baseline?.taskContractHash, taskContractHash(originalTask));
+
+    const journalPath = join(directory, TASK_BASELINES_PATH);
+    const rows = (await readFile(journalPath, "utf8")).trim().split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const claim = rows.find((row) => row.phase === "claim");
+    assert.ok(claim);
+    delete claim.taskContractSnapshot;
+    await writeFile(journalPath, `${JSON.stringify(claim)}\n`, "utf8");
+
+    await writeTaskFile(taskPath, {
+      ...originalTask,
+      allowedFiles: [...originalTask.allowedFiles, "docs/task-b/**"],
+    });
+    const preview = await previewTaskContractAmendment({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      actor: "operator-1",
+      reason: "correct a legacy task contract using its claim Git anchor",
+    });
+    assert.equal(preview.fromSnapshot, originalSnapshot);
+    assert.equal(preview.fromContractHash, baseline?.taskContractHash);
+
+    const epoch = await startTaskEpoch({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0007",
+      owner: "agent-a",
+      reason: preview.reason,
+      contractAmendment: { actor: preview.actor, approvalDigest: preview.approvalDigest },
+    });
+    assert.equal(epoch.contractAmendment?.fromSnapshot, originalSnapshot);
+  });
+
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "agent-a" });
+    const journalPath = join(directory, TASK_BASELINES_PATH);
+    const rows = (await readFile(journalPath, "utf8")).trim().split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+    const claim = rows.find((row) => row.phase === "claim");
+    assert.ok(claim);
+    delete claim.taskContractSnapshot;
+    claim.taskContractHash = "0".repeat(64);
+    await writeFile(journalPath, `${JSON.stringify(claim)}\n`, "utf8");
+
+    const taskPath = join(directory, ".tasks", "0007-scoped-task.md");
+    const { task } = await loadTaskFile(taskPath);
+    await writeTaskFile(taskPath, { ...task, allowedFiles: [...task.allowedFiles, "docs/task-b/**"] });
+    await assert.rejects(
+      () => previewTaskContractAmendment({
+        rootDirectory: directory,
+        taskDirectory: ".tasks",
+        taskId: "0007",
+        actor: "operator-1",
+        reason: "reject a mismatched Git claim snapshot",
+      }),
+      /Git task contract does not match the contract hash stored in the predecessor baseline/i,
+    );
+  });
+});
+
 test("authorized contract amendment appends an epoch, preserves claim history, stales old evidence, and retains forbidden paths", async () => {
   await withTempDirectory(async (directory) => {
     await setupReclaimRepo(directory);
@@ -4776,6 +4848,11 @@ test("authorized contract amendment appends an epoch, preserves claim history, s
 
     const epochLine = JSON.stringify(rows[1]);
     const claimLine = JSON.stringify(rows[0]);
+    const carriedPaths = (rows[1]?.carriedForwardFiles as Array<{ path: string }> | undefined)?.map(({ path }) => path) ?? [];
+    assert.ok(carriedPaths.includes("secrets/amendment-carry.txt"));
+    const erasedCarry = { ...rows[1], carriedForwardFiles: [] };
+    await writeFile(journalPath, `${claimLine}\n${JSON.stringify(erasedCarry)}\n`, "utf8");
+    await assert.rejects(() => readTaskBaselineHistory(directory, "0007"), /epoch ID does not match/i);
     const tampered = { ...rows[1] };
     delete tampered.contractAmendment;
     await writeFile(journalPath, `${claimLine}\n${JSON.stringify(tampered)}\n`, "utf8");

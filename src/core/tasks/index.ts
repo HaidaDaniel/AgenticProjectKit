@@ -3309,6 +3309,22 @@ function validateTaskContractAmendmentHistory(records: readonly TaskClaimBaselin
       } else if (predecessorHash && record.taskContractHash !== predecessorHash) {
         throw new TaskBaselineFormatError([`Task ${record.taskId} epoch changes the contract without an exact amendment record.`]);
       }
+      const expectedEpochId = `epoch:${hashCandidatePart({
+        taskId: record.taskId,
+        predecessorBaselineId: record.predecessorBaselineId,
+        predecessorEpochId: record.predecessorEpochId,
+        owner: record.owner,
+        reason: record.epochReason,
+        time: record.time,
+        headSha: record.headSha,
+        carriedForwardFiles: record.carriedForwardFiles,
+        ...(record.contractAmendment
+          ? { contractAmendmentApprovalDigest: record.contractAmendment.approvalDigest }
+          : {}),
+      })}`;
+      if (record.epochId !== expectedEpochId) {
+        throw new TaskBaselineFormatError([`Task ${record.taskId} epoch ID does not match its recorded identity and carried paths.`]);
+      }
       taskEpochIds.add(record.epochId!);
       taskEpochBaselineIds.add(record.baselineId);
       epochIds.set(record.taskId, taskEpochIds);
@@ -3400,17 +3416,25 @@ export async function startTaskVerificationEpoch(
   const contractSnapshot = taskContractSnapshot(options.task);
   let predecessorContractHash = predecessor.taskContractHash;
   let historicalContractSnapshot: string | undefined;
-  if (!predecessorContractHash && predecessor.headSha) {
+  if (!predecessor.taskContractSnapshot && predecessor.headSha) {
+    let historicalMarkdown: string | undefined;
     try {
-      const historical = parseTaskMarkdown(await gitOutput(
+      historicalMarkdown = await gitOutput(
         options.rootDirectory,
         ["show", `${predecessor.headSha}:${predecessor.taskFile}`],
-      ));
-      historicalContractSnapshot = taskContractSnapshot(historical);
-      predecessorContractHash = taskContractHash(historical);
+      );
     } catch {
       // A legacy untracked task may have no Git snapshot; an exact supplied
-      // snapshot can still be checked against a stored taskContractHash.
+      // snapshot can still be checked against the stored taskContractHash.
+    }
+    if (historicalMarkdown !== undefined) {
+      const historical = parseTaskMarkdown(historicalMarkdown);
+      historicalContractSnapshot = taskContractSnapshot(historical);
+      const historicalContractHash = taskContractHash(historical);
+      if (predecessorContractHash && historicalContractHash !== predecessorContractHash) {
+        throw new Error("Git task contract does not match the contract hash stored in the predecessor baseline.");
+      }
+      predecessorContractHash ??= historicalContractHash;
     }
   }
   if (!predecessorContractHash) {
@@ -3842,14 +3866,25 @@ export async function previewTaskContractAmendment(options: {
     if (!predecessor.headSha) throw new Error("Legacy baseline has no contract hash or Git anchor; amendment preview fails closed.");
   }
   let historicalSnapshot: string | undefined;
-  if (!baselineContractHash && predecessor.headSha) {
+  if (!predecessor.taskContractSnapshot && predecessor.headSha) {
+    let historicalMarkdown: string | undefined;
     try {
-      historicalSnapshot = taskContractSnapshot(parseTaskMarkdown(await gitOutput(
+      historicalMarkdown = await gitOutput(
         options.rootDirectory,
         ["show", `${predecessor.headSha}:${predecessor.taskFile}`],
-      )));
+      );
     } catch {
-      throw new Error("Legacy task contract at the predecessor Git baseline is unreadable; amendment preview fails closed.");
+      if (!options.priorSnapshot) {
+        throw new Error("Legacy task contract at the predecessor Git baseline is unreadable; provide a prior snapshot whose hash matches the claim or fail closed.");
+      }
+    }
+    if (historicalMarkdown !== undefined) {
+      const historical = parseTaskMarkdown(historicalMarkdown);
+      historicalSnapshot = taskContractSnapshot(historical);
+      const historicalHash = taskContractHash(historical);
+      if (baselineContractHash && historicalHash !== baselineContractHash) {
+        throw new Error("Git task contract does not match the contract hash stored in the predecessor baseline; amendment preview fails closed.");
+      }
     }
   }
   const sourceSnapshot = options.priorSnapshot ?? predecessor.taskContractSnapshot ?? historicalSnapshot;
