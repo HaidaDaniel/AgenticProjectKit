@@ -6,6 +6,8 @@ Agentic Project Kit remains the current product identity. The latest validated, 
 
 Public readiness is the current milestone. Its workstreams and ordering are maintained in the [roadmap](roadmap.md#public-readiness-current-work), with task contracts as the source of lifecycle state.
 
+The downstream backlog preflight added three `todo` contracts with no task dependencies: [0218](../.tasks/0218-design-safe-historical-task-provenance-recovery.md) researches safe recovery for mixed historical provenance; [0219](../.tasks/0219-preserve-verification-process-termination-reasons.md) preserves verification process termination diagnostics; [0220](../.tasks/0220-reject-misleading-noncanonical-task-scope-patterns.md) rejects noncanonical scope dot segments. Tasks 0219 and 0220 share task-path and verification source/build paths and are marked nonparallel. Task 0218 uses a separate recovery-artifact path outside Task 0216's `docs/research/**` scope. The validated v0.5.0 release is unchanged.
+
 ## Active work
 
 Task 0206 is complete: the opt-in local profiler has bounded session/report
