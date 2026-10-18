@@ -2,8 +2,9 @@
 
 <!-- APK_VALIDATED_RELEASE: v0.5.0 -->
 
-The current package/candidate version is `0.5.0`.
-Its release note is [v0.5.0](v0.5.0.md), with the separate [post-tag validation record](../delivery/workflow-v0.5.0-post-release.md). The prior v0.4.9 profiler release remains immutable historical evidence.
+The current package/candidate version is `0.5.1`.
+Its pre-tag candidate note is [v0.5.1](v0.5.1.md); publication and actual-tag validation are pending.
+The validated release note is [v0.5.0](v0.5.0.md), with the separate [post-tag validation record](../delivery/workflow-v0.5.0-post-release.md). The prior v0.4.9 profiler release remains immutable historical evidence.
 The latest validated tagged release is [v0.5.0](v0.5.0.md). Its annotated tag peels to
 candidate `5a9e1a150a0715900942e60f47ae215b6fec07f8`.
 
