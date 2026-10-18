@@ -21,7 +21,10 @@ unstaged-only candidate edits remain verifiable. The follow-up review found that
 staged task-contract content and mode-only index/worktree drift under
 `core.filemode=false` also need explicit checks; candidate capture now compares
 normalized task contracts and Git index entry modes, and internal evidence paths
-carry the actual task file so lifecycle edits stay excluded correctly.
+carry the actual task file so lifecycle edits stay excluded correctly. A later
+integration review exposed staged-only paths disappearing when the worktree was
+restored to claim-baseline state; baseline-aware discovery now includes the
+index inventory, with integration regressions for content and mode drift.
 
 Task 0206 is complete: the opt-in local profiler has bounded session/report
 primitives, central CLI/subprocess instrumentation, safe local JSONL storage,

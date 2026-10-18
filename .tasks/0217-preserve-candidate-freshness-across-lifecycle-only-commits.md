@@ -67,6 +67,7 @@ Fix the mismatch between documented content-derived candidate identity and exact
 - Changes to source, tests, task contract, or an experiment plan change the evidence candidate and produce stale freshness.
 - Symlink target/type and executable-bit changes remain material even if dereferenced file bytes are identical; target bytes are fingerprinted without lossy decoding.
 - Candidate evidence capture fails closed when a staged scoped tracked path has additional unstaged worktree changes, a staged task contract differs from the worktree contract, or staged Git mode/type differs from the worktree even with `core.filemode=false`; ordinary unstaged-only candidate changes remain verifiable.
+- Baseline-aware candidate discovery includes index-only paths, so staged content or mode drift is rejected even when the worktree matches the claim baseline.
 - Internal verification, review, gate, and dogfood paths identify the exact task file when candidate capture is called, including custom task directories.
 - Exact `headSha` remains recorded as historical provenance; baseline lineage and ambiguous ownership checks remain fail-closed.
 - Existing evidence records are not rewritten or re-labelled.
@@ -88,11 +89,11 @@ Fix the mismatch between documented content-derived candidate identity and exact
 
 ## Review questions
 
-- Does a lifecycle-only commit preserve identity only when material candidate inputs are byte-identical?;Do task contract edits and frozen plan edits force stale evidence?;Are historical evidence records and exact HEAD metadata retained?
+- Does a lifecycle-only commit preserve identity only when material candidate inputs are byte-identical?;Do task contract edits and frozen plan edits force stale evidence?;Are staged-only index paths discovered when worktree state matches the claim baseline?;Are historical evidence records and exact HEAD metadata retained?
 
 ## Counterexample searches
 
-- Change implementation after review;change allowed plan JSON;change task goal or verification command;commit only task state/owner and docs progress;uncommitted code and staged code;unresolved git baseline
+- Change implementation after review;change allowed plan JSON;change task goal or verification command;commit only task state/owner and docs progress;uncommitted code and staged code;stage a scoped content or mode change then restore worktree to claim-baseline state;unresolved git baseline
 
 ## Verification
 

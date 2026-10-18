@@ -3478,8 +3478,20 @@ export async function listTaskChangedFilesSinceBaseline(rootDirectory, baseline)
             "-z",
             baseline.headSha,
         ]);
+        // A staged edit can diverge from the worktree while the worktree itself is
+        // restored to the claim baseline. The baseline-to-worktree diff then hides
+        // that path, so include the index inventory before validating equality.
+        const staged = await gitPaths(rootDirectory, [
+            "-c",
+            "core.filemode=true",
+            "diff",
+            "--cached",
+            "--name-only",
+            "--no-renames",
+            "-z",
+        ]);
         const untracked = await gitPaths(rootDirectory, ["ls-files", "--others", "--exclude-standard", "-z"]);
-        return [...new Set([...committedAndWorking, ...untracked].map(normalizeGitPath))].sort();
+        return [...new Set([...committedAndWorking, ...staged, ...untracked].map(normalizeGitPath))].sort();
     }
     throw new TaskGitComparisonError(["baseline"], new Error("task baseline has no resolvable Git HEAD; current paths must be supplied explicitly"));
 }

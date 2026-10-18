@@ -2383,6 +2383,7 @@ async function gitPaths(rootDirectory: string, args: readonly string[]): Promise
 
 interface GitIndexEntry {
   mode: string;
+  objectSha: string;
   stage: number;
   path: string;
 }
@@ -2418,7 +2419,7 @@ async function gitIndexEntries(
     if (!Buffer.from(path, "utf8").equals(pathBytes)) {
       throw new Error("Git returned an index path that is not valid UTF-8; attribution fails closed.");
     }
-    entries.push({ mode: match[1]!, stage: Number(match[3]), path });
+    entries.push({ mode: match[1]!, objectSha: match[2]!, stage: Number(match[3]), path });
     start = index + 1;
   }
   if (start !== output.length) throw new Error("Git index output is not NUL-terminated.");
@@ -2544,6 +2545,13 @@ async function fingerprintChangedFiles(
   changedFiles: readonly string[],
 ): Promise<Array<{ path: string; sha256: string }>> {
   const fingerprints: Array<{ path: string; sha256: string }> = [];
+  const indexEntries = await gitIndexEntries(rootDirectory, changedFiles);
+  const entriesByPath = new Map<string, GitIndexEntry[]>();
+  for (const entry of indexEntries) {
+    const entries = entriesByPath.get(entry.path) ?? [];
+    entries.push(entry);
+    entriesByPath.set(entry.path, entries);
+  }
   for (const path of changedFiles) {
     try {
       const absolutePath = join(rootDirectory, path);
@@ -2559,7 +2567,27 @@ async function fingerprintChangedFiles(
           contentSha256: createHash("sha256").update(await readFile(absolutePath)).digest("hex"),
         };
       } else if (metadata.isDirectory()) {
-        material = { type: "directory" };
+        const pathEntries = entriesByPath.get(path) ?? [];
+        const isGitlink = pathEntries.some((entry) => entry.mode === "160000");
+        if (isGitlink && (pathEntries.length !== 1 || pathEntries[0]!.stage !== 0)) {
+          throw new Error(`Git submodule path has unmerged index entries: ${path}`);
+        }
+        const gitMarker = await lstat(join(absolutePath, ".git")).catch((error: unknown) => {
+          if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return undefined;
+          throw error;
+        });
+        if (isGitlink && !gitMarker) {
+          throw new Error(`Git submodule worktree is not initialized: ${path}`);
+        }
+        if (gitMarker) {
+          const commitSha = (await gitOutput(rootDirectory, ["-C", absolutePath, "rev-parse", "--verify", "HEAD"])).trim();
+          if (!commitSha) throw new Error(`Git submodule has no checked-out commit: ${path}`);
+          const status = await gitOutput(rootDirectory, ["-C", absolutePath, "status", "--porcelain", "--untracked-files=all"]);
+          if (status.length > 0) throw new Error(`Git submodule worktree has uncommitted changes: ${path}`);
+          material = { type: isGitlink ? "gitlink" : "nested-repository", commitSha };
+        } else {
+          material = { type: "directory" };
+        }
       } else {
         material = { type: "other", mode: metadata.mode & 0o170000 };
       }
@@ -4466,8 +4494,20 @@ export async function listTaskChangedFilesSinceBaseline(
       "-z",
       baseline.headSha,
     ]);
+    // A staged edit can diverge from the worktree while the worktree itself is
+    // restored to the claim baseline. The baseline-to-worktree diff then hides
+    // that path, so include the index inventory before validating equality.
+    const staged = await gitPaths(rootDirectory, [
+      "-c",
+      "core.filemode=true",
+      "diff",
+      "--cached",
+      "--name-only",
+      "--no-renames",
+      "-z",
+    ]);
     const untracked = await gitPaths(rootDirectory, ["ls-files", "--others", "--exclude-standard", "-z"]);
-    return [...new Set([...committedAndWorking, ...untracked].map(normalizeGitPath))].sort();
+    return [...new Set([...committedAndWorking, ...staged, ...untracked].map(normalizeGitPath))].sort();
   }
 
   throw new TaskGitComparisonError(
@@ -5031,6 +5071,12 @@ export async function captureTaskEvidenceSubject(
                 ? metadata.isDirectory()
                 : false;
         if (!modeMatches) throw new Error(`Staged Git mode differs from the worktree entry: ${path}`);
+        if (mode === "160000") {
+          const worktreeCommit = (await gitOutput(rootDirectory, ["-C", join(rootDirectory, path), "rev-parse", "--verify", "HEAD"])).trim();
+          if (entries[0]!.objectSha !== worktreeCommit) {
+            throw new Error(`Staged Git submodule revision differs from the worktree: ${path}`);
+          }
+        }
       }
     } catch (error: unknown) {
       throw new TaskGitComparisonError(["diff", "--cached/--name-only", "--no-ext-diff", "-z"], error);

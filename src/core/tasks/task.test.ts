@@ -3127,6 +3127,58 @@ test("candidate evidence fails closed when Git index and worktree diverge", asyn
   });
 });
 
+test("completion candidate discovers staged-only content drift against the claim baseline", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    const relativePath = "docs/task-b/staged-only-content.txt";
+    const candidatePath = join(directory, relativePath);
+    await writeFile(candidatePath, "baseline bytes\n", "utf8");
+    await execFileAsync("git", ["add", relativePath], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "seed staged-only content candidate"], { cwd: directory });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner: "agent-b" });
+
+    await writeFile(candidatePath, "staged bytes\n", "utf8");
+    await execFileAsync("git", ["add", relativePath], { cwd: directory });
+    await writeFile(candidatePath, "baseline bytes\n", "utf8");
+
+    const candidate = await captureTaskCompletionCandidate({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0008",
+    });
+    assert.ok(candidate.changedFiles.includes(relativePath));
+    assert.equal(candidate.comparisonKnown, false);
+    assert.ok(candidate.diagnostics.some((diagnostic) => /Staged scoped files differ between Git index and worktree/.test(diagnostic)));
+    assert.equal(candidate.subject.candidateId, "candidate:unknown");
+  });
+});
+
+test("completion candidate discovers staged-only mode drift with core.filemode disabled", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    const relativePath = "docs/task-b/staged-only-mode.txt";
+    const candidatePath = join(directory, relativePath);
+    await writeFile(candidatePath, "same bytes\n", "utf8");
+    await execFileAsync("git", ["add", relativePath], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "seed staged-only mode candidate"], { cwd: directory });
+    await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0008", owner: "agent-b" });
+    await execFileAsync("git", ["config", "core.filemode", "false"], { cwd: directory });
+
+    await execFileAsync("git", ["update-index", "--chmod=+x", "--", relativePath], { cwd: directory });
+    await chmod(candidatePath, 0o644);
+
+    const candidate = await captureTaskCompletionCandidate({
+      rootDirectory: directory,
+      taskDirectory: ".tasks",
+      taskId: "0008",
+    });
+    assert.ok(candidate.changedFiles.includes(relativePath));
+    assert.equal(candidate.comparisonKnown, false);
+    assert.ok(candidate.diagnostics.some((diagnostic) => /Staged (?:scoped files differ between Git index and worktree|Git mode differs from the worktree entry)/.test(diagnostic)));
+    assert.equal(candidate.subject.candidateId, "candidate:unknown");
+  });
+});
+
 test("candidate evidence fails closed when staged task contract differs from worktree contract", async () => {
   await withTempDirectory(async (directory) => {
     await setupReclaimRepo(directory);
