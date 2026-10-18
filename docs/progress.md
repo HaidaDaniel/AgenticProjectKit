@@ -8,6 +8,13 @@ Public readiness is the current milestone. Its workstreams and ordering are main
 
 ## Active work
 
+Task 0217 is correcting a candidate-freshness mismatch: current candidate hashing
+included repository HEAD and lifecycle diffs despite the documented content-based
+contract. The fix retains exact HEAD as provenance while deriving freshness from
+the normalized task contract and material scoped file contents; lifecycle-only
+task/progress commits remain identity-neutral. Existing evidence records are not
+rewritten.
+
 Task 0206 is complete: the opt-in local profiler has bounded session/report
 primitives, central CLI/subprocess instrumentation, safe local JSONL storage,
 privacy-preserving records, concurrency-aware attribution, and deterministic

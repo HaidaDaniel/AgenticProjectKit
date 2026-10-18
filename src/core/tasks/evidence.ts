@@ -643,7 +643,6 @@ export function compareTaskEvidenceFreshness(
 
   const fields: (keyof TaskEvidenceCandidateSubject)[] = [
     "repository",
-    "headSha",
     "baselineId",
     "candidateId",
     "worktreeId",
@@ -657,7 +656,12 @@ export function compareTaskEvidenceFreshness(
     }
   }
 
-  return { freshness: "current", reason: "evidence subject matches current task candidate." };
+  return {
+    freshness: "current",
+    reason: record.subject.headSha === normalizedCurrent.headSha
+      ? "evidence subject matches current task candidate."
+      : "evidence content identity matches current task candidate; HEAD is retained as historical provenance.",
+  };
 }
 
 export function renderTaskEvidence(

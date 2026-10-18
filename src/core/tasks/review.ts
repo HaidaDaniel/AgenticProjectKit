@@ -307,7 +307,6 @@ function sameReviewSubject(
 ): boolean {
   return left.taskId === right.taskId
     && left.repository === right.repository
-    && left.headSha === right.headSha
     && left.baselineId === right.baselineId
     && left.candidateId === right.candidateId
     && left.worktreeId === right.worktreeId;

@@ -1383,6 +1383,10 @@ test("task evidence appends, reads, filters, and compares subject freshness", as
       "stale",
     );
     assert.equal(
+      compareTaskEvidenceFreshness(all[0], { ...subject, headSha: "def456" }).freshness,
+      "current",
+    );
+    assert.equal(
       compareTaskEvidenceFreshness(all[0], { ...subject, headSha: undefined }).freshness,
       "unknown",
     );
@@ -3021,6 +3025,50 @@ test("proven task candidate and terminal bookkeeping commits are excluded after 
     assert.match(renderTaskVerifyResult(verified), new RegExp(commits.candidateSha.slice(0, 12)));
     assert.match(renderTaskProvenance(provenance), new RegExp(commits.bookkeepingSha.slice(0, 12)));
     assert.match(renderTaskCompletionGate(gate), new RegExp(commits.candidateSha.slice(0, 12)));
+  });
+});
+
+test("candidate evidence survives lifecycle-only commits but stales on plan and task-contract changes", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    const taskPath = join(directory, ".tasks", "0008-bounded-task.md");
+    const taskState = await loadTaskFile(taskPath);
+    await writeTaskFile(taskPath, {
+      ...taskState.task,
+      allowedFiles: [...taskState.task.allowedFiles, "docs/progress.md"],
+    });
+    await execFileAsync("git", ["add", taskPath], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "allow progress bookkeeping"], { cwd: directory });
+
+    const committed = await completeBoundedTaskB(directory);
+    await writeFile(join(directory, "docs", "progress.md"), "Task completion recorded.\n", "utf8");
+    await execFileAsync("git", ["add", ".tasks/0008-bounded-task.md", "docs/progress.md"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "completion progress bookkeeping"], { cwd: directory });
+    const lifecycleHead = (await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: directory })).stdout.trim();
+
+    const afterLifecycle = await buildTaskProvenance(directory, ".tasks", "0008");
+    const verification = afterLifecycle.evidence.find((record) => record.type === "automated-test");
+    assert.ok(verification);
+    assert.equal(verification.subject.headSha, committed.candidateSha);
+    assert.equal(afterLifecycle.currentSubject.headSha, lifecycleHead);
+    assert.equal(afterLifecycle.currentSubject.candidateId, verification.subject.candidateId);
+    assert.equal(afterLifecycle.evidence.find((record) => record.id === verification.id)?.freshness, "current");
+
+    await writeFile(join(directory, "docs", "task-b", "experiment-plan.json"), "{\"budget\":1}\n", "utf8");
+    await execFileAsync("git", ["add", "docs/task-b/experiment-plan.json"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "change frozen experiment plan"], { cwd: directory });
+    const afterPlanChange = await buildTaskProvenance(directory, ".tasks", "0008");
+    assert.equal(afterPlanChange.evidence.find((record) => record.id === verification.id)?.freshness, "stale");
+
+    const currentTask = (await loadTaskFile(taskPath)).task;
+    await writeTaskFile(taskPath, {
+      ...currentTask,
+      acceptanceCriteria: [...currentTask.acceptanceCriteria, "A changed task contract requires new evidence."],
+    });
+    await execFileAsync("git", ["add", taskPath], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "change task contract"], { cwd: directory });
+    const afterContractChange = await buildTaskProvenance(directory, ".tasks", "0008");
+    assert.equal(afterContractChange.evidence.find((record) => record.id === verification.id)?.freshness, "stale");
   });
 });
 

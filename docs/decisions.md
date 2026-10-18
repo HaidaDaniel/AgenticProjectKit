@@ -917,7 +917,7 @@ The canonical generated workflow required claim/verify/review/gate/done but neve
 
 Implementation and invariant:
 
-`DEFAULT_AGENT_POLICY.taskRules` carries the hygiene rules and `apk sync` regenerates `AGENTS.md`; renderer and sync regression tests assert the rule is present and drift-free. Committing task-owned changes before final verify/review/gate keeps candidate-bound evidence pointing at the committed candidate; because APK candidate identity is content-derived, a pure commit does not invalidate it. Terminal `apk done` bookkeeping remains excluded workflow state. No Git transaction manager, auto-push, daemon, branch-protection change, squash/amend policy, or provider integration is introduced.
+`DEFAULT_AGENT_POLICY.taskRules` carries the hygiene rules and `apk sync` regenerates `AGENTS.md`; renderer and sync regression tests assert the rule is present and drift-free. Candidate and worktree identity use the normalized task contract and material scoped file contents; the exact HEAD remains in evidence for audit but does not by itself stale identical candidate content. Task state/owner/notes, APK bookkeeping, and `docs/progress.md` are excluded lifecycle inputs, while task-contract, implementation, test, and plan changes remain identity-bearing. Terminal `apk done` bookkeeping remains excluded workflow state. No Git transaction manager, auto-push, daemon, branch-protection change, squash/amend policy, or provider integration is introduced.
 
 ## ADR-0051 - One authoritative scope baseline per unfinished task lifecycle
 

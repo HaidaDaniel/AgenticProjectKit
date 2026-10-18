@@ -3391,7 +3391,6 @@ function sameEvidenceCandidate(
 ): boolean {
   return left.taskId === right.taskId
     && left.repository === right.repository
-    && left.headSha === right.headSha
     && left.baselineId === right.baselineId
     && left.candidateId === right.candidateId
     && left.worktreeId === right.worktreeId;
@@ -4888,7 +4887,14 @@ export async function captureTaskEvidenceSubject(
   const normalizedChangedFiles = [...new Set(changedFiles.map(normalizeRepoPath))]
     .filter((path) => path.length > 0)
     .sort();
-  const fingerprints = await fingerprintChangedFiles(rootDirectory, normalizedChangedFiles);
+  const taskFile = baseline?.taskFile
+    ?? normalizedChangedFiles.find((path) => path.startsWith(`.tasks/${task.id}-`) && path.endsWith(".md"))
+    ?? `.tasks/${task.id}.md`;
+  const candidateFiles = normalizedChangedFiles.filter((path) => (
+    path !== "docs/progress.md"
+    && !(baseline ? isBookkeepingPath(path, baseline) : isDefaultBookkeepingPath(path, taskFile))
+  ));
+  const fingerprints = await fingerprintChangedFiles(rootDirectory, candidateFiles);
   let isGit = false;
   try {
     isGit = (await gitOutput(rootDirectory, ["rev-parse", "--is-inside-work-tree"])).trim() === "true";
@@ -4905,26 +4911,17 @@ export async function captureTaskEvidenceSubject(
     );
   }
   const repository = headSha ? "git" : "none";
-  const diff = isGit && normalizedChangedFiles.length > 0
-    ? [
-      // Lifecycle writes to the task file are bookkeeping; only implementation
-      // paths may change the evidence subject revision.
-      await gitOutput(rootDirectory, ["diff", "--no-ext-diff", "--binary", "HEAD", "--", ...normalizedChangedFiles]),
-      await gitOutput(rootDirectory, ["diff", "--cached", "--no-ext-diff", "--binary", "HEAD", "--", ...normalizedChangedFiles]),
-    ]
-    : [];
   const candidateId = `candidate:${hashCandidatePart({
-    // Lifecycle state/owner changes (doing -> review -> done) are not implementation changes.
-    task: renderTaskMarkdown({ ...task, state: "doing", owner: "none" }),
-    headSha,
-    changedFiles: normalizedChangedFiles,
+    // A subject identifies candidate content, not the commit that happened to contain it.
+    // Task lifecycle fields/notes and docs/progress are bookkeeping; the normalized
+    // task contract and all other scoped file contents remain material.
+    taskContract: comparableTaskContract(task),
+    changedFiles: candidateFiles,
     fingerprints,
-    diff,
   })}`;
   const worktreeId = `worktree:${hashCandidatePart({
-    changedFiles: normalizedChangedFiles,
+    changedFiles: candidateFiles,
     fingerprints,
-    diff,
   })}`;
 
   const afterLineageCheck = options.allowUnresolvedLineage
