@@ -1,6 +1,6 @@
 # Task 0220 - Reject misleading noncanonical task scope patterns
 
-State: doing
+State: done
 Owner: codex-task-0220
 Mode: maintenance
 Lane: task-authoring
