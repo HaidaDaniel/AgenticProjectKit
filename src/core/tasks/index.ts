@@ -2545,13 +2545,6 @@ async function fingerprintChangedFiles(
   changedFiles: readonly string[],
 ): Promise<Array<{ path: string; sha256: string }>> {
   const fingerprints: Array<{ path: string; sha256: string }> = [];
-  const indexEntries = await gitIndexEntries(rootDirectory, changedFiles);
-  const entriesByPath = new Map<string, GitIndexEntry[]>();
-  for (const entry of indexEntries) {
-    const entries = entriesByPath.get(entry.path) ?? [];
-    entries.push(entry);
-    entriesByPath.set(entry.path, entries);
-  }
   for (const path of changedFiles) {
     try {
       const absolutePath = join(rootDirectory, path);
@@ -2567,24 +2560,16 @@ async function fingerprintChangedFiles(
           contentSha256: createHash("sha256").update(await readFile(absolutePath)).digest("hex"),
         };
       } else if (metadata.isDirectory()) {
-        const pathEntries = entriesByPath.get(path) ?? [];
-        const isGitlink = pathEntries.some((entry) => entry.mode === "160000");
-        if (isGitlink && (pathEntries.length !== 1 || pathEntries[0]!.stage !== 0)) {
-          throw new Error(`Git submodule path has unmerged index entries: ${path}`);
-        }
         const gitMarker = await lstat(join(absolutePath, ".git")).catch((error: unknown) => {
           if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return undefined;
           throw error;
         });
-        if (isGitlink && !gitMarker) {
-          throw new Error(`Git submodule worktree is not initialized: ${path}`);
-        }
         if (gitMarker) {
           const commitSha = (await gitOutput(rootDirectory, ["-C", absolutePath, "rev-parse", "--verify", "HEAD"])).trim();
           if (!commitSha) throw new Error(`Git submodule has no checked-out commit: ${path}`);
           const status = await gitOutput(rootDirectory, ["-C", absolutePath, "status", "--porcelain", "--untracked-files=all"]);
           if (status.length > 0) throw new Error(`Git submodule worktree has uncommitted changes: ${path}`);
-          material = { type: isGitlink ? "gitlink" : "nested-repository", commitSha };
+          material = { type: "nested-repository", commitSha };
         } else {
           material = { type: "directory" };
         }
@@ -5035,12 +5020,30 @@ export async function captureTaskEvidenceSubject(
         throw new Error(`Staged task contract differs from the worktree task contract: ${taskFile}`);
       }
 
-      const indexEntries = await gitIndexEntries(rootDirectory, stagedCandidatePaths);
+      const indexEntries = await gitIndexEntries(rootDirectory, candidateFiles);
       const entriesByPath = new Map<string, GitIndexEntry[]>();
       for (const entry of indexEntries) {
         const entries = entriesByPath.get(entry.path) ?? [];
         entries.push(entry);
         entriesByPath.set(entry.path, entries);
+      }
+      for (const path of candidateFiles) {
+        const entries = entriesByPath.get(path) ?? [];
+        if (!entries.some((entry) => entry.mode === "160000")) continue;
+        if (entries.length !== 1 || entries[0]!.stage !== 0) {
+          throw new Error(`Git submodule path has unmerged index entries: ${path}`);
+        }
+        const metadata = await lstat(join(rootDirectory, path)).catch((error: unknown) => {
+          if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return undefined;
+          throw error;
+        });
+        const gitMarker = await lstat(join(rootDirectory, path, ".git")).catch((error: unknown) => {
+          if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return undefined;
+          throw error;
+        });
+        if (!metadata?.isDirectory() || !gitMarker) {
+          throw new Error(`Git submodule worktree is not initialized: ${path}`);
+        }
       }
       for (const path of stagedCandidatePaths) {
         const entries = entriesByPath.get(path) ?? [];

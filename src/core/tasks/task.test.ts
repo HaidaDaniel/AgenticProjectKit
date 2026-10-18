@@ -3106,6 +3106,49 @@ test("candidate freshness detects symlink target changes when linked contents ma
   });
 });
 
+test("candidate freshness includes committed revisions in scoped submodules", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    await withTempDirectory(async (sourceDirectory) => {
+      const sourceGit = async (...args: string[]) => {
+        await execFileAsync("git", args, { cwd: sourceDirectory });
+      };
+      await sourceGit("init", "--quiet");
+      await sourceGit("config", "user.email", "submodule@example.test");
+      await sourceGit("config", "user.name", "Submodule Test");
+      await mkdir(join(sourceDirectory, "src"), { recursive: true });
+      const nestedSource = join(sourceDirectory, "src", "index.ts");
+      await writeFile(nestedSource, "export const value = 1;\n", "utf8");
+      await sourceGit("add", "src/index.ts");
+      await sourceGit("commit", "--quiet", "-m", "initial submodule source");
+
+      await execFileAsync("git", ["-c", "protocol.file.allow=always", "submodule", "add", sourceDirectory, "src/submodule"], { cwd: directory });
+      await execFileAsync("git", ["add", "src/submodule", ".gitmodules"], { cwd: directory });
+      await execFileAsync("git", ["commit", "--quiet", "-m", "add scoped submodule"], { cwd: directory });
+      const submoduleDirectory = join(directory, "src", "submodule");
+      const submoduleGit = async (...args: string[]) => {
+        await execFileAsync("git", args, { cwd: submoduleDirectory });
+      };
+      await submoduleGit("config", "user.email", "submodule@example.test");
+      await submoduleGit("config", "user.name", "Submodule Test");
+      const { task } = await loadTaskFile(join(directory, ".tasks", "0008-bounded-task.md"));
+
+      const before = await captureTaskEvidenceSubject(directory, task, ["src/submodule"]);
+      await writeFile(join(submoduleDirectory, "src", "index.ts"), "export const value = 2;\n", "utf8");
+      await submoduleGit("add", "src/index.ts");
+      await submoduleGit("commit", "--quiet", "-m", "change submodule source");
+      await execFileAsync("git", ["add", "src/submodule"], { cwd: directory });
+
+      const after = await captureTaskEvidenceSubject(directory, task, ["src/submodule"]);
+      assert.notEqual(after.candidateId, before.candidateId);
+      assert.equal(after.headSha, before.headSha);
+
+      await writeFile(join(submoduleDirectory, "src", "index.ts"), "export const value = 3;\n", "utf8");
+      await assert.rejects(() => captureTaskEvidenceSubject(directory, task, ["src/submodule"]));
+    });
+  });
+});
+
 test("candidate evidence fails closed when Git index and worktree diverge", async () => {
   await withTempDirectory(async (directory) => {
     await setupReclaimRepo(directory);
