@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { appendFile, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { appendFile, chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -3123,6 +3123,48 @@ test("candidate evidence fails closed when Git index and worktree diverge", asyn
     await assert.rejects(
       () => captureTaskEvidenceSubject(directory, task, ["docs/task-b/candidate.txt"]),
       /Staged scoped files differ between Git index and worktree/,
+    );
+  });
+});
+
+test("candidate evidence fails closed when staged task contract differs from worktree contract", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    const taskPath = join(directory, ".tasks", "0008-bounded-task.md");
+    const { task } = await loadTaskFile(taskPath);
+    const changedTask = {
+      ...task,
+      acceptanceCriteria: [...task.acceptanceCriteria, "Staged contract drift is rejected."],
+    };
+    await writeTaskFile(taskPath, changedTask);
+    await execFileAsync("git", ["add", ".tasks/0008-bounded-task.md"], { cwd: directory });
+    await writeTaskFile(taskPath, task);
+
+    await assert.rejects(
+      () => captureTaskEvidenceSubject(directory, task, [".tasks/0008-bounded-task.md"]),
+      /Staged task contract differs from the worktree task contract/,
+    );
+  });
+});
+
+test("candidate evidence detects staged executable-bit drift when core.filemode is disabled", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    const taskPath = join(directory, ".tasks", "0008-bounded-task.md");
+    const { task } = await loadTaskFile(taskPath);
+    const relativePath = "docs/task-b/candidate-mode.txt";
+    const candidatePath = join(directory, relativePath);
+    await writeFile(candidatePath, "same bytes\n", "utf8");
+    await execFileAsync("git", ["add", relativePath], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "seed mode candidate"], { cwd: directory });
+    await execFileAsync("git", ["config", "core.filemode", "false"], { cwd: directory });
+
+    await execFileAsync("git", ["update-index", "--chmod=+x", "--", relativePath], { cwd: directory });
+    await chmod(candidatePath, 0o644);
+
+    await assert.rejects(
+      () => captureTaskEvidenceSubject(directory, task, [relativePath]),
+      /Staged Git mode differs from the worktree entry/,
     );
   });
 });

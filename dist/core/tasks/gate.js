@@ -1,3 +1,4 @@
+import { relative } from "node:path";
 import { listAgents, } from "../agents/index.js";
 import { allTaskFiles, captureTaskScope, captureTaskEvidenceSubject, currentTaskAttributionApproval, findTaskFile, getTaskVerification, loadTaskFile, readTaskBaseline, } from "./index.js";
 import { compareTaskEvidenceFreshness, readTaskEvidence, } from "./evidence.js";
@@ -39,7 +40,7 @@ export async function captureTaskCompletionCandidate(options) {
     const scope = snapshot;
     let capturedSubject;
     try {
-        capturedSubject = await captureTaskEvidenceSubject(options.rootDirectory, task, scope.changedFiles, baseline, { allowUnresolvedLineage: true });
+        capturedSubject = await captureTaskEvidenceSubject(options.rootDirectory, task, scope.changedFiles, baseline, { allowUnresolvedLineage: true, taskPath: relative(options.rootDirectory, taskPath) });
     }
     catch (error) {
         snapshot.diagnostics.push(error instanceof Error ? error.message : String(error));

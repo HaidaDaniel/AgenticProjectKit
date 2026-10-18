@@ -17,7 +17,11 @@ rewritten.
 Candidate fingerprints preserve Git entry semantics: raw symlink target bytes and
 executable status remain material even when dereferenced bytes match. Capture also
 rejects staged scoped paths with further unstaged changes, while ordinary
-unstaged-only candidate edits remain verifiable.
+unstaged-only candidate edits remain verifiable. The follow-up review found that
+staged task-contract content and mode-only index/worktree drift under
+`core.filemode=false` also need explicit checks; candidate capture now compares
+normalized task contracts and Git index entry modes, and internal evidence paths
+carry the actual task file so lifecycle edits stay excluded correctly.
 
 Task 0206 is complete: the opt-in local profiler has bounded session/report
 primitives, central CLI/subprocess instrumentation, safe local JSONL storage,

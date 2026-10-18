@@ -1,3 +1,5 @@
+import { relative } from "node:path";
+
 import {
   listAgents,
 } from "../agents/index.js";
@@ -172,7 +174,7 @@ export async function captureTaskCompletionCandidate(options: {
       task,
       scope.changedFiles,
       baseline,
-      { allowUnresolvedLineage: true },
+      { allowUnresolvedLineage: true, taskPath: relative(options.rootDirectory, taskPath) },
     );
   } catch (error: unknown) {
     snapshot.diagnostics.push(error instanceof Error ? error.message : String(error));

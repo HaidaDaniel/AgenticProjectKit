@@ -422,7 +422,7 @@ export async function prepareTaskReview(
     task,
     changedFiles,
     baseline,
-    { allowUnresolvedLineage: true },
+    { allowUnresolvedLineage: true, taskPath: taskRelativePath },
   );
   const subject = reviewSubject(capturedSubject, baseline?.baselineId);
   if (!snapshot.comparisonKnown) {
@@ -554,7 +554,7 @@ export async function recordTaskReview(options: TaskReviewOptions): Promise<Task
       task,
       snapshot.changedFiles,
       baseline,
-      { allowUnresolvedLineage: true },
+      { allowUnresolvedLineage: true, taskPath: relative(options.rootDirectory, taskPath).replace(/\\/g, "/") },
     );
     const currentSubject = reviewSubject(currentCaptured, baseline?.baselineId);
     if (!snapshot.comparisonKnown) {
@@ -867,7 +867,10 @@ export async function recordTaskHumanDecision(
     task,
     snapshot.changedFiles,
     baseline,
-    { allowUnresolvedLineage: options.decision === "accept-attribution" },
+    {
+      allowUnresolvedLineage: options.decision === "accept-attribution",
+      taskPath: relative(options.rootDirectory, taskPath).replace(/\\/g, "/"),
+    },
   );
   const subject = baseline ? { ...captured, baselineId: baseline.baselineId } : captured;
   const attributionApproval = options.decision === "accept-attribution"

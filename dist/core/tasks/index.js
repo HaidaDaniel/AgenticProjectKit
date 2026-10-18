@@ -1679,6 +1679,46 @@ async function gitPaths(rootDirectory, args) {
     }
     return paths;
 }
+async function gitIndexEntries(rootDirectory, paths) {
+    if (paths.length === 0)
+        return [];
+    const result = await observedExecFile("git", [
+        "ls-files", "--stage", "-z", "--",
+        ...paths.map((path) => `:(literal)${path}`),
+    ], {
+        cwd: rootDirectory,
+        encoding: "buffer",
+        maxBuffer: 8 * 1024 * 1024,
+        windowsHide: true,
+    });
+    const output = result.stdout;
+    const entries = [];
+    let start = 0;
+    for (let index = 0; index < output.length; index += 1) {
+        if (output[index] !== 0)
+            continue;
+        if (index === start)
+            throw new Error("Git returned an empty index entry.");
+        const record = output.subarray(start, index);
+        const separator = record.indexOf(0x09);
+        if (separator < 0)
+            throw new Error("Git returned a malformed index entry.");
+        const metadata = record.subarray(0, separator).toString("ascii");
+        const match = /^(\d{6}) ([0-9a-f]+) ([0-3])$/.exec(metadata);
+        if (!match)
+            throw new Error("Git returned a malformed index mode or stage.");
+        const pathBytes = record.subarray(separator + 1);
+        const path = pathBytes.toString("utf8");
+        if (!Buffer.from(path, "utf8").equals(pathBytes)) {
+            throw new Error("Git returned an index path that is not valid UTF-8; attribution fails closed.");
+        }
+        entries.push({ mode: match[1], stage: Number(match[3]), path });
+        start = index + 1;
+    }
+    if (start !== output.length)
+        throw new Error("Git index output is not NUL-terminated.");
+    return entries;
+}
 /** Read only enough Git path output to establish that the attribution limit is exceeded. */
 async function gitPathsBounded(rootDirectory, args, maxPaths) {
     return withPerfSpan("git", "git", () => new Promise((resolve, reject) => {
@@ -2350,7 +2390,7 @@ export async function startTaskVerificationEpoch(options) {
                     ...scope.attribution.attributedFiles,
                 ])].sort();
             try {
-                predecessorCandidateId = (await captureTaskEvidenceSubject(options.rootDirectory, options.task, scope.changedFiles, current)).candidateId;
+                predecessorCandidateId = (await captureTaskEvidenceSubject(options.rootDirectory, options.task, scope.changedFiles, current, { taskPath: options.taskPath })).candidateId;
             }
             catch {
                 // The conservative path-set carry remains valid even if candidate
@@ -3838,9 +3878,17 @@ export async function captureTaskEvidenceSubject(rootDirectory, task, changedFil
     const normalizedChangedFiles = [...new Set(changedFiles.map(normalizeRepoPath))]
         .filter((path) => path.length > 0)
         .sort();
-    const taskFile = baseline?.taskFile
-        ?? normalizedChangedFiles.find((path) => path.startsWith(`.tasks/${task.id}-`) && path.endsWith(".md"))
-        ?? `.tasks/${task.id}.md`;
+    const explicitTaskFile = options.taskPath
+        ? normalizeRepoPath(isAbsolute(options.taskPath) ? relative(rootDirectory, options.taskPath) : options.taskPath)
+        : undefined;
+    if (baseline?.taskFile && explicitTaskFile && baseline.taskFile !== explicitTaskFile) {
+        throw new TaskGitComparisonError(["task path"], new Error("Task path differs from the claimed baseline task file."));
+    }
+    const inferredTaskFile = normalizedChangedFiles.find((path) => path.startsWith(`.tasks/${task.id}-`) && path.endsWith(".md"));
+    const discoveredTaskFile = explicitTaskFile || baseline?.taskFile || inferredTaskFile
+        ? undefined
+        : await findTaskFile(rootDirectory, task.id).then((absolutePath) => normalizeRepoPath(relative(rootDirectory, absolutePath))).catch(() => undefined);
+    const taskFile = baseline?.taskFile ?? explicitTaskFile ?? inferredTaskFile ?? discoveredTaskFile ?? `.tasks/${task.id}.md`;
     const candidateFiles = normalizedChangedFiles.filter((path) => (path !== "docs/progress.md"
         && !(baseline ? isBookkeepingPath(path, baseline) : isDefaultBookkeepingPath(path, taskFile))));
     let isGit = false;
@@ -3850,18 +3898,65 @@ export async function captureTaskEvidenceSubject(rootDirectory, task, changedFil
     catch {
         isGit = false;
     }
-    if (isGit && candidateFiles.length > 0) {
+    if (isGit && (candidateFiles.length > 0 || taskFile.length > 0)) {
         let stagedPaths;
         let indexWorktreeDifferences;
         try {
             stagedPaths = await gitPaths(rootDirectory, [
                 "diff", "--cached", "--name-only", "--no-ext-diff", "-z", "--",
-                ...candidateFiles.map((path) => `:(literal)${path}`),
+                ...[...candidateFiles, taskFile].map((path) => `:(literal)${path}`),
             ]);
-            indexWorktreeDifferences = stagedPaths.length === 0 ? [] : await gitPaths(rootDirectory, [
+            const stagedCandidatePaths = stagedPaths.filter((path) => candidateFiles.includes(path));
+            indexWorktreeDifferences = stagedCandidatePaths.length === 0 ? [] : await gitPaths(rootDirectory, [
                 "diff", "--name-only", "--no-ext-diff", "-z", "--",
-                ...stagedPaths.map((path) => `:(literal)${path}`),
+                ...stagedCandidatePaths.map((path) => `:(literal)${path}`),
             ]);
+            const stagedTaskContract = stagedPaths.includes(taskFile)
+                ? comparableTaskContract(parseTaskMarkdown(await gitOutput(rootDirectory, ["show", `:${taskFile}`])))
+                : comparableTaskContract(task);
+            if (stagedTaskContract !== comparableTaskContract(task)) {
+                throw new Error(`Staged task contract differs from the worktree task contract: ${taskFile}`);
+            }
+            const indexEntries = await gitIndexEntries(rootDirectory, stagedCandidatePaths);
+            const entriesByPath = new Map();
+            for (const entry of indexEntries) {
+                const entries = entriesByPath.get(entry.path) ?? [];
+                entries.push(entry);
+                entriesByPath.set(entry.path, entries);
+            }
+            for (const path of stagedCandidatePaths) {
+                const entries = entriesByPath.get(path) ?? [];
+                let metadata;
+                try {
+                    metadata = await lstat(join(rootDirectory, path));
+                }
+                catch (error) {
+                    if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
+                        throw error;
+                    }
+                }
+                if (entries.length === 0) {
+                    if (metadata)
+                        throw new Error(`Staged deletion has a worktree path: ${path}`);
+                    continue;
+                }
+                if (entries.length !== 1 || entries[0].stage !== 0 || !metadata) {
+                    throw new Error(`Staged path has an unmerged or missing index/worktree entry: ${path}`);
+                }
+                const mode = entries[0].mode;
+                const worktreeMode = Number(metadata.mode);
+                const modeMatches = mode === "100644"
+                    ? metadata.isFile() && (worktreeMode & 0o111) === 0
+                    : mode === "100755"
+                        ? metadata.isFile() && (worktreeMode & 0o111) !== 0
+                        : mode === "120000"
+                            ? metadata.isSymbolicLink()
+                            : mode === "160000"
+                                ? metadata.isDirectory()
+                                : false;
+                if (!modeMatches)
+                    throw new Error(`Staged Git mode differs from the worktree entry: ${path}`);
+            }
         }
         catch (error) {
             throw new TaskGitComparisonError(["diff", "--cached/--name-only", "--no-ext-diff", "-z"], error);
@@ -3997,7 +4092,7 @@ export async function verifyTask(options) {
     let capturedSubject;
     const diagnostics = [...beforeSnapshot.diagnostics];
     try {
-        capturedSubject = await captureTaskEvidenceSubject(options.rootDirectory, task, scope.changedFiles, baseline, { allowUnresolvedLineage: true });
+        capturedSubject = await captureTaskEvidenceSubject(options.rootDirectory, task, scope.changedFiles, baseline, { allowUnresolvedLineage: true, taskPath: relative(options.rootDirectory, taskPath) });
     }
     catch (error) {
         diagnostics.push(error instanceof Error ? error.message : String(error));
@@ -4104,7 +4199,7 @@ export async function verifyTask(options) {
     diagnostics.push(...afterSnapshot.diagnostics);
     let afterSubject;
     try {
-        afterSubject = await captureTaskEvidenceSubject(options.rootDirectory, task, afterSnapshot.changedFiles, baseline, { allowUnresolvedLineage: true });
+        afterSubject = await captureTaskEvidenceSubject(options.rootDirectory, task, afterSnapshot.changedFiles, baseline, { allowUnresolvedLineage: true, taskPath: relative(options.rootDirectory, taskPath) });
     }
     catch (error) {
         diagnostics.push(error instanceof Error ? error.message : String(error));

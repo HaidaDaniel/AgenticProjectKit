@@ -231,10 +231,13 @@ export async function startDogfoodSession(options) {
     });
     return sessionFromStored(options.rootDirectory, stored, prompt);
 }
-async function dogfoodSubject(rootDirectory, task) {
+async function dogfoodSubject(rootDirectory, task, taskPath) {
     const baseline = await readTaskBaseline(rootDirectory, task.id);
-    const snapshot = await captureTaskScope({ rootDirectory, task, baseline });
-    const captured = await captureTaskEvidenceSubject(rootDirectory, task, snapshot.changedFiles);
+    const taskRelativePath = relative(rootDirectory, taskPath).replace(/\\/g, "/");
+    const snapshot = await captureTaskScope({ rootDirectory, task, taskPath: taskRelativePath, baseline });
+    const captured = await captureTaskEvidenceSubject(rootDirectory, task, snapshot.changedFiles, baseline, {
+        taskPath: taskRelativePath,
+    });
     return {
         subject: baseline ? { ...captured, baselineId: baseline.baselineId } : captured,
         comparisonKnown: snapshot.comparisonKnown,
@@ -269,7 +272,7 @@ export async function recordDogfoodResult(options) {
     }
     const taskPath = await findTaskFile(options.rootDirectory, options.taskId, options.taskDirectory);
     const task = (await loadTaskFile(taskPath)).task;
-    const dogfood = await dogfoodSubject(options.rootDirectory, task);
+    const dogfood = await dogfoodSubject(options.rootDirectory, task, taskPath);
     const evidence = await appendTaskEvidence(options.rootDirectory, {
         taskId: task.id,
         runId: sessionId,

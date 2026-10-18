@@ -250,7 +250,7 @@ export async function prepareTaskReview(options) {
         changedFiles: options.changedFiles,
     });
     const changedFiles = snapshot.changedFiles;
-    const capturedSubject = await captureTaskEvidenceSubject(options.rootDirectory, task, changedFiles, baseline, { allowUnresolvedLineage: true });
+    const capturedSubject = await captureTaskEvidenceSubject(options.rootDirectory, task, changedFiles, baseline, { allowUnresolvedLineage: true, taskPath: taskRelativePath });
     const subject = reviewSubject(capturedSubject, baseline?.baselineId);
     if (!snapshot.comparisonKnown) {
         const attributionApproval = await currentTaskAttributionApproval({
@@ -363,7 +363,7 @@ export async function recordTaskReview(options) {
             taskPath: relative(options.rootDirectory, taskPath).replace(/\\/g, "/"),
             baseline,
         });
-        const currentCaptured = await captureTaskEvidenceSubject(options.rootDirectory, task, snapshot.changedFiles, baseline, { allowUnresolvedLineage: true });
+        const currentCaptured = await captureTaskEvidenceSubject(options.rootDirectory, task, snapshot.changedFiles, baseline, { allowUnresolvedLineage: true, taskPath: relative(options.rootDirectory, taskPath).replace(/\\/g, "/") });
         const currentSubject = reviewSubject(currentCaptured, baseline?.baselineId);
         if (!snapshot.comparisonKnown) {
             const attributionApproval = await currentTaskAttributionApproval({
@@ -602,7 +602,10 @@ export async function recordTaskHumanDecision(options) {
         taskPath,
         baseline,
     });
-    const captured = await captureTaskEvidenceSubject(options.rootDirectory, task, snapshot.changedFiles, baseline, { allowUnresolvedLineage: options.decision === "accept-attribution" });
+    const captured = await captureTaskEvidenceSubject(options.rootDirectory, task, snapshot.changedFiles, baseline, {
+        allowUnresolvedLineage: options.decision === "accept-attribution",
+        taskPath: relative(options.rootDirectory, taskPath).replace(/\\/g, "/"),
+    });
     const subject = baseline ? { ...captured, baselineId: baseline.baselineId } : captured;
     const attributionApproval = options.decision === "accept-attribution"
         ? await validateTaskAttributionApproval({

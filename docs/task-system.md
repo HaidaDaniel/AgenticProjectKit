@@ -270,6 +270,8 @@ Verification, review, and dogfood results can be stored as append-only JSONL rec
 
 Evidence results are `pass`, `changes_requested` (review only), `fail`, `pending`, `unavailable`, or `not-run`. `readTaskEvidence` filters by task ID, while `compareTaskEvidenceFreshness` classifies a record as `current`, `stale`, or `unknown` against a candidate subject. Mismatched candidates remain in history but cannot be treated as current. Commands and short references are bounded; large stdout/stderr is not stored.
 
+Candidate identity is content-derived: normalized task contract and material scoped file fingerprints determine freshness, while `headSha` remains audit provenance. Advancing HEAD alone does not stale evidence for an unchanged content candidate. Lifecycle-only task fields and `docs/progress.md` do not stale unchanged evidence. During capture, staged task-contract content must agree with the worktree contract, staged material content must have no further unstaged edits, and Git index modes must agree with worktree file type and executable status even when `core.filemode=false`; ambiguous or unmerged index entries fail closed.
+
 Use `apk task evidence <task-id>` for a safe summary of records. The append-only store keeps repeated runs and failed evidence instead of overwriting history.
 
 ### Bounded dogfooding
