@@ -1,7 +1,7 @@
 # Task 0224 - Finish audited task amendment epochs with bounded legacy reader
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-task-0224
 Mode: maintenance
 Lane: verification
 Type: bugfix
@@ -107,7 +107,7 @@ Finish the remaining Task 0221 epoch identity and historical compatibility work 
 - `{"id":"task-tests","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node scripts/test-source.mjs src/core/tasks/task.test.ts"}`
 - `{"id":"typecheck","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm typecheck"}`
 - `{"id":"task-lint","type":"automated","required":true,"environment":"local","profile":"deterministic","apkOperation":"lint"}`
-- `{"id":"build-current","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build && test -z \"$(git status --porcelain --untracked-files=all --ignored=matching -- dist)\""}`
+- `{"id":"build-current","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"rm -rf dist && pnpm build && test -z \"$(git status --porcelain --untracked-files=all --ignored=matching -- dist)\""}`
 - `{"id":"diff-check","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
 - `{"id":"hosted-quality","type":"automated","required":true,"environment":"ci","profile":"deterministic","command":"pnpm release:check"}`
 
