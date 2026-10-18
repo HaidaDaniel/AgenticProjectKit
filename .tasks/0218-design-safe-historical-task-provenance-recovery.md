@@ -50,17 +50,22 @@ Design a safe, evidence-based recovery path for historical tasks that remain blo
 ## Steps
 
 1. Trace `validateTaskAttributionApproval`, `startTaskVerificationEpoch`, bounded Git DAG traversal, provenance output, and the completion gate. Record the exact checks and rejection reasons that apply to the InfoWarden Task 0138 history shape.
-2. Build a synthetic temporary Git repository in `experiments/task-provenance-recovery/` with a stable historical baseline, a task-owned side branch, a merge associated with downstream Tasks 0137/0142, an intervening contract edit, and a later candidate. Demonstrate why current `accept-attribution` and epoch start cannot prove the full history; do not modify this repository's Git history or task evidence.
-3. Compare bounded recovery options, including richer historical contract snapshots, explicit operator-approved exact-commit attribution, a linked successor task, and no-go. For each option, state its proof source, residual ambiguity, auditability, migration cost, and fail-closed behavior.
-4. Test each option against foreign-task commits, forbidden paths, unproven branch commits, ambiguous merge-resolution paths, contract edits, missing objects, and over-limit history. Reject any option that turns missing proof into acceptance.
-5. Record a comparative design decision and either a safe, bounded implementation plan with required evidence and migration steps or an explicit no-go grounded in evidence.
-6. Keep the work research-only: do not change attribution implementation, task lifecycle, task evidence, or Git history.
+2. Create one integrated synthetic temporary Git DAG reproducing the mixed-history shape: a stable historical baseline, a task-owned side branch, a merge associated with downstream Tasks 0137/0142, an intervening contract edit, and a later candidate.
+3. In addition to the integrated reproducer, create three independent minimal scenarios, each isolating one condition: (a) merge attribution rejection, (b) side-branch attribution rejection, and (c) predecessor-contract mismatch rejection during epoch start. Keep unrelated history out of each minimal scenario so its result identifies the responsible proof boundary.
+4. Execute only the existing APK behavior against these synthetic scenarios. Record the observed `accept-attribution`, epoch-start, provenance, and gate outcomes. Do not present a design-level argument or hypothetical future behavior as an executable test result.
+5. For each not-yet-implemented recovery option, write design-level proof obligations: the evidence it would need, the exact ambiguity it must reject, how that evidence would be invalidated, and a counterexample that would make the option unsafe. These obligations are analysis, not executable proof of a proposed implementation.
+6. Compare bounded recovery options, including richer historical contract snapshots, explicit operator-approved exact-commit attribution, a linked successor task, and no-go. For each, state proof source, residual ambiguity, auditability, migration cost, and fail-closed behavior. A linked successor may own new work and reference the old task, but does not prove historical attribution of the old task's commits and cannot satisfy its gate.
+7. Record a comparative design decision and either a safe, bounded implementation plan with required evidence and migration steps or an explicit no-go grounded in evidence.
+8. Keep the work research-only: do not change attribution implementation, task lifecycle, task evidence, or Git history.
 
 ## Acceptance criteria
 
-- A deterministic synthetic Git DAG reproduces the relevant mixed-history constraints and records current attribution, epoch, provenance, and gate outcomes.
+- A deterministic integrated synthetic Git DAG reproduces the mixed-history shape and records current attribution, epoch, provenance, and gate outcomes.
+- Three independently runnable minimal synthetic scenarios isolate merge rejection, side-branch rejection, and predecessor-contract mismatch rejection.
+- Executable results describe only behavior observed from the current implementation; future recovery proposals are evaluated separately through explicit design-level proof obligations.
 - The design record compares recovery options and selects a safe implementation plan or documents a no-go; it does not recommend an automatic bypass or history rewrite.
 - Every viable option preserves fail-closed behavior for foreign-task changes, forbidden paths, incomplete or ambiguous ancestry, changed predecessor contracts, and missing proof.
+- A linked successor task is not treated as proof of the old task's commit attribution, completion, or gate eligibility.
 - The reproducer and report use synthetic identities and temporary Git repositories; no downstream repository or existing task evidence is modified.
 - No APK implementation source, release artifact, or Git history is changed.
 
@@ -79,8 +84,10 @@ Design a safe, evidence-based recovery path for historical tasks that remain blo
 
 ## Required evidence
 
-- Runnable synthetic DAG reproducer and captured current outcomes for attribution approval, epoch start, provenance, and gate.
+- Runnable integrated synthetic DAG reproducer and captured current outcomes for attribution approval, epoch start, provenance, and gate.
+- Three independent minimal reproducer outcomes for merge, side-branch, and predecessor-contract mismatch.
 - Comparison matrix for recovery options, including explicit no-go criteria.
+- Design-level proof-obligation matrix for unimplemented options, clearly distinguished from executable results.
 - Written decision and, only if safe, an implementation plan with fail-closed regression cases.
 
 ## Review questions
