@@ -1,6 +1,6 @@
 # Task 0222 - Align workspace candidate freshness regression with content identity
 
-State: doing
+State: done
 Owner: codex-task-0222
 Mode: maintenance
 Lane: quality
