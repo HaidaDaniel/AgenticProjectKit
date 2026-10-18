@@ -8,7 +8,7 @@ Type: bugfix
 Scope: ci,verification,candidate-freshness,regression
 Risk: low
 Parallel: false
-Depends on: 0219,0220
+Depends on: none
 Tags: ci,regression,candidate-freshness
 
 ## Goal
@@ -23,8 +23,6 @@ Correct the workspace candidate identity regression test exposed by full CI afte
 - src/cli/cli.test.ts
 - src/core/tasks/index.ts
 - src/core/workspaces/index.ts
-- .tasks/0219-preserve-verification-process-termination-reasons.md
-- .tasks/0220-reject-misleading-noncanonical-task-scope-patterns.md
 
 ## Files allowed to edit
 
@@ -71,7 +69,7 @@ Correct the workspace candidate identity regression test exposed by full CI afte
 
 ## Required evidence
 
-- Pre-fix exact-SHA reproduction under Node 22.22.1 and pnpm 10.28.1.
+- Pre-fix exact-SHA reproduction under Node 22.22.1 and pnpm 10.28.1, including the latest red CI commit where available.
 - Regression output for both changed-candidate-content and revision-only cases.
 - Successful canonical `pnpm release:check` and clean committed-`dist` check.
 
@@ -102,7 +100,8 @@ Correct the workspace candidate identity regression test exposed by full CI afte
 
 ## Notes
 
-- Local reproduction on Task 0222's planning baseline `cc58a395d5206e5627b7d7608e553b82aed147a5` failed at `src/cli/cli.test.ts:1235` after 628 of 629 tests passed. The fixture supplied no changed candidate files, then committed a README change; the failing assertion expected the content-based candidate ID to differ. The test file blob was identical across four recent failed APK runs, but only the `cc58a39` run has been reproduced locally; hosted job logs were unavailable to this audit.
-- This task depends on 0219 and 0220 because their current contracts explicitly forbid changes under `src/cli/**`; do not modify those contracts to avoid the dependencies.
-- Do not run this task concurrently with Tasks 0219 or 0220; their allowed files and generated `dist/**` overlap.
+- The latest public failing run for `e012972780ccd93be4678338b7f05061d8a5ff22` (run 39127552538) failed at the aggregate `pnpm release:check` step. Its GitHub annotation only reports exit code 1; job logs are unavailable to this audit. A clean local replay of that exact SHA with Node 22.22.1 and pnpm 10.28.1 passed frozen install and failed 631/632 tests at `src/cli/cli.test.ts:1235` with the same equal-`candidateId` assertion. The fixture supplied no changed candidate files, committed a README change, then expected the content-based candidate ID to differ. This proves the exact-SHA local failure; do not claim the hosted test name as its cause without the unavailable hosted log. The earlier `cc58a39` replay showed the same failure with 628/629 tests.
+- This task has no dependency on 0219 or 0220: its only implementation path is `src/cli/cli.test.ts`, while those tasks own task-verification and task-scope validation paths. Their broad `src/cli/**` prohibitions do not represent candidate or provenance dependencies for this test-only fixture correction. `docs/progress.md` is shared lifecycle bookkeeping only.
+- Safe same-checkout order: finish any currently doing/review task, then this independent fixture correction can run before or after 0219 and 0220. Keep the repository's one-mutable-task-per-checkout rule; use separate worktrees if independent tasks are intentionally run in parallel.
+- Task 0223 depends on this task because it has a real planned overlap on `src/cli/cli.test.ts` and must verify the corrected full release check.
 - The full release check executes the task once within its coverage suite; do not run overlapping full test or coverage aggregates alongside it as final verification.
