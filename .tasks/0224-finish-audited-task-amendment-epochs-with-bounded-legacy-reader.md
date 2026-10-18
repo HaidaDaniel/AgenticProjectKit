@@ -1,6 +1,6 @@
 # Task 0224 - Finish audited task amendment epochs with bounded legacy reader
 
-State: doing
+State: done
 Owner: codex-task-0224
 Mode: maintenance
 Lane: verification
