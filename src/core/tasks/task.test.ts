@@ -5195,7 +5195,7 @@ test("verifyTask preserves numeric callback results and reports observed default
 });
 
 test("verification keeps the ten-minute timeout and lint does not execute task commands", async () => {
-  const source = await readFile(new URL("./index.ts", import.meta.url), "utf8");
+  const source = await readFile(join(process.cwd(), "src/core/tasks/index.ts"), "utf8");
   assert.match(source, /const DEFAULT_TASK_COMMAND_TIMEOUT_MS = 10 \* 60 \* 1000;/);
 
   await withTempDirectory(async (directory) => {
