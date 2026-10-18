@@ -8,7 +8,7 @@ Type: feature
 Scope: ci,push,git,worktree,toolchain,verification
 Risk: high
 Parallel: false
-Depends on: 0219,0220,0221,0222
+Depends on: 0219,0220,0222,0224
 Tags: ci,push,toolchain,git,verification
 
 ## Goal
@@ -171,6 +171,7 @@ Provide an explicit opt-in local guard that runs a repository-declared CI contra
 - Task 0192 is done and intentionally made the default hook fast while leaving full CI authoritative. This task adds an explicit opt-in path and does not reverse that default.
 - Task 0177 previously ran stronger pre-push checks; Task 0192 deliberately removed the full release aggregate. This task is distinct because it runs the exact pushed SHA in an isolated worktree only after explicit opt-in.
 - This task depends on 0219 and 0220 because those contracts currently forbid `src/cli/**` and share generated `dist/**`; it depends on 0221 because that active task owns `src/cli/command-registry.ts` and `dist/**`; it depends on 0222 because the current full release aggregate has a reproduced failing test. Keep those dependencies unless the referenced contracts are completed or the actual path overlap is removed.
+- Task 0221 was blocked because its original baseline includes foreign Task 0222/0223 contract commits. Task 0224 is its bounded successor for the remaining epoch identity paths; 0223 depends on 0224 while the shared packaged output work is completed in sequence.
 - Keep multi-ref exact-SHA handling and detached clean-checkout validation in this MVP: silently postponing multi-ref support would let a push contain an unchecked ref. Cross-platform expansion can be deferred because it is not needed to establish the exact-SHA invariant; define the initial tested platform set and fail closed elsewhere, then create a separate follow-up only if downstream evidence requires broader support.
 - Current public main CI run 39127552538 for `e012972780ccd93be4678338b7f05061d8a5ff22` failed at `pnpm release:check`; the public annotation reports only exit code 1 and the job-log endpoint returned 403. A clean exact-SHA replay with Node 22.22.1 and pnpm 10.28.1 passed frozen install and failed 631/632 tests at `src/cli/cli.test.ts:1235`, where a README-only commit leaves content-based `candidateId` unchanged. This is a confirmed local failure at the current red SHA, not a claim about inaccessible hosted log details. The earlier `cc58a39` replay exhibited the same assertion. The local fast pre-push passed on `cc58a39`, showing the full aggregate was absent from the fast lane.
 - Current public API observation for APK `main`: `protected=false` and no active rulesets. No branch settings are changed by this task; require an operator to configure PR-only or restricted main updates and the hosted `Clean-checkout quality` required status check.
