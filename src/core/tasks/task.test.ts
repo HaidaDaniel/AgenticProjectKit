@@ -3095,6 +3095,35 @@ test("candidate freshness detects symlink target changes when linked contents ma
       ).freshness,
       "stale",
     );
+
+    await rm(linkPath);
+    await symlink(Buffer.from([0xff, 0x74, 0x61, 0x72, 0x67, 0x65, 0x74]), linkPath);
+    const invalidUtf8Before = await captureTaskEvidenceSubject(directory, task, ["docs/task-b/current.txt"]);
+    await rm(linkPath);
+    await symlink(Buffer.from([0xfe, 0x74, 0x61, 0x72, 0x67, 0x65, 0x74]), linkPath);
+    const invalidUtf8After = await captureTaskEvidenceSubject(directory, task, ["docs/task-b/current.txt"]);
+    assert.notEqual(invalidUtf8Before.candidateId, invalidUtf8After.candidateId);
+  });
+});
+
+test("candidate evidence fails closed when Git index and worktree diverge", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupReclaimRepo(directory);
+    const taskPath = join(directory, ".tasks", "0008-bounded-task.md");
+    const { task } = await loadTaskFile(taskPath);
+    const candidatePath = join(directory, "docs", "task-b", "candidate.txt");
+    await writeFile(candidatePath, "verified candidate\n", "utf8");
+    await execFileAsync("git", ["add", "docs/task-b/candidate.txt"], { cwd: directory });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "candidate baseline"], { cwd: directory });
+
+    await writeFile(candidatePath, "staged candidate\n", "utf8");
+    await execFileAsync("git", ["add", "docs/task-b/candidate.txt"], { cwd: directory });
+    await writeFile(candidatePath, "worktree candidate\n", "utf8");
+
+    await assert.rejects(
+      () => captureTaskEvidenceSubject(directory, task, ["docs/task-b/candidate.txt"]),
+      /Staged scoped files differ between Git index and worktree/,
+    );
   });
 });
 

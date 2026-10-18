@@ -1797,7 +1797,8 @@ async function fingerprintChangedFiles(rootDirectory, changedFiles) {
             const metadata = await lstat(absolutePath);
             let material;
             if (metadata.isSymbolicLink()) {
-                material = { type: "symlink", target: await readlink(absolutePath) };
+                const target = await readlink(absolutePath, { encoding: "buffer" });
+                material = { type: "symlink", targetBase64: target.toString("base64") };
             }
             else if (metadata.isFile()) {
                 material = {
@@ -1817,8 +1818,12 @@ async function fingerprintChangedFiles(rootDirectory, changedFiles) {
                 sha256: hashCandidatePart(material),
             });
         }
-        catch {
-            fingerprints.push({ path, sha256: "missing" });
+        catch (error) {
+            if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+                fingerprints.push({ path, sha256: "missing" });
+                continue;
+            }
+            throw error;
         }
     }
     return fingerprints;
@@ -3838,7 +3843,6 @@ export async function captureTaskEvidenceSubject(rootDirectory, task, changedFil
         ?? `.tasks/${task.id}.md`;
     const candidateFiles = normalizedChangedFiles.filter((path) => (path !== "docs/progress.md"
         && !(baseline ? isBookkeepingPath(path, baseline) : isDefaultBookkeepingPath(path, taskFile))));
-    const fingerprints = await fingerprintChangedFiles(rootDirectory, candidateFiles);
     let isGit = false;
     try {
         isGit = (await gitOutput(rootDirectory, ["rev-parse", "--is-inside-work-tree"])).trim() === "true";
@@ -3846,6 +3850,27 @@ export async function captureTaskEvidenceSubject(rootDirectory, task, changedFil
     catch {
         isGit = false;
     }
+    if (isGit && candidateFiles.length > 0) {
+        let stagedPaths;
+        let indexWorktreeDifferences;
+        try {
+            stagedPaths = await gitPaths(rootDirectory, [
+                "diff", "--cached", "--name-only", "--no-ext-diff", "-z", "--",
+                ...candidateFiles.map((path) => `:(literal)${path}`),
+            ]);
+            indexWorktreeDifferences = stagedPaths.length === 0 ? [] : await gitPaths(rootDirectory, [
+                "diff", "--name-only", "--no-ext-diff", "-z", "--",
+                ...stagedPaths.map((path) => `:(literal)${path}`),
+            ]);
+        }
+        catch (error) {
+            throw new TaskGitComparisonError(["diff", "--cached/--name-only", "--no-ext-diff", "-z"], error);
+        }
+        if (indexWorktreeDifferences.length > 0) {
+            throw new TaskGitComparisonError(["diff", "--name-only", "--no-ext-diff", "-z"], new Error(`Staged scoped files differ between Git index and worktree: ${indexWorktreeDifferences.slice(0, 8).join(", ")}`));
+        }
+    }
+    const fingerprints = await fingerprintChangedFiles(rootDirectory, candidateFiles);
     const headSha = isGit
         ? (await gitOutput(rootDirectory, ["rev-parse", "HEAD"])).trim() || undefined
         : undefined;

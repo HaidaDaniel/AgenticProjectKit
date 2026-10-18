@@ -14,8 +14,10 @@ contract. The fix retains exact HEAD as provenance while deriving freshness from
 the normalized task contract and material scoped file contents; lifecycle-only
 task/progress commits remain identity-neutral. Existing evidence records are not
 rewritten.
-Candidate fingerprints also preserve Git entry semantics: symlink targets and
-executable status remain material even when dereferenced bytes match.
+Candidate fingerprints preserve Git entry semantics: raw symlink target bytes and
+executable status remain material even when dereferenced bytes match. Capture also
+rejects staged scoped paths with further unstaged changes, while ordinary
+unstaged-only candidate edits remain verifiable.
 
 Task 0206 is complete: the opt-in local profiler has bounded session/report
 primitives, central CLI/subprocess instrumentation, safe local JSONL storage,
