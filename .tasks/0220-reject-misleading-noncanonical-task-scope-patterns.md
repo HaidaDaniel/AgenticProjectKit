@@ -1,7 +1,7 @@
 # Task 0220 - Reject misleading noncanonical task scope patterns
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-task-0220
 Mode: maintenance
 Lane: task-authoring
 Type: bugfix
@@ -121,7 +121,7 @@ Reject noncanonical scope patterns that contain interior `.` path segments or re
 - `{"id":"path-contract-tests","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node scripts/test-source.mjs src/core/tasks/task.test.ts src/core/audit/lint.test.ts"}`
 - `{"id":"typecheck","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm typecheck"}`
 - `{"id":"task-lint","type":"automated","required":true,"environment":"local","profile":"deterministic","apkOperation":"lint"}`
-- `{"id":"build-current","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm build && test -z \"$(git status --porcelain --untracked-files=all --ignored=matching -- dist)\""}`
+- `{"id":"build-current","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"rm -rf dist && pnpm build && test -z \"$(git status --porcelain --untracked-files=all --ignored=matching -- dist)\""}`
 - `{"id":"diff-check","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
 
 ## Documentation updates
