@@ -31,6 +31,9 @@ export const TASK_VERIFICATION_SUMMARY_MAX_LENGTH = TASK_EVIDENCE_SUMMARY_MAX_LE
 const MAX_TASK_ATTRIBUTION_COMMITS = 128;
 const MAX_TASK_ATTRIBUTION_FILES = 512;
 const MAX_TASK_EPOCH_COMMITS = 4096;
+const MAX_LEGACY_EPOCH_CLOCK_DRIFT_MS = 1000;
+const MAX_LEGACY_EPOCH_IDENTITY_BYTES = 100_000;
+const MAX_LEGACY_EPOCH_HASH_ATTEMPTS = 10_000;
 const MAX_TASK_ATTRIBUTION_OUTPUT_COMMITS = 16;
 const MAX_TASK_ATTRIBUTION_OUTPUT_FILES = 128;
 const MAX_ARCHIVE_REFERENCE_FILES = 4096;
@@ -2703,6 +2706,9 @@ function normalizeBaseline(value: unknown, lineNumber: number): TaskClaimBaselin
     issues.push(`Baseline line ${lineNumber}.dirtyFiles must be an object.`);
   } else {
     for (const [path, fingerprint] of Object.entries(raw.dirtyFiles as Record<string, unknown>)) {
+      if (raw.phase === "epoch" && path !== normalizeRepoPath(path)) {
+        issues.push(`Baseline line ${lineNumber}.dirtyFiles paths must be canonical for epoch identity validation.`);
+      }
       if (typeof fingerprint !== "string" || fingerprint.length === 0) {
         issues.push(`Baseline line ${lineNumber}.dirtyFiles.${path} must be a non-empty string.`);
       } else {
@@ -2761,9 +2767,15 @@ function normalizeBaseline(value: unknown, lineNumber: number): TaskClaimBaselin
           issues.push(`Baseline line ${lineNumber}.carriedForwardFiles[${index}].sha256 must be a non-empty string.`);
           continue;
         }
-        carriedForwardFiles.push({ path: normalizeRepoPath(entry.path), sha256: entry.sha256 });
+        if (entry.path !== normalizeRepoPath(entry.path)) {
+          issues.push(`Baseline line ${lineNumber}.carriedForwardFiles[${index}].path must be canonical.`);
+        }
+        const previousPath = carriedForwardFiles.at(-1)?.path;
+        if (previousPath !== undefined && previousPath >= entry.path) {
+          issues.push(`Baseline line ${lineNumber}.carriedForwardFiles must have unique paths in default JavaScript sort order.`);
+        }
+        carriedForwardFiles.push({ path: entry.path, sha256: entry.sha256 });
       }
-      carriedForwardFiles.sort((left, right) => left.path.localeCompare(right.path));
     }
   }
   const epochId = optionalBaselineText("epochId");
@@ -2891,6 +2903,10 @@ function normalizeBaseline(value: unknown, lineNumber: number): TaskClaimBaselin
     issues.push(`Baseline line ${lineNumber}.headSha is required for git baselines.`);
   }
   if (phase === "epoch") {
+    const epochTime = Date.parse(baseline.time);
+    if (!Number.isFinite(epochTime) || new Date(epochTime).toISOString() !== baseline.time) {
+      issues.push(`Baseline line ${lineNumber}.time must be a canonical ISO timestamp for epoch records.`);
+    }
     if (!epochId) issues.push(`Baseline line ${lineNumber}.epochId is required for epoch records.`);
     if (!predecessorBaselineId) issues.push(`Baseline line ${lineNumber}.predecessorBaselineId is required for epoch records.`);
     if (!epochReason) issues.push(`Baseline line ${lineNumber}.epochReason is required for epoch records.`);
@@ -3283,7 +3299,59 @@ async function readAllTaskBaselineRecords(rootDirectory: string): Promise<TaskCl
   return records;
 }
 
+type TaskEpochIdentityFields = Pick<TaskClaimBaseline,
+  "taskId" | "predecessorBaselineId" | "predecessorEpochId" | "owner" | "epochReason" | "time" | "headSha" | "carriedForwardFiles"
+> & { contractAmendment?: Pick<TaskContractAmendmentRecord, "approvalDigest"> };
+
+function taskEpochIdentity(record: TaskEpochIdentityFields, time = record.time): string {
+  return `epoch:${hashCandidatePart({
+    taskId: record.taskId,
+    predecessorBaselineId: record.predecessorBaselineId,
+    predecessorEpochId: record.predecessorEpochId,
+    owner: record.owner,
+    reason: record.epochReason,
+    time,
+    headSha: record.headSha,
+    carriedForwardFiles: record.carriedForwardFiles,
+    ...(record.contractAmendment
+      ? { contractAmendmentApprovalDigest: record.contractAmendment.approvalDigest }
+      : {}),
+  })}`;
+}
+
+function matchesHistoricalTaskEpochIdentity(
+  record: TaskClaimBaseline,
+  predecessor: TaskClaimBaseline,
+  budget: { attempts: number },
+): boolean {
+  // The original writer hashed one clock reading, then captured another after
+  // Git I/O. Its snapshot-free format never stored the first timestamp. Recover
+  // only an exact digest preimage; never replace either persisted time or ID.
+  if (record.taskContractSnapshot !== undefined || record.contractAmendment
+    || predecessor.taskContractSnapshot !== undefined || predecessor.contractAmendment) return false;
+  if (Buffer.byteLength(JSON.stringify(record), "utf8") > MAX_LEGACY_EPOCH_IDENTITY_BYTES) return false;
+  const storedTime = Date.parse(record.time);
+  const expectedBaselineId = `baseline:${hashCandidatePart({
+    taskId: record.taskId,
+    owner: record.owner,
+    time: record.time,
+    headSha: record.headSha,
+    changedFiles: Object.keys(record.dirtyFiles).sort(),
+    phase: "epoch",
+  })}`;
+  if (record.baselineId !== expectedBaselineId) return false;
+  for (let deltaMs = 1; deltaMs <= MAX_LEGACY_EPOCH_CLOCK_DRIFT_MS; deltaMs += 1) {
+    budget.attempts += 1;
+    if (budget.attempts > MAX_LEGACY_EPOCH_HASH_ATTEMPTS) {
+      throw new TaskBaselineFormatError(["Historical epoch identity recovery exceeds the bounded hash-attempt budget; history remains unchanged."]);
+    }
+    if (record.epochId === taskEpochIdentity(record, new Date(storedTime - deltaMs).toISOString())) return true;
+  }
+  return false;
+}
+
 function validateTaskContractAmendmentHistory(records: readonly TaskClaimBaseline[]): void {
+  const legacyRecoveryBudget = { attempts: 0 };
   const byTask = new Map<string, Map<string, Array<{ record: TaskClaimBaseline; index: number }>>>();
   const amendmentIds = new Set<string>();
   const epochIds = new Map<string, Set<string>>();
@@ -3338,6 +3406,10 @@ function validateTaskContractAmendmentHistory(records: readonly TaskClaimBaselin
         }
       } else if (predecessorHash && record.taskContractHash !== predecessorHash) {
         throw new TaskBaselineFormatError([`Task ${record.taskId} epoch changes the contract without an exact amendment record.`]);
+      }
+      if (record.epochId !== taskEpochIdentity(record)
+        && !matchesHistoricalTaskEpochIdentity(record, predecessor.record, legacyRecoveryBudget)) {
+        throw new TaskBaselineFormatError([`Task ${record.taskId} epoch ID does not match its recorded identity and carried paths.`]);
       }
       taskEpochIds.add(record.epochId!);
       taskEpochBaselineIds.add(record.baselineId);
@@ -3430,17 +3502,25 @@ export async function startTaskVerificationEpoch(
   const contractSnapshot = taskContractSnapshot(options.task);
   let predecessorContractHash = predecessor.taskContractHash;
   let historicalContractSnapshot: string | undefined;
-  if (!predecessorContractHash && predecessor.headSha) {
+  if (!predecessor.taskContractSnapshot && predecessor.headSha) {
+    let historicalMarkdown: string | undefined;
     try {
-      const historical = parseTaskMarkdown(await gitOutput(
+      historicalMarkdown = await gitOutput(
         options.rootDirectory,
         ["show", `${predecessor.headSha}:${predecessor.taskFile}`],
-      ));
-      historicalContractSnapshot = taskContractSnapshot(historical);
-      predecessorContractHash = taskContractHash(historical);
+      );
     } catch {
       // A legacy untracked task may have no Git snapshot; an exact supplied
-      // snapshot can still be checked against a stored taskContractHash.
+      // snapshot can still be checked against the stored taskContractHash.
+    }
+    if (historicalMarkdown !== undefined) {
+      const historical = parseTaskMarkdown(historicalMarkdown);
+      historicalContractSnapshot = taskContractSnapshot(historical);
+      const historicalContractHash = taskContractHash(historical);
+      if (predecessorContractHash && historicalContractHash !== predecessorContractHash) {
+        throw new Error("Git task contract does not match the contract hash stored in the predecessor baseline.");
+      }
+      predecessorContractHash ??= historicalContractHash;
     }
   }
   if (!predecessorContractHash) {
@@ -3599,17 +3679,17 @@ export async function startTaskVerificationEpoch(
       predecessorBaselineId: predecessor.baselineId,
       carriedForwardFiles: carriedFingerprints,
     })}`;
-  const epochId = `epoch:${hashCandidatePart({
+  const epochId = taskEpochIdentity({
     taskId: options.task.id,
     predecessorBaselineId: predecessor.baselineId,
     predecessorEpochId: predecessor.epochId,
     owner: options.owner,
-    reason,
+    epochReason: reason,
     time,
     headSha: currentHeadSha,
     carriedForwardFiles: carriedFingerprints,
-    ...(amendmentPreview ? { contractAmendmentApprovalDigest: amendmentPreview.approvalDigest } : {}),
-  })}`;
+    ...(amendmentPreview ? { contractAmendment: { approvalDigest: amendmentPreview.approvalDigest } } : {}),
+  });
   const validationHeadSha = (await gitOutput(options.rootDirectory, ["rev-parse", "HEAD"])).trim();
   if (validationHeadSha !== currentHeadSha) {
     throw new Error("Git HEAD changed while the verification epoch snapshot was being prepared; retry.");
@@ -3872,14 +3952,25 @@ export async function previewTaskContractAmendment(options: {
     if (!predecessor.headSha) throw new Error("Legacy baseline has no contract hash or Git anchor; amendment preview fails closed.");
   }
   let historicalSnapshot: string | undefined;
-  if (!baselineContractHash && predecessor.headSha) {
+  if (!predecessor.taskContractSnapshot && predecessor.headSha) {
+    let historicalMarkdown: string | undefined;
     try {
-      historicalSnapshot = taskContractSnapshot(parseTaskMarkdown(await gitOutput(
+      historicalMarkdown = await gitOutput(
         options.rootDirectory,
         ["show", `${predecessor.headSha}:${predecessor.taskFile}`],
-      )));
+      );
     } catch {
-      throw new Error("Legacy task contract at the predecessor Git baseline is unreadable; amendment preview fails closed.");
+      if (!options.priorSnapshot) {
+        throw new Error("Legacy task contract at the predecessor Git baseline is unreadable; provide a prior snapshot whose hash matches the claim or fail closed.");
+      }
+    }
+    if (historicalMarkdown !== undefined) {
+      const historical = parseTaskMarkdown(historicalMarkdown);
+      historicalSnapshot = taskContractSnapshot(historical);
+      const historicalHash = taskContractHash(historical);
+      if (baselineContractHash && historicalHash !== baselineContractHash) {
+        throw new Error("Git task contract does not match the contract hash stored in the predecessor baseline; amendment preview fails closed.");
+      }
     }
   }
   const sourceSnapshot = options.priorSnapshot ?? predecessor.taskContractSnapshot ?? historicalSnapshot;
