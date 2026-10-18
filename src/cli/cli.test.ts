@@ -1223,18 +1223,43 @@ test("workspace records bind distinct candidates across revisions", async () => 
     const task = parseTaskMarkdown(buildTaskMarkdown("0001", "Task", "doing", "owner"));
 
     const first = await createWorkspace({ rootDirectory: directory, taskId: "0001", owner: "owner" });
-    const subjectA = await captureTaskEvidenceSubject(first.record.worktreePath, task, []);
+    const subjectA = await captureTaskEvidenceSubject(first.record.worktreePath, task, ["README.md"]);
     await removeWorkspace({ rootDirectory: directory, id: first.record.id, apply: true });
 
     await writeFile(join(directory, "README.md"), "second\n", "utf8");
     await execFileAsync("git", ["commit", "-qam", "second"], { cwd: directory });
 
     const second = await createWorkspace({ rootDirectory: directory, taskId: "0001", owner: "owner" });
-    const subjectB = await captureTaskEvidenceSubject(second.record.worktreePath, task, []);
+    const subjectB = await captureTaskEvidenceSubject(second.record.worktreePath, task, ["README.md"]);
 
     assert.notEqual(subjectA.candidateId, subjectB.candidateId);
     assert.notEqual(first.record.worktreeId, second.record.worktreeId);
     assert.notEqual(first.record.candidateRevision, second.record.candidateRevision);
+    await removeWorkspace({ rootDirectory: directory, id: second.record.id, apply: true });
+  });
+});
+
+test("workspace records preserve candidate content across revision-only changes", async () => {
+  await withTempDirectory(async (directory) => {
+    await initGitRepo(directory);
+    await writeTaskFile(directory, "0001", "doing", "owner");
+    const task = parseTaskMarkdown(buildTaskMarkdown("0001", "Task", "doing", "owner"));
+
+    const first = await createWorkspace({ rootDirectory: directory, taskId: "0001", owner: "owner" });
+    const subjectA = await captureTaskEvidenceSubject(first.record.worktreePath, task, ["README.md"]);
+    await removeWorkspace({ rootDirectory: directory, id: first.record.id, apply: true });
+
+    await writeFile(join(directory, "revision-only.txt"), "outside the declared candidate files\n", "utf8");
+    await execFileAsync("git", ["add", "revision-only.txt"], { cwd: directory });
+    await execFileAsync("git", ["commit", "-qm", "advance revision without changing README"], { cwd: directory });
+
+    const second = await createWorkspace({ rootDirectory: directory, taskId: "0001", owner: "owner" });
+    const subjectB = await captureTaskEvidenceSubject(second.record.worktreePath, task, ["README.md"]);
+
+    assert.equal(subjectA.candidateId, subjectB.candidateId);
+    assert.notEqual(first.record.worktreeId, second.record.worktreeId);
+    assert.notEqual(first.record.candidateRevision, second.record.candidateRevision);
+    await removeWorkspace({ rootDirectory: directory, id: second.record.id, apply: true });
   });
 });
 
