@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { appendFile, link, lstat, mkdir, readFile, readlink, readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { constants as osConstants } from "node:os";
 import { dirname, isAbsolute, join, relative } from "node:path";
 
 import { appendRunLog, readRunLog, requireAgent } from "../agents/index.js";
@@ -1935,9 +1936,18 @@ export class TaskBaselineFormatError extends Error {
 export interface TaskVerifyCommandResult {
   command: string;
   exitCode: number;
+  exitCodeObserved?: boolean;
+  processOutcome?: TaskVerificationProcessOutcome;
   apkOperation?: TaskApkOperation;
   resolvedApkIdentity?: string;
 }
+
+export type TaskVerificationProcessOutcome =
+  | { kind: "exit"; exitCode: number; detail?: string }
+  | { kind: "timeout"; signal?: string; timeoutMs?: number; detail?: string }
+  | { kind: "signal"; signal: string; timeoutUnconfirmed?: boolean; detail?: string }
+  | { kind: "spawn-failure"; errorCode: string; path?: string; detail?: string }
+  | { kind: "unknown"; detail?: string };
 
 export type TaskVerifyCheckStatus = TaskEvidenceResult;
 
@@ -1952,6 +1962,8 @@ export interface TaskVerifyCheckResult {
   status: TaskVerifyCheckStatus;
   command?: string;
   reason?: string;
+  exitCodeObserved?: boolean;
+  processOutcome?: TaskVerificationProcessOutcome;
 }
 
 export interface TaskVerifyResult extends TaskFileScopeResult {
@@ -5552,20 +5564,97 @@ async function defaultRunCommand(
   command: string,
   timeoutMs = DEFAULT_TASK_COMMAND_TIMEOUT_MS,
 ): Promise<number> {
-  try {
-    await observedExec(command, {
-      cwd: rootDirectory,
-      windowsHide: true,
-      timeout: timeoutMs,
-      maxBuffer: 2 * 1024 * 1024,
-    });
-    return 0;
-  } catch (error: unknown) {
-    if (error && typeof error === "object" && "code" in error) {
-      return typeof error.code === "number" ? error.code : 1;
-    }
+  await observedExec(command, {
+    cwd: rootDirectory,
+    windowsHide: true,
+    timeout: timeoutMs,
+    maxBuffer: 2 * 1024 * 1024,
+  });
+  return 0;
+}
 
-    return 1;
+function processErrorDetail(error: unknown): string | undefined {
+  const message = error instanceof Error ? error.message : String(error);
+  const normalized = message.replace(/\s+/g, " ").trim();
+  return normalized ? normalized.slice(0, 500) : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function normalizeProcessSignal(value: unknown): string | undefined {
+  return typeof value === "string"
+    && Object.prototype.hasOwnProperty.call(osConstants.signals, value)
+    ? value
+    : undefined;
+}
+
+function taskVerificationProcessOutcome(error: unknown): TaskVerificationProcessOutcome {
+  const fields = isRecord(error) ? error : {};
+  const code = fields.code;
+  const signal = normalizeProcessSignal(fields.signal);
+  const detail = processErrorDetail(error);
+  const timeoutMs = typeof fields.timeoutMs === "number"
+    && Number.isFinite(fields.timeoutMs)
+    && fields.timeoutMs > 0
+    ? fields.timeoutMs
+    : undefined;
+  const timeoutCode = code === "ETIMEDOUT";
+  const timeoutFlag = fields.timedOut === true;
+  const hasSpawnCode = typeof code === "string"
+    && /^E[A-Z0-9]+$/.test(code)
+    && (typeof fields.path === "string"
+      || (typeof fields.syscall === "string" && fields.syscall.startsWith("spawn")));
+
+  if ((fields.timedOut === false && timeoutCode)
+    || ((timeoutFlag || timeoutCode)
+      && (typeof code === "number" || hasSpawnCode))) {
+    return { kind: "unknown", ...(detail ? { detail } : {}) };
+  }
+  if (timeoutFlag || timeoutCode) {
+    return {
+      kind: "timeout",
+      ...(signal ? { signal } : {}),
+      ...(timeoutMs ? { timeoutMs } : {}),
+      ...(detail ? { detail } : {}),
+    };
+  }
+  if (typeof code === "number" && Number.isInteger(code) && code > 0
+    && !signal && fields.killed !== true) {
+    return { kind: "exit", exitCode: code, ...(detail ? { detail } : {}) };
+  }
+  if (hasSpawnCode && typeof code === "string" && !signal && fields.killed !== true) {
+    return {
+      kind: "spawn-failure",
+      errorCode: code,
+      ...(typeof fields.path === "string" ? { path: fields.path.slice(0, 300) } : {}),
+      ...(detail ? { detail } : {}),
+    };
+  }
+  if (signal && (code === null || code === undefined)) {
+    return {
+      kind: "signal",
+      signal,
+      ...(fields.killed === true ? { timeoutUnconfirmed: true } : {}),
+      ...(detail ? { detail } : {}),
+    };
+  }
+  return { kind: "unknown", ...(detail ? { detail } : {}) };
+}
+
+function processOutcomeReason(outcome: TaskVerificationProcessOutcome): string {
+  switch (outcome.kind) {
+    case "exit":
+      return `command exited with code ${outcome.exitCode}`;
+    case "timeout":
+      return `command timed out${outcome.timeoutMs ? ` after ${outcome.timeoutMs} ms` : ""}${outcome.signal ? ` (terminated with ${outcome.signal})` : ""}`;
+    case "signal":
+      return `command was terminated by ${outcome.signal}${outcome.timeoutUnconfirmed ? "; the runner did not identify the cause as a timeout" : ""}`;
+    case "spawn-failure":
+      return `command failed to start (${outcome.errorCode})${outcome.path ? `: ${outcome.path}` : ""}`;
+    case "unknown":
+      return `command failed with unknown process outcome${outcome.detail ? `: ${outcome.detail}` : ""}`;
   }
 }
 
@@ -5709,6 +5798,8 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
     let status: TaskVerifyCheckStatus = "not-run";
     let reason: string | undefined;
     let exitCode: number | undefined;
+    let exitCodeObserved: boolean | undefined;
+    let processOutcome: TaskVerificationProcessOutcome | undefined;
     let resolvedApkIdentity: string | undefined;
 
     if (!passed) {
@@ -5736,11 +5827,25 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
           exitCode = operationResult.exitCode;
           resolvedApkIdentity = operationResult.resolvedApkIdentity;
         } else {
-          exitCode = await (options.runCommand ?? ((cmd) => defaultRunCommand(
-            options.rootDirectory,
-            cmd,
-            options.commandTimeoutMs,
-          )))(check.command!);
+          try {
+            exitCode = await (options.runCommand ?? ((cmd) => defaultRunCommand(
+              options.rootDirectory,
+              cmd,
+              options.commandTimeoutMs,
+            )))(check.command!);
+          } catch (error: unknown) {
+            processOutcome = taskVerificationProcessOutcome(error);
+            if (processOutcome.kind === "exit") {
+              exitCode = processOutcome.exitCode;
+              exitCodeObserved = true;
+            } else {
+              // TaskVerifyCommandResult keeps its historical numeric field. The
+              // explicit metadata marks this compatibility projection as synthetic.
+              exitCode = 1;
+              exitCodeObserved = false;
+            }
+            reason = processOutcomeReason(processOutcome);
+          }
         }
       } catch (error: unknown) {
         exitCode = 1;
@@ -5750,6 +5855,8 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
       commandsRun.push({
         command: check.apkOperation ? `builtin:apk/${check.apkOperation}` : check.command!,
         exitCode,
+        ...(exitCodeObserved !== undefined ? { exitCodeObserved } : {}),
+        ...(processOutcome ? { processOutcome } : {}),
         ...(check.apkOperation ? { apkOperation: check.apkOperation } : {}),
         ...(resolvedApkIdentity ? { resolvedApkIdentity } : {}),
       });
@@ -5769,6 +5876,8 @@ export async function verifyTask(options: TaskVerifyOptions): Promise<TaskVerify
       ...(check.command ? { command: check.command } : {}),
       ...(resolvedApkIdentity ? { resolvedApkIdentity } : {}),
       ...(reason ? { reason } : {}),
+      ...(exitCodeObserved !== undefined ? { exitCodeObserved } : {}),
+      ...(processOutcome ? { processOutcome } : {}),
     });
   }
 
@@ -5940,7 +6049,11 @@ export function renderTaskVerifyResult(result: TaskVerifyResult): string {
   } else {
     lines.push("Commands:");
     for (const command of result.commandsRun) {
-      lines.push(`  - ${command.exitCode === 0 ? "pass" : "fail"} ${command.command}${command.resolvedApkIdentity ? ` (${command.resolvedApkIdentity})` : ""}`);
+      const outcome = command.processOutcome ? ` outcome=${command.processOutcome.kind}` : "";
+      const projected = command.exitCodeObserved === false
+        ? ` (compatibility exit code ${command.exitCode}; not observed)`
+        : "";
+      lines.push(`  - ${command.exitCode === 0 ? "pass" : "fail"} ${command.command}${outcome}${projected}${command.resolvedApkIdentity ? ` (${command.resolvedApkIdentity})` : ""}`);
     }
   }
 
