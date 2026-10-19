@@ -1,6 +1,6 @@
 # Task 0225 - Release v0.5.1 workflow correctness fixes
 
-State: doing
+State: done
 Owner: codex-release-v051
 Mode: production
 Lane: release
