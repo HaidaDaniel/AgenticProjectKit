@@ -87,8 +87,9 @@ repository was modified.
 The installed actual-tag CLI ran against a separate detached checkout of the tagged
 candidate. `adopt --preview` left it unchanged. `adopt --apply`, `sync`, `lint --json`,
 `doctor`, and `status` succeeded. Source, package metadata, lockfile, and dist remained
-unchanged. The only new outputs were a disposable adoption task and
-`docs/adoption-report.md`; these were not imported into main. The self-adoption run
+unchanged. Adoption created three files: a disposable adoption task,
+`docs/adoption-report.md`, and the ignored `docs/project-map.md`. Ordinary Git status
+listed only the first two; none were imported into main. The self-adoption run
 completed at `2026-10-19T06:15:23Z`.
 
 ## Final review and remaining work
