@@ -6,7 +6,7 @@ This page separates released capabilities from work on `main` and future plans. 
 
 ### Latest validated installable release
 
-[v0.5.0](releases/v0.5.0.md) is the latest validated installable release. Its exact candidate, successful exact-SHA CI, immutable tag peel, cold install, and profiler v2/v1 smoke are recorded in the [post-release validation record](delivery/workflow-v0.5.0-post-release.md). Its corrected measurement model builds on the first profiler generation in v0.4.9.
+[v0.5.1](releases/v0.5.1.md) is the latest validated installable release. Its exact candidate, successful exact-SHA hosted CI, immutable tag peel, pinned cold install, CLI smoke, and self-adoption are recorded in the [post-release validation record](delivery/workflow-v0.5.1-post-release.md). This patch adds workflow correctness fixes on top of the immutable v0.5.0 profiler release.
 
 ### Gated workflow foundation
 
@@ -18,7 +18,9 @@ Tasks 0082-0088 are complete and included in the [v0.4.0 release](releases/v0.4.
 
 ## Current state
 
-AgenticProjectKit remains the product identity. The latest validated installable release is v0.5.0. Tasks 0149 and 0150 remain deferred identity work and were not reopened.
+AgenticProjectKit remains the product identity. The latest validated installable release is v0.5.1. Tasks 0149 and 0150 remain deferred identity work and were not reopened.
+
+Tasks 0216 (bounded Go startup prototype), 0218 (historical provenance recovery research), and 0223 (opt-in exact-push CI parity) remain todo after v0.5.1. Task 0223 requires a separate substantial feature candidate; it is not a patch-release prerequisite. Task 0221 remains blocked historical attribution; Task 0224 completed the bounded remaining epoch repair.
 
 ## Public Readiness (current work)
 
