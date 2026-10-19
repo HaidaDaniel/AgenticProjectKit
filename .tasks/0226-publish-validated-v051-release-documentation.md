@@ -1,6 +1,6 @@
 # Task 0226 - Publish validated v0.5.1 release documentation
 
-State: doing
+State: done
 Owner: codex-v051-docs
 Mode: production
 Lane: release-docs
