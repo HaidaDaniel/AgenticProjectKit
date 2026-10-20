@@ -104,7 +104,7 @@ Research whether a small explicit export/import handoff can safely carry unfinis
 ## Verification
 
 - `{"id":"handoff-fixture","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node experiments/task-handoff/reproduce.mjs"}`
-- `{"id":"research-artifact","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"test -s docs/handoff/portable-task-context.md"}`
+- `{"id":"research-artifact","type":"automated","required":true,"environment":"local","profile":"report","command":"test -s docs/handoff/portable-task-context.md","evidenceRef":"docs/handoff/portable-task-context.md"}`
 - `{"id":"task-lint","type":"automated","required":true,"environment":"local","profile":"deterministic","apkOperation":"lint"}`
 - `{"id":"docs-consistency","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node scripts/check-docs-consistency.mjs"}`
 - `{"id":"diff-check","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`

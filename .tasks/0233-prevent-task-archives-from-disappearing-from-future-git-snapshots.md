@@ -98,6 +98,7 @@ Reject task archive destinations excluded by effective Git ignore rules before m
 
 ## Verification
 
+- `{"id":"archive-safety-report","type":"manual","required":true,"environment":"local","profile":"report","instruction":"Record the observed pre-fix deletion-only staged diff and post-fix refusal plus safe fresh-clone results; identify the exact candidate and fixture coverage without claiming unobserved outcomes.","evidenceRef":"archive-safety-fixtures"}`
 - `{"id":"focused-tests","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node scripts/test-source.mjs src/core/tasks/task.test.ts src/core/audit/lint.test.ts src/cli/command.test.ts"}`
 - `{"id":"typecheck","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm typecheck"}`
 - `{"id":"lint","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm lint"}`
