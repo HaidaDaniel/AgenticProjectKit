@@ -35,6 +35,7 @@ Eliminate repeated task, baseline, evidence-journal, run-log, agent-registry, an
 - src/core/tasks/provenance.ts
 - src/core/tasks/evidence.ts
 - src/core/tasks/diagnostics.ts
+- src/core/tasks/index.ts
 - src/core/tasks/task.test.ts
 - src/cli/command.test.ts
 - dist/**
@@ -43,7 +44,6 @@ Eliminate repeated task, baseline, evidence-journal, run-log, agent-registry, an
 
 ## Files forbidden to edit
 
-- src/core/tasks/index.ts
 - src/core/status/attention.ts
 - src/cli/cli.test.ts
 - src/cli/commands/**
@@ -56,17 +56,18 @@ Eliminate repeated task, baseline, evidence-journal, run-log, agent-registry, an
 ## Steps
 
 1. Capture an operation-count baseline before editing. Use a disposable Git fixture with several tasks, a shared append-only evidence journal, a run log, and a claimed task. Count reads of task Markdown, `.agentic/evidence.jsonl`, run logs, baselines, the agent registry, and Git comparison subprocesses during one `status --detail` invocation and one `attention --json` invocation.
-2. Identify the concrete duplicate sources in `src/core/status/index.ts`, `src/core/tasks/gate.ts`, `src/core/tasks/provenance.ts`, and `src/core/tasks/evidence.ts`. At minimum trace `captureTaskCompletionCandidate`, `readTaskEvidence`, `listAgents`, `allTaskFiles`, `readTaskBaseline`, `readTaskBaselineHistory`, `readRunLog`, and `currentTaskAttributionApproval`.
+2. Identify the concrete duplicate sources in `src/core/status/index.ts`, `src/core/tasks/index.ts`, `src/core/tasks/gate.ts`, `src/core/tasks/provenance.ts`, and `src/core/tasks/evidence.ts`. At minimum trace `captureTaskCompletionCandidate`, `readTaskEvidence`, `listAgents`, `allTaskFiles`, `readTaskBaseline`, `readTaskBaselineHistory`, `readRunLog`, `resolveTaskBaselineLineage`, and `currentTaskAttributionApproval`.
 3. Introduce a read-only invocation-local snapshot in `src/core/tasks/diagnostics.ts`. It must be created explicitly for one CLI diagnostic invocation and expose lazy memoized loaders for the task inventory, parsed evidence records, run log, registered agent IDs, per-task baseline, per-task candidate capture, and per-task provenance inputs.
 4. Keep the snapshot immutable after capture. Do not expose a refresh-through mutation path that could mix two states in one projection. If a caller needs a new state, it must create a new snapshot.
-5. Pass the snapshot through the status, gate, and provenance read paths as an optional argument. Preserve existing default behavior for standalone callers that do not provide one. Do not create a module-global singleton.
+5. Pass the snapshot through the status, gate, provenance, attribution, and baseline-lineage read paths as an optional read-only argument. This requires narrow changes in `src/core/tasks/index.ts` for `currentTaskAttributionApproval` and `resolveTaskBaselineLineage` so they consume the supplied snapshot instead of independently calling `readTaskEvidence`, `allTaskFiles`, and `readRunLog`. Preserve existing default behavior for standalone callers that do not provide a snapshot. Do not create a module-global singleton.
 6. Ensure the snapshot key includes the repository root, task directory, task ID, baseline ID, candidate identity, and worktree identity where results depend on them. Results for one worktree, candidate, or task must never be served for another.
-7. Do not change evidence append, evidence locking, task lifecycle, baseline writing, or review/decision recording. Mutation paths must not reuse a snapshot across a write and a later read.
+7. In `src/core/tasks/index.ts`, change only the read-only snapshot threading needed by `currentTaskAttributionApproval`, `resolveTaskBaselineLineage`, and the candidate/scope helpers that feed them. Do not change attribution decisions, lifecycle transitions, evidence append or locking, baseline writing, review/decision recording, scope rules, or Git safety checks. Mutation paths must not reuse a snapshot across a write and a later read.
 8. Preserve candidate-bound freshness. A snapshot is valid only for the invocation and only for the repository state it observed. A new CLI invocation must read the evidence journal, run log, task file, and Git state again.
 9. Preserve every fail-closed rule: missing evidence is not a pass; malformed evidence is an error or unavailable state; stale or other-candidate evidence remains stale; out-of-scope or forbidden files remain blockers; missing review remains a blocker.
 10. Add tests for shared-journal reuse, changed evidence between invocations, changed candidate commit, changed task contract, missing or malformed evidence, different worktrees, a large append-only journal, and cross-task isolation.
-11. Record before/after operation counts for the reproducible workload. State relative reductions and absolute counts; do not set a wall-clock threshold.
-12. Run the focused tests, typecheck, lint, APK task lint, docs consistency, diff check, and committed-dist check on the final candidate.
+11. Add a concurrent-mutation regression test. Use a test hook or barrier to mutate evidence or Git state after the snapshot captures one component but before the diagnostic projection finishes. Assert that the result never combines incompatible components. The implementation must either fail closed as unavailable/blocked or discard the entire snapshot and restart one complete consistent capture before producing any projection. A partial refresh or a merge of old and new components is forbidden.
+12. Record before/after operation counts for the reproducible workload. State relative reductions and absolute counts; do not set a wall-clock threshold.
+13. Run the focused tests, typecheck, lint, APK task lint, docs consistency, diff check, and committed-dist check on the final candidate.
 
 ## Acceptance criteria
 
@@ -82,7 +83,8 @@ Eliminate repeated task, baseline, evidence-journal, run-log, agent-registry, an
 - A large append-only journal is parsed once per invocation and does not cause per-task repeated full-file parsing.
 - No global, on-disk, or release-persistent cache is introduced.
 - Mutation paths such as claim, verify, review, done, block, release, decision, and epoch are unaffected.
-- Tests prove the operation-count reduction and the freshness/fail-closed behavior.
+- A snapshot that observes evidence or Git state changing during the same diagnostic invocation never produces a pass from incompatible components. It fails closed or discards the entire snapshot and restarts one complete consistent capture; partial refresh or merged states are forbidden.
+- Tests prove the operation-count reduction, cross-invocation freshness, concurrent-mutation fail-closed behavior, and the absence of behavior changes in attribution, lifecycle, evidence writes, and Git safety checks.
 
 ## Correctness assumptions
 
@@ -98,6 +100,8 @@ Eliminate repeated task, baseline, evidence-journal, run-log, agent-registry, an
 - No weakening of provenance, scope, review, evidence, or completion-gate checks.
 - No mutation of append-only evidence, baselines, task files, or lifecycle state.
 - No sharing of results across tasks, worktrees, candidates, or baselines.
+- `src/core/tasks/index.ts` changes are limited to read-only snapshot threading; attribution decisions, lifecycle behavior, evidence writes and locking, baseline writes, and Git safety checks remain unchanged.
+- No partial refresh and no mixing of snapshot components captured under different repository, candidate, worktree, or evidence identities.
 - No change to evidence append locking or the single-terminal-result rule.
 - No unbounded retention beyond one invocation.
 - Concurrent or subsequent independent invocations must always observe current files.
@@ -132,6 +136,8 @@ Eliminate repeated task, baseline, evidence-journal, run-log, agent-registry, an
 - One task has no evidence while another task has a current pass.
 - A mutation command runs between two diagnostic commands.
 - A stale review or exhausted review budget is present.
+- Evidence or Git state changes while one diagnostic invocation is between snapshot capture and projection completion.
+- A snapshot component from one candidate is combined with evidence or scope from another candidate or worktree.
 
 ## Verification
 
@@ -154,6 +160,7 @@ Eliminate repeated task, baseline, evidence-journal, run-log, agent-registry, an
 - Confirmed defect in APK v0.5.1: `evaluateTaskCompletionGate` captures a candidate, reads task evidence, lists all task files for dependencies, lists agents, and then reads task evidence again for attribution approval. `buildTaskProvenance` independently captures the same candidate and reads the same evidence and run log. `summarizeStatus` lists active and archived tasks before this work.
 - The downstream audit observed about 85,100 `readFile` attempts, 1,894 unique paths, 140 evidence-journal requests, and 94 to 96 reads of individual task files during one workers call. Workers is addressed by Task 0228; this task addresses the remaining status/gate/provenance duplication.
 - This task depends on Task 0228 because it changes the same status diagnostic surfaces and must not compete with the workers refactor.
+- `src/core/tasks/index.ts` is allowed only for read-only snapshot plumbing into `currentTaskAttributionApproval`, `resolveTaskBaselineLineage`, and their candidate/scope inputs. It is not permission to alter attribution, lifecycle, evidence writes, locks, baselines, or Git checks. If a proposed change would alter one of those behaviors, stop and document a no-go or split a follow-up task.
 - Do not combine this task with Task 0227 (selection) or Task 0230 (needsHuman classification).
 - Candidate-bound freshness and fail-closed evidence behavior are more important than any operation-count target. If a safe snapshot boundary cannot be established, document the no-go and retain repeated reads.
 - Todo Task 0223 also allows `src/cli/command.test.ts`. Sequence 0229 before 0223 or use separate worktrees; do not edit that file concurrently.

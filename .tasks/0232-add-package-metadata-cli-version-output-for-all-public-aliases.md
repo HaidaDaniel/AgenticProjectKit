@@ -8,7 +8,7 @@ Type: feature
 Scope: cli,version,packaging,docs,tests
 Risk: low
 Parallel: true
-Depends on: none
+Depends on: 0227
 Tags: cli,version,packaging,tests
 
 ## Goal
@@ -143,5 +143,5 @@ Make `apk --version`, `apkit --version`, and `agentic-project-kit --version` pri
 - The downstream audit had to read the package manifest and lockfile manually to identify the installed version, which is exactly the diagnostic overhead this task removes.
 - Keep the scope to the version flag. Do not add build metadata, commit identity, package-path diagnostics, runtime-version reporting, or a new command family unless a test proves the version requirement cannot be met otherwise.
 - The audit also mentioned that root help does not list nested `task epoch` and `task amendment preview` entries. That help-registry consistency issue is out of scope for this task and must not be bundled into it.
-- This task is independent of Tasks 0227 through 0231 and may run in parallel after Task 0227's CLI test file is committed, because it also edits `src/cli/cli.test.ts`.
+- This task depends on Task 0227 because both edit `src/cli/cli.test.ts`. The formal dependency prevents concurrent work on that test file. After 0227 is done, 0232 can run in parallel with unrelated tasks such as 0228, 0229, 0230, and 0231 when they use separate worktrees.
 - Todo Task 0223 also allows `src/cli/command-registry.ts`, `src/cli/cli.test.ts`, and `docs/cli-commands.md`. Do not run 0223 concurrently with this task. Implement 0232 before 0223 on a clean baseline, or rebase 0223 after 0232. Blocked Task 0221 also lists `src/cli/command-registry.ts` if it is ever unblocked.

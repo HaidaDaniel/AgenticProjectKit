@@ -51,7 +51,7 @@ Reserve `needsHuman: true` for blockers that actually require an operator decisi
 3. Define one internal classification for the human-action decision. Distinguish at least: review can be organized by the agent; review is absent or stale with budget available; review returned `changes_requested`; review budget is exhausted; an explicit operator-only decision is required; and review state is unknown or unavailable for reasons other than a human decision.
 4. Set `needsHuman: true` only when the blocker or policy state proves an operator-only condition, such as an exhausted review budget that requires `apk task decision`, an explicit human accept-current or accept-attribution requirement, or another documented operator-only decision. Do not infer operator need from `assuranceStatus: unavailable` alone.
 5. Keep `reviewEscalation` and `assuranceStatus` semantics honest and distinct from `needsHuman`. If the existing fields cannot express the distinction without misleading consumers, add a bounded optional explanatory field only when `needsHuman` is true; do not rename or remove existing fields.
-6. Keep `nextAction` accurate for every classification. Missing or stale review with available budget should name the review request; `changes_requested` should name the fixer; exhausted budget should name the operator decision path; unknown state should name the inspection or retry action.
+6. Keep the attention `nextAction` accurate for every classification. Missing or stale review with available budget should name the review request; `changes_requested` should name the fixer; exhausted budget should name the operator decision path; unknown state should name the inspection or retry action. Compute this refined `AttentionItem.nextAction` inside `src/core/status/attention.ts` from the existing status fields and policy. Do not change `src/core/status/index.ts` or rewrite the status projection's original next action. If a coherent fix genuinely requires changing both representations, stop and document the need for a follow-up task rather than widening this contract.
 7. Do not weaken the independent-review requirement, review budget, gate, or operator-decision rules. A task with missing review must still be blocked from completion.
 8. Add CLI tests for all eight scenarios in this contract. Use disposable fixtures and synthetic evidence only.
 9. Document the meaning of `needsHuman`, `assuranceStatus`, and `reviewEscalation` in `docs/task-system.md` so agents do not interpret a pending review as a human request.
@@ -70,6 +70,8 @@ Reserve `needsHuman: true` for blockers that actually require an operator decisi
 - `assuranceStatus`, `reviewEscalation`, `review`, and `blockers` remain consistent with `needsHuman`; an unavailable assurance does not by itself force a human decision.
 - Missing review still blocks completion; the fix does not create a review bypass.
 - Existing attention JSON fields remain present and compatible.
+- The refined attention `nextAction` is produced without editing `src/core/status/index.ts`; the status projection's own next action remains unchanged.
+- If the attention projection cannot produce an accurate next action from its existing inputs, the task records that limitation and does not silently leave an operator-only budget state with an agent-only action.
 - The documentation states when an agent must involve an operator and when it may organize review itself.
 
 ## Correctness assumptions
@@ -88,6 +90,8 @@ Reserve `needsHuman: true` for blockers that actually require an operator decisi
 - Do not rename or remove existing attention JSON fields.
 - Do not add provider calls, model calls, or worker launches.
 - Do not change task lifecycle or evidence.
+- Do not edit `src/core/status/index.ts`. Refine only `AttentionItem` fields in `src/core/status/attention.ts`; a required status change is a separate task.
+- If a future change requires both attention and status, it must depend on or follow Task 0229, which also edits `src/core/status/index.ts`.
 
 ## Required evidence
 
@@ -138,3 +142,4 @@ Reserve `needsHuman: true` for blockers that actually require an operator decisi
 - This task depends on Task 0228 because both tasks change `src/core/status/attention.ts`; implement after the worker projection extraction to avoid competing edits.
 - Keep the change focused on classification and diagnostics. Do not implement a new review subsystem, provider integration, or automatic reviewer launch.
 - Todo Task 0223 also allows `src/cli/cli.test.ts`. Sequence the tasks or use separate worktrees; do not edit that file concurrently.
+- `src/core/status/index.ts` remains forbidden. Attention can derive a refined `nextAction` from `state`, `review`, `gate.blockers`, `policy`, and `reviewBudget`; it does not need to mutate the status projection. If the implementer concludes otherwise, the correct action is a documented follow-up after Task 0229, not an unreviewed scope expansion.
