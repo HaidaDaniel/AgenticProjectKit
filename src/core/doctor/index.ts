@@ -3,7 +3,8 @@ import { join } from "node:path";
 
 import { CONFIG_PATH, readAgenticConfigFile } from "../config/index.js";
 import { observedExecFile } from "../perf/index.js";
-import { detectQualityCapabilities } from "../quality/index.js";
+import { detectQualityCapabilities, inspectPythonProject } from "../quality/index.js";
+import { scanRepository } from "../scanners/index.js";
 import { listAgents } from "../agents/index.js";
 import { syncAgentExports } from "../sync/index.js";
 import { listTaskFiles } from "../tasks/index.js";
@@ -73,8 +74,8 @@ async function lockCheck(label: string, lockPath: string): Promise<DoctorCheck> 
   };
 }
 
-async function packageChecks(rootDirectory: string): Promise<DoctorCheck[]> {
-  const raw = await readJson(join(rootDirectory, "package.json"));
+async function packageChecks(rootDirectory: string, componentPath: string): Promise<DoctorCheck[]> {
+  const raw = await readJson(join(rootDirectory, componentPath, "package.json"));
   if (!raw || typeof raw !== "object") {
     return [{ level: "warn", label: "package", message: "package.json missing" }];
   }
@@ -85,12 +86,48 @@ async function packageChecks(rootDirectory: string): Promise<DoctorCheck[]> {
   const checks: DoctorCheck[] = [];
 
   for (const script of ["test", "lint", "typecheck", "build"]) {
+    const label = componentPath === "." ? `script:${script}` : `script:${componentPath}:${script}`;
     checks.push(script in scripts
-      ? { level: "pass", label: `script:${script}`, message: "present" }
-      : { level: "warn", label: `script:${script}`, message: "missing" });
+      ? { level: "pass", label, message: "present" }
+      : { level: "warn", label, message: "missing" });
   }
 
   return checks;
+}
+
+async function applicationChecks(rootDirectory: string): Promise<DoctorCheck[]> {
+  try {
+    // Reuse canonical runtime ownership (including explicit config overrides and
+    // bounded nested components), instead of inventing another Node classifier.
+    const { runtime } = await scanRepository(rootDirectory);
+    const checks: DoctorCheck[] = [];
+    const applications = new Set<string>();
+    const nodePaths = new Set<string>();
+    for (const component of runtime.components) {
+      if (component.role !== "application" && component.role !== "mixed") continue;
+      if (component.runtime === "Python") {
+        const python = await inspectPythonProject(join(rootDirectory, component.path));
+        if (python.diagnostic) checks.push({ level: "warn", label: "python-configuration", message: `${component.path}: ${python.diagnostic}` });
+        if (!python.tables.some((table) => /^(?:project|build-system|tool\.(?:poetry|mypy|pyright|ruff|pylint|pytest|tox|coverage|pdm|hatch))(?:\.|$)/.test(table))) {
+          // Other existing canonical Python markers (requirements/setup) remain valid.
+          if (!component.evidence.some((item) => /requirements|setup\.(?:py|cfg)/.test(item))) continue;
+        }
+      }
+      applications.add(component.runtime);
+      if (component.runtime === "Node.js") nodePaths.add(component.path);
+    }
+    checks.unshift({
+      level: applications.size > 0 ? "pass" : "warn",
+      label: "application-stack",
+      message: applications.size > 0 ? [...applications].sort().join(", ") : "No reliable application runtime evidence; package.json alone is not a Node application.",
+    });
+    if (runtime.discoveryLimited) checks.push({ level: "warn", label: "application-discovery", message: "Runtime discovery reached its depth/directory bound; additional components may be uninspected." });
+    if (runtime.ambiguousRuntimes.length > 0) checks.push({ level: "warn", label: "application-ownership", message: `Ambiguous runtime evidence: ${runtime.ambiguousRuntimes.join(", ")}; declare runtimeManifestRole when known.` });
+    for (const path of [...nodePaths].sort()) checks.push(...await packageChecks(rootDirectory, path));
+    return checks;
+  } catch {
+    return [{ level: "warn", label: "application-stack", message: "Application inventory unavailable; inspect malformed or unreadable project manifests. No Node script conclusion was inferred." }];
+  }
 }
 
 export async function runDoctor(rootDirectory: string): Promise<DoctorResult> {
@@ -145,7 +182,7 @@ export async function runDoctor(rootDirectory: string): Promise<DoctorResult> {
     checks.push({ level: "warn", label: "exports", message: error instanceof Error ? error.message : String(error) });
   }
 
-  checks.push(...await packageChecks(rootDirectory));
+  checks.push(...await applicationChecks(rootDirectory));
   try {
     const quality = await detectQualityCapabilities(rootDirectory, qualityPolicy);
     const nonDetected = quality.capabilities.filter((capability) => capability.status !== "detected").length;

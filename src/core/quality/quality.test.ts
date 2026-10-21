@@ -295,3 +295,50 @@ test("quality detection detects Go tests alongside APK tooling package.json", as
     assert.equal(statusOf(result, "tests")?.status, "detected");
   });
 });
+
+test("Python build-system detects declared PEP 517 backends independently from test/lint capability", async () => {
+  for (const backend of ["setuptools.build_meta", "hatchling.build", "poetry.core.masonry.api", "flit_core.buildapi", "pdm.backend", "maturin"]) {
+    await withTempDirectory(async (directory) => {
+      await writeFile(join(directory, "pyproject.toml"), `[project]\nname = 'fixture'\n[build-system]\nrequires = [\n 'backend-package', # declaration only\n]\nbuild-backend = '${backend}'\n[tool.ruff]\n[tool.pytest.ini_options]\n`);
+      const result = await detectQualityCapabilities(directory);
+      assert.equal(statusOf(result, "build")?.status, "detected", backend);
+      assert.ok(statusOf(result, "build")?.evidence.some((evidence) => evidence.source === "pyproject.toml" && evidence.detail.includes(backend) && evidence.detail.includes("unverified")));
+      assert.equal(statusOf(result, "tests")?.status, "detected");
+      assert.equal(statusOf(result, "lint")?.status, "detected");
+    });
+  }
+});
+
+test("Python build-system keeps absent, incomplete, malformed and unsupported declarations diagnostic-only", async () => {
+  const declarations = [
+    "", "[project]\nname = 'fixture'\n", "[build-system]\nrequires = ['setuptools']\n",
+    "[build-system]\nbuild-backend = 'setuptools.build_meta'\n",
+    "[build-system]\nbuild-backend = 'setuptools.build_meta\nrequires = []\n",
+    "[build-system]\nbuild-backend = 'setuptools.build_meta'\nrequires = [\n",
+    "[build-system]\nrequires = []\nbuild-backend = 'setuptools.build_meta'\nbuild-backend = 'maturin'\n",
+    "[build-system]\nrequires = []\nbuild-backend = 'setuptools.build_meta'\n[build-system]\n",
+    "[build-system]\nrequires = ['setuptools']\nbuild-backend = 'setuptools.build_meta'\ngarbage\n",
+    "[build-system]\nrequires = 'setuptools'\nbuild-backend = 'setuptools.build_meta'\n",
+    'description = """\n[build-system]\nrequires = []\nbuild-backend = "maturin"\n[tool.ruff]\n"""\n',
+    '# [build-system]\n# build-backend = "maturin"\n',
+  ];
+  for (const text of declarations) {
+    await withTempDirectory(async (directory) => {
+      await writeFile(join(directory, "pyproject.toml"), text);
+      const result = await detectQualityCapabilities(directory);
+      assert.equal(statusOf(result, "build")?.status, "missing", text);
+      assert.equal(statusOf(result, "lint")?.status, "missing", text);
+    });
+  }
+});
+
+test("Python build evidence is bounded and does not interpret backend-looking strings as tables", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeFile(join(directory, "pyproject.toml"), '[project]\ndescription = """\n[build-system]\nrequires = []\nbuild-backend = "fake"\n"""\n[build-system]\nrequires = []\nbuild-backend = "maturin"\n');
+    assert.equal(statusOf(await detectQualityCapabilities(directory), "build")?.status, "detected");
+    await writeFile(join(directory, "pyproject.toml"), `${"#".repeat(256 * 1024)}\n[build-system]\nrequires=[]\nbuild-backend='maturin'\n`);
+    const result = await detectQualityCapabilities(directory);
+    assert.equal(statusOf(result, "build")?.status, "missing");
+    assert.ok(result.diagnostics.some((message) => message.includes("256 KiB")));
+  });
+});

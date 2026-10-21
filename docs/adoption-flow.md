@@ -88,3 +88,30 @@ The flow is detect -> report -> recommend -> explicit opt-in setup. A missing op
 - Keep generated docs consistent with observed structure.
 - Prefer documentation cleanup before code changes.
 - Use scanner facts in adoption reports; do not run audit as a separate write step.
+
+## Application diagnostics and Python builds
+
+Doctor uses the scanner's bounded runtime ownership projection (including
+`runtimeManifestRole` and nested components). It checks Node scripts only at
+manifests classified as application or mixed. An APK-only root manifest in a
+Python/Go repository no longer produces missing Node script warnings. A real
+Node frontend retains checks at its own manifest, with its path in each label.
+Ambiguous ownership, malformed manifests, and discovery limits remain explicit
+warnings. Python `pyproject.toml` evidence requires a recognized table rather
+than just the filename; existing requirements/setup markers remain supported.
+
+Quality detection reads at most 256 KiB of `pyproject.toml` and inventories
+literal table declarations without interpreting strings/comments as tables.
+A `[build-system]` with a literal `build-backend` and a string-array `requires`
+provides build capability evidence. This includes `setuptools.build_meta`,
+`hatchling.build`, `poetry.core.masonry.api`, `flit_core.buildapi`, `pdm.backend`,
+and `maturin`; other valid module/object backend names remain declared evidence.
+The optional `backend-path` must be a literal string array. Configuration does
+not prove that a backend is installed or a build succeeds. Detection executes
+no project commands and does not install Python or Node tools.
+
+This is a conservative inventory, not a full TOML parser: duplicate build tables
+or keys, incomplete strings/arrays, unsupported escaped/complex build values,
+and oversized/unreadable files produce bounded diagnostics with no Python build
+claim. Unrelated whole-document TOML validity is not certified. Pytest, Ruff,
+typecheck, and coverage tables retain independent capability evidence.

@@ -1,4 +1,5 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { open, readdir, readFile, stat } from "node:fs/promises";
+import { constants } from "node:fs";
 import { basename, join } from "node:path";
 import { observedExecFile } from "../perf/index.js";
 export const QUALITY_CAPABILITY_IDS = [
@@ -95,15 +96,139 @@ async function readJson(path) {
         return { invalid: true };
     }
 }
-async function readText(path) {
+/** A bounded table/string inventory, not a general TOML parser. */
+export async function inspectPythonProject(rootDirectory) {
+    const path = join(rootDirectory, "pyproject.toml");
+    let text;
     try {
-        return await readFile(path, "utf8");
+        const file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK);
+        try {
+            const info = await file.stat();
+            if (!info.isFile() || info.size > 256 * 1024)
+                return { tables: [], diagnostic: "pyproject.toml is not a regular file within the 256 KiB inspection limit." };
+            const buffer = Buffer.alloc(256 * 1024 + 1);
+            let size = 0;
+            while (size < buffer.length) {
+                const { bytesRead } = await file.read(buffer, size, buffer.length - size, size);
+                if (bytesRead === 0)
+                    break;
+                size += bytesRead;
+            }
+            if (size > 256 * 1024)
+                return { tables: [], diagnostic: "pyproject.toml changed beyond the 256 KiB inspection limit." };
+            text = new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, size));
+        }
+        finally {
+            await file.close();
+        }
     }
     catch (error) {
         if (error && typeof error === "object" && "code" in error && error.code === "ENOENT")
-            return undefined;
-        throw error;
+            return { tables: [] };
+        return { tables: [], diagnostic: "pyproject.toml could not be read; Python configuration evidence is unavailable." };
     }
+    // Mask strings/comments so a header inside a description is never table evidence.
+    let masked = "";
+    let uncommented = "";
+    let quote = "";
+    let multiline = false;
+    let invalid = false;
+    for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        if (quote) {
+            if (char === "\\" && quote === '"') {
+                uncommented += char + (text[i + 1] ?? "");
+                if (text[i + 1] === "\n" && !multiline)
+                    invalid = true;
+                masked += text[i + 1] === "\n" ? " \n" : "  ";
+                i++;
+            }
+            else if (text.startsWith(multiline ? quote.repeat(3) : quote, i)) {
+                const width = multiline ? 3 : 1;
+                uncommented += text.slice(i, i + width);
+                masked += " ".repeat(width);
+                i += width - 1;
+                quote = "";
+            }
+            else {
+                if (char === "\n" && !multiline)
+                    invalid = true;
+                uncommented += char;
+                masked += char === "\n" ? "\n" : " ";
+            }
+        }
+        else if (char === "#") {
+            while (i < text.length && text[i] !== "\n") {
+                masked += " ";
+                uncommented += " ";
+                i++;
+            }
+            if (i < text.length) {
+                masked += "\n";
+                uncommented += "\n";
+            }
+        }
+        else if (char === '"' || char === "'") {
+            quote = char;
+            multiline = text.startsWith(char.repeat(3), i);
+            const width = multiline ? 3 : 1;
+            uncommented += text.slice(i, i + width);
+            masked += " ".repeat(width);
+            i += width - 1;
+        }
+        else {
+            masked += char;
+            uncommented += char;
+        }
+    }
+    if (quote || invalid)
+        return { tables: [], diagnostic: "pyproject.toml contains an incomplete string; Python configuration evidence is unavailable." };
+    const lines = masked.split("\n");
+    const original = uncommented.split("\n");
+    const tables = [];
+    let inBuild = false;
+    let body = "";
+    let malformed = false;
+    for (let i = 0; i < lines.length; i++) {
+        const header = lines[i].trim().match(/^\[([A-Za-z0-9_.-]+)\]$/);
+        if (header) {
+            if (tables.includes(header[1]) && header[1] === "build-system")
+                malformed = true;
+            tables.push(header[1]);
+            inBuild = header[1] === "build-system";
+        }
+        else if (inBuild) {
+            if (/^\s*\[/.test(lines[i]) && !/^\s*\[\s*$/.test(lines[i]))
+                malformed = true;
+            body += `${original[i]}\n`;
+        }
+    }
+    if (!tables.includes("build-system"))
+        return { tables };
+    const values = new Map();
+    // Supported build-system values are literal strings and arrays of strings.
+    // Complex/invalid syntax stays diagnostic-only rather than inventing capability.
+    const string = `(?:"[^"\\\\\r\n]*"|'[^'\r\n]*')`;
+    const array = `\\[\\s*(?:${string}(?:\\s*,\\s*${string})*\\s*,?)?\\s*\\]`;
+    const entry = new RegExp(`\\s*([A-Za-z_-]+)\\s*=\\s*(${string}|${array})\\s*(?:\\n|$)`, "y");
+    let offset = 0;
+    while (body.slice(offset).trim()) {
+        entry.lastIndex = offset;
+        const match = entry.exec(body);
+        if (!match || values.has(match[1]) || !["requires", "build-backend", "backend-path"].includes(match[1])) {
+            malformed = true;
+            break;
+        }
+        values.set(match[1], match[2]);
+        offset = entry.lastIndex;
+    }
+    const backend = values.get("build-backend")?.match(/^["']([A-Za-z_]\w*(?:\.\w+)*(?::\w+(?:\.\w+)*)?)["']$/)?.[1];
+    const requires = values.get("requires");
+    const backendPath = values.get("backend-path");
+    if (malformed || !backend || !requires?.startsWith("[") || (backendPath !== undefined && !backendPath.startsWith("["))) {
+        return { tables, diagnostic: "pyproject.toml [build-system] is incomplete, malformed, or outside the supported literal backend/requires syntax; no Python build capability is claimed." };
+    }
+    return { tables, buildBackend: backend };
 }
 async function hasDirectoryEntries(path) {
     try {
@@ -253,7 +378,7 @@ function addScriptEvidence(states, name, command) {
 function addMarkerEvidence(states, id, source, detail, confidence = "medium") {
     addEvidence(states, id, { source, detail, confidence });
 }
-async function detectMarkers(rootDirectory, states) {
+async function detectMarkers(rootDirectory, states, diagnostics) {
     const typecheckMarker = await hasAny(rootDirectory, ["tsconfig.json", "jsconfig.json"]);
     if (typecheckMarker)
         addMarkerEvidence(states, "typecheck", typecheckMarker, "compiler configuration detected");
@@ -307,8 +432,12 @@ async function detectMarkers(rootDirectory, states) {
             addMarkerEvidence(states, "tests", `${goTestFiles.length} *_test.go file(s)`, `Go package-local test files detected: ${goTestFiles.slice(0, 3).join(", ")}`, "high");
         }
     }
-    const pyproject = await readText(join(rootDirectory, "pyproject.toml"));
-    if (pyproject !== undefined) {
+    const python = await inspectPythonProject(rootDirectory);
+    if (python.diagnostic)
+        diagnostics.push(python.diagnostic);
+    if (python.buildBackend)
+        addMarkerEvidence(states, "build", "pyproject.toml", `Python build-system declares backend ${python.buildBackend}; installation and build success are unverified.`, "high");
+    if (python.tables.length > 0) {
         const markerRules = [
             ["typecheck", /\[tool\.(?:mypy|pyright)\]/i, "Python typecheck configuration detected"],
             ["lint", /\[tool\.(?:ruff|pylint)\]/i, "Python lint configuration detected"],
@@ -316,7 +445,7 @@ async function detectMarkers(rootDirectory, states) {
             ["coverage", /\[tool\.(?:coverage|pytest-cov)(?:\.[^\]]+)?\]/i, "Python coverage configuration detected"],
         ];
         for (const [id, pattern, detail] of markerRules) {
-            if (pattern.test(pyproject))
+            if (pattern.test(python.tables.map((table) => `[${table}]`).join("\n")))
                 addMarkerEvidence(states, id, "pyproject.toml", detail, "high");
         }
     }
@@ -423,7 +552,7 @@ export async function detectQualityCapabilities(rootDirectory, policy) {
     }
     if (packagePresent && packageResult.value === undefined)
         diagnostics.push("The repository has a package manifest but no reliable package capability inventory.");
-    await detectMarkers(rootDirectory, states);
+    await detectMarkers(rootDirectory, states, diagnostics);
     const policyResult = resolvePolicy(policy);
     const capabilities = QUALITY_CAPABILITY_IDS.map((id) => {
         const state = states.get(id);

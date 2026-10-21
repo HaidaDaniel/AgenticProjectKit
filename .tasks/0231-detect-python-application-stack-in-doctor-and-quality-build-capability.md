@@ -1,7 +1,7 @@
 # Task 0231 - Detect Python application stack in doctor and quality build capability
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-fixes-0231
 Mode: maintenance
 Lane: bugfix
 Type: bugfix
