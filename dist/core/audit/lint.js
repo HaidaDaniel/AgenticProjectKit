@@ -1,83 +1,52 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { listAgents } from "../agents/index.js";
 import { readAgenticConfigFile } from "../config/index.js";
+import { inspectTaskContracts, renderTaskContractInspection, TASK_MANUAL_MIGRATION } from "../config/compatibility.js";
 import { selectTaskContext } from "../docs/context.js";
 import { classifyLegacyAgentExports } from "../exporters/index.js";
 import { syncAgentExports } from "../sync/index.js";
 import { inspectArchiveGitSafety } from "../tasks/archive-git-safety.js";
-import { parseTaskMarkdown, packagedDistTaskContractBlockers, repositoryPackagedDistContract, resolveTaskPolicy, findTaskPathContractOverlaps, renderTaskPathContractOverlap, taskPathPatternIssue, validateTaskDependencies, TaskFormatError, } from "../tasks/index.js";
+import { packagedDistTaskContractBlockers, repositoryPackagedDistContract, resolveTaskPolicy, findTaskPathContractOverlaps, renderTaskPathContractOverlap, taskPathPatternIssue, validateTaskDependencies, } from "../tasks/index.js";
 function normalizeRepoPath(value) {
     return value.replace(/\\/g, "/").replace(/^\.\//, "");
 }
-function taskIdFromText(value) {
-    return value.match(/^# Task\s+([^\s-]+)\s+-/m)?.[1];
-}
 function isMissingFileError(error) {
-    return Boolean(error &&
-        typeof error === "object" &&
-        "code" in error &&
-        error.code === "ENOENT");
-}
-async function markdownPaths(directory) {
-    try {
-        return (await readdir(directory))
-            .filter((entry) => entry.endsWith(".md"))
-            .sort()
-            .map((entry) => join(directory, entry));
-    }
-    catch (error) {
-        if (isMissingFileError(error))
-            return [];
-        throw error;
-    }
+    return Boolean(error && typeof error === "object" && "code" in error && error.code === "ENOENT");
 }
 function addFinding(findings, finding) {
     findings.push(finding);
 }
 async function readTaskDocuments(rootDirectory, taskDirectory, findings) {
-    const documents = [];
-    const directories = [
-        join(rootDirectory, taskDirectory),
-        join(rootDirectory, taskDirectory, "archive"),
-    ];
-    for (const directory of directories) {
-        for (const path of await markdownPaths(directory)) {
-            const relativePath = normalizeRepoPath(relative(rootDirectory, path));
-            const content = await readFile(path, "utf8");
-            const rawId = taskIdFromText(content);
-            try {
-                documents.push({ path: relativePath, task: parseTaskMarkdown(content), rawId });
-            }
-            catch (error) {
-                const detail = error instanceof TaskFormatError
-                    ? error.issues.join("; ")
-                    : error instanceof Error ? error.message : String(error);
-                addFinding(findings, {
-                    level: "error",
-                    code: "task-malformed",
-                    area: "tasks",
-                    message: detail,
-                    path: relativePath,
-                    ...(rawId ? { taskId: rawId } : {}),
-                });
-                documents.push({ path: relativePath, rawId });
-            }
-        }
+    const { inspection, parsed } = await inspectTaskContracts(rootDirectory, taskDirectory);
+    const byPath = new Map(parsed.map((file) => [file.path, file.task]));
+    const documents = inspection.entries.map((entry) => ({
+        path: entry.path, rawId: entry.rawId, task: byPath.get(entry.path),
+    }));
+    for (const entry of inspection.entries) {
+        if (entry.status === "parseable")
+            continue;
+        addFinding(findings, {
+            level: "error", code: entry.status === "incompatible" ? "task-malformed" : `task-${entry.status}`,
+            area: "tasks", path: entry.path, ...(entry.rawId ? { taskId: entry.rawId } : {}),
+            message: `${entry.issues.join("; ")}${entry.omittedIssues > 0 ? `; ${entry.omittedIssues} more issues omitted` : ""}`,
+        });
     }
-    const activePaths = new Set((await markdownPaths(join(rootDirectory, taskDirectory)))
-        .map((path) => normalizeRepoPath(relative(rootDirectory, path))));
-    const active = documents
-        .filter((document) => (document.task !== undefined && activePaths.has(document.path)))
-        .map(({ path, task }) => ({ path: join(rootDirectory, path), task }));
-    const archived = documents
-        .filter((document) => (document.task !== undefined && !activePaths.has(document.path)))
-        .map(({ path, task }) => ({ path: join(rootDirectory, path), task }));
+    for (const diagnostic of inspection.diagnostics) {
+        addFinding(findings, { level: "error", code: "task-inspection-incomplete", area: "tasks", message: diagnostic });
+    }
+    if (inspection.coverage.incompatible > 0 || !inspection.coverage.complete) {
+        addFinding(findings, {
+            level: "info", code: "task-manual-migration", area: "tasks",
+            message: TASK_MANUAL_MIGRATION.map((step, index) => `${index + 1}. ${step}`).join(" "),
+        });
+    }
     return {
-        active,
-        archived,
+        inspection,
+        active: parsed.filter((file) => !file.archived).map(({ path, task }) => ({ path: join(rootDirectory, path), task })),
+        archived: parsed.filter((file) => file.archived).map(({ path, task }) => ({ path: join(rootDirectory, path), task })),
         documents,
-        paths: documents.map((document) => document.path).sort(),
+        paths: inspection.entries.filter((entry) => ["parseable", "incompatible"].includes(entry.status)).map((entry) => entry.path),
     };
 }
 function duplicateIds(documents) {
@@ -490,6 +459,7 @@ export async function lintRepositoryContracts(rootDirectory) {
     const contextHygiene = await evaluateContextHygiene(rootDirectory, taskDirectory, documents, findings);
     const sortedFindings = sortFindings(findings);
     return {
+        taskInspection: documents.inspection,
         taskCount: documents.paths.length,
         checkedTaskFiles: documents.paths,
         findings: sortedFindings,
@@ -504,6 +474,7 @@ export function renderTaskLintResult(result, json = false) {
     return [
         `Task lint: ${result.hasErrors ? "fail" : result.findings.length > 0 ? "warning" : "pass"}`,
         `Task files checked: ${result.taskCount}`,
+        ...renderTaskContractInspection(result.taskInspection).slice(0, 2),
         `Generated files checked: ${result.sync.checked.length}`,
         `Findings: ${result.findings.length}`,
         ...(result.findings.length > 0

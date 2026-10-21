@@ -636,3 +636,40 @@ test("adoption preview and doctor share read-only installation findings", async 
     await assert.rejects(() => readFile(join(directory, ".agentic/config.json")), /ENOENT/);
   });
 });
+
+
+test("adoption compatibility reports mixed repairs without changing task bytes or index", async () => {
+  await withTempRepository(async (directory) => {
+    await cp(join(process.cwd(), "src/core/tasks/fixtures/v0.3.1"), directory, { recursive: true });
+    const original = await readFile(join(directory, ".tasks/0001-legacy-task.md"), "utf8");
+    await mkdir(join(directory, ".tasks/archive"));
+    const files = new Map([
+      [".tasks/0090-invalid.md", original.replace("0001", "0090").replace("Status: todo", "State: in_progress").replace("Mode: maintenance", "Mode: validation")],
+      [".tasks/0090a-invalid.md", original.replace("0001", "0090a").replace("Status: todo", "State: planned").replace("Mode: maintenance", "Mode: experiment/implementation")],
+      [".tasks/archive/0065-invalid.md", original.replace("0001", "0065").replace("Mode: maintenance", "Mode: bugfix")],
+      [".agentic/evidence.jsonl", "synthetic evidence, must not be rewritten\n"],
+      [".agentic/task-baselines.jsonl", "synthetic baseline, must not be rewritten\n"],
+    ]);
+    for (const [path, bytes] of files) await writeFile(join(directory, path), bytes);
+    const git = (...args: string[]) => execFileAsync("git", args, { cwd: directory });
+    await git("init", "-q");
+    await git("add", "--", ".tasks", ".agentic/config.json");
+    const index = (await git("ls-files", "--stage", "-z")).stdout;
+    const preview = await planAdoption(directory, { includeMigration: true });
+    const repeated = await planAdoption(directory, { includeMigration: true });
+    assert.deepEqual(repeated, preview);
+    assert.equal(preview.compatibility.tasks.inspection.coverage.incompatible, 3);
+    assert.equal(preview.compatibility.tasks.inspection.coverage.parseable, 1);
+    assert.equal(preview.compatibility.migrationRequired, true);
+    assert.match(preview.diagnostics.join(" "), /Manual task migration/);
+    assert.equal((await git("ls-files", "--stage", "-z")).stdout, index);
+    const applied = await adoptRepository(directory, { applyMigration: true });
+    assert.deepEqual(applied.updated, [".agentic/config.json"]);
+    assert.equal((await git("ls-files", "--stage", "-z")).stdout, index);
+    for (const [path, bytes] of files) assert.equal(await readFile(join(directory, path), "utf8"), bytes);
+    assert.equal(await readFile(join(directory, ".tasks/0001-legacy-task.md"), "utf8"), original);
+    const after = await planAdoption(directory, { includeMigration: true });
+    assert.equal(after.compatibility.migrationRequired, false);
+    assert.equal(after.compatibility.taskRepairRequired, true);
+  });
+});

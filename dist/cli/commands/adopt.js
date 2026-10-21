@@ -1,3 +1,4 @@
+import { renderTaskContractInspection } from "../../core/config/compatibility.js";
 import { resolve } from "node:path";
 import { adoptRepository, planAdoption } from "../../core/docs/adopt.js";
 const ADOPT_HELP_TEXT = [
@@ -38,6 +39,9 @@ export async function runAdoptCommand(argv) {
             console.log(`Compatibility: ${plan.compatibility.overall}`);
             console.log(`Config: ${plan.compatibility.config.state}${plan.compatibility.config.schemaVersion ? ` v${plan.compatibility.config.schemaVersion}` : ""}`);
             console.log(`Tasks: ${plan.compatibility.tasks.contract} (legacy=${plan.compatibility.tasks.legacy}, gated=${plan.compatibility.tasks.gated}, unknown=${plan.compatibility.tasks.unknown})`);
+            console.log(`Schema-marker migration: ${plan.compatibility.migrationRequired ? "required" : "not required"}; task-contract repair: ${plan.compatibility.taskRepairRequired ? "required" : "no known incompatibilities (see coverage)"}`);
+            for (const line of renderTaskContractInspection(plan.compatibility.tasks.inspection).slice(0, 2))
+                console.log(line);
             console.log("Proposed changes:");
             if (plan.changes.length === 0)
                 console.log("- none");

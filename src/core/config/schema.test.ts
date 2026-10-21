@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -19,6 +19,7 @@ import {
   serializeAgenticConfig,
   writeLocalCommunicationLanguage,
 } from "./index.js";
+import { detectCompatibility, inspectTaskContracts, TASK_INSPECTION_LIMITS } from "./compatibility.js";
 import { detectResourceInventory } from "../resources/detect.js";
 import {
   applyExecutionCalibration,
@@ -830,5 +831,77 @@ test("two developer-local preferences coexist against one project checkout with 
     assert.equal((await resolveCommunicationLanguage({ path: developerA })).language, "ru");
     assert.equal((await resolveCommunicationLanguage({ path: developerB })).language, "uk");
     assert.deepEqual(await readdir(project), []);
+  });
+});
+
+
+test("task compatibility inspects every mixed legacy contract without alias guesses", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"));
+    await writeFile(join(directory, ".agentic/config.json"), JSON.stringify({ schemaVersion: 2, taskDirectory: "contracts" }));
+    await mkdir(join(directory, "contracts/archive"), { recursive: true });
+    const valid = await readFile("src/core/tasks/fixtures/v0.3.1/.tasks/0001-legacy-task.md", "utf8");
+    const files = new Map([
+      ["valid.md", valid],
+      ["a.md", valid.replace("Status: todo", "State: in_progress").replace("Mode: maintenance", "Mode: validation")],
+      ["b.md", valid.replace("Status: todo", "State: planned").replace("Mode: maintenance", "Mode: experiment/implementation")],
+      ["archive/c.md", valid.replace("Status: todo", "State: in_progress").replace("Mode: maintenance", "Mode: bugfix").replace("## Goal", "## Objective")],
+      ["heading.md", valid.replace("# Task 0001 -", "# Work 0001:")],
+    ]);
+    for (const [path, content] of files) await writeFile(join(directory, "contracts", path), content);
+    const report = await detectCompatibility(directory);
+    assert.equal(report.migrationRequired, false);
+    assert.equal(report.taskRepairRequired, true);
+    assert.equal(report.tasks.legacy, 5);
+    assert.equal(report.tasks.inspection.coverage.parseable, 1);
+    assert.equal(report.tasks.inspection.coverage.incompatible, 4);
+    assert.equal(report.tasks.inspection.coverage.complete, true);
+    const entry = report.tasks.inspection.entries.find((item) => item.path === "contracts/a.md")!;
+    assert.equal(entry.rawState, "in_progress");
+    assert.equal(entry.rawMode, "validation");
+    assert.match(entry.issues.join("; "), /State/);
+    assert.match(entry.issues.join("; "), /Mode/);
+    assert.equal(report.tasks.inspection.entries.find((item) => item.path.endsWith("archive/c.md"))?.archived, true);
+    assert.match(report.manualMigration.join(" "), /schemaVersion migration does not repair/);
+    assert.deepEqual(await detectCompatibility(directory), report);
+    for (const [path, content] of files) assert.equal(await readFile(join(directory, "contracts", path), "utf8"), content);
+  });
+});
+
+test("task compatibility discloses unreadable, oversized, omitted and bounded issues", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks"));
+    await mkdir(join(directory, ".tasks/directory.md"));
+    await writeFile(join(directory, ".tasks/invalid-utf8.md"), Buffer.from([0xff, 0xfe]));
+    await symlink("missing-target", join(directory, ".tasks/link.md"));
+    await writeFile(join(directory, ".tasks/oversized.md"), "x".repeat(TASK_INSPECTION_LIMITS.bytesPerFile + 1));
+    await writeFile(join(directory, ".tasks/sections.md"), "# Broken\n" + Array.from({ length: 50 }, (_, index) => `## Unknown ${index}\n`).join(""));
+    const result = await inspectTaskContracts(directory, ".tasks");
+    assert.equal(result.inspection.coverage.unreadable, 3);
+    assert.equal(result.inspection.coverage.notInspected, 1);
+    assert.equal(result.inspection.coverage.complete, false);
+    const sections = result.inspection.entries.find((entry) => entry.path.endsWith("sections.md"))!;
+    assert.equal(sections.issues.length, TASK_INSPECTION_LIMITS.issuesPerFile);
+    assert.ok(sections.omittedIssues > 0);
+    await rm(join(directory, ".tasks"), { recursive: true });
+    await mkdir(join(directory, ".tasks"));
+    await Promise.all(Array.from({ length: TASK_INSPECTION_LIMITS.files + 2 }, (_, index) =>
+      writeFile(join(directory, ".tasks", `${String(index).padStart(5, "0")}.md`), "# Broken\n")));
+    const bounded = (await inspectTaskContracts(directory, ".tasks")).inspection;
+    assert.equal(bounded.coverage.inspected, TASK_INSPECTION_LIMITS.files);
+    assert.equal(bounded.coverage.notInspected, 2);
+    assert.equal(bounded.coverage.complete, false);
+    assert.equal(bounded.coverage.enumerationComplete, true);
+    await Promise.all(Array.from({ length: TASK_INSPECTION_LIMITS.directoryEntries }, (_, index) =>
+      writeFile(join(directory, ".tasks", `${index}.txt`), "")));
+    const enumeration = (await inspectTaskContracts(directory, ".tasks")).inspection;
+    assert.equal(enumeration.coverage.enumerationComplete, false);
+    assert.equal(enumeration.coverage.complete, false);
+    assert.match(enumeration.diagnostics.join(" "), /additional paths\/count unknown/);
+    await rm(join(directory, ".tasks"), { recursive: true });
+    await writeFile(join(directory, ".tasks"), "not a directory");
+    const unavailable = (await inspectTaskContracts(directory, ".tasks")).inspection;
+    assert.equal(unavailable.coverage.enumerationComplete, false);
+    assert.match(unavailable.diagnostics.join(" "), /directory unavailable/);
   });
 });

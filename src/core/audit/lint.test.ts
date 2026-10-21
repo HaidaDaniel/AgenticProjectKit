@@ -428,3 +428,25 @@ test("lint distinguishes unavailable Git inspection from filesystem-only operati
     assert.ok(broken.findings.some((finding) => finding.code === "archive-git-inspection-failed"));
   });
 });
+
+
+test("contract lint shares bounded compatibility issues and manual migration guidance", async () => {
+  await withTempDirectory(async (directory) => {
+    await initProject(directory);
+    await mkdir(join(directory, ".tasks/archive"), { recursive: true });
+    const valid = renderTaskMarkdown(task("0090"));
+    await writeFile(join(directory, ".tasks/0090-invalid.md"), valid.replace("State: todo", "State: in_progress").replace("Mode: mvp", "Mode: validation"));
+    await writeFile(join(directory, ".tasks/archive/0091-invalid.md"), valid.replace("Task 0090", "Task 0091").replace("Mode: mvp", "Mode: bugfix"));
+    await mkdir(join(directory, ".tasks/unreadable.md"));
+    const result = await lintRepositoryContracts(directory);
+    assert.equal(result.taskInspection.coverage.incompatible, 2);
+    assert.equal(result.taskInspection.coverage.unreadable, 1);
+    assert.equal(result.taskInspection.coverage.complete, false);
+    assert.equal(result.findings.filter((finding) => finding.code === "task-malformed").length, 2);
+    assert.ok(result.findings.some((finding) => finding.code === "task-unreadable"));
+    assert.ok(result.findings.some((finding) => finding.code === "task-manual-migration"));
+    assert.match(renderTaskLintResult(result), /coverage=incomplete/);
+    assert.match(renderTaskLintResult(result), /schemaVersion migration does not repair/);
+    assert.equal(result.hasErrors, true);
+  });
+});

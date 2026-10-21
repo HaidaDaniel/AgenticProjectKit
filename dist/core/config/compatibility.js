@@ -1,5 +1,7 @@
-import { readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { constants } from "node:fs";
+import { open, opendir, readFile } from "node:fs/promises";
+import { join, relative } from "node:path";
+import { parseTaskMarkdown, TaskFormatError } from "../tasks/index.js";
 import { CONFIG_PATH } from "./file.js";
 import { CURRENT_CONFIG_SCHEMA_VERSION, LEGACY_CONFIG_SCHEMA_VERSION, parseAgenticConfigJson, } from "./schema.js";
 function isMissingFileError(error) {
@@ -65,29 +67,125 @@ async function readConfig(rootDirectory) {
         diagnostic: `Unsupported ${CONFIG_PATH} schemaVersion: ${String(raw.schemaVersion)}.`,
     };
 }
-async function taskFiles(rootDirectory, taskDirectory) {
-    const directories = [
-        join(rootDirectory, taskDirectory),
-        join(rootDirectory, taskDirectory, "archive"),
-    ];
+export const TASK_INSPECTION_LIMITS = { directoryEntries: 4096, files: 1024, bytesPerFile: 256 * 1024, issuesPerFile: 32, issueCharacters: 512 };
+export const TASK_MANUAL_MIGRATION = [
+    "Preserve original task bytes and Git history; back up needed local evidence and baselines before editing.",
+    "Classify each reported active/archive file. Supported legacy Verification commands need no format repair; schemaVersion migration does not repair task content.",
+    "Obtain explicit owner, state and project-mode decisions for incompatible contracts; do not assume in_progress means doing or bugfix is a Mode.",
+    "Prepare scoped, reviewable edits in a separate branch; preserve original references and historical completion claims without inventing evidence.",
+    "Rerun apk lint and adoption preview until all files are inspected and incompatibilities are resolved; separately review dependencies and duplicate IDs.",
+    "Independently revalidate affected candidate/baseline-bound provenance and verification/review evidence. Editing a contract can invalidate prior proof; never copy PASS records to restore trust.",
+];
+function boundedText(value) {
+    return value.length > TASK_INSPECTION_LIMITS.issueCharacters
+        ? `${value.slice(0, TASK_INSPECTION_LIMITS.issueCharacters - 1)}…` : value;
+}
+/** Shared bounded read-only parser inventory for compatibility and lint. */
+export async function inspectTaskContracts(rootDirectory, taskDirectory) {
     const paths = [];
-    for (const directory of directories) {
-        let entries;
+    const diagnostics = [];
+    let enumerationComplete = true;
+    for (const archived of [false, true]) {
+        const directory = join(rootDirectory, taskDirectory, ...(archived ? ["archive"] : []));
         try {
-            entries = await readdir(directory, { withFileTypes: true });
+            let visited = 0;
+            for await (const entry of await opendir(directory)) {
+                if (++visited > TASK_INSPECTION_LIMITS.directoryEntries) {
+                    enumerationComplete = false;
+                    diagnostics.push(`Task inspection incomplete: ${boundedText(relative(rootDirectory, directory))} exceeds directory entry limit ${TASK_INSPECTION_LIMITS.directoryEntries}; additional paths/count unknown.`);
+                    break;
+                }
+                if (entry.name.endsWith(".md"))
+                    paths.push({ path: relative(rootDirectory, join(directory, entry.name)).replace(/\\/g, "/"), archived });
+            }
         }
         catch (error) {
-            if (isMissingFileError(error))
-                continue;
-            throw error;
-        }
-        for (const entry of entries) {
-            if (entry.isFile() && entry.name.endsWith(".md")) {
-                paths.push(join(directory, entry.name));
+            if (!isMissingFileError(error)) {
+                enumerationComplete = false;
+                diagnostics.push(`Task inspection directory unavailable: ${boundedText(relative(rootDirectory, directory))}: ${boundedText(error instanceof Error ? error.message : String(error))}`);
             }
         }
     }
-    return paths.sort();
+    paths.sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+    const entries = [];
+    const parsed = [];
+    for (const [index, file] of paths.entries()) {
+        const entry = { ...file, status: "not-inspected", verification: "unknown", issues: [], omittedIssues: 0 };
+        entries.push(entry);
+        if (index >= TASK_INSPECTION_LIMITS.files) {
+            entry.issues = ["Not inspected: task-file budget exceeded."];
+            continue;
+        }
+        let markdown;
+        try {
+            // No symlink/FIFO traversal or content-sized allocation.
+            const handle = await open(join(rootDirectory, file.path), constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW);
+            try {
+                const info = await handle.stat();
+                if (!info.isFile())
+                    throw new Error("Not a regular task file.");
+                if (info.size > TASK_INSPECTION_LIMITS.bytesPerFile) {
+                    entry.issues = ["Not inspected: task exceeds byte limit."];
+                    continue;
+                }
+                const buffer = Buffer.alloc(TASK_INSPECTION_LIMITS.bytesPerFile + 1);
+                let size = 0;
+                while (size < buffer.length) {
+                    const { bytesRead } = await handle.read(buffer, size, buffer.length - size, null);
+                    if (bytesRead === 0)
+                        break;
+                    size += bytesRead;
+                }
+                if (size > TASK_INSPECTION_LIMITS.bytesPerFile) {
+                    entry.issues = ["Not inspected: task exceeds byte limit."];
+                    continue;
+                }
+                markdown = new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, size));
+            }
+            finally {
+                await handle.close();
+            }
+        }
+        catch (error) {
+            entry.status = "unreadable";
+            entry.issues = [boundedText(error instanceof Error ? error.message : String(error))];
+            continue;
+        }
+        entry.rawId = markdown.match(/^# Task\s+([^\s]+)\s+-/m)?.[1]?.slice(0, 128);
+        entry.rawState = markdown.match(/^(?:State|Status):([^\r\n]*)/m)?.[1]?.trim().slice(0, 128);
+        entry.rawMode = markdown.match(/^Mode:([^\r\n]*)/m)?.[1]?.trim().slice(0, 128);
+        entry.verification = taskContract(markdown);
+        try {
+            const task = parseTaskMarkdown(markdown);
+            entry.status = "parseable";
+            parsed.push({ ...file, task });
+        }
+        catch (error) {
+            entry.status = "incompatible";
+            const issues = error instanceof TaskFormatError ? error.issues : [error instanceof Error ? error.message : String(error)];
+            entry.issues = issues.slice(0, TASK_INSPECTION_LIMITS.issuesPerFile).map(boundedText);
+            entry.omittedIssues = Math.max(0, issues.length - entry.issues.length);
+        }
+    }
+    const count = (status) => entries.filter((entry) => entry.status === status).length;
+    const parseable = count("parseable"), incompatible = count("incompatible"), unreadable = count("unreadable"), notInspected = count("not-inspected");
+    const coverage = {
+        discovered: entries.length, inspected: parseable + incompatible, parseable, incompatible, unreadable, notInspected,
+        enumerationComplete, complete: enumerationComplete && unreadable === 0 && notInspected === 0,
+        limits: TASK_INSPECTION_LIMITS,
+    };
+    if (!coverage.complete)
+        diagnostics.push(`Task inspection incomplete: unreadable=${unreadable}; not-inspected=${notInspected}; discovered=${entries.length}${enumerationComplete ? "" : " (lower bound)"}. No clean compatibility claim is available.`);
+    return { inspection: { entries, coverage, diagnostics }, parsed };
+}
+export function renderTaskContractInspection(inspection) {
+    const { coverage } = inspection;
+    return [
+        `Task parseability: parseable=${coverage.parseable}; incompatible=${coverage.incompatible}; unreadable=${coverage.unreadable}; not-inspected=${coverage.notInspected}; coverage=${coverage.complete ? "complete" : "incomplete"}. Verification heading families alone do not prove parseability.`,
+        `Task inspection limits: ${coverage.limits.directoryEntries} entries/directory; ${coverage.limits.files} files; ${coverage.limits.bytesPerFile} bytes/file; ${coverage.limits.issuesPerFile} issues/file; ${coverage.limits.issueCharacters} characters/issue (long text ends with …).`,
+        ...inspection.entries.filter((entry) => entry.status !== "parseable").map((entry) => `${JSON.stringify(entry.path)}${entry.rawId ? ` (raw id=${JSON.stringify(entry.rawId)})` : ""}: ${entry.status}: ${entry.issues.join("; ")}${entry.omittedIssues > 0 ? `; ${entry.omittedIssues} more issues omitted` : ""}`),
+        ...inspection.diagnostics,
+    ];
 }
 function taskContract(markdown) {
     const hasGatedVerification = /^## Verification\s*$/m.test(markdown);
@@ -114,26 +212,16 @@ export async function detectCompatibility(rootDirectory) {
     const taskDirectory = typeof config.raw?.taskDirectory === "string" && config.raw.taskDirectory.trim().length > 0
         ? config.raw.taskDirectory
         : ".tasks";
-    const paths = await taskFiles(rootDirectory, taskDirectory);
-    let legacy = 0;
-    let gated = 0;
-    let unknown = 0;
-    const diagnostics = config.diagnostic ? [config.diagnostic] : [];
-    for (const path of paths) {
-        try {
-            const contract = taskContract(await readFile(path, "utf8"));
-            if (contract === "legacy")
-                legacy += 1;
-            else if (contract === "gated")
-                gated += 1;
-            else
-                unknown += 1;
-        }
-        catch (error) {
-            unknown += 1;
-            diagnostics.push(`Unable to inspect task ${path}: ${error instanceof Error ? error.message : String(error)}.`);
-        }
-    }
+    const { inspection } = await inspectTaskContracts(rootDirectory, taskDirectory);
+    const legacy = inspection.entries.filter((entry) => entry.verification === "legacy").length;
+    const gated = inspection.entries.filter((entry) => entry.verification === "gated").length;
+    const unknown = inspection.entries.length - legacy - gated;
+    const taskRepairRequired = inspection.coverage.incompatible > 0;
+    const diagnostics = [
+        ...(config.diagnostic ? [config.diagnostic] : []),
+        ...renderTaskContractInspection(inspection).slice(2),
+        ...(taskRepairRequired || !inspection.coverage.complete ? TASK_MANUAL_MIGRATION.map((step, index) => `Manual task migration ${index + 1}: ${step}`) : []),
+    ];
     const contract = legacy > 0 && gated > 0
         ? "mixed"
         : legacy > 0
@@ -151,14 +239,17 @@ export async function detectCompatibility(rootDirectory) {
         },
         tasks: {
             directory: taskDirectory,
-            total: paths.length,
+            total: inspection.entries.length,
             legacy,
             gated,
             unknown,
             contract,
+            inspection,
         },
-        overall: overallState(config.state, contract, paths.length),
+        overall: overallState(config.state, contract, inspection.entries.length),
         migrationRequired: config.state === "legacy" || config.state === "missing",
+        taskRepairRequired,
+        manualMigration: TASK_MANUAL_MIGRATION,
         diagnostics,
     };
 }

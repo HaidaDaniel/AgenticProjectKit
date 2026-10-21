@@ -10,6 +10,7 @@ import {
   type CompatibilityReport,
 } from "../config/index.js";
 import { CONFIG_PATH } from "../config/file.js";
+import { renderTaskContractInspection } from "../config/compatibility.js";
 import {
   styleRulesFor,
   DEFAULT_AGENT_POLICY,
@@ -163,7 +164,10 @@ function renderAdoptionReport(scan: RepositoryScan, compatibility: Compatibility
     `- Contract: ${compatibility.overall}`,
     `- Config schema: ${compatibility.config.state}${compatibility.config.schemaVersion ? ` v${compatibility.config.schemaVersion}` : ""}`,
     `- Task contract: ${compatibility.tasks.contract} (legacy=${compatibility.tasks.legacy}, gated=${compatibility.tasks.gated}, unknown=${compatibility.tasks.unknown})`,
-    `- Migration required: ${compatibility.migrationRequired ? "yes" : "no"}`,
+    `- Config schema-marker migration required: ${compatibility.migrationRequired ? "yes" : "no"}`,
+    `- Task-contract repair required: ${compatibility.taskRepairRequired ? "yes" : "no known incompatibilities (see coverage)"}`,
+    ...renderTaskContractInspection(compatibility.tasks.inspection).slice(0, 2).map((line) => `- ${line}`),
+    ...compatibility.diagnostics.map((diagnostic) => `- ${diagnostic}`),
     "",
     "## Missing Kit Docs",
     "",

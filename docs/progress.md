@@ -12,6 +12,8 @@ A bounded v0.5.1 corrective backlog now records the confirmed downstream defects
 
 ## Active work
 
+Task 0235 is doing: compatibility and lint are being aligned on bounded canonical task parsing, explicit partial coverage, and a manual migration plan that preserves historical bytes and evidence trust.
+
 Task 0227 is done as the prerequisite for 0235: status and attention prioritize doing/review/blocked before todo within the existing 32-task budget, expose exact omission counts, and preserve healthy parsed tasks with unavailable gates on incomplete inventories. Paired disposable fixtures reproduced and resolved the hidden-task defect; all seven automated checks, the observed report, independent fresh-context review (including FIFO, malformed archive, state-change and directory-limit counterexamples), and gate passed at `2d361d6`.
 
 Task 0234 is done: doctor and adoption preview share bounded installation/launcher diagnostics with separate declared, locked, and present facts. Synthetic pinned/stale/missing/external/dynamic fixtures passed; canonical verification and gate passed at `c970fcd`. No dependency, launcher, or downstream repository was modified.

@@ -145,3 +145,21 @@ and documented launcher manually. A separate installation can be an intentional
 prerequisite; document its exact source/version and acquisition steps. Node
 application ownership remains independent: these warnings do not turn a Python
 or Go application into a Node application or install Node dependencies for it.
+
+
+## Task compatibility and manual repair
+
+Adoption preview and `apk lint` share canonical task-parser inspection across the configured active and archive directories. Heading-family counts (`legacy`, `gated`, `unknown`) retain their original meaning; neither a structured heading nor a config schema marker proves that State, Mode, sections, or the rest of a contract can be parsed. Valid `Verification commands` contracts remain supported. Preview distinguishes config schema-marker migration from known task-contract repair, and lists paths, available raw IDs/State/Mode, and bounded parser issues in its structured compatibility report. Text output includes per-file issues and the migration sequence; lint retains `task-malformed` findings.
+
+Inspection distinguishes `parseable`, `incompatible`, `unreadable` (including non-UTF8 and non-regular inputs), and `not-inspected` (size or file budget). Bounds are 4,096 directory entries per active/archive directory, 1,024 inspected files, 256 KiB per file, 32 issues per file and 512 characters per issue. Raw metadata is capped at 128 characters. Omitted issue counts and truncated text are disclosed. File enumeration limits make discovered counts lower bounds; unreadable, oversized or omitted files make coverage incomplete. A parseable result is syntactic compatibility, not a successful lifecycle gate or dependency audit. Symlink task files are not followed. Reports do not rewrite task bytes, evidence, baselines, ownership or history. `adopt --apply` may migrate the config marker and add normal missing scaffolding, but it does not repair existing task contracts.
+
+For an incompatible or incomplete inventory:
+
+1. Preserve original task bytes and Git history; back up local evidence and baselines.
+2. Classify each active and archived file. A supported legacy verification heading needs no repair.
+3. Obtain explicit owner, state and project-mode decisions. Do not map `in_progress` to `doing` or assume `bugfix` is a Mode without a semantic decision.
+4. Prepare narrowly scoped edits on a branch, preserving historical references and completion claims without inventing proof.
+5. Rerun lint and preview until coverage is complete and incompatibilities are resolved; separately review duplicate IDs and dependencies.
+6. Independently revalidate affected candidate/baseline-bound verification and review evidence. Contract changes can invalidate old proof; copying PASS records cannot restore trust.
+
+Changing `schemaVersion` alone never repairs invalid task content. The status/attention resilience described in the [task system](task-system.md) keeps healthy parsed tasks visible while incomplete inventories have unavailable gates; this is diagnostic behavior, not automatic migration.

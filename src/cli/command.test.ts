@@ -1737,3 +1737,22 @@ test("CLI archive preview and apply expose ignored destinations and preserve sou
     assert.equal(await readFile(source, "utf8"), content);
   });
 });
+
+
+test("adopt preview distinguishes schema markers from incompatible task contracts", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks"));
+    await mkdir(join(directory, ".agentic"));
+    await writeFile(join(directory, ".agentic/config.json"), JSON.stringify({ schemaVersion: 2 }));
+    const valid = await readFile(join(TEST_ROOT, "src/core/tasks/fixtures/v0.3.1/.tasks/0001-legacy-task.md"), "utf8");
+    const broken = valid.replace("Mode: maintenance", "Mode: bugfix");
+    await writeFile(join(directory, ".tasks/0001.md"), broken);
+    const result = await runCommand(["adopt", "--preview"], directory);
+    assert.equal(result.exitCode, 0);
+    assert.match(result.stdout, /Schema-marker migration: not required; task-contract repair: required/);
+    assert.match(result.stdout, /incompatible=1/);
+    assert.match(result.stderr, /schemaVersion migration does not repair task content/);
+    assert.match(result.stderr, /candidate\/baseline-bound provenance/);
+    assert.equal(await readFile(join(directory, ".tasks/0001.md"), "utf8"), broken);
+  });
+});
