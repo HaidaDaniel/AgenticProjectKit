@@ -1,6 +1,6 @@
 # Task 0234 - Diagnose unreproducible APK installations and launcher mismatches
 
-State: doing
+State: done
 Owner: codex-fixes-0234
 Mode: maintenance
 Lane: diagnostics
