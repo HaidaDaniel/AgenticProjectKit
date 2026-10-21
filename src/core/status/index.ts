@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { open, opendir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { CONFIG_PATH, readAgenticConfigFile } from "../config/index.js";
@@ -7,8 +8,7 @@ import { syncAgentExports } from "../sync/index.js";
 import {
   buildTaskProvenance,
   evaluateTaskCompletionGate,
-  listArchivedTaskFiles,
-  listTaskFiles,
+  parseTaskMarkdown,
   selectNextTask,
   type ProjectTask,
   type ProjectTaskFile,
@@ -121,6 +121,79 @@ export interface StatusSummary {
   latestRun?: RunLogEvent;
   activeTasks: ActiveTaskStatus[];
   warnings: string[];
+  coverage?: {
+    selected: number;
+    omitted: number;
+    omittedActionable: number;
+    inventoryComplete: boolean;
+  };
+}
+
+// Diagnostic-only inventory: lifecycle commands retain the canonical strict parser.
+// Bounds apply to enumeration and each read; counts are explicitly partial if hit.
+const MAX_STATUS_DIRECTORY_ENTRIES = 10_000;
+const MAX_STATUS_TASK_BYTES = 1024 * 1024;
+
+export async function readStatusTaskInventory(rootDirectory: string, taskDirectory: string) {
+  const diagnostics: string[] = [];
+  let failures = 0;
+  const problem = (message: string) => {
+    failures += 1;
+    if (diagnostics.length < MAX_STATUS_BLOCKERS) diagnostics.push(`task parse warning: ${capStatusText(message)}`);
+  };
+  const readDirectory = async (directory: string): Promise<ProjectTaskFile[]> => {
+    const files: ProjectTaskFile[] = [];
+    try {
+      const entries = await opendir(directory);
+      let count = 0;
+      for await (const entry of entries) {
+        if (++count > MAX_STATUS_DIRECTORY_ENTRIES) {
+          problem(`${directory}: directory entry limit exceeded`);
+          break;
+        }
+        if (!entry.name.endsWith(".md")) continue;
+        const path = join(directory, entry.name);
+        try {
+          const handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK);
+          try {
+            const info = await handle.stat();
+            if (!info.isFile() || info.size > MAX_STATUS_TASK_BYTES) throw new Error("task is not a regular file within the 1 MiB read limit");
+            const buffer = Buffer.alloc(MAX_STATUS_TASK_BYTES + 1);
+            let size = 0;
+            while (size < buffer.length) {
+              const { bytesRead } = await handle.read(buffer, size, buffer.length - size, null);
+              if (bytesRead === 0) break;
+              size += bytesRead;
+            }
+            if (size > MAX_STATUS_TASK_BYTES) throw new Error("task exceeds the 1 MiB read limit");
+            files.push({ path, task: parseTaskMarkdown(buffer.subarray(0, size).toString("utf8")) });
+          } finally {
+            await handle.close();
+          }
+        } catch (error: unknown) {
+          problem(`${path}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
+        }
+      }
+    } catch (error: unknown) {
+      if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
+        problem(`${directory}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    return files.sort(compareTaskFiles);
+  };
+  const active = await readDirectory(join(rootDirectory, taskDirectory));
+  const archived = await readDirectory(join(rootDirectory, taskDirectory, "archive"));
+  if (failures > 0) diagnostics.push(`task inventory incomplete (${failures} read/parse failures); counts cover parsed tasks only; next task unknown; gates unavailable`);
+  return { active, archived, diagnostics, complete: failures === 0 };
+}
+
+function compareTaskFiles(left: ProjectTaskFile, right: ProjectTaskFile): number {
+  // Match canonical numeric-ID ordering, including leading-zero IDs.
+  const leftId = Number.parseInt(left.task.id, 10);
+  const rightId = Number.parseInt(right.task.id, 10);
+  const byId = (Number.isNaN(leftId) ? Number.MAX_SAFE_INTEGER : leftId)
+    - (Number.isNaN(rightId) ? Number.MAX_SAFE_INTEGER : rightId);
+  return byId || left.path.localeCompare(right.path);
 }
 
 async function fileExists(path: string): Promise<boolean> {
@@ -264,10 +337,12 @@ async function summarizeActiveTask(
   taskDirectory: string,
   file: ProjectTaskFile,
   warnings: string[],
+  inventoryComplete = true,
 ): Promise<ActiveTaskStatus> {
   const changedFiles = file.task.state === "todo" ? [] : undefined;
   let gate: TaskCompletionGateResult;
   try {
+    if (!inventoryComplete) throw new Error("task inventory incomplete; gate unavailable");
     gate = await evaluateTaskCompletionGate({
       rootDirectory,
       taskDirectory,
@@ -276,7 +351,7 @@ async function summarizeActiveTask(
     });
   } catch (error: unknown) {
     const message = capStatusText(error instanceof Error ? error.message.split("\n")[0] : String(error));
-    warnings.push(`task status warning: ${file.task.id}: ${message}`);
+    warnings.push(`task status warning: ${file.task.id}: gate unavailable: ${message}`);
     return {
       id: file.task.id,
       title: file.task.title,
@@ -385,23 +460,23 @@ export async function summarizeStatus(rootDirectory: string): Promise<StatusSumm
   let archivedCount = 0;
   let nextTask: StatusSummary["nextTask"];
   const activeTaskStatuses: ActiveTaskStatus[] = [];
+  let coverage: StatusSummary["coverage"];
 
   if (!configExists) {
     warnings.push("config missing; using defaults");
   }
 
   try {
-    const [activeTasks, archivedTasks] = await Promise.all([
-      listTaskFiles(rootDirectory, config.taskDirectory),
-      listArchivedTaskFiles(rootDirectory, config.taskDirectory),
-    ]);
+    const inventory = await readStatusTaskInventory(rootDirectory, config.taskDirectory);
+    const { active: activeTasks, archived: archivedTasks } = inventory;
+    warnings.push(...inventory.diagnostics);
 
     for (const file of [...activeTasks, ...archivedTasks]) {
       taskCounts[file.task.state] += 1;
     }
     archivedCount = archivedTasks.length;
 
-    const next = selectNextTask(activeTasks, archivedTasks);
+    const next = inventory.complete ? selectNextTask(activeTasks, archivedTasks) : undefined;
     if (next) {
       nextTask = {
         id: next.task.id,
@@ -414,12 +489,22 @@ export async function summarizeStatus(rootDirectory: string): Promise<StatusSumm
       warnings.push(`duplicate task ids: ${duplicateIds.join(",")}`);
     }
 
-    const activeFiles = activeTasks.filter((file) => !["done", "canceled"].includes(file.task.state));
-    for (const file of activeFiles.slice(0, MAX_ACTIVE_TASKS)) {
-      activeTaskStatuses.push(await summarizeActiveTask(rootDirectory, config.taskDirectory, file, warnings));
+    const stateRank: Record<TaskState, number> = { doing: 0, review: 1, blocked: 2, todo: 3, done: 4, canceled: 5 };
+    const activeFiles = activeTasks.filter((file) => !["done", "canceled"].includes(file.task.state))
+      .sort((left, right) => stateRank[left.task.state] - stateRank[right.task.state] || compareTaskFiles(left, right));
+    const selected = activeFiles.slice(0, MAX_ACTIVE_TASKS);
+    const omitted = activeFiles.slice(MAX_ACTIVE_TASKS);
+    coverage = {
+      selected: selected.length,
+      omitted: omitted.length,
+      omittedActionable: omitted.filter((file) => file.task.state !== "todo").length,
+      inventoryComplete: inventory.complete,
+    };
+    for (const file of selected) {
+      activeTaskStatuses.push(await summarizeActiveTask(rootDirectory, config.taskDirectory, file, warnings, inventory.complete));
     }
-    if (activeFiles.length > MAX_ACTIVE_TASKS) {
-      warnings.push(`active task status truncated at ${MAX_ACTIVE_TASKS} tasks`);
+    if (omitted.length > 0) {
+      warnings.push(`active task status truncated at ${MAX_ACTIVE_TASKS} tasks; detailed projection incomplete; omitted=${coverage.omitted}; omitted actionable=${coverage.omittedActionable}${inventory.complete ? "" : " (parsed inventory only)"}`);
     }
   } catch (error: unknown) {
     warnings.push(`task parse warning: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
@@ -458,6 +543,7 @@ export async function summarizeStatus(rootDirectory: string): Promise<StatusSumm
     },
     latestRun: runs.at(-1),
     activeTasks: activeTaskStatuses,
+    coverage,
     warnings,
   };
 }

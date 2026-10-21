@@ -1,8 +1,7 @@
 import { readAgenticConfigFile } from "../config/index.js";
-import { allTaskFiles } from "../tasks/index.js";
 import { resolveTaskPolicy } from "../tasks/policy.js";
 import { listWorkerSessions, } from "../work/session.js";
-import { summarizeStatus, } from "./index.js";
+import { summarizeStatus, readStatusTaskInventory, } from "./index.js";
 export const ATTENTION_PRIORITIES = ["P1", "P2", "P3", "P4"];
 export const WORKER_SEMANTIC_STATES = ["ready", "busy", "unknown", "unavailable"];
 const PRIORITY_RANK = { P1: 0, P2: 1, P3: 2, P4: 3 };
@@ -171,14 +170,15 @@ function assuranceStatus(independentReview, review) {
 export async function buildAttentionView(rootDirectory, taskDirectory) {
     const config = await readAgenticConfigFile(rootDirectory);
     const summary = await summarizeStatus(rootDirectory);
-    const taskFiles = await allTaskFiles(rootDirectory, taskDirectory);
+    const inventory = await readStatusTaskInventory(rootDirectory, taskDirectory);
+    const taskFiles = [...inventory.active, ...inventory.archived];
     const activeTasks = taskFiles
         .map((file) => file.task)
         .filter((task) => ["doing", "review", "blocked"].includes(task.state));
     const taskStates = new Map(taskFiles.map((file) => [file.task.id, file.task.state]));
-    const workerDiagnostics = [];
+    const workerDiagnostics = inventory.diagnostics.filter((diagnostic) => !summary.warnings.includes(diagnostic));
     let sessions = [];
-    let sessionsUnavailable = false;
+    let sessionsUnavailable = !inventory.complete;
     if (config.resources && config.resources.workers.length > 0) {
         try {
             sessions = await listWorkerSessions(rootDirectory);

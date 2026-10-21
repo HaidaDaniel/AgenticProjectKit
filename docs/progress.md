@@ -12,6 +12,8 @@ A bounded v0.5.1 corrective backlog now records the confirmed downstream defects
 
 ## Active work
 
+Task 0227 is doing as the prerequisite for 0235: disposable fixtures confirmed that 32 old todo tasks hide a later doing, review, or blocked task from status and attention. The candidate prioritizes actionable states within the existing 32-task budget, exposes omitted counts, and keeps malformed inventories diagnostic and fail-closed.
+
 Task 0234 is done: doctor and adoption preview share bounded installation/launcher diagnostics with separate declared, locked, and present facts. Synthetic pinned/stale/missing/external/dynamic fixtures passed; canonical verification and gate passed at `c970fcd`. No dependency, launcher, or downstream repository was modified.
 
 Task 0231 is done as the prerequisite for 0234: doctor reuses canonical application ownership, preserves nested Node checks, and quality detects declared Python build backends with bounded conservative TOML inventory. The disposable pre-fix fixture reproduced four false Node-script warnings and missing setuptools build capability. All seven canonical checks and the completion gate passed at `1cbfca5` (implementation `34dfa3f`); no independent review was required by its medium-risk policy.

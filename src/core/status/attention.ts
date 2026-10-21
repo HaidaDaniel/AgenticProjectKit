@@ -1,5 +1,5 @@
 import { readAgenticConfigFile } from "../config/index.js";
-import { allTaskFiles, type ProjectTask, type TaskState } from "../tasks/index.js";
+import { type ProjectTask, type TaskState } from "../tasks/index.js";
 import { resolveTaskPolicy } from "../tasks/policy.js";
 import {
   listWorkerSessions,
@@ -7,6 +7,7 @@ import {
 } from "../work/session.js";
 import {
   summarizeStatus,
+  readStatusTaskInventory,
   type ActiveTaskStatus,
   type StatusSummary,
 } from "./index.js";
@@ -261,15 +262,16 @@ export async function buildAttentionView(
 ): Promise<AttentionView> {
   const config = await readAgenticConfigFile(rootDirectory);
   const summary: StatusSummary = await summarizeStatus(rootDirectory);
-  const taskFiles = await allTaskFiles(rootDirectory, taskDirectory);
+  const inventory = await readStatusTaskInventory(rootDirectory, taskDirectory);
+  const taskFiles = [...inventory.active, ...inventory.archived];
   const activeTasks = taskFiles
     .map((file) => file.task)
     .filter((task) => ["doing", "review", "blocked"].includes(task.state));
   const taskStates = new Map(taskFiles.map((file) => [file.task.id, file.task.state] as const));
 
-  const workerDiagnostics: string[] = [];
+  const workerDiagnostics: string[] = inventory.diagnostics.filter((diagnostic) => !summary.warnings.includes(diagnostic));
   let sessions: DiscoveredWorkerSession[] = [];
-  let sessionsUnavailable = false;
+  let sessionsUnavailable = !inventory.complete;
   if (config.resources && config.resources.workers.length > 0) {
     try {
       sessions = await listWorkerSessions(rootDirectory);

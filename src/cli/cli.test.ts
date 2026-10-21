@@ -1530,6 +1530,133 @@ test("CLI status shows compact workflow state", async () => {
   });
 });
 
+async function writeStatusFixture(directory: string, states: string[]): Promise<void> {
+  await mkdir(join(directory, ".tasks", "archive"), { recursive: true });
+  await Promise.all(states.map((state, index) => {
+    const id = String(index + 1).padStart(4, "0");
+    return writeFile(join(directory, ".tasks", `${id}-task.md`),
+      buildTaskMarkdown(id, `Fixture ${id}`, state, state === "todo" ? "none" : "fixture-owner"));
+  }));
+}
+
+for (const state of ["doing", "review", "blocked"]) {
+  test(`CLI status selection prioritizes later ${state} over 32 todo tasks`, async () => {
+    await withTempDirectory(async (directory) => {
+      await writeStatusFixture(directory, [...Array<string>(32).fill("todo"), state]);
+      const registered = await runCli(["agent", "register", "--id", "fixture-owner", "--platform", "codex", "--model", "test"], directory);
+      assert.equal(registered.exitCode, 0);
+      const compact = await runCli(["status"], directory);
+      const detail = await runCli(["status", "--detail"], directory);
+      const attention = await runCli(["attention", "--json"], directory);
+      assert.equal(compact.exitCode, 0);
+      assert.equal(detail.exitCode, 0);
+      assert.equal(attention.exitCode, 0);
+      assert.match(compact.stdout, new RegExp(`0033 \\[${state}\\]`));
+      assert.match(detail.stdout, /Task 0033: Fixture 0033/);
+      assert.equal((detail.stdout.match(/^Task \d+:/gm) ?? []).length, 32);
+      assert.match(compact.stdout, /todo:32/);
+      assert.match(compact.stdout, /Next task: 0001/);
+      assert.match(compact.stdout, /omitted=1; omitted actionable=0/);
+      assert.deepEqual(JSON.parse(attention.stdout).items.map((item: { taskId: string }) => item.taskId), ["0033"]);
+      const listing = await runCli(["tasks", "--state", state], directory);
+      assert.match(listing.stdout, /0033/);
+      const next = await runCli(["next-task"], directory);
+      assert.match(next.stdout, /0001/);
+    });
+  });
+}
+
+test("CLI status selection reports exact omitted actionable coverage and complete counts", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeStatusFixture(directory, ["todo", ...Array<string>(12).fill("blocked"), ...Array<string>(12).fill("review"), ...Array<string>(12).fill("doing")]);
+    await writeFile(join(directory, ".tasks", "archive", "0099-done.md"), buildTaskMarkdown("0099", "Archived", "done", "fixture-owner"));
+    const first = await runCli(["status", "--detail"], directory);
+    const second = await runCli(["status", "--detail"], directory);
+    assert.equal(first.exitCode, 0);
+    const ids = [...first.stdout.matchAll(/^Task (\d+):/gm)].map((match) => match[1]);
+    assert.deepEqual(ids, [...Array.from({ length: 12 }, (_, i) => i + 26), ...Array.from({ length: 12 }, (_, i) => i + 14), ...Array.from({ length: 8 }, (_, i) => i + 2)].map((id) => String(id).padStart(4, "0")));
+    assert.deepEqual([...second.stdout.matchAll(/^Task (\d+):/gm)].map((match) => match[1]), ids);
+    assert.match(first.stdout, /todo:1, doing:12, review:12, done:1, blocked:12, canceled:0, archived:1/);
+    assert.match(first.stdout, /detailed projection incomplete; omitted=5; omitted actionable=4/);
+    const attention = await runCli(["attention", "--json"], directory);
+    assert.equal(attention.exitCode, 0);
+    const view = JSON.parse(attention.stdout);
+    assert.deepEqual(view.items.map((item: { taskId: string }) => item.taskId).sort(), [...ids].sort());
+    assert.match(view.diagnostics.join("\n"), /omitted actionable=4/);
+  });
+});
+
+test("CLI status selection uses numeric ids then paths and handles empty or missing inventory", async () => {
+  await withTempDirectory(async (directory) => {
+    for (const create of [false, true]) {
+      if (create) await writeStatusFixture(directory, []);
+      for (const args of [["status"], ["status", "--detail"], ["attention", "--json"]]) {
+        const result = await runCli(args, directory);
+        assert.equal(result.exitCode, 0);
+        assert.doesNotMatch(result.stdout, /truncated|incomplete/);
+        if (args[0] === "status") assert.match(result.stdout, /Active tasks:\n- none/);
+        else assert.deepEqual(JSON.parse(result.stdout).items, []);
+      }
+    }
+    for (const [name, id, title] of [["z", "0002", "Second path"], ["a", "0002", "First path"], ["b", "0010", "Ten"], ["c", "0001", "One"]]) {
+      await writeFile(join(directory, ".tasks", `${name}.md`), buildTaskMarkdown(id!, title!, "doing", "fixture-owner"));
+    }
+    const result = await runCli(["status", "--detail"], directory);
+    assert.deepEqual([...result.stdout.matchAll(/^Task (.*): (.*)$/gm)].map((match) => match[2]), ["One", "First path", "Second path", "Ten"]);
+  });
+});
+
+test("CLI status selection bounds unreadable task content and diagnostics", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeStatusFixture(directory, ["doing"]);
+    await writeFile(join(directory, ".tasks", "oversized.md"), "x".repeat(1024 * 1024 + 1));
+    await mkdir(join(directory, ".tasks", "directory.md"));
+    for (let index = 0; index < 12; index += 1) {
+      await writeFile(join(directory, ".tasks", `broken-${index}.md`), "# Broken\n");
+    }
+    const status = await runCli(["status", "--detail"], directory);
+    const attention = await runCli(["attention", "--json"], directory);
+    assert.equal(status.exitCode, 0);
+    assert.equal(attention.exitCode, 0);
+    assert.match(status.stdout, /inventory incomplete \(14 read\/parse failures\)/);
+    assert.equal((status.stdout.match(/task parse warning:/g) ?? []).length, 8);
+    assert.match(status.stdout, /Task 0001:/);
+    assert.match(status.stdout, /Gate: unavailable/);
+    assert.equal(JSON.parse(attention.stdout).items[0].review.status, "unknown");
+  });
+});
+
+test("CLI status selection keeps malformed tasks and evidence fail closed", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeStatusFixture(directory, ["review"]);
+    await writeFile(join(directory, ".tasks", "broken.md"), "# Broken\n");
+    for (const args of [["status"], ["status", "--detail"], ["attention", "--json"]]) {
+      const result = await runCli(args, directory);
+      assert.equal(result.exitCode, 0);
+      assert.match(result.stdout, /task parse warning/);
+      assert.match(result.stdout, /0001/);
+      assert.match(result.stdout, /unavailable|unknown/);
+      assert.doesNotMatch(result.stdout, /gate=pass|Gate: pass/);
+    }
+    await rm(join(directory, ".tasks", "broken.md"));
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    for (const evidence of ["{broken json\n", "directory"]) {
+      const path = join(directory, ".agentic", "evidence.jsonl");
+      if (evidence === "directory") {
+        await rm(path);
+        await mkdir(path);
+      } else await writeFile(path, evidence);
+      const status = await runCli(["status", "--detail"], directory);
+      const attention = await runCli(["attention", "--json"], directory);
+      assert.equal(status.exitCode, 0);
+      assert.equal(attention.exitCode, 0);
+      assert.match(status.stdout, /Gate: unavailable/);
+      assert.match(status.stdout, /Warnings:.*gate unavailable/);
+      assert.equal(JSON.parse(attention.stdout).items[0].review.status, "unknown");
+    }
+  });
+});
+
 test("CLI status help shows usage", async () => {
   const result = await runCli(["status", "--help"]);
 
