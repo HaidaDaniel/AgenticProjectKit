@@ -1,6 +1,6 @@
 # Task 0227 - Prioritize actionable task states in status and attention
 
-State: doing
+State: done
 Owner: codex-fixes-0227
 Mode: maintenance
 Lane: bugfix
