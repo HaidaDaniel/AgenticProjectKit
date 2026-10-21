@@ -10,6 +10,7 @@ import { syncAgentExports } from "../sync/index.js";
 import { listTaskFiles } from "../tasks/index.js";
 import { TASK_EVIDENCE_LOCK_PATH } from "../tasks/evidence.js";
 import { inspectLocalMutationLock, renderLocalLockInspection } from "../tasks/lock.js";
+import { inspectApkInstallation, renderInstallationFinding } from "./installation.js";
 
 export type DoctorLevel = "pass" | "warn" | "fail";
 
@@ -183,6 +184,10 @@ export async function runDoctor(rootDirectory: string): Promise<DoctorResult> {
   }
 
   checks.push(...await applicationChecks(rootDirectory));
+  const installation = await inspectApkInstallation(rootDirectory);
+  checks.push(...installation.findings.map((finding) => ({
+    level: finding.level, label: `installation:${finding.code}`, message: renderInstallationFinding(finding),
+  })));
   try {
     const quality = await detectQualityCapabilities(rootDirectory, qualityPolicy);
     const nonDetected = quality.capabilities.filter((capability) => capability.status !== "detected").length;

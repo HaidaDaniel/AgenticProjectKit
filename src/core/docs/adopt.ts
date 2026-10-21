@@ -22,8 +22,10 @@ import {
 } from "../init/index.js";
 import { scanRepository, type RepositoryScan } from "../scanners/index.js";
 import { renderTaskMarkdown, type ProjectTask } from "../tasks/index.js";
+import { inspectApkInstallation, renderInstallationFinding, type InstallationReport } from "../doctor/installation.js";
 
 export interface AdoptResult {
+  installation: InstallationReport;
   scan: RepositoryScan;
   created: string[];
   skipped: string[];
@@ -40,6 +42,7 @@ export interface AdoptionChange {
 }
 
 export interface AdoptionPlan {
+  installation: InstallationReport;
   scan: RepositoryScan;
   compatibility: CompatibilityReport;
   changes: AdoptionChange[];
@@ -288,6 +291,7 @@ async function buildAdoptionPlan(
 ): Promise<{ plan: AdoptionPlan; operations: AdoptionOperation[] }> {
   const scan = await scanRepository(rootDirectory);
   const compatibility = await detectCompatibility(rootDirectory);
+  const installation = await inspectApkInstallation(rootDirectory);
   const skipped: string[] = [];
   const operations: AdoptionOperation[] = [];
 
@@ -581,12 +585,13 @@ async function buildAdoptionPlan(
 
   return {
     plan: {
+      installation,
       scan,
       compatibility,
       changes: operations.map(({ action, path, reason }) => ({ action, path, reason })),
       skipped,
       gitignore: gitignorePlan.result,
-      diagnostics: [...compatibility.diagnostics, ...gitignorePlan.result.diagnostics],
+      diagnostics: [...compatibility.diagnostics, ...gitignorePlan.result.diagnostics, ...installation.findings.map(renderInstallationFinding)],
     },
     operations,
   };
@@ -621,6 +626,7 @@ export async function adoptRepository(
   }
 
   return {
+    installation: built.plan.installation,
     scan: built.plan.scan,
     created,
     skipped,

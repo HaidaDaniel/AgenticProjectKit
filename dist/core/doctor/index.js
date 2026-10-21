@@ -9,6 +9,7 @@ import { syncAgentExports } from "../sync/index.js";
 import { listTaskFiles } from "../tasks/index.js";
 import { TASK_EVIDENCE_LOCK_PATH } from "../tasks/evidence.js";
 import { inspectLocalMutationLock, renderLocalLockInspection } from "../tasks/lock.js";
+import { inspectApkInstallation, renderInstallationFinding } from "./installation.js";
 async function exists(path) {
     try {
         await stat(path);
@@ -166,6 +167,10 @@ export async function runDoctor(rootDirectory) {
         checks.push({ level: "warn", label: "exports", message: error instanceof Error ? error.message : String(error) });
     }
     checks.push(...await applicationChecks(rootDirectory));
+    const installation = await inspectApkInstallation(rootDirectory);
+    checks.push(...installation.findings.map((finding) => ({
+        level: finding.level, label: `installation:${finding.code}`, message: renderInstallationFinding(finding),
+    })));
     try {
         const quality = await detectQualityCapabilities(rootDirectory, qualityPolicy);
         const nonDetected = quality.capabilities.filter((capability) => capability.status !== "detected").length;

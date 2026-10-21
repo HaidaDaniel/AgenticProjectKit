@@ -615,3 +615,24 @@ test("adoption exposes invalid config diagnostics without migration", async () =
     assert.ok(plan.diagnostics.some((diagnostic) => diagnostic.includes("Invalid .agentic/config.json")));
   });
 });
+
+test("adoption preview and doctor share read-only installation findings", async () => {
+  await withTempRepository(async (directory) => {
+    const { runDoctor } = await import("../doctor/index.js");
+    const { renderInstallationFinding } = await import("../doctor/installation.js");
+    await writeFile(join(directory, "README.md"), "Use pnpm exec apk tasks.\n");
+    await mkdir(join(directory, "scripts"));
+    await writeFile(join(directory, "scripts/apk.sh"), '#!/bin/sh\nnode .tools/AgenticProjectKit/dist/cli/index.js "$@"\n');
+    const before = await readFile(join(directory, "scripts/apk.sh"), "utf8");
+    const plan = await planAdoption(directory);
+    const doctor = await runDoctor(directory);
+    for (const finding of plan.installation.findings) {
+      const message = renderInstallationFinding(finding);
+      assert.ok(plan.diagnostics.includes(message));
+      assert.ok(doctor.checks.some((check) => check.label === `installation:${finding.code}` && check.message === message));
+    }
+    assert.ok(plan.installation.findings.some((finding) => finding.code === "launcher-payload-unavailable"));
+    assert.equal(await readFile(join(directory, "scripts/apk.sh"), "utf8"), before);
+    await assert.rejects(() => readFile(join(directory, ".agentic/config.json")), /ENOENT/);
+  });
+});

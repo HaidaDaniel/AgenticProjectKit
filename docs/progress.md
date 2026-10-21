@@ -12,6 +12,8 @@ A bounded v0.5.1 corrective backlog now records the confirmed downstream defects
 
 ## Active work
 
+Task 0234 is doing: add shared read-only installation facts to doctor and adoption preview; exact declarations, lock evidence, local payloads, documented prerequisites and literal/dynamic launchers remain separate facts.
+
 Task 0231 is done as the prerequisite for 0234: doctor reuses canonical application ownership, preserves nested Node checks, and quality detects declared Python build backends with bounded conservative TOML inventory. The disposable pre-fix fixture reproduced four false Node-script warnings and missing setuptools build capability. All seven canonical checks and the completion gate passed at `1cbfca5` (implementation `34dfa3f`); no independent review was required by its medium-risk policy.
 
 Task 0233 is done: shared Git-native destination inspection now protects archive preview/apply and supplies advisory lint diagnostics. Before the fix, a disposable committed task archived successfully but ordinary staging contained only its source deletion; the prior commit retained all 7848 task bytes. Focused fixtures now prove repository/local/global/nested ignore refusal, valid and ineffective negations, mixed `--all` behavior, index preservation, custom Unicode paths and fresh-clone byte preservation, changed-rule rollback, linked worktrees, unavailable Git, unreadable excludes, damaged Git metadata, and filesystem-only behavior. All seven automated checks, the observed fixture report, fresh-context independent review, and the completion gate passed at candidate `136e0d2`. Subsequent follow-up tasks remain pending their declared prerequisites.

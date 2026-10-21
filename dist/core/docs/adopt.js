@@ -6,6 +6,7 @@ import { styleRulesFor, DEFAULT_AGENT_POLICY, renderAgentExportFiles, } from "..
 import { GITIGNORE_PATH, planApkGitignore, } from "../init/index.js";
 import { scanRepository } from "../scanners/index.js";
 import { renderTaskMarkdown } from "../tasks/index.js";
+import { inspectApkInstallation, renderInstallationFinding } from "../doctor/installation.js";
 async function fileExists(path) {
     try {
         await readFile(path);
@@ -213,6 +214,7 @@ async function migrateConfigContent(rootDirectory) {
 async function buildAdoptionPlan(rootDirectory, includeMigration) {
     const scan = await scanRepository(rootDirectory);
     const compatibility = await detectCompatibility(rootDirectory);
+    const installation = await inspectApkInstallation(rootDirectory);
     const skipped = [];
     const operations = [];
     if (includeMigration
@@ -496,12 +498,13 @@ async function buildAdoptionPlan(rootDirectory, includeMigration) {
     }
     return {
         plan: {
+            installation,
             scan,
             compatibility,
             changes: operations.map(({ action, path, reason }) => ({ action, path, reason })),
             skipped,
             gitignore: gitignorePlan.result,
-            diagnostics: [...compatibility.diagnostics, ...gitignorePlan.result.diagnostics],
+            diagnostics: [...compatibility.diagnostics, ...gitignorePlan.result.diagnostics, ...installation.findings.map(renderInstallationFinding)],
         },
         operations,
     };
@@ -528,6 +531,7 @@ export async function adoptRepository(rootDirectory, options = {}) {
             updated.push(operation.path);
     }
     return {
+        installation: built.plan.installation,
         scan: built.plan.scan,
         created,
         skipped,

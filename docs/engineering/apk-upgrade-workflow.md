@@ -491,3 +491,19 @@ The current control plane is already capable of safe bounded upgrades when a com
 Start with a reusable agent-driven upgrade instruction using existing deterministic primitives. Add small read-only facts/metadata later only when real dogfood proves that existing surfaces leave a repeated ambiguity. Keep material repository decisions visible to the operator and keep task/evidence history immutable.
 
 **Accepted architecture: agent-driven upgrade over existing deterministic APK primitives; no monolithic `apk upgrade` command.**
+
+## Read-only installation reconciliation
+
+Before an upgrade, compare the installation findings shared by `apk doctor` and
+`apk adopt --preview`. They distinguish declared pins, supported lock metadata,
+local payload presence, installed version disagreements, explicit external
+prerequisites, and literal versus dynamic wrappers. A currently running global
+CLI does not prove that another checkout can reproduce the same tool.
+
+Repair the reported package/lock or launcher instructions in the downstream
+repository's own scoped task. Follow its declared package-manager/install path
+and then verify the resulting CLI yourself. The supported pnpm v9/GitHub metadata
+subset and finite read limits are documented in [the adoption guide](../adoption-flow.md#apk-installation-diagnostics).
+Unsupported formats and dynamic launchers require manual inspection; diagnostics
+never execute bootstrap scripts, acquire packages, rewrite task history, or
+change the repository-local distribution model.

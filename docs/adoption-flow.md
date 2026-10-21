@@ -115,3 +115,33 @@ or keys, incomplete strings/arrays, unsupported escaped/complex build values,
 and oversized/unreadable files produce bounded diagnostics with no Python build
 claim. Unrelated whole-document TOML validity is not certified. Pytest, Ruff,
 typecheck, and coverage tables retain independent capability evidence.
+
+## APK installation diagnostics
+
+Doctor and adoption preview use the same read-only installation projection.
+It separates `declared` (exact pin, unfixed declaration, absent, unknown, or APK
+source checkout), `locked` (matched, mismatch, absent, unknown, or not applicable),
+and local CLI `present` status. A matched declaration/lock is reproducible
+metadata; it does not certify an installation, successful CLI launch, remote tag,
+or package integrity. Installed package-version mismatches are separate warnings.
+
+The supported lock inspection is the conventional pnpm v9 root importer with one
+APK dependency, literal specifier/version fields, and either an exact version or
+GitHub codeload resolution at a full commit. The resolution must identify the
+same declared repository. Other lock formats, competing lockfiles, YAML aliases,
+duplicate roots/keys, and unsupported syntax remain unresolved/unknown.
+
+Inspection reads bounded `package.json`, installed package metadata, `README.md`,
+`AGENTS.md`, and `scripts/apk.sh` (64 KiB each), plus `pnpm-lock.yaml` (1 MiB).
+It recognizes explicit separate-installation prerequisites and `pnpm exec`
+invocations conservatively, without interpreting arbitrary prose. Only a wrapper
+containing one literal `node <path>` command (optionally `exec` and `"$@"`) has
+its payload inspected. Variables, multiple commands, external targets, unreadable
+files, and oversized inputs remain unknown. No wrappers/bootstrap commands or
+project scripts are executed; no package, lock, instruction, or config is changed.
+
+Use the evidence paths to reconcile declarations, lock entries, installed version,
+and documented launcher manually. A separate installation can be an intentional
+prerequisite; document its exact source/version and acquisition steps. Node
+application ownership remains independent: these warnings do not turn a Python
+or Go application into a Node application or install Node dependencies for it.
