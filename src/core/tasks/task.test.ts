@@ -120,6 +120,7 @@ import {
 import { getTaskTemplate, resolveTaskTemplateType } from "../templates/task-templates.js";
 import { syncAgentExports } from "../sync/index.js";
 import { runTaskApkOperation, type TaskApkOperation } from "./apk-verification.js";
+import { inspectArchiveGitSafety } from "./archive-git-safety.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -10166,4 +10167,148 @@ test("review prompt presents spec and engineering axes with a conservative overa
   assert.match(prompt, /Stale, failed, missing, or untrusted evidence cannot be reused/);
   assert.match(prompt, /Do not automatically rerun the full suite/);
   assert.match(prompt, /fresh review context; do not inherit the implementation conversation/);
+});
+
+async function archiveGitFixture(directory: string, taskDirectory = ".tasks"): Promise<string> {
+  await execFileAsync("git", ["init", "--quiet"], { cwd: directory });
+  await execFileAsync("git", ["config", "user.name", "Archive fixture"], { cwd: directory });
+  await execFileAsync("git", ["config", "user.email", "archive@example.invalid"], { cwd: directory });
+  const source = `${taskDirectory}/0001-done.md`;
+  await writeTaskFile(join(directory, source), { ...TASK, id: "0001", state: "done", owner: "fixture", dependsOn: [] });
+  await execFileAsync("git", ["add", "--", source], { cwd: directory });
+  await execFileAsync("git", ["commit", "-qm", "terminal fixture"], { cwd: directory });
+  return source;
+}
+
+test("archive Git safety honors effective repository, info, global and nested ignores without index writes", async () => {
+  for (const kind of ["repository", "info", "global", "nested", "ineffective-negation"]) {
+    await withTempDirectory(async (directory) => {
+      const source = await archiveGitFixture(directory);
+      const bytes = await readFile(join(directory, source));
+      const rule = kind === "nested" ? "archive/\n" : ".tasks/archive/\n";
+      const ignoreFile = kind === "info" ? ".git/info/exclude" : kind === "global" ? ".git/global-ignore" : kind === "nested" ? ".tasks/.gitignore" : ".gitignore";
+      await writeFile(join(directory, ignoreFile), rule + (kind === "ineffective-negation" ? "!.tasks/archive/0001-done.md\n" : ""));
+      if (kind === "global") await execFileAsync("git", ["config", "core.excludesFile", join(directory, ignoreFile)], { cwd: directory });
+      const index = await readFile(join(directory, ".git/index"));
+      const plan = await previewArchiveTask(directory, ".tasks", "0001");
+      assert.equal(plan.canArchive, false, kind);
+      assert.match(plan.blockers.join("\n"), /Archive destination.*ignored by/);
+      assert.ok(plan.blockers.join("\n").includes(ignoreFile), kind);
+      await assert.rejects(() => archiveTask(directory, ".tasks", "0001"), /ignored by/);
+      assert.deepEqual(await readFile(join(directory, source)), bytes);
+      assert.deepEqual(await readFile(join(directory, ".git/index")), index);
+      assert.deepEqual((await archiveAllTasks(directory, ".tasks")).archived, []);
+    });
+  }
+});
+
+test("archive Git safety permits valid negation and preserves a custom Unicode archive in a fresh clone", async () => {
+  await withTempDirectory(async (directory) => {
+    const taskDirectory = "tasks space-雪";
+    const source = await archiveGitFixture(directory, taskDirectory);
+    const bytes = await readFile(join(directory, source));
+    await writeFile(join(directory, ".gitignore"), `${taskDirectory}/archive/*\n!${taskDirectory}/archive/0001-done.md\n`);
+    assert.equal((await previewArchiveTask(directory, taskDirectory, "0001")).canArchive, true);
+    const result = await archiveTask(directory, taskDirectory, "0001");
+    await execFileAsync("git", ["add", "--", taskDirectory, ".gitignore"], { cwd: directory });
+    await execFileAsync("git", ["commit", "-qm", "archive"], { cwd: directory });
+    await withTempDirectory(async (clone) => {
+      await execFileAsync("git", ["clone", "--quiet", "--", directory, clone]);
+      assert.deepEqual(await readFile(join(clone, result.archivePath)), bytes);
+      await assert.rejects(() => readFile(join(clone, source)), /ENOENT/);
+    });
+  });
+});
+
+test("archive --all deterministically skips ignored destinations and rechecks changed ignore rules", async () => {
+  await withTempDirectory(async (directory) => {
+    const source = await archiveGitFixture(directory);
+    await writeTaskFile(join(directory, ".tasks/0002-safe.md"), { ...TASK, id: "0002", state: "canceled", dependsOn: [] });
+    assert.equal((await previewArchiveTask(directory, ".tasks", "0001")).canArchive, true);
+    await writeFile(join(directory, ".gitignore"), ".tasks/archive/0001-*\n");
+    await assert.rejects(() => archiveTask(directory, ".tasks", "0001"), /ignored by/);
+    const result = await archiveAllTasks(directory, ".tasks");
+    assert.deepEqual(result.archived.map((entry) => entry.taskId), ["0002"]);
+    assert.deepEqual(result.skipped.map((entry) => entry.taskId), ["0001"]);
+    assert.ok(await readFile(join(directory, source)));
+  });
+});
+
+test("archive Git inspection distinguishes non-Git, failed inspection, NUL paths and unavailable Git", async () => {
+  await withTempDirectory(async (directory) => {
+    const destination = ".tasks/archive/0001-done.md";
+    assert.equal((await inspectArchiveGitSafety(directory, [destination])).get(destination)?.status, "non-git");
+    await writeFile(join(directory, ".git"), "gitdir: /nonexistent-apk-archive-fixture\n");
+    assert.equal((await inspectArchiveGitSafety(directory, [destination])).get(destination)?.status, "unknown");
+    assert.equal((await inspectArchiveGitSafety(directory, ["bad\0path"])).get("bad\0path")?.status, "unknown");
+    const originalPath = process.env.PATH;
+    try {
+      process.env.PATH = directory;
+      assert.equal((await inspectArchiveGitSafety(directory, [destination])).get(destination)?.status, "unknown");
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  });
+});
+
+test("archive Git inspection handles linked worktrees and NUL-delimited newline paths", async () => {
+  await withTempDirectory(async (directory) => {
+    await archiveGitFixture(directory);
+    const linked = join(directory, "linked");
+    await execFileAsync("git", ["worktree", "add", "--quiet", "--detach", linked], { cwd: directory });
+    await writeFile(join(directory, ".git/info/exclude"), ".tasks/archive/\n");
+    const path = ".tasks/archive/newline\n雪.md";
+    assert.equal((await inspectArchiveGitSafety(linked, [path])).get(path)?.status, "ignored");
+  });
+});
+
+test("archive rolls back earlier moves when effective ignores change immediately before a later move", async () => {
+  await withTempDirectory(async (directory) => {
+    const source = await archiveGitFixture(directory);
+    await writeTaskFile(join(directory, ".tasks/0002-second.md"), { ...TASK, id: "0002", state: "done", owner: "fixture", dependsOn: [] });
+    const bin = join(directory, ".git/bin");
+    await mkdir(bin);
+    const realGit = (await execFileAsync("which", ["git"])).stdout.trim();
+    const wrapper = join(bin, "git");
+    await writeFile(wrapper, `#!${process.execPath}\nconst {readFileSync,writeFileSync}=require('node:fs');
+const {spawnSync}=require('node:child_process');
+const counter=${JSON.stringify(join(directory, ".git/check-count"))};
+if(process.argv[2]==='check-ignore') {
+  let n=0;try{n=Number(readFileSync(counter,'utf8'));}catch{}
+  writeFileSync(counter,String(++n));
+  if(n===6) writeFileSync(${JSON.stringify(join(directory, ".gitignore"))},'.tasks/archive/\\n');
+}
+const result=spawnSync(${JSON.stringify(realGit)},process.argv.slice(2),{stdio:'inherit'});process.exit(result.status??1);\n`);
+    await chmod(wrapper, 0o755);
+    const index = await readFile(join(directory, ".git/index"));
+    const originalPath = process.env.PATH;
+    try {
+      process.env.PATH = `${bin}:${originalPath}`;
+      await assert.rejects(() => archiveAllTasks(directory, ".tasks"), /ignored by/);
+    } finally { process.env.PATH = originalPath; }
+    assert.ok(await readFile(join(directory, source)));
+    assert.ok(await readFile(join(directory, ".tasks/0002-second.md")));
+    assert.deepEqual(await readdir(join(directory, ".tasks/archive")), []);
+    assert.deepEqual(await readFile(join(directory, ".git/index")), index);
+  });
+});
+
+test("archive Git safety fails closed for unreadable global excludes and a damaged Git marker", async () => {
+  await withTempDirectory(async (directory) => {
+    const destination = ".tasks/archive/0001-done.md";
+    await archiveGitFixture(directory);
+    const excludes = join(directory, ".git/unreadable-ignore");
+    await writeFile(excludes, ".tasks/archive/\n");
+    await execFileAsync("git", ["config", "core.excludesFile", excludes], { cwd: directory });
+    await chmod(excludes, 0);
+    try {
+      if (process.getuid?.() !== 0) {
+        assert.equal((await inspectArchiveGitSafety(directory, [destination])).get(destination)?.status, "unknown");
+        await assert.rejects(() => archiveTask(directory, ".tasks", "0001"), /Cannot establish archive Git safety/);
+      }
+    } finally { await chmod(excludes, 0o600); }
+    await rm(join(directory, ".git"), { recursive: true });
+    await mkdir(join(directory, ".git"));
+    assert.equal((await inspectArchiveGitSafety(directory, [destination])).get(destination)?.status, "unknown");
+  });
 });

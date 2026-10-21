@@ -5,6 +5,7 @@ import { readAgenticConfigFile } from "../config/index.js";
 import { selectTaskContext } from "../docs/context.js";
 import { classifyLegacyAgentExports } from "../exporters/index.js";
 import { syncAgentExports } from "../sync/index.js";
+import { inspectArchiveGitSafety } from "../tasks/archive-git-safety.js";
 import { parseTaskMarkdown, packagedDistTaskContractBlockers, repositoryPackagedDistContract, resolveTaskPolicy, findTaskPathContractOverlaps, renderTaskPathContractOverlap, taskPathPatternIssue, validateTaskDependencies, TaskFormatError, } from "../tasks/index.js";
 function normalizeRepoPath(value) {
     return value.replace(/\\/g, "/").replace(/^\.\//, "");
@@ -399,6 +400,25 @@ export async function lintRepositoryContracts(rootDirectory) {
         });
     }
     const registeredAgents = new Set((await listAgents(rootDirectory)).map((agent) => agent.id));
+    const archiveTargets = [
+        ...documents.active.filter((file) => ["done", "canceled"].includes(file.task.state)).map((file) => ({
+            file, destination: `${taskDirectory.replace(/\/$/, "")}/archive/${file.path.split(/[\\/]/).pop()}`,
+        })),
+        ...documents.archived.map((file) => ({ file, destination: normalizeRepoPath(relative(rootDirectory, file.path)) })),
+    ];
+    const archiveSafety = await inspectArchiveGitSafety(rootDirectory, archiveTargets.map((target) => target.destination));
+    for (const { file, destination } of archiveTargets) {
+        const safety = archiveSafety.get(destination);
+        if (safety?.blocker)
+            addFinding(findings, {
+                level: "warning",
+                code: safety.status === "ignored" ? "archive-destination-ignored" : "archive-git-inspection-failed",
+                area: "archive",
+                message: `${destination}: ${safety.blocker}`,
+                path: normalizeRepoPath(relative(rootDirectory, file.path)),
+                taskId: file.task.id,
+            });
+    }
     const packagedDistContract = await repositoryPackagedDistContract(rootDirectory);
     for (const file of [...documents.active, ...documents.archived]) {
         const path = normalizeRepoPath(relative(rootDirectory, file.path));

@@ -1,7 +1,7 @@
 # Task 0233 - Prevent task archives from disappearing from future Git snapshots
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-fixes-0233
 Mode: maintenance
 Lane: bugfix
 Type: bugfix

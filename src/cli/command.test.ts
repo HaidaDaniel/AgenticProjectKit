@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { format } from "node:util";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { execFileSync } from "node:child_process";
 
 import { resolveExecutionRoute, resolveAssurancePlan } from "../core/execution/index.js";
 import { resolveTaskPolicy } from "../core/tasks/policy.js";
@@ -1717,5 +1718,22 @@ test("CLI task archive --all reports archive path collisions as skipped", async 
       () => readFile(join(directory, ".tasks", "0001-done-task.md")),
       "Source task should not be moved",
     );
+  });
+});
+
+test("CLI archive preview and apply expose ignored destinations and preserve source bytes", async () => {
+  await withTempDirectory(async (directory) => {
+    await runCommand(["init"], directory);
+    execFileSync("git", ["init", "--quiet"], { cwd: directory });
+    const source = join(directory, ".tasks/0009-done.md");
+    const content = buildTaskMarkdown("0009", "Done", "done", "archive");
+    await writeFile(source, content);
+    await writeFile(join(directory, ".gitignore"), ".tasks/archive/\n");
+    const preview = await runCommand(["task", "archive", "0009", "--preview"], directory);
+    assert.match(preview.stdout + preview.stderr, /Archive destination.*ignored by/);
+    const applied = await runCommand(["task", "archive", "0009", "--apply"], directory);
+    assert.equal(applied.exitCode, 1);
+    assert.match(applied.stdout + applied.stderr, /\.gitignore/);
+    assert.equal(await readFile(source, "utf8"), content);
   });
 });

@@ -23,6 +23,7 @@ import {
   type TaskApkOperationRunner,
 } from "./apk-verification.js";
 import { withLocalMutationLock } from "./lock.js";
+import { inspectArchiveGitSafety } from "./archive-git-safety.js";
 import { observedExec, observedExecFile, withPerfSpan } from "../perf/index.js";
 
 const DEFAULT_TASK_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
@@ -1397,10 +1398,13 @@ export async function previewArchiveTasks(
     archiveBlockers.push(`Archive preview cannot parse existing archive files: ${archiveErrorMessage(error)}; repair the archive before moving terminal tasks.`);
   }
   const scan = await scanArchiveReferences(rootDirectory, taskDirectory, candidates, activeFiles, archivedFiles);
+  const gitSafety = await inspectArchiveGitSafety(rootDirectory, candidates.map(archivePathForFile));
   const plans = await Promise.all(candidates.map(async (file): Promise<TaskArchivePlan> => {
     const sourcePath = archiveRelativePath(rootDirectory, file.path);
     const archivePath = archivePathForFile(file);
     const blockers: string[] = [];
+    const gitBlocker = gitSafety.get(archivePath)?.blocker;
+    if (gitBlocker) blockers.push(gitBlocker);
     if (!isArchiveTerminalState(file.task.state)) {
       blockers.push(`state is ${file.task.state}; only done or canceled tasks can be archived.`);
     }
@@ -1474,6 +1478,8 @@ async function applyArchiveTasks(
         if (await fileSha256(source) !== expectedSourceHashes.get(plan.taskId)) {
           throw new Error(`Archive source changed before mutation: ${plan.sourcePath}`);
         }
+        const gitBlocker = (await inspectArchiveGitSafety(rootDirectory, [plan.archivePath])).get(plan.archivePath)?.blocker;
+        if (gitBlocker) throw new Error(gitBlocker);
         await moveArchiveFile(source, destination);
         const result = { taskId: plan.taskId, sourcePath: plan.sourcePath, archivePath: plan.archivePath };
         moved.push(result);

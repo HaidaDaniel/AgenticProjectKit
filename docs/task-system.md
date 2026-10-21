@@ -687,6 +687,9 @@ Archive rules:
 
 - Tasks in `done` or `canceled` state can be archived; terminal state is preserved byte-for-byte.
 - Archived tasks are moved to `.tasks/archive/`.
+- In Git worktrees, preview and apply reject destinations excluded by effective Git ignore rules, including nested `.gitignore`, `.git/info/exclude`, and configured global excludes. Each blocker names the destination and matching rule; `--all` skips blocked plans. Apply checks again under the task lock before each move and rolls back earlier moves on a later failure. Git inspection errors block moves; an unavailable Git executable is not proof of a non-Git directory.
+- Repair the reported ignore rule manually, ensuring ignored parent directories are also unignored, then rerun preview. APK never changes ignore rules, force-adds files, or stages the move. After a safe move, the operator must stage and commit the archive for clone portability. Existing tracked archives remain tracked despite an ignore rule; lint still warns because new archives at that destination would be omitted.
+- `apk lint` emits advisory `archive-destination-ignored` findings for terminal destinations and existing archive contracts, or `archive-git-inspection-failed` when safety cannot be inspected. A confirmed non-Git directory retains filesystem-only archival; no Git portability is claimed. Checks are bounded to 4096 destinations / 1 MiB input per batch, 4 MiB subprocess output, and five seconds per Git command. External changes after the final check cannot be made atomic with a filesystem move; the task lock coordinates APK mutations, not external Git/config writers.
 - `pnpm exec apk tasks` default output shows only active top-level tasks (excludes archive).
 - `pnpm exec apk tasks --all` includes both active and archived tasks.
 - Dependency resolution treats archived done tasks as completed prerequisites.

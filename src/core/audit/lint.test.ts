@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { execFileSync } from "node:child_process";
 
 import { initProject } from "../init/index.js";
 import { renderLegacyAgentExportFile, writeAllAgentExports } from "../exporters/index.js";
@@ -393,5 +394,37 @@ test("contract lint flags generated legacy policy copies as advisory info withou
         && finding.level === "info",
     ));
     assert.equal(result.hasErrors, false);
+  });
+});
+
+test("lint reports ignored terminal destinations and tracked archives without modifying the index", async () => {
+  await withTempDirectory(async (directory) => {
+    await initProject(directory);
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: directory });
+    git("init", "--quiet");
+    await writeTask(directory, "0002-done.md", task("0002", { state: "done", owner: "fixture" }));
+    await mkdir(join(directory, ".tasks/archive"));
+    await writeTask(directory, "archive/0003-archived.md", task("0003", { state: "done", owner: "fixture" }));
+    git("add", "--", ".tasks");
+    await writeFile(join(directory, ".gitignore"), ".tasks/archive/\n");
+    const index = await readFile(join(directory, ".git/index"));
+    const result = await lintRepositoryContracts(directory);
+    const ignored = result.findings.filter((finding) => finding.code === "archive-destination-ignored");
+    assert.deepEqual(ignored.map((finding) => finding.taskId).sort(), ["0002", "0003"]);
+    assert.ok(ignored.every((finding) => finding.message.includes(".gitignore") && finding.level === "warning"));
+    assert.deepEqual(await readFile(join(directory, ".git/index")), index);
+    assert.ok(await readFile(join(directory, ".tasks/0002-done.md")));
+  });
+});
+
+test("lint distinguishes unavailable Git inspection from filesystem-only operation", async () => {
+  await withTempDirectory(async (directory) => {
+    await initProject(directory);
+    await writeTask(directory, "0002-done.md", task("0002", { state: "done", owner: "fixture" }));
+    const noGit = await lintRepositoryContracts(directory);
+    assert.ok(!noGit.findings.some((finding) => finding.area === "archive"));
+    await writeFile(join(directory, ".git"), "gitdir: /nonexistent-apk-lint-fixture\n");
+    const broken = await lintRepositoryContracts(directory);
+    assert.ok(broken.findings.some((finding) => finding.code === "archive-git-inspection-failed"));
   });
 });
