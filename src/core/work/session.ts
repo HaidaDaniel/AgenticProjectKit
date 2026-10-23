@@ -90,12 +90,10 @@ export async function listWorkerSessions(rootDirectory: string): Promise<Discove
 
   const sessions: DiscoveredWorkerSession[] = [];
   for (const taskId of safeDirectoryNames(taskEntries)) {
-    let runEntries;
-    try {
-      runEntries = await readdir(join(base, taskId), { withFileTypes: true });
-    } catch {
-      continue;
-    }
+    // Once discovered, a task directory must be enumerated completely. Even
+    // ENOENT here can mean concurrent removal; partial results cannot prove
+    // that any declared resource is free. Let diagnostic callers fail closed.
+    const runEntries = await readdir(join(base, taskId), { withFileTypes: true });
     for (const runId of safeDirectoryNames(runEntries)) {
       try {
         validateWorkerRunId(runId);

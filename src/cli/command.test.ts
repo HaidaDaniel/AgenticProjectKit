@@ -1934,3 +1934,34 @@ test("workers preserves declared availability, max occupancy and human rendering
     });
   }
 });
+
+
+test("workers never treats a failed discovered session directory as empty", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeExecutionRepo(directory);
+    await writeFile(join(directory, ".tasks/0001-task.md"), buildTaskMarkdown("0001", "Active", "doing", "fixture"));
+    assert.ok((await workerPayload(directory)).workers.every((worker) => worker.state === "ready"), "missing top-level store is supported");
+    await recordWorkerFixture(directory, "0001", "run-active");
+    assert.equal((await workerPayload(directory)).workers[0]?.state, "busy");
+    for (const code of ["EACCES", "ENOENT", "ENOTDIR"]) {
+      const original = fsPromises.readdir;
+      fsPromises.readdir = ((...args: Parameters<typeof original>) => {
+        if (String(args[0]) === join(directory, ".agentic/sessions/work/0001")) {
+          return Promise.reject(Object.assign(new Error(`injected discovered directory failure: ${code}`), { code }));
+        }
+        return original(...args);
+      }) as typeof original;
+      syncBuiltinESMExports();
+      try {
+        const payload = await workerPayload(directory);
+        assert.ok(payload.workers.every((worker) => worker.state === "unknown"), code);
+        assert.match(payload.diagnostics.join(" "), new RegExp(code));
+        assert.ok(payload.workers.every((worker) => worker.currentRunId === undefined));
+      } finally {
+        fsPromises.readdir = original;
+        syncBuiltinESMExports();
+      }
+    }
+    assert.equal((await workerPayload(directory)).workers[0]?.state, "busy");
+  });
+});
