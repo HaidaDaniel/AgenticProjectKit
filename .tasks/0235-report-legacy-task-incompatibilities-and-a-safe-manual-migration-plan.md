@@ -1,6 +1,6 @@
 # Task 0235 - Report legacy task incompatibilities and a safe manual migration plan
 
-State: doing
+State: done
 Owner: codex-fixes-0235
 Mode: maintenance
 Lane: diagnostics
