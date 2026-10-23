@@ -1,7 +1,7 @@
 # Task 0237 - Design an opt-in portable handoff for unfinished tasks
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-research-0237
 Mode: discovery
 Lane: research
 Type: research

@@ -94,11 +94,14 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0083](#adr-0083---application-runtime-and-repository-tooling-are-separate-scanner-semantics) | accepted | Application runtime and repository tooling are separate scanner semantics | — |
 | [ADR-0084](#adr-0084---keep-tracked-markdown-task-lifecycle-state-despite-bookkeeping-noise) | accepted | Keep tracked Markdown task lifecycle state despite bookkeeping noise | — |
 | [ADR-0085](#adr-0085---verification-is-proportional-and-full-suites-run-once-per-boundary) | accepted | Verification is proportional and full suites run once per boundary | — |
+| [ADR-0086](#adr-0086---interrupted-tasks-use-explicit-commit-scoped-attribution-approval) | accepted | Interrupted tasks use explicit commit-scoped attribution approval | — |
 | [ADR-0087](#adr-0087---apk-performance-observability-is-opt-in-local-and-interval-based) | accepted | APK performance observability is opt-in, local, and interval-based | — |
+| [ADR-0088](#adr-0088---v2-performance-traces-include-a-startup-aware-rewrite-boundary) | accepted | v2 performance traces include a startup-aware rewrite boundary | — |
+| [ADR-0089](#adr-0089---portable-task-handoff-starts-as-untrusted-context) | proposed | Portable task handoff starts as untrusted context | — |
 
 ### ADR index cross-check
 
-- [x] Each of the 83 index rows matches one retained ADR heading and its title.
+- [x] Each of the 88 index rows matches one retained ADR heading and its title.
 - [x] Each status matches that record's explicit `Status` field.
 - [x] The only supersession link is ADR-0006 -> ADR-0062, recorded by ADR-0006's status and ADR-0062's heading and decision text.
 
@@ -1799,3 +1802,22 @@ OFF/ON benchmark and released downstream evidence. Existing v0.4.9 tags and
 release notes remain immutable historical artifacts.
 
 Reference: [v2 measurement contract](research/apk-performance-measurement-contract-v2.md).
+
+
+## ADR-0089 - Portable task handoff starts as untrusted context
+
+Status: proposed
+
+Date: 2026-10-23
+
+### Context
+
+Task 0237 reproduced ordinary clones retaining doing/review Markdown while local registrations, runs, evidence, baselines, prepared reviews and worker sessions disappear. The clone gate lacked verification evidence, and owner transitions lacked local registration. A clean legacy-compatible comparison did not independently reject the missing historical baseline. Read-only counterexamples also show that content freshness is not identity authentication: equivalent clone content can match, and a changed agent label does not change the freshness comparator's result.
+
+### Recommendation
+
+Keep ADR-0084's tracked Markdown authority. Limit a proposed first handoff feature to explicitly selected, bounded untrusted context export and read-only inspection. Do not import canonical operational stores, restore owner/session authority, promote evidence, reset baselines, or grant review/operator decisions. A context digest proves neither the sender nor historical attribution. Automatic trusted continuation is outside this recommendation until its authentication, complete baseline/epoch/path/mode proof and concurrency obligations are solved separately.
+
+### Delivery and consequences
+
+This is a research recommendation, not a shipped feature or an operator approval. Task 0237 adds only a synthetic offline reproducer, observations, and the [design with a bounded follow-up contract](handoff/portable-task-context.md). The proposed context feature can explain unfinished work without weakening existing gates, but cannot by itself resume or complete the old task. No runtime importer, new state database, network transfer or trust-promotion mechanism is implemented.

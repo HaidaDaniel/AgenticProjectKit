@@ -1,0 +1,97 @@
+{
+  "fixture": "task-handoff-v1",
+  "runtime": "v24.21.0",
+  "observations": [
+    {
+      "state": "doing",
+      "trackedContractBytesMatch": true,
+      "gitHeadMatches": true,
+      "sourceClean": true,
+      "sourceRecords": {
+        ".agentic/agents": true,
+        ".agentic/runs": true,
+        ".agentic/evidence.jsonl": true,
+        ".agentic/task-baselines.jsonl": true,
+        ".agentic/reviews": true,
+        ".agentic/sessions": true
+      },
+      "destinationRecords": {
+        ".agentic/agents": false,
+        ".agentic/runs": false,
+        ".agentic/evidence.jsonl": false,
+        ".agentic/task-baselines.jsonl": false,
+        ".agentic/reviews": false,
+        ".agentic/sessions": false
+      },
+      "sourceGate": "pass",
+      "destinationGate": "blocked",
+      "destinationBlockers": [
+        "missing verification evidence for check check-1."
+      ],
+      "destinationDiagnostics": [],
+      "destinationComparisonKnown": true,
+      "ownerTransition": {
+        "code": 1,
+        "diagnostic": "Agent is not registered: fixture-owner. Run pnpm exec apk agent register --id fixture-owner --platform <platform> --model <model>."
+      },
+      "destinationProvenance": {
+        "baselinePresent": false,
+        "evidenceCount": 0
+      },
+      "canonicalWorkerBinding": "missing",
+      "readOnlyIdentityComparison": {
+        "sourceBaselineSuppliedOnlyInMemory": true,
+        "originalRecordFreshness": "current",
+        "forgedAgentFreshness": "current",
+        "identicalBytesDifferentModeChangesCandidate": true,
+        "destinationGateStillBlocked": true
+      }
+    },
+    {
+      "state": "review",
+      "trackedContractBytesMatch": true,
+      "gitHeadMatches": true,
+      "sourceClean": true,
+      "sourceRecords": {
+        ".agentic/agents": true,
+        ".agentic/runs": true,
+        ".agentic/evidence.jsonl": true,
+        ".agentic/task-baselines.jsonl": true,
+        ".agentic/reviews": true,
+        ".agentic/sessions": true
+      },
+      "destinationRecords": {
+        ".agentic/agents": false,
+        ".agentic/runs": false,
+        ".agentic/evidence.jsonl": false,
+        ".agentic/task-baselines.jsonl": false,
+        ".agentic/reviews": false,
+        ".agentic/sessions": false
+      },
+      "sourceGate": "pass",
+      "destinationGate": "blocked",
+      "destinationBlockers": [
+        "missing verification evidence for check check-1."
+      ],
+      "destinationDiagnostics": [],
+      "destinationComparisonKnown": true,
+      "ownerTransition": {
+        "code": 1,
+        "diagnostic": "Agent is not registered: fixture-owner. Run pnpm exec apk agent register --id fixture-owner --platform <platform> --model <model>."
+      },
+      "destinationProvenance": {
+        "baselinePresent": false,
+        "evidenceCount": 0
+      },
+      "canonicalWorkerBinding": "missing",
+      "readOnlyIdentityComparison": {
+        "sourceBaselineSuppliedOnlyInMemory": true,
+        "originalRecordFreshness": "current",
+        "forgedAgentFreshness": "current",
+        "identicalBytesDifferentModeChangesCandidate": true,
+        "destinationGateStillBlocked": true
+      }
+    }
+  ],
+  "boundary": "Observed current CLI/core behavior only; no handoff importer or trust promotion implemented."
+}

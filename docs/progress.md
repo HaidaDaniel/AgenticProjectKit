@@ -12,6 +12,8 @@ A bounded v0.5.1 corrective backlog now records the confirmed downstream defects
 
 ## Active work
 
+Task 0237 is doing: synthetic doing/review clone fixtures reproduce loss of ignored local records, missing verification evidence and unregistered-owner transitions. Read-only identity counterexamples distinguish freshness from authentication and preserve mode identity. The research recommends bounded untrusted context export/inspection; trusted continuation is a separate no-go pending proof, and no runtime importer is implemented.
+
 Task 0236 is done: doctor/init/adopt share bounded NUL-safe index discovery, category counts, indexed blob sizes, and explicit incomplete/unknown outcomes. Seven targeted fixtures covered unusual names, symlinks, staged deletion, worktree/index divergence, linked worktrees, missing objects, merge stages, Git failures and limits. All seven canonical checks and gate passed at `fad1f86`; existing files and index remain untouched by inspection.
 
 Task 0235 is done: compatibility and lint share bounded canonical task parsing, explicit partial coverage, and a manual migration plan that preserves historical bytes and evidence trust. Mixed active/archive, unreadable, size/count bounds, supported legacy, idempotent preview, and byte/index preservation fixtures passed. All seven canonical checks and the completion gate passed at `3e436f7`; independent review was not required by its medium-risk policy.
