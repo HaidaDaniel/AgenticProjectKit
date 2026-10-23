@@ -11,7 +11,7 @@ import {
   renderContextSuggestion,
   suggestContext,
 } from "../context-suggestions/index.js";
-import { APK_OPERATIONAL_IGNORE_ENTRIES } from "../init/index.js";
+import { APK_OPERATIONAL_IGNORE_ENTRIES, inspectTrackedApkOperationalArtifacts } from "../init/index.js";
 import { scanRepository } from "../scanners/index.js";
 import { adoptRepository, planAdoption } from "./adopt.js";
 import { syncAgentExports } from "../sync/index.js";
@@ -671,5 +671,22 @@ test("adoption compatibility reports mixed repairs without changing task bytes o
     const after = await planAdoption(directory, { includeMigration: true });
     assert.equal(after.compatibility.migrationRequired, false);
     assert.equal(after.compatibility.taskRepairRequired, true);
+  });
+});
+
+
+test("adoption exposes the same indexed operational report without changing tracking", async () => {
+  await withTempRepository(async (directory) => {
+    await mkdir(join(directory, ".agentic/runs"), { recursive: true });
+    await writeFile(join(directory, ".agentic/runs/sample.jsonl"), "sample");
+    const git = (...args: string[]) => execFileAsync("git", args, { cwd: directory });
+    await git("init", "-q"); await git("add", "--", ".agentic/runs/sample.jsonl");
+    const index = (await git("ls-files", "--stage", "-z")).stdout;
+    const preview = await planAdoption(directory);
+    assert.deepEqual(preview.gitignore.trackedOperational, await inspectTrackedApkOperationalArtifacts(directory));
+    assert.equal(preview.gitignore.trackedOperational.indexedBytes, 6);
+    assert.match(preview.diagnostics.join(" "), /Untracking does not erase past history/);
+    assert.equal((await git("ls-files", "--stage", "-z")).stdout, index);
+    assert.equal(await readFile(join(directory, ".agentic/runs/sample.jsonl"), "utf8"), "sample");
   });
 });

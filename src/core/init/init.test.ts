@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
@@ -11,6 +11,10 @@ import { parseTaskMarkdown } from "../tasks/index.js";
 import {
   APK_OPERATIONAL_IGNORE_ENTRIES,
   detectTrackedApkOperationalPaths,
+  inspectApkGitignore,
+  inspectTrackedApkOperationalArtifacts,
+  renderTrackedApkOperationalReport,
+  TRACKED_OPERATIONAL_LIMITS,
   getInitStarterFiles,
   initProject,
   renderApkGitignoreUpdate,
@@ -247,5 +251,129 @@ test("fresh init requires no caveman skill setup and generates normal default st
     for (const doc of ["docs/project.md", "docs/scope.md", "docs/architecture.md"]) {
       assert.doesNotMatch(await readFile(join(directory, doc), "utf8"), /caveman/i);
     }
+  });
+});
+
+
+test("operational index report preserves unusual paths, category sizes and worktree bytes", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = (...args: string[]) => execFileAsync("git", args, { cwd: directory });
+    await git("init", "-q");
+    const values = new Map([
+      [".agentic/agents/a.json", "agent"], [".agentic/runs/space \n名.jsonl", "run"],
+      [".agentic/evidence.jsonl", "proof"], [".agentic/task-baselines.jsonl", "base"],
+      [".agentic/reviews/r.json", "review"], [".agentic/sessions/s.json", "session"],
+      ["docs/audit-report.md", "report"], [".agentic/perf/p.json", "perf"],
+      [".agentic/runs/.gitkeep", "keep"], [".agentic/runs/real.gitkeep", "real"],
+    ]);
+    for (const [path, value] of values) {
+      await mkdir(join(directory, path, ".."), { recursive: true });
+      await writeFile(join(directory, path), value);
+    }
+    await symlink("/outside/never-read", join(directory, ".agentic/runs/link"));
+    await git("add", "--", ".agentic", "docs/audit-report.md");
+    await writeFile(join(directory, ".gitignore"), APK_OPERATIONAL_IGNORE_ENTRIES.join("\n") + "\n");
+    await writeFile(join(directory, ".agentic/runs/ignored.jsonl"), "ignored");
+    await writeFile(join(directory, ".agentic/agents/a.json"), "worktree differs from indexed blob");
+    const beforeIndex = (await git("ls-files", "--stage", "-z")).stdout;
+    const beforeStatus = (await git("status", "--porcelain=v1", "-z", "--untracked-files=all")).stdout;
+    const result = await inspectTrackedApkOperationalArtifacts(directory);
+    assert.equal(result.status, "complete");
+    assert.equal(result.count, 10);
+    const expectedBytes = [...values].filter(([path]) => !path.endsWith("/.gitkeep")).reduce((sum, [, value]) => sum + Buffer.byteLength(value), Buffer.byteLength("/outside/never-read"));
+    assert.equal(result.indexedBytes, expectedBytes);
+    assert.equal(result.groups.find((group) => group.category === "agents")?.indexedBytes, 5);
+    assert.equal(result.groups.find((group) => group.category === "runs")?.count, 3);
+    assert.equal(result.groups.find((group) => group.category === "generated-docs")?.count, 1);
+    assert.ok(result.paths.includes(".agentic/runs/space \n名.jsonl"));
+    assert.ok(!result.paths.some((path) => path.endsWith("/.gitkeep") || path.endsWith("ignored.jsonl")));
+    const preview = await inspectApkGitignore(directory);
+    assert.deepEqual(preview.trackedOperational, result);
+    assert.match(renderTrackedApkOperationalReport(result).join(" "), /not worktree bytes/);
+    assert.equal((await git("ls-files", "--stage", "-z")).stdout, beforeIndex);
+    assert.equal((await git("status", "--porcelain=v1", "-z", "--untracked-files=all")).stdout, beforeStatus);
+    assert.equal(await readFile(join(directory, ".agentic/agents/a.json"), "utf8"), "worktree differs from indexed blob");
+    await git("update-index", "--force-remove", "--", ".agentic/evidence.jsonl");
+    const removed = await inspectTrackedApkOperationalArtifacts(directory);
+    assert.equal(removed.count, 9);
+    assert.ok(!removed.groups.some((group) => group.category === "evidence"));
+    assert.equal(await readFile(join(directory, ".agentic/evidence.jsonl"), "utf8"), "proof");
+  });
+});
+
+test("operational index report distinguishes non-Git, damaged metadata and unavailable Git", async () => {
+  await withTempDirectory(async (directory) => {
+    assert.equal((await inspectTrackedApkOperationalArtifacts(directory)).status, "not-applicable");
+    await mkdir(join(directory, ".git"));
+    const damaged = await inspectTrackedApkOperationalArtifacts(directory);
+    assert.equal(damaged.status, "unknown");
+    assert.equal(damaged.count, null);
+    await rm(join(directory, ".git"), { recursive: true });
+    const previousPath = process.env.PATH;
+    try {
+      process.env.PATH = directory;
+      const absent = await inspectTrackedApkOperationalArtifacts(directory);
+      assert.equal(absent.status, "unknown");
+      assert.equal(absent.indexedBytes, null);
+    } finally { process.env.PATH = previousPath; }
+  });
+});
+
+test("operational index report keeps exact counts but unknown missing-object sizes", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = (...args: string[]) => execFileAsync("git", args, { cwd: directory });
+    await git("init", "-q");
+    const missing = "1".repeat(40);
+    await git("update-index", "--add", "--cacheinfo", `100644,${missing},.agentic/runs/missing.jsonl`);
+    const index = (await git("ls-files", "--stage", "-z")).stdout;
+    const result = await inspectTrackedApkOperationalArtifacts(directory);
+    assert.equal(result.status, "incomplete");
+    assert.equal(result.count, 1);
+    assert.equal(result.indexedBytes, null);
+    assert.equal(result.groups[0]?.indexedBytes, null);
+    assert.equal((await git("ls-files", "--stage", "-z")).stdout, index);
+  });
+});
+
+test("operational index report bounds inventories and samples without clean-zero claims", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = (...args: string[]) => execFileAsync("git", args, { cwd: directory });
+    await git("init", "-q");
+    await mkdir(join(directory, ".agentic/runs"), { recursive: true });
+    await Promise.all(Array.from({ length: 12 }, (_, index) => writeFile(join(directory, ".agentic/runs", `${index}.jsonl`), "run")));
+    await git("add", "--", ".agentic/runs");
+    const small = await inspectTrackedApkOperationalArtifacts(directory);
+    assert.equal(small.groups[0]?.sample.length, TRACKED_OPERATIONAL_LIMITS.samplePaths);
+    assert.equal(small.groups[0]?.omittedPaths, 4);
+    await Promise.all(Array.from({ length: TRACKED_OPERATIONAL_LIMITS.entries }, (_, index) => writeFile(join(directory, ".agentic/runs", `extra-${index}.jsonl`), "run")));
+    await git("add", "--", ".agentic/runs");
+    const bounded = await inspectTrackedApkOperationalArtifacts(directory);
+    assert.equal(bounded.status, "incomplete");
+    assert.equal(bounded.count, null);
+    assert.match(bounded.diagnostics.join(" "), /entry limit/);
+  });
+});
+
+test("operational index report works in linked worktrees and rejects ambiguous merge stages", async () => {
+  await withTempDirectory(async (directory) => {
+    const root = join(directory, "main"), linked = join(directory, "linked");
+    await mkdir(root);
+    const git = (...args: string[]) => execFileAsync("git", args, { cwd: root });
+    await git("init", "-q");
+    await git("config", "user.name", "Fixture"); await git("config", "user.email", "fixture@example.invalid");
+    await mkdir(join(root, ".agentic/runs"), { recursive: true });
+    await writeFile(join(root, ".agentic/runs/run.jsonl"), "abc");
+    await git("add", "--", ".agentic/runs/run.jsonl"); await git("commit", "-qm", "fixture");
+    await git("worktree", "add", "-q", "--detach", linked, "HEAD");
+    const report = await inspectTrackedApkOperationalArtifacts(linked);
+    assert.equal(report.count, 1); assert.equal(report.indexedBytes, 3);
+    const oid = (await git("rev-parse", "HEAD:.agentic/runs/run.jsonl")).stdout.trim();
+    await git("update-index", "--force-remove", "--", ".agentic/runs/run.jsonl");
+    await new Promise<void>((resolveResult, reject) => {
+      const child = execFile("git", ["update-index", "--index-info"], { cwd: root }, (error) => error ? reject(error) : resolveResult());
+      child.stdin!.end(`100644 ${oid} 1\t.agentic/runs/run.jsonl\n100644 ${oid} 2\t.agentic/runs/run.jsonl\n`);
+    });
+    const conflicted = await inspectTrackedApkOperationalArtifacts(root);
+    assert.equal(conflicted.count, 1); assert.equal(conflicted.indexedBytes, null); assert.equal(conflicted.status, "incomplete");
   });
 });

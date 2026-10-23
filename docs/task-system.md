@@ -713,3 +713,8 @@ Keep archived contracts byte-identical so lifecycle history and old acceptance c
 ## Read-only task compatibility
 
 `apk adopt --preview` and `apk lint` use one bounded canonical-parser inspection of active and archived contracts. Their reports distinguish supported legacy verification headings from invalid metadata or sections, enumerate inspected parser issues, and disclose unreadable/not-inspected files and incomplete coverage. They preserve existing tasks and local evidence; no lifecycle alias or automatic history migration is introduced. Follow the [manual compatibility repair sequence](adoption-flow.md#task-compatibility-and-manual-repair) for explicit semantic decisions, scoped edits, and independent provenance revalidation. A config schema-marker update cannot repair an incompatible task contract.
+
+
+## Operational artifacts already tracked by Git
+
+Doctor and init/adopt share bounded index inspection for APK operational files and generated reports. Reports distinguish agent/run records, evidence/baselines/reviews/sessions, generated docs, and other operational paths. Counts exclude `.gitkeep` and untracked ignored files; sizes are indexed blob bytes, with symlink link text counted without following targets. Incomplete, unavailable and non-Git outcomes are explicit and never reported as clean zero. These are advisory diagnostics and do not change task gates or evidence trust. See [tracked operational artifacts](adoption-flow.md#tracked-operational-artifacts) for limits, byte semantics, and manual backup/ignore/path-specific untracking guidance. Existing ignore rules do not untrack files, and untracking does not erase history or provide cross-machine handoff for unfinished work.

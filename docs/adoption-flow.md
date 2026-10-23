@@ -163,3 +163,22 @@ For an incompatible or incomplete inventory:
 6. Independently revalidate affected candidate/baseline-bound verification and review evidence. Contract changes can invalidate old proof; copying PASS records cannot restore trust.
 
 Changing `schemaVersion` alone never repairs invalid task content. The status/attention resilience described in the [task system](task-system.md) keeps healthy parsed tasks visible while incomplete inventories have unavailable gates; this is diagnostic behavior, not automatic migration.
+
+
+## Tracked operational artifacts
+
+Doctor, init and adoption use the same operational-path policy and read-only Git report. It distinguishes agent records, run logs, evidence, baselines, reviews, sessions, generated reports, and other operational files (locks, profiler/workspace records). Intentional `.gitkeep` placeholders and ignored untracked records are excluded. A staged deletion is absent from the index inventory even if the worktree file remains.
+
+Counts describe unique paths in the observed index. Sizes are **indexed blob bytes**, summed per path, not current worktree sizes or historical repository storage. A symlink contributes its indexed link-text size; the inspector never follows its worktree target or prints record contents. Unmerged entries, non-blob objects and missing objects have unknown byte totals. Other fully inspected categories retain exact totals. Complete zero, non-Git not-applicable, incomplete, and unknown/error are distinct outcomes. Tracked artifacts are advisory warnings, not failed completion gates.
+
+Git queries have a five-second timeout and 4 MiB output bound; index inspection allows at most 4,096 matching entries (including merge stages/placeholders before filtering). Exceeding a bound cannot establish a clean zero. Category samples include at most eight paths, each capped at 256 characters, with omitted counts; unusual names are JSON-escaped for display. The path-only compatibility API cannot express coverage; callers needing absence/size claims must inspect the full report. Git object lazy fetching and replacement-object interpretation are disabled for these queries. This is an observation of the index at inspection time, not an atomic snapshot against other writers.
+
+Untracking is a deliberate repository decision:
+
+1. Inventory and back up local operational records, especially evidence/baselines needed by unfinished work. Decide which records must remain portable and which are intentionally committed.
+2. Check effective ignore rules. Adding `.gitignore` does not stop tracking an existing file.
+3. Preview only reviewed, exact paths, for example `git rm -n --cached -- '.agentic/runs/example.jsonl'`. For unusual names, preserve each literal argument; do not paste rendered JSON as shell quoting or use broad globs.
+4. If the decision is to untrack, run the corresponding exact `git rm --cached --` command yourself. Do not force a refusal without understanding staged/local differences. Review `git diff --cached --name-status` and the local backup before committing deliberately.
+5. Confirm local task operations still have the required context. Untracking preserves the worktree file, but ordinary clones will no longer carry it. It does not erase past history or automatically invalidate/revalidate evidence.
+
+APK does not execute removal, staging, cleanup or history-rewrite commands. The diagnostics do not grant permission to remove intentionally portable records.

@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { CONFIG_PATH, readAgenticConfigFile } from "../config/index.js";
 import { observedExecFile } from "../perf/index.js";
 import { detectQualityCapabilities, inspectPythonProject } from "../quality/index.js";
+import { inspectTrackedApkOperationalArtifacts, renderTrackedApkOperationalReport } from "../init/index.js";
 import { scanRepository } from "../scanners/index.js";
 import { listAgents } from "../agents/index.js";
 import { syncAgentExports } from "../sync/index.js";
@@ -135,6 +136,12 @@ export async function runDoctor(rootDirectory: string): Promise<DoctorResult> {
   const checks: DoctorCheck[] = [];
   let qualityPolicy;
   checks.push(...await gitCheck(rootDirectory));
+  const operational = await inspectTrackedApkOperationalArtifacts(rootDirectory);
+  checks.push({
+    level: operational.status === "not-applicable" || (operational.status === "complete" && operational.count === 0) ? "pass" : "warn",
+    label: "tracked-operational-artifacts",
+    message: renderTrackedApkOperationalReport(operational).join("\n  "),
+  });
 
   let taskDirectory = ".tasks";
   try {

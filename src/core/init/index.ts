@@ -1,5 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -8,7 +8,7 @@ import {
   serializeAgenticConfig,
 } from "../config/index.js";
 import { renderTemplateFile } from "../templates/index.js";
-import { observedExecFile } from "../perf/index.js";
+import { execFile } from "node:child_process";
 const initTemplateDirectory = join(
   dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -74,6 +74,7 @@ export interface ApkGitignoreResult {
   added: string[];
   skippedEntries: string[];
   trackedOperationalPaths: string[];
+  trackedOperational: TrackedOperationalReport;
   diagnostics: string[];
 }
 
@@ -123,39 +124,152 @@ async function readOptionalText(path: string): Promise<string | undefined> {
   }
 }
 
-/**
- * Read-only detection of APK-owned operational/generated paths that Git already
- * tracks. Ignore rules cannot untrack them, so this surfaces a bounded
- * diagnostic instead of silently reporting the repository as clean. APK never
- * mutates the index.
- */
-export async function detectTrackedApkOperationalPaths(rootDirectory: string): Promise<string[]> {
+export const TRACKED_OPERATIONAL_LIMITS = { entries: 4096, outputBytes: 4 * 1024 * 1024, timeoutMs: 5000, samplePaths: 8, sampleCharacters: 256 } as const;
+export type OperationalCategory = "agents" | "runs" | "evidence" | "baselines" | "reviews" | "sessions" | "generated-docs" | "other-operational";
+export interface TrackedOperationalReport {
+  status: "complete" | "incomplete" | "unknown" | "not-applicable";
+  metric: "indexed blob bytes (symlinks count link text; not worktree bytes)";
+  count: number | null;
+  indexedBytes: number | null;
+  paths: string[];
+  groups: { category: OperationalCategory; count: number; indexedBytes: number | null; sample: string[]; omittedPaths: number }[];
+  limits: typeof TRACKED_OPERATIONAL_LIMITS;
+  diagnostics: string[];
+}
+
+function operationalCategory(path: string): OperationalCategory {
+  if (path === ".agentic/agents.jsonl" || path.startsWith(".agentic/agents/")) return "agents";
+  if (path === ".agentic/runs.jsonl" || path.startsWith(".agentic/runs/")) return "runs";
+  if (path === ".agentic/evidence.jsonl") return "evidence";
+  if (path === ".agentic/task-baselines.jsonl") return "baselines";
+  if (path.startsWith(".agentic/reviews/")) return "reviews";
+  if (path.startsWith(".agentic/sessions/")) return "sessions";
+  if (path === "docs/audit-report.md" || path === "docs/project-map.md") return "generated-docs";
+  return "other-operational";
+}
+
+function operationalGit(rootDirectory: string, args: string[], input?: string): Promise<{ code: number; stdout: string; stderr: string }> {
+  return new Promise((resolveResult, reject) => {
+    const child = execFile("git", args, {
+      cwd: rootDirectory, encoding: "buffer", timeout: TRACKED_OPERATIONAL_LIMITS.timeoutMs,
+      maxBuffer: TRACKED_OPERATIONAL_LIMITS.outputBytes, windowsHide: true,
+      env: { ...process.env, LC_ALL: "C", GIT_OPTIONAL_LOCKS: "0", GIT_NO_LAZY_FETCH: "1", GIT_NO_REPLACE_OBJECTS: "1" },
+    }, (error, stdout, stderr) => {
+      if (error && (typeof error.code !== "number" || error.killed || error.signal)) { reject(error); return; }
+      try {
+        const decoder = new TextDecoder("utf-8", { fatal: true });
+        resolveResult({ code: error && typeof error.code === "number" ? error.code : 0, stdout: decoder.decode(stdout), stderr: decoder.decode(stderr) });
+      } catch (error: unknown) { reject(error); }
+    });
+    child.stdin?.on("error", () => { /* Process completion reports a failed query. */ });
+    child.stdin?.end(input);
+  });
+}
+
+async function operationalGitMarker(rootDirectory: string): Promise<boolean> {
+  let directory = resolve(rootDirectory);
+  for (let depth = 0; depth < 64; depth++) {
+    try { await lstat(join(directory, ".git")); return true; }
+    catch (error: unknown) {
+      if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error;
+    }
+    const parent = dirname(directory);
+    if (parent === directory) return false;
+    directory = parent;
+  }
+  throw new Error("Git marker search limit");
+}
+
+/** Read only the index and object metadata; never open operational worktree files. */
+export async function inspectTrackedApkOperationalArtifacts(rootDirectory: string): Promise<TrackedOperationalReport> {
+  const report: TrackedOperationalReport = {
+    status: "unknown", metric: "indexed blob bytes (symlinks count link text; not worktree bytes)",
+    count: null, indexedBytes: null, paths: [], groups: [], limits: TRACKED_OPERATIONAL_LIMITS, diagnostics: [],
+  };
   try {
-    const { stdout } = await observedExecFile(
-      "git",
-      ["ls-files", "--", ...TRACKED_OPERATIONAL_SPECS],
-      { cwd: rootDirectory, maxBuffer: 4 * 1024 * 1024 },
-    );
-    return [...new Set(
-      stdout
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0)
-        .filter((line) => !line.endsWith(".gitkeep")),
-    )].sort();
+    const repository = await operationalGit(rootDirectory, ["rev-parse", "--is-inside-work-tree"]);
+    if (repository.code === 128 && /^fatal: not a git repository \(or any/i.test(repository.stderr) && !(await operationalGitMarker(rootDirectory))) {
+      report.status = "not-applicable";
+      report.diagnostics = ["Tracked APK operational artifacts: not applicable outside a Git worktree."];
+      return report;
+    }
+    if (repository.code !== 0 || repository.stdout.trim() !== "true" || repository.stderr) throw new Error("Git worktree inspection failed");
+    const listing = await operationalGit(rootDirectory, ["ls-files", "--stage", "-z", "--", ...TRACKED_OPERATIONAL_SPECS]);
+    if (listing.code !== 0 || listing.stderr) throw new Error("Git index inspection failed");
+    const records = listing.stdout === "" ? [] : listing.stdout.split("\0");
+    if (records.length > 0 && records.pop() !== "") throw new Error("Incomplete index response");
+    if (records.length > TRACKED_OPERATIONAL_LIMITS.entries) {
+      report.status = "incomplete";
+      report.diagnostics = [`Tracked APK operational inspection incomplete: index entry limit ${TRACKED_OPERATIONAL_LIMITS.entries} exceeded; counts and indexed bytes unknown.`];
+      return report;
+    }
+    const entries = new Map<string, { oid: string; blob: boolean }>();
+    for (const record of records) {
+      const match = /^(\d{6}) ([0-9a-f]{40}|[0-9a-f]{64}) ([0-3])\t([\s\S]+)$/.exec(record);
+      if (!match) throw new Error("Malformed index response");
+      const mode = match[1]!, oid = match[2]!, stage = match[3]!, path = match[4]!;
+      if (path.split("/").at(-1) === ".gitkeep") continue;
+      entries.set(path, { oid, blob: stage === "0" && ["100644", "100755", "120000"].includes(mode) && !entries.has(path) });
+    }
+    report.paths = [...entries.keys()].sort();
+    report.count = entries.size;
+    const oids = [...new Set([...entries.values()].filter((entry) => entry.blob).map((entry) => entry.oid))];
+    const sizes = new Map<string, number>();
+    if (oids.length > 0) {
+      const batch = await operationalGit(rootDirectory, ["cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)"], `${oids.join("\n")}\n`);
+      if (batch.code !== 0 || batch.stderr) {
+        report.diagnostics.push("Indexed object sizes unavailable; counts remain exact for the inspected index.");
+      } else {
+        const lines = batch.stdout.trimEnd().split("\n");
+        if (lines.length !== oids.length) throw new Error("Incomplete object metadata response");
+        for (const [index, line] of lines.entries()) {
+          const match = /^([0-9a-f]+) blob (\d+)$/.exec(line);
+          if (match && match[1] === oids[index] && Number.isSafeInteger(Number(match[2]))) sizes.set(match[1], Number(match[2]));
+        }
+      }
+    }
+    for (const category of ["agents", "runs", "evidence", "baselines", "reviews", "sessions", "generated-docs", "other-operational"] as const) {
+      const paths = report.paths.filter((path) => operationalCategory(path) === category);
+      if (paths.length === 0) continue;
+      let bytes: number | null = 0;
+      for (const path of paths) {
+        const entry = entries.get(path)!;
+        const size = entry.blob ? sizes.get(entry.oid) : undefined;
+        if (size === undefined || !Number.isSafeInteger(bytes + size)) { bytes = null; break; }
+        bytes += size;
+      }
+      report.groups.push({ category, count: paths.length, indexedBytes: bytes,
+        sample: paths.slice(0, TRACKED_OPERATIONAL_LIMITS.samplePaths).map((path) => path.length > TRACKED_OPERATIONAL_LIMITS.sampleCharacters ? `${path.slice(0, TRACKED_OPERATIONAL_LIMITS.sampleCharacters - 1)}…` : path),
+        omittedPaths: Math.max(0, paths.length - TRACKED_OPERATIONAL_LIMITS.samplePaths),
+      });
+    }
+    const total = report.groups.reduce((sum, group) => sum + (group.indexedBytes ?? 0), 0);
+    report.indexedBytes = report.groups.some((group) => group.indexedBytes === null) || !Number.isSafeInteger(total) ? null : total;
+    report.status = report.indexedBytes === null ? "incomplete" : "complete";
+    if (report.status === "incomplete") report.diagnostics.push("Tracked APK operational inspection incomplete: missing/non-blob objects or unmerged entries have unknown indexed bytes; no clean-zero conclusion.");
+    return report;
   } catch {
-    return [];
+    report.status = "unknown";
+    report.count = null;
+    report.indexedBytes = null;
+    report.diagnostics.push("Tracked APK operational inspection unknown: Git unavailable, failed, unreadable, malformed or over the 4 MiB/5 second bound. Absence of artifacts was not established.");
+    return report;
   }
 }
 
-function trackedOperationalDiagnostic(paths: readonly string[]): string[] {
-  if (paths.length === 0) {
-    return [];
-  }
-  const sample = paths.slice(0, 8).join(", ");
-  const extra = paths.length > 8 ? ` (+${paths.length - 8} more)` : "";
+/** Compatibility path-only view. Use the report for coverage and failure status. */
+export async function detectTrackedApkOperationalPaths(rootDirectory: string): Promise<string[]> {
+  return (await inspectTrackedApkOperationalArtifacts(rootDirectory)).paths;
+}
+
+export function renderTrackedApkOperationalReport(report: TrackedOperationalReport): string[] {
   return [
-    `Tracked APK operational state remains in Git and ignore rules do not untrack it: ${sample}${extra}. Decide manually whether to untrack with 'git rm --cached'; APK never mutates the index or deletes files.`,
+    `Tracked APK operational artifacts: ${report.status}; count=${report.count ?? "unknown"}; indexed bytes=${report.indexedBytes ?? "unknown"} (${report.metric}).`,
+    ...report.groups.map((group) => `${group.category}: count=${group.count}; indexed bytes=${group.indexedBytes ?? "unknown"}; sample=${group.sample.map((path) => JSON.stringify(path)).join(", ")}${group.omittedPaths ? ` (+${group.omittedPaths} paths)` : ""}`),
+    ...report.diagnostics,
+    ...(report.count !== null && report.count > 0 ? [
+      "Tracked APK operational state remains in Git and ignore rules do not untrack it. Inventory and back up needed local evidence; decide which records must remain portable for unfinished work. Check ignore rules; preview exact path-specific git rm --cached commands, review the index and commit deliberately. Untracking does not erase past history. APK never mutates the index or deletes files.",
+    ] : []),
   ];
 }
 
@@ -178,15 +292,16 @@ export async function planApkGitignore(
   const existing = await readOptionalText(join(rootDirectory, GITIGNORE_PATH));
   const update = renderApkGitignoreUpdate(existing);
   const action = existing === undefined ? "created" : update.changed ? "updated" : "unchanged";
-  const trackedOperationalPaths = await detectTrackedApkOperationalPaths(rootDirectory);
+  const trackedOperational = await inspectTrackedApkOperationalArtifacts(rootDirectory);
   return {
     result: {
       path: GITIGNORE_PATH,
       action,
       added: update.added,
       skippedEntries: update.skippedEntries,
-      trackedOperationalPaths,
-      diagnostics: trackedOperationalDiagnostic(trackedOperationalPaths),
+      trackedOperationalPaths: trackedOperational.paths,
+      trackedOperational,
+      diagnostics: trackedOperational.status === "complete" && trackedOperational.count === 0 ? [] : renderTrackedApkOperationalReport(trackedOperational),
     },
     ...(update.changed ? { content: update.content } : {}),
   };

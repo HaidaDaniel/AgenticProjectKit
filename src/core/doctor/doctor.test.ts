@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -5,6 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { runDoctor } from "./index.js";
+import { inspectApkGitignore } from "../init/index.js";
 import { inspectApkInstallation } from "./installation.js";
 
 async function fixture(run: (root: string) => Promise<void>): Promise<void> {
@@ -201,5 +203,29 @@ test("installation bounded reads and doctor remain non-mutating with actionable 
     assert.ok((await inspectApkInstallation(root)).findings.some((finding) => finding.code === "instructions-unknown"));
     await writeFile(join(root, "package.json"), "{bad json");
     assert.equal((await inspectApkInstallation(root)).declared, "unknown");
+  });
+});
+
+
+test("doctor reports shared indexed operational categories as advisory warnings", async () => {
+  await fixture(async (root) => {
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
+    git("init", "-q");
+    await mkdir(join(root, ".agentic/runs"), { recursive: true });
+    await mkdir(join(root, "docs"));
+    await writeFile(join(root, ".agentic/runs/sample.jsonl"), "abc");
+    await writeFile(join(root, "docs/project-map.md"), "map");
+    git("add", "--", ".agentic/runs/sample.jsonl", "docs/project-map.md");
+    const index = git("ls-files", "--stage", "-z");
+    const doctor = await runDoctor(root);
+    const check = doctor.checks.find((item) => item.label === "tracked-operational-artifacts")!;
+    assert.equal(check.level, "warn");
+    assert.match(check.message, /count=2; indexed bytes=6/);
+    assert.match(check.message, /runs: count=1/);
+    assert.match(check.message, /generated-docs: count=1/);
+    assert.match(check.message, /back up needed local evidence/);
+    assert.equal(check.message, (await inspectApkGitignore(root)).diagnostics.join("\n  "));
+    assert.equal(git("ls-files", "--stage", "-z"), index);
+    assert.equal(await readFile(join(root, ".agentic/runs/sample.jsonl"), "utf8"), "abc");
   });
 });
