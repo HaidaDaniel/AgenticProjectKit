@@ -1,3 +1,6 @@
+import fsPromises from "node:fs/promises";
+import childProcess from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -1755,4 +1758,179 @@ test("adopt preview distinguishes schema markers from incompatible task contract
     assert.match(result.stderr, /candidate\/baseline-bound provenance/);
     assert.equal(await readFile(join(directory, ".tasks/0001.md"), "utf8"), broken);
   });
+});
+
+
+interface WorkersPayload {
+  workers: Array<{ id: string; state: string; occupied: number; remainingSlots: number; currentTaskId?: string; currentRunId?: string; stateReason: string }>;
+  diagnostics: string[];
+}
+
+async function recordWorkerFixture(directory: string, taskId: string, runId: string, options: {
+  resourceId?: string; activated?: boolean; malformed?: boolean;
+} = {}): Promise<void> {
+  const path = join(directory, ".agentic/sessions/work", taskId, runId);
+  await mkdir(path, { recursive: true });
+  await writeFile(join(path, "metadata.json"), JSON.stringify({
+    protocol: options.malformed ? "invalid" : "apk-worker-v1", taskId, runId,
+    owner: "fixture", role: "implement", resourceId: options.resourceId ?? "local-a",
+  }));
+  if (options.activated !== false) await writeFile(join(path, "activation.json"), JSON.stringify({ protocol: "apk-worker-v1", taskId, runId }));
+}
+
+async function workerPayload(directory: string): Promise<WorkersPayload> {
+  const result = await runCommand(["workers", "--json"], directory);
+  assert.equal(result.exitCode, 0, result.stderr);
+  const payload = JSON.parse(result.stdout) as WorkersPayload;
+  assert.deepEqual(Object.keys(payload).sort(), ["diagnostics", "workers"]);
+  return payload;
+}
+
+test("workers reads tasks once and never reads diagnostic journals or invokes Git, with or without registry", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeExecutionRepo(directory);
+    for (let i = 1; i <= 100; i++) {
+      const id = String(i).padStart(4, "0");
+      await writeFile(join(directory, `.tasks/${id}-task.md`), buildTaskMarkdown(id, "Fixture", i <= 32 ? "doing" : "todo", i <= 32 ? "fixture" : "none"));
+    }
+    // Deliberately invalid journals: workers must not depend on their contents.
+    await writeFile(join(directory, ".agentic/evidence.jsonl"), "malformed journal");
+    await writeFile(join(directory, ".agentic/runs.jsonl"), "malformed journal");
+    await recordWorkerFixture(directory, "0001", "run-active");
+    for (const registry of [true, false]) {
+      if (!registry) await writeFile(join(directory, ".agentic/config.json"), JSON.stringify({ schemaVersion: 2 }));
+      const reads: string[] = [];
+      const taskReads: string[] = [];
+      let gitCalls = 0, sessionEnumerations = 0;
+      const originalRead = fsPromises.readFile, originalOpen = fsPromises.open, originalDir = fsPromises.readdir, originalGit = childProcess.execFile;
+      fsPromises.readFile = ((...args: Parameters<typeof originalRead>) => { reads.push(String(args[0])); return originalRead(...args); }) as typeof originalRead;
+      fsPromises.open = ((...args: Parameters<typeof originalOpen>) => { taskReads.push(String(args[0])); return originalOpen(...args); }) as typeof originalOpen;
+      fsPromises.readdir = ((...args: Parameters<typeof originalDir>) => {
+        if (String(args[0]) === join(directory, ".agentic/sessions/work")) sessionEnumerations++;
+        return originalDir(...args);
+      }) as typeof originalDir;
+      childProcess.execFile = ((...args: Parameters<typeof originalGit>) => { if (args[0] === "git") gitCalls++; return originalGit(...args); }) as typeof originalGit;
+      syncBuiltinESMExports();
+      try {
+        const payload = await workerPayload(directory);
+        assert.equal(payload.workers.length, registry ? 2 : 0);
+        assert.equal(payload.workers[0]?.state, registry ? "busy" : undefined);
+        assert.equal(payload.workers[1]?.state, registry ? "ready" : undefined);
+        assert.equal(taskReads.length, registry ? 100 : 0);
+        assert.equal(new Set(taskReads).size, taskReads.length);
+        assert.equal(sessionEnumerations, registry ? 1 : 0);
+        assert.equal(gitCalls, 0);
+        assert.deepEqual(reads.filter((path) => /evidence|runs|task-baselines|agents\//.test(path)), []);
+        assert.deepEqual(reads.filter((path) => path.endsWith(".md")), []);
+      } finally {
+        fsPromises.readFile = originalRead; fsPromises.open = originalOpen; fsPromises.readdir = originalDir; childProcess.execFile = originalGit;
+        syncBuiltinESMExports();
+      }
+    }
+  });
+});
+
+test("workers treats all duplicate task identities as ambiguous, including archive collisions and equal states", async () => {
+  for (const [active, archived] of [["doing", "done"], ["done", "doing"], ["done", "done"]]) {
+    await withTempDirectory(async (directory) => {
+      await writeExecutionRepo(directory);
+      await mkdir(join(directory, ".tasks/archive"));
+      await writeFile(join(directory, ".tasks/0100-task.md"), buildTaskMarkdown("0100", "Active", active!, "fixture"));
+      await writeFile(join(directory, ".tasks/archive/0100-old.md"), buildTaskMarkdown("0100", "Archive", archived!, "fixture"));
+      await recordWorkerFixture(directory, "0100", "run-bound");
+      const payload = await workerPayload(directory);
+      assert.equal(payload.workers[0]?.state, "unknown");
+      assert.equal(payload.workers[0]?.currentTaskId, undefined);
+      assert.match(payload.diagnostics.join(" "), /duplicate task ID/);
+      // Attention uses exactly the same binding semantics.
+      const attention = await runCommand(["attention", "--json"], directory);
+      assert.equal(attention.exitCode, 0, attention.stderr);
+      assert.equal((JSON.parse(attention.stdout) as WorkersPayload).workers[0]?.state, "unknown");
+    });
+  }
+});
+
+test("workers preserves canonical occupancy and refreshes terminal, orphan, stale and multiple-session states", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeExecutionRepo(directory);
+    const path = join(directory, ".tasks/0001-task.md");
+    await writeFile(path, buildTaskMarkdown("0001", "Unique", "doing", "fixture"));
+    await recordWorkerFixture(directory, "0001", "run-first");
+    let payload = await workerPayload(directory);
+    assert.equal(payload.workers[0]?.state, "busy");
+    assert.equal(payload.workers[0]?.occupied, 1);
+    assert.equal(payload.workers[0]?.currentRunId, "run-first");
+    await recordWorkerFixture(directory, "0001", "run-second");
+    payload = await workerPayload(directory);
+    assert.equal(payload.workers[0]?.occupied, 2);
+    assert.equal(payload.workers[0]?.currentRunId, undefined);
+    assert.match(payload.diagnostics.join(" "), /multiple active runs/);
+    for (const state of ["done", "canceled"]) {
+      await writeFile(path, buildTaskMarkdown("0001", "Unique", state, "fixture"));
+      payload = await workerPayload(directory);
+      assert.equal(payload.workers[0]?.state, "ready");
+      assert.equal(payload.workers[0]?.occupied, 0);
+    }
+    await rm(path);
+    assert.equal((await workerPayload(directory)).workers[0]?.state, "unknown");
+    await writeFile(path, buildTaskMarkdown("0001", "Unique", "doing", "fixture"));
+    await rm(join(directory, ".agentic/sessions"), { recursive: true });
+    await recordWorkerFixture(directory, "0001", "run-stale", { activated: false });
+    assert.equal((await workerPayload(directory)).workers[0]?.state, "unknown");
+    await recordWorkerFixture(directory, "0001", "run-stale", { malformed: true });
+    assert.equal((await workerPayload(directory)).workers[0]?.state, "unknown");
+    await rm(join(directory, ".agentic/sessions"), { recursive: true });
+    await recordWorkerFixture(directory, "0001", "run-unknown", { resourceId: "unconfigured" });
+    assert.match((await workerPayload(directory)).diagnostics.join(" "), /unconfigured resource/);
+    // Missing metadata cannot be attributed to any one worker.
+    await rm(join(directory, ".agentic/sessions/work/0001/run-unknown/metadata.json"));
+    assert.ok((await workerPayload(directory)).workers.every((worker) => worker.state === "unknown"));
+  });
+});
+
+test("workers fails closed on invalid inventory, unreadable canonical store and invalid registry", async () => {
+  await withTempDirectory(async (directory) => {
+    await writeExecutionRepo(directory);
+    const task = join(directory, ".tasks/0001-task.md");
+    await writeFile(task, "invalid task");
+    let payload = await workerPayload(directory);
+    assert.ok(payload.workers.every((worker) => worker.state === "unknown"));
+    assert.match(payload.diagnostics.join(" "), /inventory.*invalid|incompatible/);
+    await rm(task);
+    await mkdir(task); // A non-regular task is unreadable even under privileged test users.
+    assert.ok((await workerPayload(directory)).workers.every((worker) => worker.state === "unknown"));
+    await rm(task, { recursive: true });
+    await mkdir(join(directory, ".agentic/sessions"));
+    await writeFile(join(directory, ".agentic/sessions/work"), "not a directory");
+    payload = await workerPayload(directory);
+    assert.ok(payload.workers.every((worker) => worker.state === "unknown"));
+    assert.match(payload.diagnostics.join(" "), /worker-session state unavailable/);
+    await writeFile(join(directory, ".agentic/config.json"), '{"resources":{"workers":"invalid"}}');
+    const result = await runCommand(["workers", "--json"], directory);
+    assert.equal(result.exitCode, 1);
+    assert.ok(result.stderr.length < 800);
+    assert.equal(result.stdout, "");
+  });
+});
+
+
+test("workers preserves declared availability, max occupancy and human rendering", async () => {
+  for (const [availability, occupied, expected] of [
+    ["available", 0, "ready"], ["available", 1, "busy"], ["unknown", 0, "unknown"], ["unavailable", 0, "unavailable"],
+  ] as const) {
+    await withTempDirectory(async (directory) => {
+      await writeExecutionRepo(directory);
+      const path = join(directory, ".agentic/config.json");
+      const config = JSON.parse(await readFile(path, "utf8")) as { resources: { workers: unknown[] } };
+      config.resources.workers = [executionWorker("local-a", ["implementation"], { availability, occupied })];
+      await writeFile(path, JSON.stringify(config));
+      const payload = await workerPayload(directory);
+      assert.equal(payload.workers[0]?.state, expected);
+      assert.equal(payload.workers[0]?.occupied, occupied);
+      assert.equal(payload.workers[0]?.remainingSlots, 1 - occupied);
+      const rendered = await runCommand(["workers"], directory);
+      assert.equal(rendered.exitCode, 0);
+      assert.match(rendered.stdout, new RegExp(`Workers: 1\\n-  local-a ${expected} ${occupied}/1`));
+    });
+  }
 });

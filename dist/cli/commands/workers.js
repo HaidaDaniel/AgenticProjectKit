@@ -1,6 +1,5 @@
 import { resolve } from "node:path";
-import { readAgenticConfigFile } from "../../core/config/index.js";
-import { buildAttentionView, renderWorkersView, } from "../../core/status/attention.js";
+import { buildWorkersView, renderWorkersView, } from "../../core/status/workers.js";
 const WORKERS_HELP_TEXT = [
     "Agentic Project Kit",
     "",
@@ -21,13 +20,12 @@ export async function runWorkersCommand(argv) {
     }
     try {
         const rootDirectory = resolve(process.cwd());
-        const config = await readAgenticConfigFile(rootDirectory);
-        const view = await buildAttentionView(rootDirectory, config.taskDirectory);
+        const view = await buildWorkersView(rootDirectory);
         console.log(renderWorkersView(view, argv.includes("--json")));
         return 0;
     }
     catch (error) {
-        console.error(error instanceof Error ? error.message : String(error));
+        console.error(String(error instanceof Error ? error.message : error).slice(0, 768));
         return 1;
     }
 }

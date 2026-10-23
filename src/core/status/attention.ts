@@ -1,10 +1,8 @@
 import { readAgenticConfigFile } from "../config/index.js";
-import { type ProjectTask, type TaskState } from "../tasks/index.js";
+import { type ProjectTask } from "../tasks/index.js";
 import { resolveTaskPolicy } from "../tasks/policy.js";
-import {
-  listWorkerSessions,
-  type DiscoveredWorkerSession,
-} from "../work/session.js";
+import { projectWorkers, renderWorkerLine, type WorkerAttentionEntry } from "./workers.js";
+export { WORKER_SEMANTIC_STATES, renderWorkersView, type WorkerSemanticState, type WorkerAttentionEntry } from "./workers.js";
 import {
   summarizeStatus,
   readStatusTaskInventory,
@@ -14,30 +12,6 @@ import {
 
 export const ATTENTION_PRIORITIES = ["P1", "P2", "P3", "P4"] as const;
 export type AttentionPriority = (typeof ATTENTION_PRIORITIES)[number];
-
-export const WORKER_SEMANTIC_STATES = ["ready", "busy", "unknown", "unavailable"] as const;
-export type WorkerSemanticState = (typeof WORKER_SEMANTIC_STATES)[number];
-
-export interface WorkerAttentionEntry {
-  id: string;
-  modelId: string;
-  harnessId: string;
-  location: string;
-  availability: string;
-  costClass: string;
-  capabilities: string[];
-  capacity: number;
-  /** Effective occupancy: max(declared occupied, active APK-recorded runs). */
-  occupied: number;
-  declaredOccupied: number;
-  remainingSlots: number;
-  /** Semantic capacity state; never a live process observation. */
-  state: WorkerSemanticState;
-  stateReason: string;
-  /** Proven from canonical session records only; omitted when not provable. */
-  currentTaskId?: string;
-  currentRunId?: string;
-}
 
 export interface AttentionItem {
   taskId: string;
@@ -68,137 +42,6 @@ export interface AttentionView {
 }
 
 const PRIORITY_RANK: Record<AttentionPriority, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
-const TERMINAL_TASK_STATES: readonly TaskState[] = ["done", "canceled"];
-
-interface BoundWorkerSessions {
-  /** Activated runs whose task is still open; these consume a slot. */
-  active: DiscoveredWorkerSession[];
-  /** Unactivated or task-missing sessions; cannot prove readiness. */
-  stale: DiscoveredWorkerSession[];
-  /** Malformed identity; ownership is ambiguous. */
-  ambiguous: DiscoveredWorkerSession[];
-}
-
-function bindWorkerSessions(
-  sessions: readonly DiscoveredWorkerSession[],
-  taskStates: ReadonlyMap<string, TaskState>,
-): BoundWorkerSessions {
-  const active: DiscoveredWorkerSession[] = [];
-  const stale: DiscoveredWorkerSession[] = [];
-  const ambiguous: DiscoveredWorkerSession[] = [];
-  for (const session of sessions) {
-    if (session.state === "malformed") {
-      ambiguous.push(session);
-      continue;
-    }
-    if (session.state === "unactivated") {
-      stale.push(session);
-      continue;
-    }
-    const taskState = taskStates.get(session.taskId);
-    if (taskState === undefined) {
-      // An orphaned session (missing task) must be visible and prevent
-      // confident readiness.
-      stale.push(session);
-      continue;
-    }
-    if (TERMINAL_TASK_STATES.includes(taskState)) {
-      // A completed/canceled run does not hold a slot or block readiness.
-      continue;
-    }
-    active.push(session);
-  }
-  return { active, stale, ambiguous };
-}
-
-function buildWorkers(
-  registry: Awaited<ReturnType<typeof readAgenticConfigFile>>["resources"],
-  sessions: readonly DiscoveredWorkerSession[],
-  taskStates: ReadonlyMap<string, TaskState>,
-  diagnostics: string[],
-  sessionsUnavailable = false,
-): WorkerAttentionEntry[] {
-  if (!registry || registry.workers.length === 0) {
-    return [];
-  }
-  const bound = new Map<string, DiscoveredWorkerSession[]>();
-  for (const session of sessions) {
-    if (!session.resourceId) continue;
-    const list = bound.get(session.resourceId) ?? [];
-    list.push(session);
-    bound.set(session.resourceId, list);
-  }
-  const configured = new Set(registry.workers.map((worker) => worker.id));
-  for (const resourceId of [...bound.keys()].sort()) {
-    if (!configured.has(resourceId)) {
-      diagnostics.push(`Worker session references unconfigured resource ${resourceId}; its occupancy cannot be attributed.`);
-    }
-  }
-
-  return registry.workers
-    .map((worker) => {
-      const workerSessions = bound.get(worker.id) ?? [];
-      const { active, stale, ambiguous } = bindWorkerSessions(workerSessions, taskStates);
-      const effectiveOccupied = Math.max(worker.occupied, active.length);
-      const remainingSlots = Math.max(0, worker.capacity - effectiveOccupied);
-      let state: WorkerSemanticState;
-      let stateReason: string;
-      if (worker.availability === "unavailable") {
-        state = "unavailable";
-        stateReason = "declared unavailable";
-      } else if (sessionsUnavailable) {
-        // Canonical session state could not be read: readiness cannot be proven.
-        state = "unknown";
-        stateReason = "canonical worker-session state unavailable";
-      } else if (worker.availability === "unknown") {
-        state = "unknown";
-        stateReason = "declared availability is unknown";
-      } else if (ambiguous.length > 0) {
-        state = "unknown";
-        stateReason = `${ambiguous.length} malformed session(s) prevent confident readiness`;
-        diagnostics.push(`Worker ${worker.id} has malformed session state; reporting unknown rather than ready.`);
-      } else if (worker.occupied >= worker.capacity) {
-        state = "busy";
-        stateReason = `declared occupancy ${worker.occupied}/${worker.capacity}`;
-      } else if (active.length > 0) {
-        state = "busy";
-        stateReason = `${active.length} active APK-recorded run(s)`;
-      } else if (stale.length > 0) {
-        state = "unknown";
-        stateReason = `${stale.length} stale/orphaned session(s) present without active work`;
-        diagnostics.push(`Worker ${worker.id} has ${stale.length} stale/orphaned session(s); not confidently ready.`);
-      } else {
-        state = "ready";
-        stateReason = "no conflicting canonical run or session";
-      }
-
-      const sortedActive = [...active].sort((left, right) => (
-        left.taskId.localeCompare(right.taskId) || left.runId.localeCompare(right.runId)
-      ));
-      if (sortedActive.length > 1) {
-        diagnostics.push(`Worker ${worker.id} has multiple active runs; the current task/run is ambiguous and omitted.`);
-      }
-      const current = sortedActive.length === 1 ? sortedActive[0] : undefined;
-      return {
-        id: worker.id,
-        modelId: worker.modelId,
-        harnessId: worker.harnessId,
-        location: worker.location,
-        availability: worker.availability,
-        costClass: worker.costClass,
-        capabilities: [...worker.capabilities.roles].sort(),
-        capacity: worker.capacity,
-        occupied: effectiveOccupied,
-        declaredOccupied: worker.occupied,
-        remainingSlots,
-        state,
-        stateReason,
-        ...(current ? { currentTaskId: current.taskId, currentRunId: current.runId } : {}),
-      };
-    })
-    .sort((left, right) => left.id.localeCompare(right.id));
-}
-
 function priorityFor(status: ActiveTaskStatus): AttentionPriority {
   const blockers = status.gate.blockers.join(" ").toLowerCase();
   if (
@@ -267,22 +110,8 @@ export async function buildAttentionView(
   const activeTasks = taskFiles
     .map((file) => file.task)
     .filter((task) => ["doing", "review", "blocked"].includes(task.state));
-  const taskStates = new Map(taskFiles.map((file) => [file.task.id, file.task.state] as const));
-
-  const workerDiagnostics: string[] = inventory.diagnostics.filter((diagnostic) => !summary.warnings.includes(diagnostic));
-  let sessions: DiscoveredWorkerSession[] = [];
-  let sessionsUnavailable = !inventory.complete;
-  if (config.resources && config.resources.workers.length > 0) {
-    try {
-      sessions = await listWorkerSessions(rootDirectory);
-    } catch (error: unknown) {
-      // Fail closed: without canonical session state no worker may be reported
-      // confidently ready. Declared availability/capacity facts are preserved.
-      sessionsUnavailable = true;
-      workerDiagnostics.push(`Canonical worker-session state unavailable (${error instanceof Error ? error.message : String(error)}); worker readiness is unknown.`);
-    }
-  }
-  const workers = buildWorkers(config.resources, sessions, taskStates, workerDiagnostics, sessionsUnavailable);
+  const workerDiagnostics = inventory.diagnostics.filter((diagnostic) => !summary.warnings.includes(diagnostic));
+  const workers = await projectWorkers(rootDirectory, config.resources, taskFiles.map((file) => file.task), workerDiagnostics, inventory.complete);
 
   const items: AttentionItem[] = summary.activeTasks
     .filter((status) => ["doing", "review", "blocked"].includes(status.state))
@@ -344,28 +173,6 @@ export function renderAttentionView(view: AttentionView, json = false): string {
   }
   for (const worker of view.workers) {
     lines.push(renderWorkerLine("worker", worker));
-  }
-  if (view.diagnostics.length > 0) {
-    lines.push("Diagnostics:", ...view.diagnostics.map((diagnostic) => `  - ${diagnostic}`));
-  }
-  lines.push("");
-  return lines.join("\n");
-}
-
-function renderWorkerLine(label: string, worker: WorkerAttentionEntry): string {
-  const current = worker.currentTaskId
-    ? ` current=${worker.currentTaskId}/${worker.currentRunId ?? "unknown"}`
-    : "";
-  return `- ${label} ${worker.id} ${worker.state} ${worker.occupied}/${worker.capacity} remaining=${worker.remainingSlots}${current} ${worker.location} ${worker.availability} cost=${worker.costClass} capabilities=${worker.capabilities.join(",") || "none"} model=${worker.modelId} harness=${worker.harnessId} reason=${worker.stateReason}`;
-}
-
-export function renderWorkersView(view: AttentionView, json = false): string {
-  if (json) {
-    return `${JSON.stringify({ workers: view.workers, diagnostics: view.diagnostics }, null, 2)}\n`;
-  }
-  const lines = [`Workers: ${view.workers.length}`];
-  for (const worker of view.workers) {
-    lines.push(renderWorkerLine("", worker).replace(/^- /, "- "));
   }
   if (view.diagnostics.length > 0) {
     lines.push("Diagnostics:", ...view.diagnostics.map((diagnostic) => `  - ${diagnostic}`));

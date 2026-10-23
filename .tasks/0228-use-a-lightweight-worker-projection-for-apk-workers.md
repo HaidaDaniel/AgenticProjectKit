@@ -1,7 +1,7 @@
 # Task 0228 - Use a lightweight worker projection for apk workers
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-corrective-0228
 Mode: maintenance
 Lane: bugfix
 Type: bugfix
