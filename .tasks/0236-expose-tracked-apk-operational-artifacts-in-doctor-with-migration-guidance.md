@@ -1,6 +1,6 @@
 # Task 0236 - Expose tracked APK operational artifacts in doctor with migration guidance
 
-State: doing
+State: done
 Owner: codex-fixes-0236
 Mode: maintenance
 Lane: diagnostics
