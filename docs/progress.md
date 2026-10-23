@@ -2,7 +2,7 @@
 
 ## Current state
 
-Task 0228 is doing: extracting an invocation-local worker projection and rejecting ambiguous duplicate task IDs without the status/gate/provenance pipeline. Tasks 0229, 0230 and 0232 follow sequentially before the v0.5.2 release decision.
+Task 0228 is released unfinished after candidate `7b93bd0`: all eight checks are current, but independent review requests a fix for the pre-existing session reader silently skipping unreadable per-task directories. A separate corrective task will repair this out-of-scope reader before 0228 resumes; no completion is claimed. Tasks 0229, 0230 and 0232 follow sequentially before the v0.5.2 release decision.
 
 Agentic Project Kit remains the current product identity. The latest validated, installable release is [v0.5.1](releases/v0.5.1.md); its exact tag, candidate, hosted CI result, pinned cold install, CLI smoke, and self-adoption are recorded in the [post-release validation record](delivery/workflow-v0.5.1-post-release.md).
 
