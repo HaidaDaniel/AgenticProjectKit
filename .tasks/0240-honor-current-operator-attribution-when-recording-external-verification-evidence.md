@@ -1,6 +1,6 @@
 # Task 0240 - Honor current operator attribution when recording external verification evidence
 
-State: doing
+State: done
 Owner: codex-corrective-0240
 Mode: maintenance
 Lane: bugfix
