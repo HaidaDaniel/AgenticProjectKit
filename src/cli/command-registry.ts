@@ -341,6 +341,9 @@ export function renderCliHelp(): string {
     "",
     "Commands:",
     ...commands,
+    "",
+    "Global options:",
+    "  --version  Print the installed APK package version.",
   ].join("\n");
 }
 

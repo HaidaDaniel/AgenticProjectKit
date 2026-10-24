@@ -2,6 +2,8 @@
 
 ## Current state
 
+Task 0232 is doing again after 0239: adding a package-relative standalone version path before project/performance imports, with bounded manifest validation and source/packaged/alias regression coverage. The pending 0238 amendment remains unapproved.
+
 Task 0239 is done at candidate `0f6a308`: seven automated checks, the observed long-goal report, fresh independent review `evidence-1792824910132-r40epr`, and completion gate passed. The producer emits a marked bounded goal summary while retaining the full contract and prompt; 56 command tests and 14 reviewer counterexamples cover boundaries, Unicode and strict external parsing. Short multiline rejection is unchanged; grapheme clusters were not assessed. Task 0232 can now issue its worker package without amending its contract.
 
 Task 0232 was claimed then released without source changes: `apk work` rejects its valid task goal with `worker package.task.goal must be at most 320 characters`. A separate bounded worker-package correction is required before implementation can use the repository worker contract. The original `--version` failure was reproduced outside Git.

@@ -317,6 +317,9 @@ export function renderCliHelp() {
         "",
         "Commands:",
         ...commands,
+        "",
+        "Global options:",
+        "  --version  Print the installed APK package version.",
     ].join("\n");
 }
 export const CLI_REFERENCE_START = "<!-- BEGIN GENERATED CLI COMMAND REFERENCE -->";

@@ -21,6 +21,8 @@ pnpm exec apkit init
 
 For an existing project, preview adoption first with `pnpm exec apkit adopt --preview`. Review the proposed changes before applying them. The [Getting Started guide](docs/getting-started.md) covers the full workflow; the [brownfield guide](docs/guides/brownfield-adoption.md) explains safe adoption.
 
+The development CLI also supports `pnpm exec apkit --version` (aliases `apk` and `agentic-project-kit`). It reports the installed APK package version, independently of the host project's manifest and Git state. This flag is a post-v0.5.1 addition; the validated v0.5.1 pin above continues to use `--help` for installation smoke until a newer release is validated.
+
 ## What APK provides
 
 - `init` and conservative `adopt` commands for repository-local project context.

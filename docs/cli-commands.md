@@ -28,6 +28,10 @@ The `apk` and `agentic-project-kit` aliases remain available for existing script
 
 For first-time use, install an exact release tag into the target repository and then run the local binary with `pnpm exec apkit`; see the [repository-local install and recovery steps](../README.md#install-apk-in-another-repository).
 
+## Installed version
+
+`apkit --version` prints `agentic-project-kit <version>` from APK's own installed package manifest. `apk --version` and `agentic-project-kit --version` are identical. Use the flag alone; it works outside Git and ignores the host project's manifest. Source and packaged entrypoints resolve metadata relative to the CLI module, without loading project diagnostics. Missing, unreadable, malformed or invalid APK metadata produces an error rather than a guessed version.
+
 ## Implemented commands
 
 The command synopsis and option list below are rendered from `src/cli/command-registry.ts`. CLI tests require this block to match the registry exactly; the behavior notes below explain defaults and side effects.

@@ -1,13 +1,14 @@
 import { execFile } from "node:child_process";
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import assert from "node:assert/strict";
 import test, { before, after } from "node:test";
 import ts from "typescript";
 
+import { readCliVersion } from "./version.js";
 import { startWork } from "../core/work/index.js";
 import { WORKER_ROLES } from "../core/work/contract.js";
 import { EXECUTION_ROLES } from "../core/execution/index.js";
@@ -4100,5 +4101,104 @@ test("CLI prompt carries the resolved developer-local communication language", a
     );
     assert.equal(override.exitCode, 0, `${override.stdout}${override.stderr}`);
     assert.match(override.stdout, /in "uk"/);
+  });
+});
+
+
+test("CLI version matches its own package from source and packaged entrypoints outside Git", async () => {
+  const manifest = JSON.parse(await readFile(join(process.cwd(), "package.json"), "utf8")) as { name: string; version: string };
+  await withTempDirectory(async (directory) => {
+    await writeFile(join(directory, "package.json"), JSON.stringify({ name: "downstream-host", version: "999.0.0" }));
+    await mkdir(join(directory, ".agentic"));
+    await writeFile(join(directory, ".agentic/config.json"), "malformed project config must not be read");
+    await mkdir(join(directory, ".tasks"));
+    await writeFile(join(directory, ".tasks/invalid.md"), "invalid task must not be read");
+    const beforeFiles = await readdir(directory, { recursive: true });
+    for (const source of [false, true]) {
+      const result = await runCli(["--version"], directory, process.env, source);
+      assert.equal(result.exitCode, 0, result.stderr);
+      assert.equal(result.stdout, `${manifest.name} ${manifest.version}\n`);
+      assert.equal(result.stderr, "");
+    }
+    assert.deepEqual(await readdir(directory, { recursive: true }), beforeFiles);
+    for (const args of [["--version", "extra"], ["--version", "--help"]]) {
+      const result = await runCli(args, directory);
+      assert.equal(result.exitCode, 1);
+      assert.equal(result.stdout, "");
+      assert.match(result.stderr, /standalone/);
+    }
+    assert.equal((await runCli(["--help", "--version"], directory)).exitCode, 0, "existing help precedence remains unchanged");
+  });
+});
+
+test("all version aliases work through a relocated minimal package without diagnostic modules", async () => {
+  await withTempDirectory(async (directory) => {
+    const root = join(directory, "node_modules/agentic-project-kit");
+    const cli = join(root, "dist/cli");
+    await mkdir(cli, { recursive: true });
+    // Deliberately omit command registry and every core module: --version must
+    // finish before loading project diagnostics or performance machinery.
+    await cp(freshCliPath, join(cli, "index.js"));
+    await cp(join(dirname(freshCliPath), "version.js"), join(cli, "version.js"));
+    await chmod(join(cli, "index.js"), 0o755);
+    const manifest = { name: "agentic-project-kit", type: "module", version: "7.8.9-rc.2+fixture" };
+    await writeFile(join(root, "package.json"), JSON.stringify(manifest));
+    await writeFile(join(directory, "package.json"), JSON.stringify({ name: "host", type: "module", version: "999.0.0" }));
+    const bin = join(directory, "node_modules/.bin");
+    await mkdir(bin);
+    for (const alias of ["apk", "apkit", "agentic-project-kit"]) {
+      const executable = join(bin, alias);
+      await symlink(join(cli, "index.js"), executable);
+      const result = await execFileAsync(process.execPath, [executable, "--version"], { cwd: directory });
+      assert.equal(result.stdout, `agentic-project-kit ${manifest.version}\n`);
+      assert.equal(result.stderr, "");
+    }
+    // The next call sees fresh metadata instead of a global cached value.
+    await writeFile(join(root, "package.json"), JSON.stringify({ ...manifest, version: "7.8.10" }));
+    assert.equal((await execFileAsync(process.execPath, [join(bin, "apk"), "--version"], { cwd: directory })).stdout, "agentic-project-kit 7.8.10\n");
+    await rm(join(root, "package.json"));
+    await assert.rejects(execFileAsync(process.execPath, [join(bin, "apk"), "--version"], { cwd: directory }), (error: unknown) => {
+      assert.ok(error && typeof error === "object" && "stderr" in error);
+      assert.match(String(error.stderr), /manifest is missing within the CLI package boundary/);
+      return true;
+    });
+  });
+});
+
+test("version manifest lookup is bounded and rejects invalid metadata without a host fallback", async () => {
+  await withTempDirectory(async (directory) => {
+    const root = join(directory, "installed-package");
+    const cli = join(root, "dist/cli");
+    await mkdir(cli, { recursive: true });
+    const moduleUrl = pathToFileURL(join(cli, "version.js")).href;
+    const manifestPath = join(root, "package.json");
+    // Even an ancestor claiming APK identity lies outside the package boundary.
+    await writeFile(join(directory, "package.json"), JSON.stringify({ name: "agentic-project-kit", version: "999.0.0" }));
+    await assert.rejects(readCliVersion(moduleUrl), /missing within the CLI package boundary/);
+    for (const content of ["{invalid", "null", "[]", '{}', JSON.stringify({ name: "host", version: "1.2.3" })]) {
+      await writeFile(manifestPath, content);
+      await assert.rejects(readCliVersion(moduleUrl), /manifest/);
+    }
+    for (const version of [undefined, null, 123, "", "1.2", "01.2.3", "1.2.3-01", "1.2.3-", "1.2.3+", "1.2.3\n", "x".repeat(129)]) {
+      await writeFile(manifestPath, JSON.stringify({ name: "agentic-project-kit", version }));
+      await assert.rejects(readCliVersion(moduleUrl), /valid SemVer/);
+    }
+    for (const version of ["0.0.0", "1.2.3-alpha.1", "1.2.3+001", "1.2.3-0a+metadata"]) {
+      await writeFile(manifestPath, JSON.stringify({ name: "agentic-project-kit", version }));
+      assert.equal(await readCliVersion(moduleUrl), `agentic-project-kit ${version}`);
+    }
+    await writeFile(manifestPath, "x".repeat(64 * 1024 + 1));
+    await assert.rejects(readCliVersion(moduleUrl), /64 KiB/);
+    await writeFile(manifestPath, Buffer.from([0xff]));
+    await assert.rejects(readCliVersion(moduleUrl), /encoded data|encoding/i);
+    await rm(manifestPath);
+    await mkdir(manifestPath);
+    await assert.rejects(readCliVersion(moduleUrl), /regular file/);
+    await rm(manifestPath, { recursive: true });
+    if (process.getuid?.() !== 0) {
+      await writeFile(manifestPath, "{}", { mode: 0o000 });
+      try { await assert.rejects(readCliVersion(moduleUrl), /unreadable/); }
+      finally { await chmod(manifestPath, 0o600); }
+    }
   });
 });
