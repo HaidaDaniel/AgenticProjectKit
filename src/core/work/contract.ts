@@ -122,7 +122,9 @@ export function validateWorkerRunId(value: string): string {
   return value;
 }
 
-function text(value: unknown, label: string, maxLength = 320): string {
+const WORKER_TEXT_LIMIT = 320;
+
+function text(value: unknown, label: string, maxLength = WORKER_TEXT_LIMIT): string {
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new WorkerContractError(`${label} must be a non-empty string.`);
   }
@@ -343,6 +345,20 @@ export function parseWorkerStatus(value: string): WorkerStatus {
   return workerStatus(value, "worker status");
 }
 
+/** The package carries a bounded summary; the task file and prompt remain
+ * authoritative and retain the complete goal. External parser limits stay strict. */
+function workerGoalSummary(goal: string): string {
+  if (goal.length <= WORKER_TEXT_LIMIT) return goal;
+  const suffix = "… [full goal: task contract]";
+  let prefix = "";
+  for (const character of goal) {
+    const next = character === "\n" || character === "\r" ? " " : character;
+    if (prefix.length + next.length > WORKER_TEXT_LIMIT - suffix.length) break;
+    prefix += next;
+  }
+  return `${prefix.trimEnd()}${suffix}`;
+}
+
 export function createWorkerPackage(
   task: ProjectTask,
   context: TaskContextSelection,
@@ -368,7 +384,7 @@ export function createWorkerPackage(
     task: {
       id: task.id,
       title: task.title,
-      goal: task.goal,
+      goal: workerGoalSummary(task.goal),
     },
     role: options.role,
     context: {

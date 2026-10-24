@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
 
+import { createWorkerPackage, parseWorkerPackage } from "../core/work/contract.js";
 import { resolveExecutionRoute, resolveAssurancePlan } from "../core/execution/index.js";
 import { resolveTaskPolicy } from "../core/tasks/policy.js";
 import { parseTaskMarkdown } from "../core/tasks/index.js";
@@ -1964,4 +1965,32 @@ test("workers never treats a failed discovered session directory as empty", asyn
     }
     assert.equal((await workerPayload(directory)).workers[0]?.state, "busy");
   });
+});
+
+
+test("worker packages summarize long goals without losing the canonical goal or loosening parser bounds", async () => {
+  for (const goal of ["x".repeat(319), "x".repeat(320), "x".repeat(321), "Цель 😀 ".repeat(100), "long goal\n".repeat(100)]) {
+    await withTempDirectory(async (directory) => {
+      await writeExecutionRepo(directory);
+      const taskPath = join(directory, ".tasks/0001-task.md");
+      const markdown = buildTaskMarkdown("0001", "Goal boundary", "todo").replace("A task.", goal.trim());
+      await writeFile(taskPath, markdown);
+      const task = parseTaskMarkdown(markdown);
+      const pkg = createWorkerPackage(task, { taskId: task.id, level: 1, files: [".tasks/0001-task.md"] }, { role: "implement", runId: "goal-boundary" });
+      assert.ok(pkg.task.goal.length <= 320);
+      if (goal.length <= 320) assert.equal(pkg.task.goal, goal);
+      else assert.match(pkg.task.goal, /full goal: task contract/);
+      assert.equal(task.goal, goal.trim());
+      assert.throws(() => parseWorkerPackage({ ...pkg, task: { ...pkg.task, goal: "x".repeat(321) } }), /at most 320/);
+      const registered = await runCommand(["agent", "register", "--id", "goal-owner", "--platform", "fixture", "--model", "fixture"], directory);
+      assert.equal(registered.exitCode, 0, registered.stderr);
+      const issued = await runCommand(["work", "0001", "--owner", "goal-owner", "--target", "codex", "--role", "implement", "--level", "1", "--write-session", "--json"], directory);
+      assert.equal(issued.exitCode, 0, issued.stderr);
+      const payload = JSON.parse(issued.stdout) as { workerPackage: typeof pkg; session: { prompt: string } };
+      assert.equal(payload.workerPackage.task.goal, pkg.task.goal);
+      assert.ok(payload.workerPackage.context.files.includes(".tasks/0001-task.md"));
+      assert.ok((await readFile(join(directory, payload.session.prompt), "utf8")).includes(goal.trim()));
+      assert.equal(parseTaskMarkdown(await readFile(taskPath, "utf8")).goal, goal.trim());
+    });
+  }
 });

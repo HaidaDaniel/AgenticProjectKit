@@ -2,6 +2,8 @@
 
 ## Current state
 
+Task 0239 is doing: the pre-fix 321-character goal fails worker package serialization; 319/320-character goals succeed. The producer now emits a marked bounded summary while retaining the full contract and prompt. Boundary, Unicode, multiline long-goal, actual issuance, and strict external-parser checks cover the correction.
+
 Task 0232 was claimed then released without source changes: `apk work` rejects its valid task goal with `worker package.task.goal must be at most 320 characters`. A separate bounded worker-package correction is required before implementation can use the repository worker contract. The original `--version` failure was reproduced outside Git.
 
 Task 0238 is released unfinished at candidate `8104578`: seven canonical checks and independent source counterexamples pass, but the high-risk contract omitted a required evidence category. Review `evidence-1792778719259-6iodk8` requests a contract correction. An exact amendment adding only the required `failure-report` check awaits operator approval (digest `2d93b22da2b679ba4c1be5bac29900c917ecbc0cac8c60047d361e8306342f24`); no approval or completion is claimed. Task 0228 depends operationally on closing this correction. Independent Task 0232 can proceed while approval is pending.

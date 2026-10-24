@@ -17,7 +17,8 @@ export function validateWorkerRunId(value) {
     }
     return value;
 }
-function text(value, label, maxLength = 320) {
+const WORKER_TEXT_LIMIT = 320;
+function text(value, label, maxLength = WORKER_TEXT_LIMIT) {
     if (typeof value !== "string" || value.trim().length === 0) {
         throw new WorkerContractError(`${label} must be a non-empty string.`);
     }
@@ -221,6 +222,21 @@ export function parseWorkerRole(value) {
 export function parseWorkerStatus(value) {
     return workerStatus(value, "worker status");
 }
+/** The package carries a bounded summary; the task file and prompt remain
+ * authoritative and retain the complete goal. External parser limits stay strict. */
+function workerGoalSummary(goal) {
+    if (goal.length <= WORKER_TEXT_LIMIT)
+        return goal;
+    const suffix = "… [full goal: task contract]";
+    let prefix = "";
+    for (const character of goal) {
+        const next = character === "\n" || character === "\r" ? " " : character;
+        if (prefix.length + next.length > WORKER_TEXT_LIMIT - suffix.length)
+            break;
+        prefix += next;
+    }
+    return `${prefix.trimEnd()}${suffix}`;
+}
 export function createWorkerPackage(task, context, options) {
     const verification = task.verification
         ? task.verification.map((check) => check.command ?? check.instruction ?? check.id)
@@ -230,7 +246,7 @@ export function createWorkerPackage(task, context, options) {
         task: {
             id: task.id,
             title: task.title,
-            goal: task.goal,
+            goal: workerGoalSummary(task.goal),
         },
         role: options.role,
         context: {
