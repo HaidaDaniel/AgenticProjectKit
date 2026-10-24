@@ -481,14 +481,14 @@ Status and attention share a detailed projection of at most 32 non-terminal task
 
 Worker task discovery reuses the bounded compatibility inspector: at most 4,096 directory entries per active/archive directory, 1,024 task files, and 256 KiB per file. Each inspected contract is read once; invalid, unreadable, or truncated inventories make readiness unknown. A session binds a task ID, not a task path. Duplicate IDs anywhere in the active/archive inventory therefore make that session ambiguous, even when both states are terminal; no active-over-archive preference is safe. Affected workers are `unknown` and omit unproven current task/run identities. Malformed sessions with no attributable resource also prevent confident readiness. A missing top-level canonical session store is an empty inventory. Once a per-task directory has been discovered, any failure to enumerate it (including concurrent disappearance) invalidates the whole session inventory; it is never silently skipped. With no declared workers, task and session inventories are not read. Every invocation obtains fresh state, with no persistent or process-wide cache. The public worker JSON still contains only `workers` and `diagnostics`.
 
-Task 0228 operation report (Node 22.22.1, disposable Git repository, 100 contracts: 32 doing and 68 todo, empty evidence/run journals, one declared free worker; identical fixture without registry). Counts instrument real filesystem reads and Git subprocesses, plus temporary function-entry probes in a disposable compiled copy. Before is `baf9546`; after uses the lightweight projection. These are operation counts, not elapsed-time acceptance thresholds.
+Task 0228 operation report (Node 22.22.1, disposable Git repository with an empty baseline commit and 100 untracked contracts: 32 doing and 68 todo, empty evidence/run journals, one declared free worker; identical fixture without registry). Counts instrument real filesystem reads and Git subprocesses, plus temporary function-entry probes in a disposable compiled copy. Before is `baf9546`; after uses the lightweight projection. These are operation counts, not elapsed-time acceptance thresholds. The corrected probe preserves the custom promisified `execFile` result, and instrumented output is compared byte-for-byte with uninstrumented output. It supersedes the initial probe and its invalid 3464 task-read / 321 Git-call totals.
 
 | Operation per `workers --json` | Before, registry | After, registry | Before, no registry | After, no registry |
 | --- | ---: | ---: | ---: | ---: |
-| Task-file reads/opens | 3464 | 100 | 3464 | 0 |
+| Task-file reads/opens | 9800 | 100 | 9800 | 0 |
 | Evidence-journal reads | 128 | 0 | 128 | 0 |
 | Run-log reads | 33 | 0 | 33 | 0 |
-| Git subprocesses | 321 | 0 | 321 | 0 |
+| Git subprocesses | 546 | 0 | 546 | 0 |
 | `summarizeStatus` calls | 1 | 0 | 1 | 0 |
 | `evaluateTaskCompletionGate` calls | 32 | 0 | 32 | 0 |
 | `buildTaskProvenance` calls | 32 | 0 | 32 | 0 |
