@@ -1,6 +1,6 @@
 # Task 0232 - Add package-metadata CLI version output for all public aliases
 
-State: doing
+State: done
 Owner: codex-corrective-0232
 Mode: maintenance
 Lane: cli
