@@ -10430,3 +10430,46 @@ test("external verification recaptures the candidate after validating operator a
     }
   });
 });
+
+test("external verification reloads contract and ownership during approved recapture", async () => {
+  for (const kind of ["report", "artifact", "benchmark", "live", "ci"] as const) {
+    for (const mutation of ["goal", "owner", "state", "allowed-file"]) {
+      await withTempDirectory(async (directory) => {
+        const fixture = await setupExternalAttributionRepo(directory, kind);
+        await fixture.approve([await fixture.foreign()]);
+        const originalRead = fsPromises.readFile;
+        let mutated = false;
+        fsPromises.readFile = (async (...args: Parameters<typeof readFile>) => {
+          const atApproval = new Error().stack?.includes("currentTaskAttributionApproval");
+          const content = await originalRead(...args);
+          if (!mutated && atApproval && String(args[0]) === join(directory, ".agentic/evidence.jsonl")) {
+            mutated = true;
+            if (mutation === "allowed-file") {
+              await writeFile(join(directory, "src/race.txt"), "concurrent dirty change\n");
+            } else {
+              const taskPath = join(directory, ".tasks/0007-external.md");
+              const markdown = await originalRead(taskPath, "utf8");
+              const changed = mutation === "goal"
+                ? markdown.replace(TASK.goal, "Concurrent contract change.")
+                : mutation === "owner"
+                  ? markdown.replace("Owner: owner", "Owner: recorder")
+                  : markdown.replace("State: doing", "State: blocked");
+              assert.notEqual(changed, markdown, "the task mutation must change the fixture");
+              await writeFile(taskPath, changed);
+            }
+          }
+          return content;
+        }) as typeof readFile;
+        syncBuiltinESMExports();
+        try {
+          const result = await fixture.record();
+          assert.equal(mutated, true);
+          assert.equal(result.gateEligible, false, `${kind}: ${mutation}`);
+        } finally {
+          fsPromises.readFile = originalRead;
+          syncBuiltinESMExports();
+        }
+      });
+    }
+  }
+});

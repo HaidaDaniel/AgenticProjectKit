@@ -5053,17 +5053,20 @@ export async function recordManualVerification(options) {
     }))?.valid === true;
     let gateEligible = scopeEligible || attributionApproved;
     if (attributionApproved || check.evidenceType === "benchmark" || check.artifact) {
+        const { task: finalTask } = await loadTaskFile(taskPath);
         const finalSnapshot = await captureTaskScope({
             rootDirectory: options.rootDirectory,
-            task,
+            task: finalTask,
             taskPath,
             baseline,
         });
-        const finalCaptured = await captureTaskEvidenceSubject(options.rootDirectory, task, finalSnapshot.changedFiles, baseline);
+        const finalCaptured = await captureTaskEvidenceSubject(options.rootDirectory, finalTask, finalSnapshot.changedFiles, baseline);
         const finalSubject = baseline
             ? { ...finalCaptured, baselineId: baseline.baselineId }
             : finalCaptured;
         gateEligible = gateEligible
+            && finalTask.owner === ownerAgent.id
+            && (finalTask.state === "doing" || finalTask.state === "review")
             && (attributionApproved || (finalSnapshot.comparisonKnown
                 && finalSnapshot.outOfScopeFiles.length === 0
                 && finalSnapshot.forbiddenTouchedFiles.length === 0))

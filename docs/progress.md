@@ -2,7 +2,7 @@
 
 ## Current state
 
-Task 0240 is doing: the regression reproduces automated verification passing under a valid current operator attribution while external report recording remains non-gate-eligible. The narrow correction reuses the existing attribution validator and recaptures approval-dependent candidates before append. Positive and refusal fixtures cover reports, artifacts, benchmarks, live/CI results, stale or missing approval, forged partial/self decisions, dirty overlap and concurrent mutation; final verification and independent review remain pending.
+Task 0240 is doing: the regression reproduces automated verification passing under a valid current operator attribution while external report recording remains non-gate-eligible. The narrow correction reuses the existing attribution validator and recaptures approval-dependent candidates before append. Positive and refusal fixtures cover reports, artifacts, benchmarks, live/CI results, stale or missing approval, forged partial/self decisions, dirty overlap and concurrent mutation; candidate `0287654` passed seven canonical checks, but independent review `evidence-1792871166271-nq7if7` found that concurrent Goal changes reused the initially loaded task. The correction now reloads the final task contract and checks owner/state, with a five-kind mutation matrix; fresh verification and review remain pending.
 
 The operator approved both the exact 11-commit Task 0228 attribution request and the category-only Task 0238 amendment (digest `2d93b22da2b679ba4c1be5bac29900c917ecbc0cac8c60047d361e8306342f24`). The first decision is recorded; the second still needs the authorized epoch operation. Task 0228 is released unfinished while Task 0240 repairs external evidence recording.
 
