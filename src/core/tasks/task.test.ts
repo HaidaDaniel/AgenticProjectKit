@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFile, chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import fsPromises, { appendFile, chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -10310,5 +10311,122 @@ test("archive Git safety fails closed for unreadable global excludes and a damag
     await rm(join(directory, ".git"), { recursive: true });
     await mkdir(join(directory, ".git"));
     assert.equal((await inspectArchiveGitSafety(directory, [destination])).get(destination)?.status, "unknown");
+  });
+});
+
+
+async function setupExternalAttributionRepo(directory: string, kind: "report" | "artifact" | "benchmark" | "live" | "ci" = "report") {
+  const git = (...args: string[]) => execFileAsync("git", args, { cwd: directory });
+  await git("init", "--quiet");
+  await git("config", "user.email", "fixture@example.test");
+  await git("config", "user.name", "Attribution Fixture");
+  await mkdir(join(directory, ".tasks"));
+  await mkdir(join(directory, "src"));
+  await writeFile(join(directory, ".gitignore"), ".agentic/\n");
+  await writeTaskFile(join(directory, ".tasks/0007-external.md"), {
+    ...TASK, state: "todo", owner: "none", risk: "low", tags: [], dependsOn: [],
+    allowedFiles: ["src/**"], forbiddenFiles: ["secrets/**"], verificationCommands: [],
+    verification: [
+      { id: "automated", type: "automated", required: true, environment: "local", profile: "deterministic", command: "node --version" },
+      { id: "observed", type: "manual", required: true, environment: kind === "live" || kind === "ci" ? kind : "local", profile: "report",
+        ...(kind === "benchmark" ? {} : { instruction: "Observe the fixture." }),
+        ...(kind === "artifact" ? { artifact: "fixture-report.json" } : {}),
+        ...(kind === "benchmark" ? { type: "automated" as const, evidenceType: "benchmark" as const, command: "node --version" } : {}),
+      },
+    ],
+  });
+  await git("add", ".tasks/0007-external.md", ".gitignore");
+  await git("commit", "--quiet", "-m", "initial fixture");
+  await registerAgent(directory, { id: "owner", developer: "fixture", platform: "fixture", model: "fixture" });
+  await registerAgent(directory, { id: "recorder", developer: "operator-fixture", platform: "fixture", model: "fixture" });
+  await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "owner" });
+  const options = { rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007" };
+  const record = () => recordManualVerification({ ...options, owner: "owner", checkId: "observed", result: "pass", evidence: "fixture://observed" });
+  const foreign = async (path = "foreign.md") => {
+    await writeFile(join(directory, path), "foreign committed work\n");
+    await git("add", path); await git("commit", "--quiet", "-m", "foreign fixture work");
+    return (await git("rev-parse", "HEAD")).stdout.trim();
+  };
+  const approve = (acceptedCommits: string[]) => recordTaskHumanDecision({ ...options, recorder: "recorder", actor: "fixture-operator", decision: "accept-attribution", acceptedCommits, reason: "Explicit temporary-fixture approval only." });
+  return { options, record, foreign, approve, git };
+}
+
+test("external verification honors the same current attribution as automated verification", async () => {
+  for (const kind of ["report", "artifact", "benchmark", "live", "ci"] as const) {
+    await withTempDirectory(async (directory) => {
+      const fixture = await setupExternalAttributionRepo(directory, kind);
+      assert.equal((await fixture.record()).gateEligible, true, "clean scope remains supported without approval");
+      const accepted = await fixture.foreign();
+      assert.equal((await fixture.record()).gateEligible, false, "no approval cannot excuse disputed scope");
+      const decision = await fixture.approve([accepted]);
+      assert.equal(decision.gateEligible, true);
+      const automated = await verifyTask({ ...fixture.options, owner: "owner", runCommand: async () => 0 });
+      assert.equal(automated.checkResults.find((check) => check.id === "automated")?.status, "pass");
+      const external = await fixture.record();
+      assert.equal(external.gateEligible, true, kind);
+      const gate = await evaluateTaskCompletionGate(fixture.options);
+      assert.equal(gate.passed, true, gate.blockers.join("; "));
+      assert.ok(gate.evidenceIds.includes(decision.evidence.id));
+      await writeFile(join(directory, "foreign.md"), "unapproved dirty overlap\n");
+      assert.equal((await fixture.record()).gateEligible, false, "approval cannot cover new dirty edits");
+      await fixture.git("restore", "foreign.md");
+      await writeFile(join(directory, "src/new.txt"), "new candidate\n");
+      await fixture.git("add", "src/new.txt"); await fixture.git("commit", "--quiet", "-m", "new candidate");
+      assert.equal((await fixture.record()).gateEligible, false, "old approval is stale even for an allowed later commit");
+    });
+  }
+});
+
+test("external verification rejects forged partial and self-authored attribution records", async () => {
+  for (const forged of ["partial", "self"]) {
+    await withTempDirectory(async (directory) => {
+      const fixture = await setupExternalAttributionRepo(directory);
+      const first = await fixture.foreign();
+      const second = await fixture.foreign("second-foreign.md");
+      const candidate = await captureTaskCompletionCandidate(fixture.options);
+      await appendTaskEvidence(directory, {
+        taskId: "0007", runId: `forged-${forged}`, agent: "recorder", gateEligible: true,
+        type: "human-decision", result: "pass", subject: candidate.subject,
+        decision: "accept-attribution", actor: forged === "self" ? "recorder" : "fixture-operator",
+        trustModel: "operator-asserted", resolvedBlocker: "scope-attribution",
+        acceptedCommits: forged === "partial" ? [first] : [first, second],
+        summary: "Deliberately invalid test-fixture evidence.",
+      });
+      assert.equal((await fixture.record()).gateEligible, false, forged);
+    });
+  }
+});
+
+test("external verification recaptures the candidate after validating operator attribution", async () => {
+  await withTempDirectory(async (directory) => {
+    const fixture = await setupExternalAttributionRepo(directory);
+    await fixture.approve([await fixture.foreign()]);
+    const originalRead = fsPromises.readFile;
+    let mutated = false;
+    // Use the real journal read as a deterministic barrier after initial candidate
+    // capture. Keep the validator and filesystem results real; no timing sleeps.
+    fsPromises.readFile = (async (...args: Parameters<typeof readFile>) => {
+      const atApproval = new Error().stack?.includes("currentTaskAttributionApproval");
+      const result = await originalRead(...args);
+      if (!mutated && atApproval && String(args[0]) === join(directory, ".agentic/evidence.jsonl")) {
+        mutated = true;
+        await writeFile(join(directory, "src/race.txt"), "concurrent allowed change\n");
+        await fixture.git("add", "src/race.txt");
+        await fixture.git("commit", "--quiet", "-m", "concurrent fixture change");
+      }
+      return result;
+    }) as typeof readFile;
+    syncBuiltinESMExports();
+    try {
+      const result = await fixture.record().catch((error: unknown) => {
+        assert.match(error instanceof Error ? error.message : String(error), /Git HEAD changed.*scope fails closed/);
+        return undefined;
+      });
+      assert.equal(mutated, true, "the mutation barrier must actually run");
+      if (result) assert.equal(result.gateEligible, false, "a different candidate cannot inherit approval");
+    } finally {
+      fsPromises.readFile = originalRead;
+      syncBuiltinESMExports();
+    }
   });
 });

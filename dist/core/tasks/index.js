@@ -5039,10 +5039,20 @@ export async function recordManualVerification(options) {
     const subject = baseline
         ? { ...captured, baselineId: baseline.baselineId }
         : captured;
-    let gateEligible = snapshot.comparisonKnown
+    const scopeEligible = snapshot.comparisonKnown
         && snapshot.outOfScopeFiles.length === 0
         && snapshot.forbiddenTouchedFiles.length === 0;
-    if (check.evidenceType === "benchmark" || check.artifact) {
+    const attributionApproved = !scopeEligible && (await currentTaskAttributionApproval({
+        rootDirectory: options.rootDirectory,
+        task,
+        baseline,
+        subject,
+        changedFiles: snapshot.changedFiles,
+        outOfScopeFiles: snapshot.outOfScopeFiles,
+        forbiddenTouchedFiles: snapshot.forbiddenTouchedFiles,
+    }))?.valid === true;
+    let gateEligible = scopeEligible || attributionApproved;
+    if (attributionApproved || check.evidenceType === "benchmark" || check.artifact) {
         const finalSnapshot = await captureTaskScope({
             rootDirectory: options.rootDirectory,
             task,
@@ -5054,9 +5064,9 @@ export async function recordManualVerification(options) {
             ? { ...finalCaptured, baselineId: baseline.baselineId }
             : finalCaptured;
         gateEligible = gateEligible
-            && finalSnapshot.comparisonKnown
-            && finalSnapshot.outOfScopeFiles.length === 0
-            && finalSnapshot.forbiddenTouchedFiles.length === 0
+            && (attributionApproved || (finalSnapshot.comparisonKnown
+                && finalSnapshot.outOfScopeFiles.length === 0
+                && finalSnapshot.forbiddenTouchedFiles.length === 0))
             && sameTaskEvidenceSubject(subject, finalSubject);
     }
     const runId = `record-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
