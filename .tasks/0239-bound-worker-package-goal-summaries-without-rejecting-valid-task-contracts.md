@@ -1,6 +1,6 @@
 # Task 0239 - Bound worker package goal summaries without rejecting valid task contracts
 
-State: doing
+State: done
 Owner: codex-corrective-0239
 Mode: maintenance
 Lane: bugfix
