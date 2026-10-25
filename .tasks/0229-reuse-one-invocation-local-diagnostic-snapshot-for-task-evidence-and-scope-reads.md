@@ -7,7 +7,7 @@ Lane: bugfix
 Type: bugfix
 Scope: status,evidence,gate,provenance,performance,tests
 Risk: high
-Parallel: true
+Parallel: false
 Depends on: 0228
 Tags: status,evidence,gate,provenance,performance,tests
 
@@ -17,6 +17,11 @@ Eliminate repeated task, baseline, evidence-journal, run-log, agent-registry, an
 
 ## Context files
 
+- src/core/status/attention.ts
+- src/core/status/workers.ts
+- src/core/agents/index.ts
+- src/core/tasks/review.ts
+- docs/decisions.md
 - AGENTS.md
 - docs/task-system.md
 - docs/engineering/testing-strategy.md
@@ -30,6 +35,11 @@ Eliminate repeated task, baseline, evidence-journal, run-log, agent-registry, an
 
 ## Files allowed to edit
 
+- src/core/status/attention.ts
+- src/core/status/workers.ts
+- src/core/agents/index.ts
+- src/core/tasks/review.ts
+- docs/decisions.md
 - src/core/status/index.ts
 - src/core/tasks/gate.ts
 - src/core/tasks/provenance.ts
@@ -44,7 +54,6 @@ Eliminate repeated task, baseline, evidence-journal, run-log, agent-registry, an
 
 ## Files forbidden to edit
 
-- src/core/status/attention.ts
 - src/cli/cli.test.ts
 - src/cli/commands/**
 - package.json
@@ -164,3 +173,5 @@ Eliminate repeated task, baseline, evidence-journal, run-log, agent-registry, an
 - Do not combine this task with Task 0227 (selection) or Task 0230 (needsHuman classification).
 - Candidate-bound freshness and fail-closed evidence behavior are more important than any operation-count target. If a safe snapshot boundary cannot be established, document the no-go and retain repeated reads.
 - Todo Task 0223 also allows `src/cli/command.test.ts`. Sequence 0229 before 0223 or use separate worktrees; do not edit that file concurrently.
+
+- Pre-claim scope clarification: attention and worker projection may only thread the optional diagnostic snapshot; standalone workers must retain its lightweight path without creating a snapshot. Agent registry/run-log and review-list readers may accept the same optional read-only snapshot. These changes must not alter classification, lifecycle, writing or trust rules. Record the new invocation boundary in docs/decisions.md.
