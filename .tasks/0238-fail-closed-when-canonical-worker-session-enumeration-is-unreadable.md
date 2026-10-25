@@ -1,6 +1,6 @@
 # Task 0238 - Fail closed when canonical worker session enumeration is unreadable
 
-State: review
+State: done
 Owner: codex-corrective-0238
 Mode: maintenance
 Lane: bugfix
