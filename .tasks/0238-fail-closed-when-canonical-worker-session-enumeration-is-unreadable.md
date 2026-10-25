@@ -1,6 +1,6 @@
 # Task 0238 - Fail closed when canonical worker session enumeration is unreadable
 
-State: doing
+State: review
 Owner: codex-corrective-0238
 Mode: maintenance
 Lane: bugfix
@@ -83,6 +83,7 @@ Propagate failures enumerating discovered canonical per-task session directories
 
 ## Verification
 
+- `{"id":"failure-report","type":"manual","required":true,"environment":"local","profile":"report","instruction":"Record the observed pre-fix false-ready reproducer and post-fix EACCES ENOENT ENOTDIR plus actual-disappearance counterexamples; include independent review artifact references."}`
 - `{"id":"focused-tests","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"node scripts/test-source.mjs src/cli/command.test.ts"}`
 - `{"id":"typecheck","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm typecheck"}`
 - `{"id":"lint","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm lint"}`

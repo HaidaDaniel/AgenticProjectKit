@@ -2,7 +2,7 @@
 
 ## Current state
 
-Task 0238 is doing: the pre-fix focused EACCES counterexample fails because discovered session directories were silently skipped. The correction propagates these errors so worker diagnostics fail closed; regression coverage includes EACCES, ENOENT, ENOTDIR and supported absent top-level state.
+Task 0238 is in review on its original implementation branch: the exact operator-approved category-only amendment was applied with digest `2d93b22da2b679ba4c1be5bac29900c917ecbc0cac8c60047d361e8306342f24`, creating epoch `f3150681ded30cc35adfbf07b1fa7dc0bd83311d916e656bf5caa9e2fa0eca85` and carrying all five predecessor paths. The required `failure-report` is now declared without changing scope or acceptance. Source correction remains `8104578`; fresh canonical verification and independent review are pending. The pre-fix EACCES counterexample and post-fix EACCES/ENOENT/ENOTDIR, actual removal and absent top-level cases remain the evidence basis.
 
 Task 0228 is released unfinished after candidate `7b93bd0`: all eight checks are current, but independent review requests a fix for the pre-existing session reader silently skipping unreadable per-task directories. A separate corrective task will repair this out-of-scope reader before 0228 resumes; no completion is claimed. Tasks 0229, 0230 and 0232 follow sequentially before the v0.5.2 release decision.
 
