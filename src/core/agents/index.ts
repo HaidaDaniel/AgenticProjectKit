@@ -1,3 +1,4 @@
+import type { TaskDiagnosticSnapshot } from "../tasks/diagnostics.js";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
@@ -295,7 +296,8 @@ async function writeAgentShard(
   }
 }
 
-export async function listAgents(rootDirectory: string): Promise<RegisteredAgent[]> {
+export async function listAgents(rootDirectory: string, diagnosticSnapshot?: TaskDiagnosticSnapshot): Promise<RegisteredAgent[]> {
+  if (diagnosticSnapshot) return diagnosticSnapshot.memo(rootDirectory, "agents", () => listAgents(rootDirectory));
   const sharded = await readShardedAgents(rootDirectory);
   const shardedIds = new Set(sharded.map((agent) => agent.id));
   const legacy = (await readLegacyAgents(rootDirectory))
@@ -307,15 +309,17 @@ export async function listAgents(rootDirectory: string): Promise<RegisteredAgent
 export async function findAgent(
   rootDirectory: string,
   id: string,
+  diagnosticSnapshot?: TaskDiagnosticSnapshot,
 ): Promise<RegisteredAgent | undefined> {
-  return (await listAgents(rootDirectory)).find((agent) => agent.id === id);
+  return (await listAgents(rootDirectory, diagnosticSnapshot)).find((agent) => agent.id === id);
 }
 
 export async function requireAgent(
   rootDirectory: string,
   id: string,
+  diagnosticSnapshot?: TaskDiagnosticSnapshot,
 ): Promise<RegisteredAgent> {
-  const agent = await findAgent(rootDirectory, id);
+  const agent = await findAgent(rootDirectory, id, diagnosticSnapshot);
 
   if (!agent) {
     throw new Error(`Agent is not registered: ${id}. Run pnpm exec apk agent register --id ${id} --platform <platform> --model <model>.`);
@@ -385,15 +389,18 @@ async function readLegacyRunLog(
     .map((event) => canonicalRunEvent(event, agentsById));
 }
 
-export async function readRunLog(rootDirectory: string): Promise<RunLogEvent[]> {
-  const agents = await listAgents(rootDirectory);
-  const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
-  const events = [
-    ...(await readShardedRunLog(rootDirectory, agentsById)),
-    ...(await readLegacyRunLog(rootDirectory, agentsById)),
-  ];
+export async function readRunLog(rootDirectory: string, diagnosticSnapshot?: TaskDiagnosticSnapshot): Promise<RunLogEvent[]> {
+  const load = async () => {
+    const agents = await listAgents(rootDirectory, diagnosticSnapshot);
+    const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
+    const events = [
+      ...(await readShardedRunLog(rootDirectory, agentsById)),
+      ...(await readLegacyRunLog(rootDirectory, agentsById)),
+    ];
 
-  return events.sort((left, right) => left.time.localeCompare(right.time));
+    return events.sort((left, right) => left.time.localeCompare(right.time));
+  };
+  return diagnosticSnapshot ? diagnosticSnapshot.memo(rootDirectory, "run-log", load) : load();
 }
 
 async function writeRunEvent(

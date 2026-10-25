@@ -1,4 +1,4 @@
-import { readAgenticConfigFile } from "../config/index.js";
+import { withDiagnosticSnapshot, type TaskDiagnosticSnapshot } from "../tasks/diagnostics.js";
 import { type ProjectTask } from "../tasks/index.js";
 import { resolveTaskPolicy } from "../tasks/policy.js";
 import { projectWorkers, renderWorkerLine, type WorkerAttentionEntry } from "./workers.js";
@@ -103,15 +103,20 @@ export async function buildAttentionView(
   rootDirectory: string,
   taskDirectory: string,
 ): Promise<AttentionView> {
-  const config = await readAgenticConfigFile(rootDirectory);
-  const summary: StatusSummary = await summarizeStatus(rootDirectory);
-  const inventory = await readStatusTaskInventory(rootDirectory, taskDirectory);
+  return withDiagnosticSnapshot(rootDirectory, taskDirectory, (snapshot) => buildCapturedAttention(rootDirectory, taskDirectory, snapshot));
+}
+
+async function buildCapturedAttention(rootDirectory: string, taskDirectory: string, diagnosticSnapshot: TaskDiagnosticSnapshot): Promise<AttentionView> {
+  const config = diagnosticSnapshot.config;
+  diagnosticSnapshot.assertLocation(rootDirectory, config.taskDirectory);
+  const summary: StatusSummary = await summarizeStatus(rootDirectory, diagnosticSnapshot);
+  const inventory = await readStatusTaskInventory(rootDirectory, taskDirectory, diagnosticSnapshot);
   const taskFiles = [...inventory.active, ...inventory.archived];
   const activeTasks = taskFiles
     .map((file) => file.task)
     .filter((task) => ["doing", "review", "blocked"].includes(task.state));
   const workerDiagnostics = inventory.diagnostics.filter((diagnostic) => !summary.warnings.includes(diagnostic));
-  const workers = await projectWorkers(rootDirectory, config.resources, taskFiles.map((file) => file.task), workerDiagnostics, inventory.complete);
+  const workers = await projectWorkers(rootDirectory, config.resources, taskFiles.map((file) => file.task), workerDiagnostics, inventory.complete, diagnosticSnapshot);
 
   const items: AttentionItem[] = summary.activeTasks
     .filter((status) => ["doing", "review", "blocked"].includes(status.state))

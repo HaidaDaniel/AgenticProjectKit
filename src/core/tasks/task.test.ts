@@ -1,3 +1,6 @@
+import { withDiagnosticSnapshot, type TaskDiagnosticSnapshot } from "./diagnostics.js";
+import { summarizeStatus } from "../status/index.js";
+import { buildAttentionView } from "../status/attention.js";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import fsPromises, { appendFile, chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
@@ -10472,4 +10475,195 @@ test("external verification reloads contract and ownership during approved recap
       });
     }
   }
+});
+
+async function setupDiagnosticRepo(directory: string, count = 6) {
+  const git = (...args: string[]) => execFileAsync("git", args, { cwd: directory });
+  await mkdir(directory, { recursive: true });
+  await git("init", "--quiet");
+  await git("config", "user.email", "snapshot@example.test");
+  await git("config", "user.name", "Snapshot Fixture");
+  await mkdir(join(directory, ".tasks"));
+  await mkdir(join(directory, ".agentic"));
+  await mkdir(join(directory, "src"));
+  await writeFile(join(directory, ".gitignore"), ".agentic/\n");
+  await writeFile(join(directory, ".agentic/config.json"), '{"schemaVersion":2}');
+  await writeFile(join(directory, "src/owned.txt"), "initial\n");
+  for (let i = 1; i <= count; i++) {
+    const id = String(i).padStart(4, "0");
+    await writeTaskFile(join(directory, `.tasks/${id}-snapshot.md`), {
+      ...TASK, id, state: "todo", owner: "none", risk: "low", tags: [], dependsOn: [],
+      allowedFiles: ["src/**"], forbiddenFiles: [], verificationCommands: ["node --version"], verification: undefined,
+    });
+  }
+  await git("add", ".tasks", ".gitignore", "src/owned.txt");
+  await git("commit", "--quiet", "-m", "snapshot fixture");
+  await registerAgent(directory, { id: "snapshot-owner", platform: "fixture", model: "fixture" });
+  const options = { rootDirectory: directory, taskDirectory: ".tasks", taskId: "0001", owner: "snapshot-owner" };
+  await claimTask(options);
+  assert.equal((await verifyTask({ ...options, runCommand: async () => 0 })).passed, true);
+  return { options, git };
+}
+
+test("diagnostic snapshots share inventory journals registry and candidate without changing gate or provenance", async () => {
+  await withTempDirectory(async (directory) => {
+    const fixture = await setupDiagnosticRepo(directory);
+    const template = (await readTaskEvidence(directory, "0001"))[0];
+    await appendFile(join(directory, TASK_EVIDENCE_PATH), Array.from({ length: 1000 }, (_, index) => JSON.stringify({
+      ...template, id: `unrelated-${index}`, taskId: "0099", subject: { ...template.subject, taskId: "0099" },
+    })).join("\n") + "\n");
+    const expectedGate = await evaluateTaskCompletionGate(fixture.options);
+    const expectedProvenance = await buildTaskProvenance(directory, ".tasks", "0001");
+    assert.equal(expectedGate.passed, true);
+    await withDiagnosticSnapshot(directory, ".tasks", async (snapshot) => {
+      const gate = await evaluateTaskCompletionGate({ ...fixture.options, diagnosticSnapshot: snapshot });
+      assert.deepEqual(gate, expectedGate);
+      assert.deepEqual(await buildTaskProvenance(directory, ".tasks", "0001", snapshot), expectedProvenance);
+      const records = await readTaskEvidence(directory, undefined, snapshot);
+      assert.equal(records.length, 1001);
+      assert.strictEqual(await readTaskEvidence(directory, undefined, snapshot), records);
+      assert.ok(Object.isFrozen(records) && Object.isFrozen(records[0].subject));
+      assert.deepEqual(await readTaskEvidence(directory, "0002", snapshot), []);
+      const other = await evaluateTaskCompletionGate({ ...fixture.options, taskId: "0002", diagnosticSnapshot: snapshot });
+      assert.equal(other.passed, false, "another task cannot consume task 0001 evidence");
+      assert.equal(other.verification[0].result, "missing");
+    });
+    for (const project of [() => summarizeStatus(directory), () => buildAttentionView(directory, ".tasks")]) {
+      const counts = new Map<string, number>();
+      const originalRead = fsPromises.readFile, originalOpen = fsPromises.open;
+      const observe = (path: unknown) => { const key = String(path); counts.set(key, (counts.get(key) ?? 0) + 1); };
+      fsPromises.readFile = ((...args: Parameters<typeof readFile>) => { observe(args[0]); return originalRead(...args); }) as typeof readFile;
+      fsPromises.open = ((...args: Parameters<typeof originalOpen>) => { observe(args[0]); return originalOpen(...args); }) as typeof originalOpen;
+      syncBuiltinESMExports();
+      try {
+        await project();
+        const taskReads = [...counts].filter(([path]) => path.includes("/.tasks/") && path.endsWith(".md"));
+        assert.equal(taskReads.length, 6);
+        assert.ok(taskReads.every(([, count]) => count === 1), JSON.stringify(taskReads));
+        for (const path of [TASK_EVIDENCE_PATH, TASK_BASELINES_PATH, ".agentic/agents.jsonl", ".agentic/runs.jsonl"]) {
+          assert.equal(counts.get(join(directory, path)), 1, path);
+        }
+        const shards = [...counts].filter(([path]) => /\/.agentic\/(agents|runs)\//.test(path));
+        assert.ok(shards.length >= 2);
+        assert.ok(shards.every(([, count]) => count === 1), JSON.stringify(shards));
+      } finally {
+        fsPromises.readFile = originalRead; fsPromises.open = originalOpen; syncBuiltinESMExports();
+      }
+    }
+  });
+});
+
+test("diagnostic snapshots observe new evidence candidate and task content on the next invocation", async () => {
+  await withTempDirectory(async (directory) => {
+    const fixture = await setupDiagnosticRepo(directory, 1);
+    const gate = () => withDiagnosticSnapshot(directory, ".tasks", (diagnosticSnapshot) => evaluateTaskCompletionGate({ ...fixture.options, diagnosticSnapshot }));
+    const first = await gate();
+    assert.equal(first.passed, true);
+    const record = (await readTaskEvidence(directory, "0001"))[0];
+    await appendTaskEvidence(directory, {
+      taskId: "0001", runId: "new-failure", agent: "snapshot-owner", gateEligible: true,
+      type: record.type, result: "fail", subject: first.subject, checkId: record.checkId, profile: record.profile,
+      command: record.command,
+    });
+    const failed = await gate();
+    assert.equal(failed.passed, false);
+    assert.equal(failed.verification[0].result, "fail");
+    await writeFile(join(directory, "src/owned.txt"), "next candidate\n");
+    await fixture.git("add", "src/owned.txt"); await fixture.git("commit", "--quiet", "-m", "next candidate");
+    const next = await gate();
+    assert.notEqual(next.subject.headSha, first.subject.headSha);
+    assert.notEqual(next.subject.candidateId, first.subject.candidateId);
+    assert.equal(next.verification[0].freshness, "stale");
+    const taskPath = join(directory, ".tasks/0001-snapshot.md");
+    await writeFile(taskPath, (await readFile(taskPath, "utf8")).replace(TASK.goal, "New contract goal."));
+    await withDiagnosticSnapshot(directory, ".tasks", async (snapshot) => {
+      assert.equal((await loadTaskFile(taskPath, snapshot)).task.goal, "New contract goal.");
+    });
+    await rm(join(directory, TASK_EVIDENCE_PATH));
+    await withDiagnosticSnapshot(directory, ".tasks", async (snapshot) => {
+      assert.deepEqual(await readTaskEvidence(directory, undefined, snapshot), []);
+      assert.equal((await evaluateTaskCompletionGate({ ...fixture.options, diagnosticSnapshot: snapshot })).passed, false);
+    });
+    await writeFile(join(directory, TASK_EVIDENCE_PATH), "malformed journal\n");
+    await assert.rejects(withDiagnosticSnapshot(directory, ".tasks", (snapshot) => readTaskEvidence(directory, undefined, snapshot)), /Evidence line 1 must be valid JSON/);
+    await writeFile(taskPath, "malformed task\n");
+    const summary = await summarizeStatus(directory);
+    assert.equal(summary.coverage?.inventoryComplete, false);
+    assert.ok(summary.warnings.some((warning) => /inventory incomplete/.test(warning)));
+  });
+});
+
+test("diagnostic snapshots reject concurrent journal registry task Git and already-dirty changes", async () => {
+  for (const mutation of ["evidence", "baseline", "registry", "task", "git", "dirty", "index"]) {
+    await withTempDirectory(async (directory) => {
+      const fixture = await setupDiagnosticRepo(directory, 1);
+      if (mutation === "dirty" || mutation === "index") await writeFile(join(directory, "src/owned.txt"), "dirty before\n");
+      await assert.rejects(withDiagnosticSnapshot(directory, ".tasks", async (snapshot) => {
+        await readTaskEvidence(directory, undefined, snapshot);
+        if (mutation === "evidence") await appendFile(join(directory, TASK_EVIDENCE_PATH), "\n");
+        if (mutation === "baseline") await appendFile(join(directory, TASK_BASELINES_PATH), "\n");
+        if (mutation === "registry") {
+          const path = join(directory, ".agentic/agents/snapshot-owner.json");
+          const record = JSON.parse(await readFile(path, "utf8")) as { model: string };
+          record.model = "changed-during-capture"; await writeFile(path, JSON.stringify(record));
+        }
+        if (mutation === "task") {
+          const path = join(directory, ".tasks/0001-snapshot.md");
+          await writeFile(path, (await readFile(path, "utf8")).replace(TASK.goal, "Concurrent contract."));
+        }
+        if (mutation === "git") {
+          await writeFile(join(directory, "src/owned.txt"), "concurrent commit\n");
+          await fixture.git("add", "src/owned.txt"); await fixture.git("commit", "--quiet", "-m", "concurrent commit");
+        }
+        if (mutation === "dirty") await writeFile(join(directory, "src/owned.txt"), "dirty after\n");
+        if (mutation === "index") await fixture.git("add", "src/owned.txt");
+        return evaluateTaskCompletionGate({ ...fixture.options, diagnosticSnapshot: snapshot });
+      }), /Diagnostic snapshot unavailable: inputs changed during capture/, mutation);
+    });
+  }
+});
+
+test("diagnostic snapshots isolate linked worktrees and cannot be reused after their invocation", async () => {
+  await withTempDirectory(async (directory) => {
+    const primary = join(directory, "primary"), other = join(directory, "other");
+    const fixture = await setupDiagnosticRepo(primary, 1);
+    await fixture.git("worktree", "add", "--detach", other, "HEAD");
+    await writeFile(join(other, "src/owned.txt"), "other worktree commit\n");
+    await execFileAsync("git", ["add", "src/owned.txt"], { cwd: other });
+    await execFileAsync("git", ["commit", "--quiet", "-m", "other worktree"], { cwd: other });
+    let retained: TaskDiagnosticSnapshot | undefined;
+    const first = await withDiagnosticSnapshot(primary, ".tasks", async (snapshot) => {
+      retained = snapshot;
+      await assert.rejects(captureTaskCompletionCandidate({ ...fixture.options, rootDirectory: other, diagnosticSnapshot: snapshot }), /repository or task-directory identity differs/);
+      const path = join(primary, ".tasks/0001-snapshot.md");
+      const bytes = await snapshot.readBytes(primary, path); bytes.fill(0);
+      assert.notEqual((await snapshot.readBytes(primary, path))[0], 0, "stored bytes are not mutable through a returned Buffer");
+      return captureTaskCompletionCandidate({ ...fixture.options, diagnosticSnapshot: snapshot });
+    });
+    assert.throws(() => retained!.memo(primary, "later", async () => 1), /invocation has already ended/);
+    const second = await withDiagnosticSnapshot(other, ".tasks", (snapshot) => captureTaskCompletionCandidate({ ...fixture.options, rootDirectory: other, diagnosticSnapshot: snapshot }));
+    assert.notEqual(second.subject.headSha, first.subject.headSha);
+    assert.notEqual(second.subject.baselineId, first.subject.baselineId);
+  });
+});
+
+test("diagnostic snapshots preserve unreadable evidence refusal and missing task inventory", async () => {
+  await withTempDirectory(async (directory) => {
+    const fixture = await setupDiagnosticRepo(directory, 1);
+    const journal = join(directory, TASK_EVIDENCE_PATH);
+    const original = fsPromises.readFile;
+    fsPromises.readFile = (async (...args: Parameters<typeof original>) => {
+      if (String(args[0]) === journal) throw Object.assign(new Error("fixture evidence unreadable"), { code: "EACCES" });
+      return original(...args);
+    }) as typeof original;
+    syncBuiltinESMExports();
+    try {
+      await assert.rejects(withDiagnosticSnapshot(directory, ".tasks", (snapshot) => evaluateTaskCompletionGate({ ...fixture.options, diagnosticSnapshot: snapshot })), /fixture evidence unreadable/);
+      const summary = await summarizeStatus(directory);
+      assert.equal(summary.activeTasks[0].gate.status, "unavailable");
+    } finally { fsPromises.readFile = original; syncBuiltinESMExports(); }
+    await rm(join(directory, ".tasks/0001-snapshot.md"));
+    await assert.rejects(withDiagnosticSnapshot(directory, ".tasks", (snapshot) => captureTaskCompletionCandidate({ ...fixture.options, diagnosticSnapshot: snapshot })), /Task file not found/);
+    assert.equal((await summarizeStatus(directory)).activeTasks.length, 0);
+  });
 });

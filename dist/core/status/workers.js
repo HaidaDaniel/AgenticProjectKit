@@ -129,7 +129,7 @@ function buildWorkers(registry, sessions, taskStates, diagnostics, sessionsUnava
 /** A canonical session binds an ID, not a path: every duplicate is ambiguous,
  * including equal states and active/archive collisions. No ordering preference
  * can establish which contract owns that session. */
-export async function projectWorkers(rootDirectory, registry, tasks, diagnostics, inventoryComplete) {
+export async function projectWorkers(rootDirectory, registry, tasks, diagnostics, inventoryComplete, diagnosticSnapshot) {
     if (!registry?.workers.length)
         return [];
     const taskStates = new Map();
@@ -141,7 +141,7 @@ export async function projectWorkers(rootDirectory, registry, tasks, diagnostics
     if (unavailable)
         diagnostics.push("Task inventory is incomplete or invalid; worker readiness is unknown.");
     try {
-        sessions = await listWorkerSessions(rootDirectory);
+        sessions = await (diagnosticSnapshot?.memo(rootDirectory, "worker-sessions", () => listWorkerSessions(rootDirectory)) ?? listWorkerSessions(rootDirectory));
     }
     catch (error) {
         unavailable = true;

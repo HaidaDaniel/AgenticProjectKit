@@ -206,18 +206,20 @@ async function writeAgentShard(rootDirectory, agent, allowIdenticalExisting) {
         throw error;
     }
 }
-export async function listAgents(rootDirectory) {
+export async function listAgents(rootDirectory, diagnosticSnapshot) {
+    if (diagnosticSnapshot)
+        return diagnosticSnapshot.memo(rootDirectory, "agents", () => listAgents(rootDirectory));
     const sharded = await readShardedAgents(rootDirectory);
     const shardedIds = new Set(sharded.map((agent) => agent.id));
     const legacy = (await readLegacyAgents(rootDirectory))
         .filter((agent) => !shardedIds.has(agent.id));
     return [...sharded, ...legacy].sort((left, right) => left.id.localeCompare(right.id));
 }
-export async function findAgent(rootDirectory, id) {
-    return (await listAgents(rootDirectory)).find((agent) => agent.id === id);
+export async function findAgent(rootDirectory, id, diagnosticSnapshot) {
+    return (await listAgents(rootDirectory, diagnosticSnapshot)).find((agent) => agent.id === id);
 }
-export async function requireAgent(rootDirectory, id) {
-    const agent = await findAgent(rootDirectory, id);
+export async function requireAgent(rootDirectory, id, diagnosticSnapshot) {
+    const agent = await findAgent(rootDirectory, id, diagnosticSnapshot);
     if (!agent) {
         throw new Error(`Agent is not registered: ${id}. Run pnpm exec apk agent register --id ${id} --platform <platform> --model <model>.`);
     }
@@ -263,14 +265,17 @@ async function readLegacyRunLog(rootDirectory, agentsById) {
     return (await readJsonlFile(join(rootDirectory, RUNS_PATH)))
         .map((event) => canonicalRunEvent(event, agentsById));
 }
-export async function readRunLog(rootDirectory) {
-    const agents = await listAgents(rootDirectory);
-    const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
-    const events = [
-        ...(await readShardedRunLog(rootDirectory, agentsById)),
-        ...(await readLegacyRunLog(rootDirectory, agentsById)),
-    ];
-    return events.sort((left, right) => left.time.localeCompare(right.time));
+export async function readRunLog(rootDirectory, diagnosticSnapshot) {
+    const load = async () => {
+        const agents = await listAgents(rootDirectory, diagnosticSnapshot);
+        const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
+        const events = [
+            ...(await readShardedRunLog(rootDirectory, agentsById)),
+            ...(await readLegacyRunLog(rootDirectory, agentsById)),
+        ];
+        return events.sort((left, right) => left.time.localeCompare(right.time));
+    };
+    return diagnosticSnapshot ? diagnosticSnapshot.memo(rootDirectory, "run-log", load) : load();
 }
 async function writeRunEvent(rootDirectory, event, dedupe) {
     const path = runShardPath(rootDirectory, event);

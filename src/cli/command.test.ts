@@ -1994,3 +1994,39 @@ test("worker packages summarize long goals without losing the canonical goal or 
     });
   }
 });
+
+test("status and attention refuse an invocation whose journal changes during projection", async () => {
+  for (const args of [["status", "--detail"], ["attention", "--json"]]) {
+    await withTempDirectory(async (directory) => {
+      await writeExecutionRepo(directory);
+      await writeFile(join(directory, ".tasks/0001-snapshot.md"), buildTaskMarkdown("0001", "Snapshot", "doing", "fixture"));
+      const journal = join(directory, ".agentic/evidence.jsonl");
+      await writeFile(journal, "");
+      const original = fsPromises.readFile;
+      let mutated = false;
+      fsPromises.readFile = (async (...readArgs: Parameters<typeof original>) => {
+        const content = await original(...readArgs);
+        if (!mutated && String(readArgs[0]) === journal) {
+          mutated = true;
+          await writeFile(journal, "\n");
+        }
+        return content;
+      }) as typeof original;
+      syncBuiltinESMExports();
+      try {
+        const result = await runCommand(args, directory);
+        assert.equal(mutated, true);
+        assert.equal(result.exitCode, 1);
+        assert.equal(result.stdout, "", "no partially consistent successful projection escapes");
+        assert.match(result.stderr, /Diagnostic snapshot unavailable: inputs changed during capture/);
+      } finally {
+        fsPromises.readFile = original; syncBuiltinESMExports();
+      }
+      const next = await runCommand(args, directory);
+      assert.equal(next.exitCode, 0, next.stderr);
+      if (args[0] === "attention") {
+        assert.deepEqual(Object.keys(JSON.parse(next.stdout)).sort(), ["diagnostics", "items", "workers"]);
+      }
+    });
+  }
+});

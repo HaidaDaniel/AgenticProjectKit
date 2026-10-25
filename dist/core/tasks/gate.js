@@ -27,36 +27,45 @@ function unknownSubject(task, baseline) {
     };
 }
 export async function captureTaskCompletionCandidate(options) {
-    const taskPath = await findTaskFile(options.rootDirectory, options.taskId, options.taskDirectory);
-    const { task } = await loadTaskFile(taskPath);
-    const baseline = await readTaskBaseline(options.rootDirectory, task.id);
-    const snapshot = await captureTaskScope({
-        rootDirectory: options.rootDirectory,
-        task,
-        taskPath,
-        baseline,
-        changedFiles: options.changedFiles,
-    });
-    const scope = snapshot;
-    let capturedSubject;
-    try {
-        capturedSubject = await captureTaskEvidenceSubject(options.rootDirectory, task, scope.changedFiles, baseline, { allowUnresolvedLineage: true, taskPath: relative(options.rootDirectory, taskPath) });
-    }
-    catch (error) {
-        snapshot.diagnostics.push(error instanceof Error ? error.message : String(error));
-        snapshot.comparisonKnown = false;
-        capturedSubject = unknownSubject(task, baseline);
-    }
-    return {
-        task,
-        taskPath,
-        baseline,
-        subject: subjectWithBaseline(capturedSubject, baseline),
-        changedFiles: scope.changedFiles,
-        scope,
-        comparisonKnown: snapshot.comparisonKnown,
-        diagnostics: snapshot.diagnostics,
+    options.diagnosticSnapshot?.assertLocation(options.rootDirectory, options.taskDirectory);
+    const capture = async () => {
+        const taskPath = await findTaskFile(options.rootDirectory, options.taskId, options.taskDirectory, options.diagnosticSnapshot);
+        const { task } = await loadTaskFile(taskPath, options.diagnosticSnapshot);
+        const baseline = await readTaskBaseline(options.rootDirectory, task.id, options.diagnosticSnapshot);
+        const snapshot = await captureTaskScope({
+            rootDirectory: options.rootDirectory,
+            task,
+            taskPath,
+            baseline,
+            changedFiles: options.changedFiles,
+            diagnosticSnapshot: options.diagnosticSnapshot,
+        });
+        const scope = snapshot;
+        let capturedSubject;
+        try {
+            capturedSubject = await captureTaskEvidenceSubject(options.rootDirectory, task, scope.changedFiles, baseline, { allowUnresolvedLineage: true, taskPath: relative(options.rootDirectory, taskPath), diagnosticSnapshot: options.diagnosticSnapshot });
+        }
+        catch (error) {
+            snapshot.diagnostics.push(error instanceof Error ? error.message : String(error));
+            snapshot.comparisonKnown = false;
+            capturedSubject = unknownSubject(task, baseline);
+        }
+        return {
+            task,
+            taskPath,
+            baseline,
+            subject: subjectWithBaseline(capturedSubject, baseline),
+            changedFiles: scope.changedFiles,
+            scope,
+            comparisonKnown: snapshot.comparisonKnown,
+            diagnostics: snapshot.diagnostics,
+        };
     };
+    const result = await (options.diagnosticSnapshot
+        ? options.diagnosticSnapshot.memo(options.rootDirectory, `candidate:${options.taskId}:${JSON.stringify(options.changedFiles ?? null)}`, capture)
+        : capture());
+    options.diagnosticSnapshot?.bindCandidate(result.subject);
+    return result;
 }
 function currentRecord(records, subject) {
     if (records.length === 0) {
@@ -114,9 +123,9 @@ function reviewAssessment(assessments, subject) {
 function recordedResourceCostClass(record) {
     return record.resourceCostClass;
 }
-async function sessionResourceProvenance(rootDirectory, session) {
+async function sessionResourceProvenance(rootDirectory, session, diagnosticSnapshot) {
     try {
-        const active = await readActiveWorkerSession(rootDirectory, session.taskId, session.runId);
+        const active = await (diagnosticSnapshot?.memo(rootDirectory, `worker-session:${JSON.stringify([session.taskId, session.runId])}`, () => readActiveWorkerSession(rootDirectory, session.taskId, session.runId)) ?? readActiveWorkerSession(rootDirectory, session.taskId, session.runId));
         return {
             ...(active.workerPackage.provenance.resourceId ? { resourceId: active.workerPackage.provenance.resourceId } : {}),
             ...(active.workerPackage.provenance.resourceCostClass
@@ -141,11 +150,11 @@ async function sessionResourceProvenance(rootDirectory, session) {
  * erase historical consumption. Usage is task-bound and append-only; stale,
  * other-candidate, or non-gate-eligible records remain counted history.
  */
-async function countFrontierUsage(rootDirectory, taskId, reviewRecords) {
+async function countFrontierUsage(rootDirectory, taskId, reviewRecords, diagnosticSnapshot) {
     const diagnostics = [];
     let sessions;
     try {
-        sessions = await listWorkerSessions(rootDirectory);
+        sessions = await (diagnosticSnapshot?.memo(rootDirectory, "worker-sessions", () => listWorkerSessions(rootDirectory)) ?? listWorkerSessions(rootDirectory));
     }
     catch (error) {
         diagnostics.push(`Worker-session history could not be loaded; frontier run usage is blocked conservatively: ${error instanceof Error ? error.message : String(error)}`);
@@ -159,7 +168,7 @@ async function countFrontierUsage(rootDirectory, taskId, reviewRecords) {
     for (const session of sessions) {
         if (!session.activated)
             continue;
-        sessionProvenance.set(`${session.taskId}\0${session.runId}`, await sessionResourceProvenance(rootDirectory, session));
+        sessionProvenance.set(`${session.taskId}\0${session.runId}`, await sessionResourceProvenance(rootDirectory, session, diagnosticSnapshot));
     }
     const isFrontierReview = (record) => {
         if (record.resourceId === undefined)
@@ -213,8 +222,8 @@ export async function evaluateTaskCompletionGate(options) {
     const candidate = await captureTaskCompletionCandidate(options);
     const { task, scope, subject } = candidate;
     const policy = resolveTaskPolicy(task);
-    const records = await readTaskEvidence(options.rootDirectory, task.id);
-    const registeredAgents = new Set((await listAgents(options.rootDirectory)).map((agent) => agent.id));
+    const records = await readTaskEvidence(options.rootDirectory, task.id, options.diagnosticSnapshot);
+    const registeredAgents = new Set((await listAgents(options.rootDirectory, options.diagnosticSnapshot)).map((agent) => agent.id));
     const blockers = [...policy.blockers];
     const diagnostics = [
         ...candidate.diagnostics,
@@ -229,6 +238,7 @@ export async function evaluateTaskCompletionGate(options) {
         changedFiles: candidate.changedFiles,
         outOfScopeFiles: scope.outOfScopeFiles,
         forbiddenTouchedFiles: scope.forbiddenTouchedFiles,
+        diagnosticSnapshot: options.diagnosticSnapshot,
     });
     const attributionApproved = attributionApproval?.valid === true;
     if (attributionApproval && !attributionApproved) {
@@ -256,7 +266,7 @@ export async function evaluateTaskCompletionGate(options) {
             blockers.push(`Forbidden file touched: ${file}.`);
         }
     }
-    const allFiles = await allTaskFiles(options.rootDirectory, options.taskDirectory);
+    const allFiles = await allTaskFiles(options.rootDirectory, options.taskDirectory, options.diagnosticSnapshot);
     const dependencies = [];
     for (const dependency of task.dependsOn) {
         const dependencyFile = allFiles.find((file) => file.task.id === dependency);
@@ -343,11 +353,11 @@ export async function evaluateTaskCompletionGate(options) {
             : `Missing current ${category} evidence.`);
     }
     const reviewBudget = policy.requirements.reviewBudget;
-    const allReviewRecords = await listTaskReviews(options.rootDirectory, task.id);
+    const allReviewRecords = await listTaskReviews(options.rootDirectory, task.id, options.diagnosticSnapshot);
     // Frontier run usage is a task-level resource limit, including when the
     // current role is implementation, fix, verification, or another worker
     // role rather than semantic review.
-    const frontierUsage = await countFrontierUsage(options.rootDirectory, task.id, allReviewRecords);
+    const frontierUsage = await countFrontierUsage(options.rootDirectory, task.id, allReviewRecords, options.diagnosticSnapshot);
     for (const diagnostic of frontierUsage.diagnostics) {
         diagnostics.push(diagnostic);
     }
@@ -358,7 +368,7 @@ export async function evaluateTaskCompletionGate(options) {
     const review = { freshness: "missing", reason: "independent review is not required" };
     if (policy.requirements.independentReview) {
         const reviewRecords = allReviewRecords.filter((record) => isGateEligibleEvidence(record, registeredAgents));
-        const decisionAssessments = assessTaskHumanDecisions((await listTaskHumanDecisions(options.rootDirectory, task.id))
+        const decisionAssessments = assessTaskHumanDecisions((await listTaskHumanDecisions(options.rootDirectory, task.id, options.diagnosticSnapshot))
             .filter((record) => isGateEligibleEvidence(record, registeredAgents)), subject);
         const decisionAssessmentsOrdered = [...decisionAssessments]
             .sort((left, right) => (left.record.time.localeCompare(right.record.time)

@@ -1,3 +1,4 @@
+import type { TaskDiagnosticSnapshot } from "./diagnostics.js";
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
@@ -579,7 +580,12 @@ export async function appendTaskEvidence(
 export async function readTaskEvidence(
   rootDirectory: string,
   taskId?: string,
+  diagnosticSnapshot?: TaskDiagnosticSnapshot,
 ): Promise<TaskEvidenceRecord[]> {
+  if (diagnosticSnapshot) {
+    const records = await diagnosticSnapshot.memo(rootDirectory, "evidence", () => readTaskEvidence(rootDirectory));
+    return taskId === undefined ? records : filterTaskEvidence(records, taskId);
+  }
   const path = join(rootDirectory, TASK_EVIDENCE_PATH);
   let content: string;
   try {

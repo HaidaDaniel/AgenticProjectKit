@@ -107,3 +107,26 @@ On 2026-10-03, before implementation changes, ten focused tests produced seven f
 The regression matrix covers automated/manual CI across all four profiles, hosted report/artifact preservation, later failed local diagnostics versus a current hosted pass, external failure, and historical lower-type or wrong-check evidence. Existing tests cover stale candidate evidence, optional checks, local-only checks, and manual/live/benchmark compatibility. Task completion additionally requires an independently observed actual hosted Quality run for the committed candidate. APK records the observer's explicit assertion and does not authenticate GitHub or arbitrary evidence text.
 
 The first full Task 0179 run also exposed two older fixtures that implicitly treated local report-profile CI as authoritative. They now record the separate hosted report before expecting a gate pass; live and optional-review assertions remain intact. Their focused rerun passed both tests (`/tmp/apk-0179-existing-fixture-regression.log`).
+
+
+## Invocation-local diagnostic snapshot (Task 0229)
+
+`status`, `status --detail` and `attention --json` share guarded, read-only inputs for one invocation. Gate/provenance retain their existing scope, attribution, evidence and review rules. Successful JSON fields and healthy projections are unchanged. A concurrent input change makes the command fail with `Diagnostic snapshot unavailable`; it emits no partial successful projection. Standalone `workers` keeps its independent lightweight path.
+
+Regression fixtures cover a 1,001-record journal, shared gate/provenance parity, one read per task/journal/registry file, cross-task isolation, new evidence and commits between invocations, changed contracts, missing/malformed/unreadable data, dirty-file and index changes, linked worktrees and closed-instance refusal. CLI barriers mutate the evidence journal during status and attention projection and require nonzero exit without a result. Existing CLI status/attention/workers scenarios are checked separately. Snapshot inputs are immutable; a returned Buffer cannot modify stored bytes.
+
+The disposable six-task fixture has one claimed and verified task, one registered agent, a legacy run-log location and one run shard. Counts below are instrumented API operations, not a timing claim. Missing legacy files still count as read attempts. The observer preserves `execFile`'s custom promisified `{stdout, stderr}` result. Instrumented and plain outputs match byte-for-byte, and healthy before/after projections match.
+
+| Operation | status before | status after | attention before | attention after |
+| --- | ---: | ---: | ---: | ---: |
+| Task Markdown opens/reads | 63 | 6 | 69 | 6 |
+| Baseline journal reads | 10 | 1 | 10 | 1 |
+| Evidence journal reads | 21 | 1 | 21 | 1 |
+| Agent registry file reads | 22 | 2 | 22 | 2 |
+| Run-log file reads | 8 | 2 | 8 | 2 |
+| Git subprocesses | 53 | 33 | 53 | 33 |
+| Directory API calls | 49 | 22 | 51 | 22 |
+| Metadata API calls | 4 | 100 | 4 | 100 |
+| status / gate / provenance entries | 1 / 6 / 1 | 1 / 6 / 1 | 1 / 6 / 1 | 1 / 6 / 1 |
+
+Registry and run-log counts represent one pass across their two physical legacy/sharded locations, not two logical reloads. Metadata operations are `lstat`, `stat`, `realpath` and `readlink`; directory operations are `readdir` and `opendir`. These counters do not claim to measure every kernel syscall or the cost of each operation. The consistency witness adds metadata work, including a bounded walk of canonical inputs; repositories exceeding its bound fail closed rather than receiving an unverified reused result. Raw measurements are `/tmp/apk-0229-{status,attention}-{before,after}-complete.json`, with companion output comparisons and `/tmp/apk-0229-observe.mjs` in the implementation session.

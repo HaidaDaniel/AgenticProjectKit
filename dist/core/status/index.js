@@ -1,7 +1,7 @@
+import { withDiagnosticSnapshot } from "../tasks/diagnostics.js";
 import { constants } from "node:fs";
-import { open, opendir, readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { CONFIG_PATH, readAgenticConfigFile } from "../config/index.js";
+import { open, opendir } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { readRunLog, REASON_DISPLAY_LIMIT, summarizeReasonText } from "../agents/index.js";
 import { syncAgentExports } from "../sync/index.js";
 import { buildTaskProvenance, evaluateTaskCompletionGate, parseTaskMarkdown, selectNextTask, TASK_STATES, } from "../tasks/index.js";
@@ -14,66 +14,77 @@ const MAX_STATUS_BLOCKERS = 8;
 // Bounds apply to enumeration and each read; counts are explicitly partial if hit.
 const MAX_STATUS_DIRECTORY_ENTRIES = 10_000;
 const MAX_STATUS_TASK_BYTES = 1024 * 1024;
-export async function readStatusTaskInventory(rootDirectory, taskDirectory) {
-    const diagnostics = [];
-    let failures = 0;
-    const problem = (message) => {
-        failures += 1;
-        if (diagnostics.length < MAX_STATUS_BLOCKERS)
-            diagnostics.push(`task parse warning: ${capStatusText(message)}`);
-    };
-    const readDirectory = async (directory) => {
-        const files = [];
-        try {
-            const entries = await opendir(directory);
-            let count = 0;
-            for await (const entry of entries) {
-                if (++count > MAX_STATUS_DIRECTORY_ENTRIES) {
-                    problem(`${directory}: directory entry limit exceeded`);
-                    break;
-                }
-                if (!entry.name.endsWith(".md"))
-                    continue;
-                const path = join(directory, entry.name);
-                try {
-                    const handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK);
+export async function readStatusTaskInventory(rootDirectory, taskDirectory, diagnosticSnapshot) {
+    diagnosticSnapshot?.assertLocation(rootDirectory, taskDirectory);
+    const scan = async () => {
+        const diagnostics = [];
+        let failures = 0;
+        const problem = (message) => {
+            failures += 1;
+            if (diagnostics.length < MAX_STATUS_BLOCKERS)
+                diagnostics.push(`task parse warning: ${capStatusText(message)}`);
+        };
+        const readDirectory = async (directory) => {
+            const files = [];
+            try {
+                const entries = await opendir(directory);
+                let count = 0;
+                for await (const entry of entries) {
+                    if (++count > MAX_STATUS_DIRECTORY_ENTRIES) {
+                        problem(`${directory}: directory entry limit exceeded`);
+                        break;
+                    }
+                    if (!entry.name.endsWith(".md"))
+                        continue;
+                    const path = join(directory, entry.name);
                     try {
-                        const info = await handle.stat();
-                        if (!info.isFile() || info.size > MAX_STATUS_TASK_BYTES)
-                            throw new Error("task is not a regular file within the 1 MiB read limit");
-                        const buffer = Buffer.alloc(MAX_STATUS_TASK_BYTES + 1);
-                        let size = 0;
-                        while (size < buffer.length) {
-                            const { bytesRead } = await handle.read(buffer, size, buffer.length - size, null);
-                            if (bytesRead === 0)
-                                break;
-                            size += bytesRead;
-                        }
-                        if (size > MAX_STATUS_TASK_BYTES)
+                        const bytes = async () => {
+                            const handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK);
+                            try {
+                                const info = await handle.stat();
+                                if (!info.isFile() || info.size > MAX_STATUS_TASK_BYTES)
+                                    throw new Error("task is not a regular file within the 1 MiB read limit");
+                                const buffer = Buffer.alloc(MAX_STATUS_TASK_BYTES + 1);
+                                let size = 0;
+                                while (size < buffer.length) {
+                                    const { bytesRead } = await handle.read(buffer, size, buffer.length - size, null);
+                                    if (bytesRead === 0)
+                                        break;
+                                    size += bytesRead;
+                                }
+                                if (size > MAX_STATUS_TASK_BYTES)
+                                    throw new Error("task exceeds the 1 MiB read limit");
+                                return buffer.subarray(0, size);
+                            }
+                            finally {
+                                await handle.close();
+                            }
+                        };
+                        const content = await (diagnosticSnapshot?.readBytes(rootDirectory, path, bytes) ?? bytes());
+                        if (content.length > MAX_STATUS_TASK_BYTES)
                             throw new Error("task exceeds the 1 MiB read limit");
-                        files.push({ path, task: parseTaskMarkdown(buffer.subarray(0, size).toString("utf8")) });
+                        const parse = async () => ({ path, task: parseTaskMarkdown(content.toString("utf8")) });
+                        files.push(await (diagnosticSnapshot?.memo(rootDirectory, `task-file:${resolve(path)}`, parse) ?? parse()));
                     }
-                    finally {
-                        await handle.close();
+                    catch (error) {
+                        problem(`${path}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
                     }
                 }
-                catch (error) {
-                    problem(`${path}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
+            }
+            catch (error) {
+                if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
+                    problem(`${directory}: ${error instanceof Error ? error.message : String(error)}`);
                 }
             }
-        }
-        catch (error) {
-            if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
-                problem(`${directory}: ${error instanceof Error ? error.message : String(error)}`);
-            }
-        }
-        return files.sort(compareTaskFiles);
+            return files.sort(compareTaskFiles);
+        };
+        const active = await readDirectory(join(rootDirectory, taskDirectory));
+        const archived = await readDirectory(join(rootDirectory, taskDirectory, "archive"));
+        if (failures > 0)
+            diagnostics.push(`task inventory incomplete (${failures} read/parse failures); counts cover parsed tasks only; next task unknown; gates unavailable`);
+        return { active, archived, diagnostics, complete: failures === 0 };
     };
-    const active = await readDirectory(join(rootDirectory, taskDirectory));
-    const archived = await readDirectory(join(rootDirectory, taskDirectory, "archive"));
-    if (failures > 0)
-        diagnostics.push(`task inventory incomplete (${failures} read/parse failures); counts cover parsed tasks only; next task unknown; gates unavailable`);
-    return { active, archived, diagnostics, complete: failures === 0 };
+    return diagnosticSnapshot ? diagnosticSnapshot.memo(rootDirectory, "status-inventory", scan) : scan();
 }
 function compareTaskFiles(left, right) {
     // Match canonical numeric-ID ordering, including leading-zero IDs.
@@ -82,18 +93,6 @@ function compareTaskFiles(left, right) {
     const byId = (Number.isNaN(leftId) ? Number.MAX_SAFE_INTEGER : leftId)
         - (Number.isNaN(rightId) ? Number.MAX_SAFE_INTEGER : rightId);
     return byId || left.path.localeCompare(right.path);
-}
-async function fileExists(path) {
-    try {
-        await readFile(path);
-        return true;
-    }
-    catch (error) {
-        if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-            return false;
-        }
-        throw error;
-    }
 }
 function emptyTaskCounts() {
     return Object.fromEntries(TASK_STATES.map((state) => [state, 0]));
@@ -202,7 +201,7 @@ function nextTaskAction(task, gate, dependencies) {
         ? `resolve: ${capStatusText(gate.blockers[0])}`
         : `inspect gate for ${task.id}`;
 }
-async function summarizeActiveTask(rootDirectory, taskDirectory, file, warnings, inventoryComplete = true) {
+async function summarizeActiveTask(rootDirectory, taskDirectory, file, warnings, inventoryComplete = true, diagnosticSnapshot) {
     const changedFiles = file.task.state === "todo" ? [] : undefined;
     let gate;
     try {
@@ -213,6 +212,7 @@ async function summarizeActiveTask(rootDirectory, taskDirectory, file, warnings,
             taskDirectory,
             taskId: file.task.id,
             changedFiles,
+            diagnosticSnapshot,
         });
     }
     catch (error) {
@@ -252,7 +252,7 @@ async function summarizeActiveTask(rootDirectory, taskDirectory, file, warnings,
     let provenance;
     if (file.task.state !== "todo") {
         try {
-            provenance = await buildTaskProvenance(rootDirectory, taskDirectory, file.task.id);
+            provenance = await buildTaskProvenance(rootDirectory, taskDirectory, file.task.id, diagnosticSnapshot);
         }
         catch (error) {
             const message = capStatusText(error instanceof Error ? error.message.split("\n")[0] : String(error));
@@ -317,9 +317,16 @@ async function summarizeActiveTask(rootDirectory, taskDirectory, file, warnings,
         ],
     };
 }
-export async function summarizeStatus(rootDirectory) {
-    const configExists = await fileExists(join(rootDirectory, CONFIG_PATH));
-    const config = await readAgenticConfigFile(rootDirectory);
+export async function summarizeStatus(rootDirectory, diagnosticSnapshot) {
+    return diagnosticSnapshot
+        ? summarizeCapturedStatus(rootDirectory, diagnosticSnapshot)
+        : withDiagnosticSnapshot(rootDirectory, undefined, (snapshot) => summarizeCapturedStatus(rootDirectory, snapshot));
+}
+async function summarizeCapturedStatus(rootDirectory, diagnosticSnapshot) {
+    diagnosticSnapshot.assertLocation(rootDirectory);
+    const configExists = diagnosticSnapshot.configExists;
+    const config = diagnosticSnapshot.config;
+    diagnosticSnapshot.assertLocation(rootDirectory, config.taskDirectory);
     const warnings = [];
     const taskCounts = emptyTaskCounts();
     let archivedCount = 0;
@@ -330,7 +337,7 @@ export async function summarizeStatus(rootDirectory) {
         warnings.push("config missing; using defaults");
     }
     try {
-        const inventory = await readStatusTaskInventory(rootDirectory, config.taskDirectory);
+        const inventory = await readStatusTaskInventory(rootDirectory, config.taskDirectory, diagnosticSnapshot);
         const { active: activeTasks, archived: archivedTasks } = inventory;
         warnings.push(...inventory.diagnostics);
         for (const file of [...activeTasks, ...archivedTasks]) {
@@ -360,7 +367,7 @@ export async function summarizeStatus(rootDirectory) {
             inventoryComplete: inventory.complete,
         };
         for (const file of selected) {
-            activeTaskStatuses.push(await summarizeActiveTask(rootDirectory, config.taskDirectory, file, warnings, inventory.complete));
+            activeTaskStatuses.push(await summarizeActiveTask(rootDirectory, config.taskDirectory, file, warnings, inventory.complete, diagnosticSnapshot));
         }
         if (omitted.length > 0) {
             warnings.push(`active task status truncated at ${MAX_ACTIVE_TASKS} tasks; detailed projection incomplete; omitted=${coverage.omitted}; omitted actionable=${coverage.omittedActionable}${inventory.complete ? "" : " (parsed inventory only)"}`);
@@ -385,7 +392,7 @@ export async function summarizeStatus(rootDirectory) {
     if (sync.hasDrift) {
         warnings.push("generated instructions out of sync");
     }
-    const runs = await readRunLog(rootDirectory);
+    const runs = await readRunLog(rootDirectory, diagnosticSnapshot);
     return {
         mode: config.defaultMode,
         config: configExists ? "ok" : "missing",

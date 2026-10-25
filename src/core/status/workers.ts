@@ -1,3 +1,4 @@
+import type { TaskDiagnosticSnapshot } from "../tasks/diagnostics.js";
 import { readAgenticConfigFile } from "../config/index.js";
 import { inspectTaskContracts } from "../config/compatibility.js";
 import { type ProjectTask, type TaskState } from "../tasks/index.js";
@@ -182,6 +183,7 @@ export async function projectWorkers(
   tasks: readonly ProjectTask[],
   diagnostics: string[],
   inventoryComplete: boolean,
+  diagnosticSnapshot?: TaskDiagnosticSnapshot,
 ): Promise<WorkerAttentionEntry[]> {
   if (!registry?.workers.length) return [];
   const taskStates = new Map<string, TaskState | null>();
@@ -192,7 +194,7 @@ export async function projectWorkers(
   let unavailable = !inventoryComplete;
   if (unavailable) diagnostics.push("Task inventory is incomplete or invalid; worker readiness is unknown.");
   try {
-    sessions = await listWorkerSessions(rootDirectory);
+    sessions = await (diagnosticSnapshot?.memo(rootDirectory, "worker-sessions", () => listWorkerSessions(rootDirectory)) ?? listWorkerSessions(rootDirectory));
   } catch (error: unknown) {
     unavailable = true;
     diagnostics.push(`Canonical worker-session state unavailable (${String(error instanceof Error ? error.message : error).slice(0, 512)}); worker readiness is unknown.`);

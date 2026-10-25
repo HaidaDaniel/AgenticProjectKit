@@ -1,3 +1,4 @@
+import type { TaskDiagnosticSnapshot } from "./diagnostics.js";
 import { appendRunLog, requireAgent } from "../agents/index.js";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
@@ -724,8 +725,9 @@ export async function cleanupPreparedWorkerReview(options: {
 export async function listTaskReviews(
   rootDirectory: string,
   taskId: string,
+  diagnosticSnapshot?: TaskDiagnosticSnapshot,
 ): Promise<TaskReviewRecord[]> {
-  const records = await readTaskEvidence(rootDirectory, taskId);
+  const records = await readTaskEvidence(rootDirectory, taskId, diagnosticSnapshot);
   return records
     .map(asTaskReviewRecord)
     .filter((record): record is TaskReviewRecord => record !== undefined);
@@ -945,8 +947,9 @@ function asTaskHumanDecisionRecord(record: TaskEvidenceRecord): TaskHumanDecisio
 export async function listTaskHumanDecisions(
   rootDirectory: string,
   taskId: string,
+  diagnosticSnapshot?: TaskDiagnosticSnapshot,
 ): Promise<TaskHumanDecisionRecord[]> {
-  const records = await readTaskEvidence(rootDirectory, taskId);
+  const records = await readTaskEvidence(rootDirectory, taskId, diagnosticSnapshot);
   return records
     .map(asTaskHumanDecisionRecord)
     .filter((record): record is TaskHumanDecisionRecord => record !== undefined);

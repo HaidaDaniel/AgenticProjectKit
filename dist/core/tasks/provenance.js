@@ -34,9 +34,9 @@ function provenanceRun(event) {
         ...(event.reason ? { reason: event.reason } : {}),
     };
 }
-async function gitLines(rootDirectory, args) {
+async function gitLines(rootDirectory, args, diagnosticSnapshot) {
     try {
-        const result = await observedExecFile("git", args, {
+        const result = await observedExecFile("git", diagnosticSnapshot ? ["--no-optional-locks", ...args] : args, {
             cwd: rootDirectory,
             maxBuffer: 2 * 1024 * 1024,
             windowsHide: true,
@@ -258,17 +258,18 @@ function renderBaseline(baseline) {
         ...(baseline.carriedForwardFiles ? [`Epoch carried paths: ${baseline.carriedForwardFiles.length}`] : []),
     ].join("\n");
 }
-export async function buildTaskProvenance(rootDirectory, taskDirectory, taskId) {
+export async function buildTaskProvenance(rootDirectory, taskDirectory, taskId, diagnosticSnapshot) {
     const candidate = await captureTaskCompletionCandidate({
         rootDirectory,
         taskDirectory,
         taskId,
+        diagnosticSnapshot,
     });
-    const baselineHistory = await readTaskBaselineHistory(rootDirectory, taskId);
-    const records = await readTaskEvidence(rootDirectory, taskId);
+    const baselineHistory = await readTaskBaselineHistory(rootDirectory, taskId, diagnosticSnapshot);
+    const records = await readTaskEvidence(rootDirectory, taskId, diagnosticSnapshot);
     const completion = completionRecord(records);
     const evidence = evidenceWithProvenance(records, candidate.subject, completion);
-    const rawRuns = (await readRunLog(rootDirectory)).filter((run) => run.task === taskId);
+    const rawRuns = (await readRunLog(rootDirectory, diagnosticSnapshot)).filter((run) => run.task === taskId);
     const runs = rawRuns.slice(-MAX_RUNS).map(provenanceRun);
     const runIds = new Set(runs.map((run) => run.runId).filter((runId) => Boolean(runId)));
     const syntheticRuns = evidence
@@ -331,18 +332,18 @@ export async function buildTaskProvenance(rootDirectory, taskDirectory, taskId) 
         diagnostics.push(`Workspace provenance unavailable for ${taskId}: ${error instanceof Error ? error.message : String(error)}.`);
     }
     const commits = baseline?.headSha
-        ? parseCommits(await gitLines(rootDirectory, ["log", "--no-decorate", "--format=%H%x09%aI%x09%an%x09%s", `--max-count=${MAX_COMMITS}`, `${baseline.headSha}..HEAD`]))
+        ? parseCommits(await gitLines(rootDirectory, ["log", "--no-decorate", "--format=%H%x09%aI%x09%an%x09%s", `--max-count=${MAX_COMMITS}`, `${baseline.headSha}..HEAD`], diagnosticSnapshot))
         : [];
     if (!baseline?.headSha) {
         diagnostics.push("No baseline HEAD is available; commit range is unavailable.");
     }
     const diffLines = baseline?.headSha
         ? [
-            ...(await gitLines(rootDirectory, ["diff", "--name-status", "--no-renames", baseline.headSha]) ?? []),
-            ...(await gitLines(rootDirectory, ["diff", "--cached", "--name-status", "--no-renames", baseline.headSha]) ?? []),
+            ...(await gitLines(rootDirectory, ["diff", "--name-status", "--no-renames", baseline.headSha], diagnosticSnapshot) ?? []),
+            ...(await gitLines(rootDirectory, ["diff", "--cached", "--name-status", "--no-renames", baseline.headSha], diagnosticSnapshot) ?? []),
         ]
         : undefined;
-    const statusLines = await gitLines(rootDirectory, ["status", "--short", "--untracked-files=all"]);
+    const statusLines = await gitLines(rootDirectory, ["status", "--short", "--untracked-files=all"], diagnosticSnapshot);
     const diffFiles = parseDiff(diffLines);
     const allDiffFiles = [...diffFiles, ...parseStatus(statusLines)];
     const uniqueDiffFiles = new Map();
@@ -353,7 +354,7 @@ export async function buildTaskProvenance(rootDirectory, taskDirectory, taskId) 
     const completionFreshness = completion
         ? compareTaskEvidenceFreshness(completion, candidate.subject)
         : undefined;
-    const agents = await listAgents(rootDirectory);
+    const agents = await listAgents(rootDirectory, diagnosticSnapshot);
     const repositoryActivity = {
         commits,
         diffFiles: [...uniqueDiffFiles.values()]

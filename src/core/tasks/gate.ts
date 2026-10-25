@@ -1,3 +1,4 @@
+import type { TaskDiagnosticSnapshot } from "./diagnostics.js";
 import { relative } from "node:path";
 
 import {
@@ -155,42 +156,52 @@ export async function captureTaskCompletionCandidate(options: {
   taskDirectory: string;
   taskId: string;
   changedFiles?: readonly string[];
+  diagnosticSnapshot?: TaskDiagnosticSnapshot;
 }): Promise<TaskCompletionCandidate> {
-  const taskPath = await findTaskFile(options.rootDirectory, options.taskId, options.taskDirectory);
-  const { task } = await loadTaskFile(taskPath);
-  const baseline = await readTaskBaseline(options.rootDirectory, task.id);
-  const snapshot = await captureTaskScope({
-    rootDirectory: options.rootDirectory,
-    task,
-    taskPath,
-    baseline,
-    changedFiles: options.changedFiles,
-  });
-  const scope = snapshot;
-  let capturedSubject: TaskEvidenceCandidateSubject;
-  try {
-    capturedSubject = await captureTaskEvidenceSubject(
-      options.rootDirectory,
+  options.diagnosticSnapshot?.assertLocation(options.rootDirectory, options.taskDirectory);
+  const capture = async (): Promise<TaskCompletionCandidate> => {
+    const taskPath = await findTaskFile(options.rootDirectory, options.taskId, options.taskDirectory, options.diagnosticSnapshot);
+    const { task } = await loadTaskFile(taskPath, options.diagnosticSnapshot);
+    const baseline = await readTaskBaseline(options.rootDirectory, task.id, options.diagnosticSnapshot);
+    const snapshot = await captureTaskScope({
+      rootDirectory: options.rootDirectory,
       task,
-      scope.changedFiles,
+      taskPath,
       baseline,
-      { allowUnresolvedLineage: true, taskPath: relative(options.rootDirectory, taskPath) },
-    );
-  } catch (error: unknown) {
-    snapshot.diagnostics.push(error instanceof Error ? error.message : String(error));
-    snapshot.comparisonKnown = false;
-    capturedSubject = unknownSubject(task, baseline);
-  }
-  return {
-    task,
-    taskPath,
-    baseline,
-    subject: subjectWithBaseline(capturedSubject, baseline),
-    changedFiles: scope.changedFiles,
-    scope,
-    comparisonKnown: snapshot.comparisonKnown,
-    diagnostics: snapshot.diagnostics,
+      changedFiles: options.changedFiles,
+      diagnosticSnapshot: options.diagnosticSnapshot,
+    });
+    const scope = snapshot;
+    let capturedSubject: TaskEvidenceCandidateSubject;
+    try {
+      capturedSubject = await captureTaskEvidenceSubject(
+        options.rootDirectory,
+        task,
+        scope.changedFiles,
+        baseline,
+        { allowUnresolvedLineage: true, taskPath: relative(options.rootDirectory, taskPath), diagnosticSnapshot: options.diagnosticSnapshot },
+      );
+    } catch (error: unknown) {
+      snapshot.diagnostics.push(error instanceof Error ? error.message : String(error));
+      snapshot.comparisonKnown = false;
+      capturedSubject = unknownSubject(task, baseline);
+    }
+    return {
+      task,
+      taskPath,
+      baseline,
+      subject: subjectWithBaseline(capturedSubject, baseline),
+      changedFiles: scope.changedFiles,
+      scope,
+      comparisonKnown: snapshot.comparisonKnown,
+      diagnostics: snapshot.diagnostics,
+    };
   };
+  const result = await (options.diagnosticSnapshot
+    ? options.diagnosticSnapshot.memo(options.rootDirectory, `candidate:${options.taskId}:${JSON.stringify(options.changedFiles ?? null)}`, capture)
+    : capture());
+  options.diagnosticSnapshot?.bindCandidate(result.subject);
+  return result;
 }
 
 function currentRecord(
@@ -286,9 +297,10 @@ interface SessionResourceProvenance {
 async function sessionResourceProvenance(
   rootDirectory: string,
   session: Awaited<ReturnType<typeof listWorkerSessions>>[number],
+  diagnosticSnapshot?: TaskDiagnosticSnapshot,
 ): Promise<SessionResourceProvenance> {
   try {
-    const active = await readActiveWorkerSession(rootDirectory, session.taskId, session.runId);
+    const active = await (diagnosticSnapshot?.memo(rootDirectory, `worker-session:${JSON.stringify([session.taskId, session.runId])}`, () => readActiveWorkerSession(rootDirectory, session.taskId, session.runId)) ?? readActiveWorkerSession(rootDirectory, session.taskId, session.runId));
     return {
       ...(active.workerPackage.provenance.resourceId ? { resourceId: active.workerPackage.provenance.resourceId } : {}),
       ...(active.workerPackage.provenance.resourceCostClass
@@ -317,11 +329,12 @@ async function countFrontierUsage(
   rootDirectory: string,
   taskId: string,
   reviewRecords: readonly TaskReviewRecord[],
+  diagnosticSnapshot?: TaskDiagnosticSnapshot,
 ): Promise<FrontierUsageCount> {
   const diagnostics: string[] = [];
   let sessions: Awaited<ReturnType<typeof listWorkerSessions>>;
   try {
-    sessions = await listWorkerSessions(rootDirectory);
+    sessions = await (diagnosticSnapshot?.memo(rootDirectory, "worker-sessions", () => listWorkerSessions(rootDirectory)) ?? listWorkerSessions(rootDirectory));
   } catch (error: unknown) {
     diagnostics.push(
       `Worker-session history could not be loaded; frontier run usage is blocked conservatively: ${error instanceof Error ? error.message : String(error)}`,
@@ -335,7 +348,7 @@ async function countFrontierUsage(
   const sessionProvenance = new Map<string, SessionResourceProvenance>();
   for (const session of sessions) {
     if (!session.activated) continue;
-    sessionProvenance.set(`${session.taskId}\0${session.runId}`, await sessionResourceProvenance(rootDirectory, session));
+    sessionProvenance.set(`${session.taskId}\0${session.runId}`, await sessionResourceProvenance(rootDirectory, session, diagnosticSnapshot));
   }
   const isFrontierReview = (record: TaskReviewRecord): boolean => {
     if (record.resourceId === undefined) return false;
@@ -392,12 +405,13 @@ export async function evaluateTaskCompletionGate(options: {
   taskDirectory: string;
   taskId: string;
   changedFiles?: readonly string[];
+  diagnosticSnapshot?: TaskDiagnosticSnapshot;
 }): Promise<TaskCompletionGateResult> {
   const candidate = await captureTaskCompletionCandidate(options);
   const { task, scope, subject } = candidate;
   const policy = resolveTaskPolicy(task);
-  const records = await readTaskEvidence(options.rootDirectory, task.id);
-  const registeredAgents = new Set((await listAgents(options.rootDirectory)).map((agent) => agent.id));
+  const records = await readTaskEvidence(options.rootDirectory, task.id, options.diagnosticSnapshot);
+  const registeredAgents = new Set((await listAgents(options.rootDirectory, options.diagnosticSnapshot)).map((agent) => agent.id));
   const blockers = [...policy.blockers];
   const diagnostics = [
     ...candidate.diagnostics,
@@ -412,6 +426,7 @@ export async function evaluateTaskCompletionGate(options: {
     changedFiles: candidate.changedFiles,
     outOfScopeFiles: scope.outOfScopeFiles,
     forbiddenTouchedFiles: scope.forbiddenTouchedFiles,
+    diagnosticSnapshot: options.diagnosticSnapshot,
   });
   const attributionApproved = attributionApproval?.valid === true;
   if (attributionApproval && !attributionApproved) {
@@ -440,7 +455,7 @@ export async function evaluateTaskCompletionGate(options: {
     }
   }
 
-  const allFiles = await allTaskFiles(options.rootDirectory, options.taskDirectory);
+  const allFiles = await allTaskFiles(options.rootDirectory, options.taskDirectory, options.diagnosticSnapshot);
   const dependencies: string[] = [];
   for (const dependency of task.dependsOn) {
     const dependencyFile = allFiles.find((file) => file.task.id === dependency);
@@ -535,11 +550,11 @@ export async function evaluateTaskCompletionGate(options: {
   }
 
   const reviewBudget = policy.requirements.reviewBudget;
-  const allReviewRecords = await listTaskReviews(options.rootDirectory, task.id);
+  const allReviewRecords = await listTaskReviews(options.rootDirectory, task.id, options.diagnosticSnapshot);
   // Frontier run usage is a task-level resource limit, including when the
   // current role is implementation, fix, verification, or another worker
   // role rather than semantic review.
-  const frontierUsage = await countFrontierUsage(options.rootDirectory, task.id, allReviewRecords);
+  const frontierUsage = await countFrontierUsage(options.rootDirectory, task.id, allReviewRecords, options.diagnosticSnapshot);
   for (const diagnostic of frontierUsage.diagnostics) {
     diagnostics.push(diagnostic);
   }
@@ -554,7 +569,7 @@ export async function evaluateTaskCompletionGate(options: {
   if (policy.requirements.independentReview) {
     const reviewRecords = allReviewRecords.filter((record) => isGateEligibleEvidence(record, registeredAgents));
     const decisionAssessments = assessTaskHumanDecisions(
-      (await listTaskHumanDecisions(options.rootDirectory, task.id))
+      (await listTaskHumanDecisions(options.rootDirectory, task.id, options.diagnosticSnapshot))
         .filter((record) => isGateEligibleEvidence(record, registeredAgents)),
       subject,
     );

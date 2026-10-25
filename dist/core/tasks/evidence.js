@@ -333,7 +333,11 @@ export async function appendTaskEvidence(rootDirectory, input, uniqueness) {
     });
     return record;
 }
-export async function readTaskEvidence(rootDirectory, taskId) {
+export async function readTaskEvidence(rootDirectory, taskId, diagnosticSnapshot) {
+    if (diagnosticSnapshot) {
+        const records = await diagnosticSnapshot.memo(rootDirectory, "evidence", () => readTaskEvidence(rootDirectory));
+        return taskId === undefined ? records : filterTaskEvidence(records, taskId);
+    }
     const path = join(rootDirectory, TASK_EVIDENCE_PATH);
     let content;
     try {

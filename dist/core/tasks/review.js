@@ -520,8 +520,8 @@ export async function cleanupPreparedWorkerReview(options) {
         return "removed";
     });
 }
-export async function listTaskReviews(rootDirectory, taskId) {
-    const records = await readTaskEvidence(rootDirectory, taskId);
+export async function listTaskReviews(rootDirectory, taskId, diagnosticSnapshot) {
+    const records = await readTaskEvidence(rootDirectory, taskId, diagnosticSnapshot);
     return records
         .map(asTaskReviewRecord)
         .filter((record) => record !== undefined);
@@ -674,8 +674,8 @@ function asTaskHumanDecisionRecord(record) {
     }
     return record;
 }
-export async function listTaskHumanDecisions(rootDirectory, taskId) {
-    const records = await readTaskEvidence(rootDirectory, taskId);
+export async function listTaskHumanDecisions(rootDirectory, taskId, diagnosticSnapshot) {
+    const records = await readTaskEvidence(rootDirectory, taskId, diagnosticSnapshot);
     return records
         .map(asTaskHumanDecisionRecord)
         .filter((record) => record !== undefined);

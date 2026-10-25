@@ -1,4 +1,4 @@
-import { readAgenticConfigFile } from "../config/index.js";
+import { withDiagnosticSnapshot } from "../tasks/diagnostics.js";
 import { resolveTaskPolicy } from "../tasks/policy.js";
 import { projectWorkers, renderWorkerLine } from "./workers.js";
 export { WORKER_SEMANTIC_STATES, renderWorkersView } from "./workers.js";
@@ -54,15 +54,19 @@ function assuranceStatus(independentReview, review) {
  * only; it does not poll processes or claim live worker state APK cannot prove.
  */
 export async function buildAttentionView(rootDirectory, taskDirectory) {
-    const config = await readAgenticConfigFile(rootDirectory);
-    const summary = await summarizeStatus(rootDirectory);
-    const inventory = await readStatusTaskInventory(rootDirectory, taskDirectory);
+    return withDiagnosticSnapshot(rootDirectory, taskDirectory, (snapshot) => buildCapturedAttention(rootDirectory, taskDirectory, snapshot));
+}
+async function buildCapturedAttention(rootDirectory, taskDirectory, diagnosticSnapshot) {
+    const config = diagnosticSnapshot.config;
+    diagnosticSnapshot.assertLocation(rootDirectory, config.taskDirectory);
+    const summary = await summarizeStatus(rootDirectory, diagnosticSnapshot);
+    const inventory = await readStatusTaskInventory(rootDirectory, taskDirectory, diagnosticSnapshot);
     const taskFiles = [...inventory.active, ...inventory.archived];
     const activeTasks = taskFiles
         .map((file) => file.task)
         .filter((task) => ["doing", "review", "blocked"].includes(task.state));
     const workerDiagnostics = inventory.diagnostics.filter((diagnostic) => !summary.warnings.includes(diagnostic));
-    const workers = await projectWorkers(rootDirectory, config.resources, taskFiles.map((file) => file.task), workerDiagnostics, inventory.complete);
+    const workers = await projectWorkers(rootDirectory, config.resources, taskFiles.map((file) => file.task), workerDiagnostics, inventory.complete, diagnosticSnapshot);
     const items = summary.activeTasks
         .filter((status) => ["doing", "review", "blocked"].includes(status.state))
         .map((status) => {

@@ -1,7 +1,7 @@
 # Task 0229 - Reuse one invocation-local diagnostic snapshot for task evidence and scope reads
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-corrective-0229
 Mode: maintenance
 Lane: bugfix
 Type: bugfix
@@ -173,5 +173,4 @@ Eliminate repeated task, baseline, evidence-journal, run-log, agent-registry, an
 - Do not combine this task with Task 0227 (selection) or Task 0230 (needsHuman classification).
 - Candidate-bound freshness and fail-closed evidence behavior are more important than any operation-count target. If a safe snapshot boundary cannot be established, document the no-go and retain repeated reads.
 - Todo Task 0223 also allows `src/cli/command.test.ts`. Sequence 0229 before 0223 or use separate worktrees; do not edit that file concurrently.
-
 - Pre-claim scope clarification: attention and worker projection may only thread the optional diagnostic snapshot; standalone workers must retain its lightweight path without creating a snapshot. Agent registry/run-log and review-list readers may accept the same optional read-only snapshot. These changes must not alter classification, lifecycle, writing or trust rules. Record the new invocation boundary in docs/decisions.md.

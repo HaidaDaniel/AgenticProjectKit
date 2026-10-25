@@ -98,6 +98,7 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0087](#adr-0087---apk-performance-observability-is-opt-in-local-and-interval-based) | accepted | APK performance observability is opt-in, local, and interval-based | — |
 | [ADR-0088](#adr-0088---v2-performance-traces-include-a-startup-aware-rewrite-boundary) | accepted | v2 performance traces include a startup-aware rewrite boundary | — |
 | [ADR-0089](#adr-0089---portable-task-handoff-starts-as-untrusted-context) | proposed | Portable task handoff starts as untrusted context | — |
+| [ADR-0090](#adr-0090---diagnostics-share-a-guarded-invocation) | accepted | Diagnostics share a guarded invocation | — |
 
 ### ADR index cross-check
 
@@ -1821,3 +1822,26 @@ Keep ADR-0084's tracked Markdown authority. Limit a proposed first handoff featu
 ### Delivery and consequences
 
 This is a research recommendation, not a shipped feature or an operator approval. Task 0237 adds only a synthetic offline reproducer, observations, and the [design with a bounded follow-up contract](handoff/portable-task-context.md). The proposed context feature can explain unfinished work without weakening existing gates, but cannot by itself resume or complete the old task. No runtime importer, new state database, network transfer or trust-promotion mechanism is implemented.
+
+
+## ADR-0090 - Diagnostics share a guarded invocation
+
+Status: accepted
+
+Date: 2026-10-25
+
+### Context
+
+Task 0228 removed full diagnostics from standalone workers. Status and attention still repeated task parsing, journals, registry reads, baseline lineage and candidate capture. Sharing results without a consistency boundary could combine an earlier candidate with later evidence.
+
+### Decision
+
+Status and attention explicitly pass one read-only `TaskDiagnosticSnapshot` through their readers. Lazy loaders retain immutable results and failures only inside that invocation. Keys include the normalized repository/task directory and task or command inputs; captured subjects retain and validate baseline, candidate, worktree and HEAD identities. Gate and provenance share the same captured candidate and existing canonical validators. Different repositories, incompatible subjects and reuse after the invocation are rejected. Standalone workers does not create a snapshot.
+
+The invocation records bounded input-version metadata and Git identity before projection, then checks them before returning. Inputs include task files, canonical journals, agent/run stores, worker sessions, configuration, Git HEAD/index/refs, already-dirty paths and additional candidate files actually read. Metadata uses inode, mode, size and nanosecond modification/change timestamps; symlink targets are included. The metadata walk has a 50,000-entry bound. Observed changes or an unverifiable boundary produce an unavailable error; no partial refresh or successful mixed projection is returned. Snapshot Git reads disable optional index refreshes so diagnostic reads do not invalidate their own witness.
+
+This is optimistic validation of a read-only view, not a filesystem transaction or durable completion proof. A writer can change the repository after validation; the next invocation reads again, and mutation commands continue to run their existing uncached validation. No global, on-disk or cross-process cache, baseline rewrite, evidence promotion or trust-policy change is introduced.
+
+### Consequences
+
+Content reads and repeated Git comparisons decrease, while metadata checks increase. The testing strategy records both costs and verifies unchanged healthy output, new-invocation freshness, concurrent mutation refusal and worktree isolation. An unavailable diagnostic must be retried with a new invocation rather than refreshing individual components.

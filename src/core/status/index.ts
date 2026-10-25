@@ -1,8 +1,8 @@
+import { withDiagnosticSnapshot, type TaskDiagnosticSnapshot } from "../tasks/diagnostics.js";
 import { constants } from "node:fs";
-import { open, opendir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { open, opendir } from "node:fs/promises";
+import { join, resolve } from "node:path";
 
-import { CONFIG_PATH, readAgenticConfigFile } from "../config/index.js";
 import { readRunLog, REASON_DISPLAY_LIMIT, summarizeReasonText, type RunLogEvent } from "../agents/index.js";
 import { syncAgentExports } from "../sync/index.js";
 import {
@@ -134,57 +134,65 @@ export interface StatusSummary {
 const MAX_STATUS_DIRECTORY_ENTRIES = 10_000;
 const MAX_STATUS_TASK_BYTES = 1024 * 1024;
 
-export async function readStatusTaskInventory(rootDirectory: string, taskDirectory: string) {
-  const diagnostics: string[] = [];
-  let failures = 0;
-  const problem = (message: string) => {
-    failures += 1;
-    if (diagnostics.length < MAX_STATUS_BLOCKERS) diagnostics.push(`task parse warning: ${capStatusText(message)}`);
-  };
-  const readDirectory = async (directory: string): Promise<ProjectTaskFile[]> => {
-    const files: ProjectTaskFile[] = [];
-    try {
-      const entries = await opendir(directory);
-      let count = 0;
-      for await (const entry of entries) {
-        if (++count > MAX_STATUS_DIRECTORY_ENTRIES) {
-          problem(`${directory}: directory entry limit exceeded`);
-          break;
-        }
-        if (!entry.name.endsWith(".md")) continue;
-        const path = join(directory, entry.name);
-        try {
-          const handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK);
-          try {
-            const info = await handle.stat();
-            if (!info.isFile() || info.size > MAX_STATUS_TASK_BYTES) throw new Error("task is not a regular file within the 1 MiB read limit");
-            const buffer = Buffer.alloc(MAX_STATUS_TASK_BYTES + 1);
-            let size = 0;
-            while (size < buffer.length) {
-              const { bytesRead } = await handle.read(buffer, size, buffer.length - size, null);
-              if (bytesRead === 0) break;
-              size += bytesRead;
-            }
-            if (size > MAX_STATUS_TASK_BYTES) throw new Error("task exceeds the 1 MiB read limit");
-            files.push({ path, task: parseTaskMarkdown(buffer.subarray(0, size).toString("utf8")) });
-          } finally {
-            await handle.close();
+export async function readStatusTaskInventory(rootDirectory: string, taskDirectory: string, diagnosticSnapshot?: TaskDiagnosticSnapshot) {
+  diagnosticSnapshot?.assertLocation(rootDirectory, taskDirectory);
+  const scan = async () => {
+    const diagnostics: string[] = [];
+    let failures = 0;
+    const problem = (message: string) => {
+      failures += 1;
+      if (diagnostics.length < MAX_STATUS_BLOCKERS) diagnostics.push(`task parse warning: ${capStatusText(message)}`);
+    };
+    const readDirectory = async (directory: string): Promise<ProjectTaskFile[]> => {
+      const files: ProjectTaskFile[] = [];
+      try {
+        const entries = await opendir(directory);
+        let count = 0;
+        for await (const entry of entries) {
+          if (++count > MAX_STATUS_DIRECTORY_ENTRIES) {
+            problem(`${directory}: directory entry limit exceeded`);
+            break;
           }
-        } catch (error: unknown) {
-          problem(`${path}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
+          if (!entry.name.endsWith(".md")) continue;
+          const path = join(directory, entry.name);
+          try {
+            const bytes = async () => {
+              const handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK);
+              try {
+                const info = await handle.stat();
+                if (!info.isFile() || info.size > MAX_STATUS_TASK_BYTES) throw new Error("task is not a regular file within the 1 MiB read limit");
+                const buffer = Buffer.alloc(MAX_STATUS_TASK_BYTES + 1);
+                let size = 0;
+                while (size < buffer.length) {
+                  const { bytesRead } = await handle.read(buffer, size, buffer.length - size, null);
+                  if (bytesRead === 0) break;
+                  size += bytesRead;
+                }
+                if (size > MAX_STATUS_TASK_BYTES) throw new Error("task exceeds the 1 MiB read limit");
+                return buffer.subarray(0, size);
+              } finally { await handle.close(); }
+            };
+            const content = await (diagnosticSnapshot?.readBytes(rootDirectory, path, bytes) ?? bytes());
+            if (content.length > MAX_STATUS_TASK_BYTES) throw new Error("task exceeds the 1 MiB read limit");
+            const parse = async () => ({ path, task: parseTaskMarkdown(content.toString("utf8")) });
+            files.push(await (diagnosticSnapshot?.memo(rootDirectory, `task-file:${resolve(path)}`, parse) ?? parse()));
+          } catch (error: unknown) {
+            problem(`${path}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
+          }
+        }
+      } catch (error: unknown) {
+        if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
+          problem(`${directory}: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
-    } catch (error: unknown) {
-      if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) {
-        problem(`${directory}: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-    return files.sort(compareTaskFiles);
+      return files.sort(compareTaskFiles);
+    };
+    const active = await readDirectory(join(rootDirectory, taskDirectory));
+    const archived = await readDirectory(join(rootDirectory, taskDirectory, "archive"));
+    if (failures > 0) diagnostics.push(`task inventory incomplete (${failures} read/parse failures); counts cover parsed tasks only; next task unknown; gates unavailable`);
+    return { active, archived, diagnostics, complete: failures === 0 };
   };
-  const active = await readDirectory(join(rootDirectory, taskDirectory));
-  const archived = await readDirectory(join(rootDirectory, taskDirectory, "archive"));
-  if (failures > 0) diagnostics.push(`task inventory incomplete (${failures} read/parse failures); counts cover parsed tasks only; next task unknown; gates unavailable`);
-  return { active, archived, diagnostics, complete: failures === 0 };
+  return diagnosticSnapshot ? diagnosticSnapshot.memo(rootDirectory, "status-inventory", scan) : scan();
 }
 
 function compareTaskFiles(left: ProjectTaskFile, right: ProjectTaskFile): number {
@@ -196,17 +204,7 @@ function compareTaskFiles(left: ProjectTaskFile, right: ProjectTaskFile): number
   return byId || left.path.localeCompare(right.path);
 }
 
-async function fileExists(path: string): Promise<boolean> {
-  try {
-    await readFile(path);
-    return true;
-  } catch (error: unknown) {
-    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
-      return false;
-    }
-    throw error;
-  }
-}
+
 
 function emptyTaskCounts(): Record<TaskState, number> {
   return Object.fromEntries(TASK_STATES.map((state) => [state, 0])) as Record<TaskState, number>;
@@ -338,6 +336,7 @@ async function summarizeActiveTask(
   file: ProjectTaskFile,
   warnings: string[],
   inventoryComplete = true,
+  diagnosticSnapshot?: TaskDiagnosticSnapshot,
 ): Promise<ActiveTaskStatus> {
   const changedFiles = file.task.state === "todo" ? [] : undefined;
   let gate: TaskCompletionGateResult;
@@ -348,6 +347,7 @@ async function summarizeActiveTask(
       taskDirectory,
       taskId: file.task.id,
       changedFiles,
+      diagnosticSnapshot,
     });
   } catch (error: unknown) {
     const message = capStatusText(error instanceof Error ? error.message.split("\n")[0] : String(error));
@@ -387,7 +387,7 @@ async function summarizeActiveTask(
   let provenance: TaskProvenance | undefined;
   if (file.task.state !== "todo") {
     try {
-      provenance = await buildTaskProvenance(rootDirectory, taskDirectory, file.task.id);
+      provenance = await buildTaskProvenance(rootDirectory, taskDirectory, file.task.id, diagnosticSnapshot);
     } catch (error: unknown) {
       const message = capStatusText(error instanceof Error ? error.message.split("\n")[0] : String(error));
       warnings.push(`task provenance warning: ${file.task.id}: ${message}`);
@@ -452,9 +452,17 @@ async function summarizeActiveTask(
   };
 }
 
-export async function summarizeStatus(rootDirectory: string): Promise<StatusSummary> {
-  const configExists = await fileExists(join(rootDirectory, CONFIG_PATH));
-  const config = await readAgenticConfigFile(rootDirectory);
+export async function summarizeStatus(rootDirectory: string, diagnosticSnapshot?: TaskDiagnosticSnapshot): Promise<StatusSummary> {
+  return diagnosticSnapshot
+    ? summarizeCapturedStatus(rootDirectory, diagnosticSnapshot)
+    : withDiagnosticSnapshot(rootDirectory, undefined, (snapshot) => summarizeCapturedStatus(rootDirectory, snapshot));
+}
+
+async function summarizeCapturedStatus(rootDirectory: string, diagnosticSnapshot: TaskDiagnosticSnapshot): Promise<StatusSummary> {
+  diagnosticSnapshot.assertLocation(rootDirectory);
+  const configExists = diagnosticSnapshot.configExists;
+  const config = diagnosticSnapshot.config;
+  diagnosticSnapshot.assertLocation(rootDirectory, config.taskDirectory);
   const warnings: string[] = [];
   const taskCounts = emptyTaskCounts();
   let archivedCount = 0;
@@ -467,7 +475,7 @@ export async function summarizeStatus(rootDirectory: string): Promise<StatusSumm
   }
 
   try {
-    const inventory = await readStatusTaskInventory(rootDirectory, config.taskDirectory);
+    const inventory = await readStatusTaskInventory(rootDirectory, config.taskDirectory, diagnosticSnapshot);
     const { active: activeTasks, archived: archivedTasks } = inventory;
     warnings.push(...inventory.diagnostics);
 
@@ -501,7 +509,7 @@ export async function summarizeStatus(rootDirectory: string): Promise<StatusSumm
       inventoryComplete: inventory.complete,
     };
     for (const file of selected) {
-      activeTaskStatuses.push(await summarizeActiveTask(rootDirectory, config.taskDirectory, file, warnings, inventory.complete));
+      activeTaskStatuses.push(await summarizeActiveTask(rootDirectory, config.taskDirectory, file, warnings, inventory.complete, diagnosticSnapshot));
     }
     if (omitted.length > 0) {
       warnings.push(`active task status truncated at ${MAX_ACTIVE_TASKS} tasks; detailed projection incomplete; omitted=${coverage.omitted}; omitted actionable=${coverage.omittedActionable}${inventory.complete ? "" : " (parsed inventory only)"}`);
@@ -528,7 +536,7 @@ export async function summarizeStatus(rootDirectory: string): Promise<StatusSumm
     warnings.push("generated instructions out of sync");
   }
 
-  const runs = await readRunLog(rootDirectory);
+  const runs = await readRunLog(rootDirectory, diagnosticSnapshot);
 
   return {
     mode: config.defaultMode,
