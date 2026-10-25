@@ -1,5 +1,5 @@
 import { lstat, readFile, readdir, readlink, realpath, stat } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { readAgenticConfigFile, type AgenticConfig } from "../config/index.js";
 import { observedExecFile } from "../perf/index.js";
@@ -167,6 +167,7 @@ export class TaskDiagnosticSnapshot {
     catch (error) {
       const stderr = error && typeof error === "object" && "stderr" in error ? String(error.stderr) : "";
       if (/not a git repository/i.test(stderr)) return "no-git";
+      if (errorCode(error) === "ENOENT" && await this.filesystemOnly()) return "no-git";
       throw new DiagnosticSnapshotError("Git repository identity could not be established");
     }
     const [top, directory, common] = location.trim().split(/\r?\n/);
@@ -192,6 +193,27 @@ export class TaskDiagnosticSnapshot {
       if (/[RC]/.test(entry.slice(0, 2)) && entries[i + 1]) this.roots.set(join(top, entries[++i]), true);
     }
     return JSON.stringify([location, head, status]);
+  }
+
+  /** Preserve filesystem-only diagnostics when Git is not installed. Never
+   * interpret inaccessible or existing Git metadata as repository absence. */
+  private async filesystemOnly(): Promise<boolean> {
+    if (process.env.GIT_DIR || process.env.GIT_WORK_TREE || process.env.GIT_COMMON_DIR) return false;
+    let directory = await realpath(this.rootDirectory);
+    for (;;) {
+      const marker = join(directory, ".git");
+      this.roots.set(marker, false);
+      if (!["ENOENT", "ENOTDIR"].includes(await metadata(marker))) return false;
+      // A bare repository also cannot be diagnosed as an ordinary directory.
+      const head = join(directory, "HEAD"), objects = join(directory, "objects");
+      this.roots.set(head, false);
+      this.roots.set(objects, false);
+      if (!["ENOENT", "ENOTDIR"].includes(await metadata(head))
+        && !["ENOENT", "ENOTDIR"].includes(await metadata(objects))) return false;
+      const parent = dirname(directory);
+      if (parent === directory) return true;
+      directory = parent;
+    }
   }
 
   private async finish(): Promise<void> {

@@ -10667,3 +10667,29 @@ test("diagnostic snapshots preserve unreadable evidence refusal and missing task
     assert.equal((await summarizeStatus(directory)).activeTasks.length, 0);
   });
 });
+
+test("diagnostic snapshots preserve filesystem-only status without Git and refuse hidden repository identity", async () => {
+  await withTempDirectory(async (directory) => {
+    const plain = join(directory, "plain");
+    const repository = join(directory, "repository");
+    const shims = join(directory, "no-git");
+    await mkdir(plain); await mkdir(shims);
+    await setupDiagnosticRepo(repository, 1);
+    const nested = join(repository, "nested");
+    await mkdir(nested);
+    const originalPath = process.env.PATH;
+    process.env.PATH = shims;
+    try {
+      assert.equal((await summarizeStatus(plain)).activeTasks.length, 0);
+      for (const root of [repository, nested]) {
+        await assert.rejects(summarizeStatus(root), /Git repository identity could not be established/);
+      }
+      await assert.rejects(withDiagnosticSnapshot(plain, ".tasks", async () => {
+        await mkdir(join(plain, ".git"));
+      }), /Git repository identity could not be established/);
+    } finally {
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+    }
+  });
+});
