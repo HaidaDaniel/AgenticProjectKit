@@ -79,6 +79,36 @@ async function witness(roots: ReadonlyMap<string, boolean>): Promise<Map<string,
   return result;
 }
 
+/** Guard lexical paths, symlink resolution and missing-input create/remove cycles. */
+async function watchInputPath(roots: Map<string, boolean>, path: string, links = new Set<string>()): Promise<void> {
+  const absolute = resolve(path);
+  const add = (input: string) => {
+    if (roots.has(input)) return;
+    if (roots.size >= MAX_WITNESS_ENTRIES) throw new DiagnosticSnapshotError("input metadata exceeds the consistency bound");
+    roots.set(input, false);
+  };
+  const followLink = async (input: string): Promise<void> => {
+    try {
+      if (!(await lstat(input)).isSymbolicLink()) return;
+      if (links.has(input) || links.size >= 64) throw new DiagnosticSnapshotError("cyclic or excessive input symlink chain");
+      await watchInputPath(roots, resolve(dirname(input), await readlink(input)), new Set([...links, input]));
+    } catch (error) {
+      if (!["ENOENT", "ENOTDIR"].includes(errorCode(error))) throw error;
+    }
+  };
+  add(absolute);
+  await followLink(absolute);
+  let parent = dirname(absolute);
+  for (;;) {
+    add(parent);
+    await followLink(parent);
+    if (!["ENOENT", "ENOTDIR"].includes(await metadata(parent))) return;
+    const next = dirname(parent);
+    if (next === parent) return;
+    parent = next;
+  }
+}
+
 async function git(root: string, args: string[]): Promise<string> {
   return (await observedExecFile("git", ["--no-optional-locks", ...args], {
     cwd: root, maxBuffer: 8 * 1024 * 1024, env: { ...process.env, LC_ALL: "C" },
@@ -133,9 +163,10 @@ export class TaskDiagnosticSnapshot {
     let value = this.bytes.get(absolute);
     if (!value) {
       value = (async () => {
-        if (!this.versions.has(absolute)) {
-          this.roots.set(absolute, false);
-          this.versions.set(absolute, await metadata(absolute));
+        await this.watchPath(absolute);
+        const additions = new Map([...this.roots].filter(([input]) => !this.versions.has(input)));
+        for (const [input, version] of await witness(additions)) {
+          if (!this.versions.has(input)) this.versions.set(input, version);
         }
         return load();
       })();
@@ -211,15 +242,7 @@ export class TaskDiagnosticSnapshot {
   /** Include the nearest existing parent: creating and removing an initially
    * absent input must not look unchanged at the final witness. */
   private async watchPath(path: string): Promise<void> {
-    if (!this.roots.has(resolve(path))) this.roots.set(resolve(path), false);
-    let parent = dirname(resolve(path));
-    for (;;) {
-      if (!this.roots.has(parent)) this.roots.set(parent, false);
-      if (!["ENOENT", "ENOTDIR"].includes(await metadata(parent))) return;
-      const next = dirname(parent);
-      if (next === parent) return;
-      parent = next;
-    }
+    await watchInputPath(this.roots, path);
   }
 
   private async gitConfiguration(): Promise<string> {
@@ -294,17 +317,24 @@ export class TaskDiagnosticSnapshot {
 
   static async run<T>(root: string, taskDirectory: string | undefined, project: (snapshot: TaskDiagnosticSnapshot) => Promise<T>): Promise<T> {
     const configPath = join(root, ".agentic/config.json");
-    const beforeConfig = await metadata(configPath);
+    const configRoots = new Map<string, boolean>();
+    await watchInputPath(configRoots, configPath);
+    const configVersions = await witness(configRoots);
+    const beforeConfig = configVersions.get(resolve(configPath))!;
     const config = await readAgenticConfigFile(root);
     const snapshot = new TaskDiagnosticSnapshot(root, taskDirectory ?? config.taskDirectory, config, !["ENOENT", "ENOTDIR"].includes(beforeConfig));
+    for (const [path, recursive] of configRoots) snapshot.roots.set(path, recursive);
     snapshot.roots.set(resolve(root, snapshot.taskDirectory), true);
-    for (const path of [".agentic/config.json", ".agentic/evidence.jsonl", ".agentic/task-baselines.jsonl", ".agentic/agents.jsonl", ".agentic/runs.jsonl"]) snapshot.roots.set(resolve(root, path), false);
-    for (const path of [".agentic/agents", ".agentic/runs", ".agentic/sessions/work"]) snapshot.roots.set(resolve(root, path), true);
     try {
-      for (const path of ["package.json", "pnpm-lock.yaml", "package-lock.json", "yarn.lock", "bun.lock", "bun.lockb", "dist"]) await snapshot.watchPath(resolve(root, path));
+      await snapshot.watchPath(resolve(root, snapshot.taskDirectory));
+      for (const path of [".agentic/config.json", ".agentic/evidence.jsonl", ".agentic/task-baselines.jsonl", ".agentic/agents.jsonl", ".agentic/runs.jsonl", "package.json", "pnpm-lock.yaml", "package-lock.json", "yarn.lock", "bun.lock", "bun.lockb", "dist"]) await snapshot.watchPath(resolve(root, path));
+      for (const path of [".agentic/agents", ".agentic/runs", ".agentic/sessions/work"]) {
+        snapshot.roots.set(resolve(root, path), true);
+        await snapshot.watchPath(resolve(root, path));
+      }
       snapshot.gitIdentity = await snapshot.gitState();
       snapshot.versions = await witness(snapshot.roots);
-      if (snapshot.versions.get(resolve(configPath)) !== beforeConfig) throw new DiagnosticSnapshotError("configuration changed during capture");
+      if ([...configVersions].some(([path, version]) => snapshot.versions.get(path) !== version)) throw new DiagnosticSnapshotError("configuration changed during capture");
       const result = await project(snapshot);
       await snapshot.finish();
       return result;

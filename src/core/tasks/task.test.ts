@@ -10806,3 +10806,101 @@ test("diagnostic snapshots witness the alternate Git index and missing default e
     }
   });
 });
+
+test("diagnostic snapshots reject create-remove cycles for every absent canonical store", async () => {
+  for (const path of [".agentic/evidence.jsonl", ".agentic/task-baselines.jsonl", ".agentic/agents.jsonl", ".agentic/runs.jsonl", ".agentic/agents", ".agentic/runs", ".agentic/sessions/work"]) {
+    await withTempDirectory(async (directory) => {
+      await setupDiagnosticRepo(directory, 1);
+      const input = join(directory, path);
+      await rm(input, { recursive: true, force: true });
+      await assert.rejects(withDiagnosticSnapshot(directory, ".tasks", async () => {
+        if (path.endsWith(".jsonl")) await writeFile(input, "temporary");
+        else await mkdir(input, { recursive: true });
+        await rm(path === ".agentic/sessions/work" ? join(directory, ".agentic/sessions") : input, { recursive: true });
+      }), /Diagnostic snapshot unavailable/, path);
+    });
+  }
+});
+
+test("diagnostic snapshots reject transient passing journals through dangling symlink resolution chains", async () => {
+  for (const kind of ["ordinary", "symlink", "chain", "missing-parents", "ancestor-link"] as const) {
+    await withTempDirectory(async (directory) => {
+      const repository = join(directory, "repository");
+      const fixture = await setupDiagnosticRepo(repository, 1);
+      const journal = join(repository, TASK_EVIDENCE_PATH);
+      const evidence = await readFile(journal);
+      await rm(journal);
+      const external = join(directory, "external");
+      await mkdir(external);
+      let target = kind === "ordinary" ? journal : join(external, "journal");
+      let cleanup = target;
+      if (kind === "missing-parents") {
+        target = join(external, "missing/deep/journal");
+        cleanup = join(external, "missing");
+      } else if (kind === "ancestor-link") {
+        target = join(external, "missing/journal");
+        cleanup = join(external, "missing");
+        await symlink("missing", join(external, "parent-link"));
+        await symlink(join(external, "parent-link/journal"), journal);
+      }
+      if (kind === "chain") {
+        const link = join(external, "link");
+        await symlink("journal", link);
+        await symlink(link, journal);
+      } else if (kind !== "ordinary" && kind !== "ancestor-link") await symlink(target, journal);
+      assert.equal((await evaluateTaskCompletionGate(fixture.options)).passed, false, kind);
+      await assert.rejects(withDiagnosticSnapshot(repository, ".tasks", async (snapshot) => {
+        if (kind === "missing-parents") await mkdir(join(external, "missing/deep"), { recursive: true });
+        if (kind === "ancestor-link") await mkdir(join(external, "missing"));
+        await writeFile(target, evidence);
+        const gate = await evaluateTaskCompletionGate({ ...fixture.options, diagnosticSnapshot: snapshot });
+        await rm(cleanup, { recursive: true });
+        assert.equal(gate.passed, true, `${kind}: incomplete witness would expose a false pass`);
+        return gate;
+      }), /Diagnostic snapshot unavailable/, kind);
+      assert.equal((await evaluateTaskCompletionGate(fixture.options)).passed, false, kind);
+    });
+  }
+});
+
+test("diagnostic snapshots guard configuration before its first content read", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupDiagnosticRepo(directory, 1);
+    const path = join(directory, ".agentic/config.json");
+    await rm(path);
+    const original = fsPromises.readFile;
+    let injected = false;
+    fsPromises.readFile = (async (...args: Parameters<typeof readFile>) => {
+      if (String(args[0]) !== path || injected) return original(...args);
+      injected = true;
+      await writeFile(path, '{"schemaVersion":2}');
+      const value = await original(...args);
+      await rm(path);
+      return value;
+    }) as typeof readFile;
+    syncBuiltinESMExports();
+    try {
+      await assert.rejects(summarizeStatus(directory), /configuration changed during capture/);
+      assert.equal(injected, true);
+    } finally { fsPromises.readFile = original; syncBuiltinESMExports(); }
+  });
+});
+
+test("diagnostic snapshots guard newly discovered byte inputs and reject symlink cycles", async () => {
+  await withTempDirectory(async (directory) => {
+    const repository = join(directory, "repository");
+    await setupDiagnosticRepo(repository, 1);
+    const external = join(directory, "external");
+    await mkdir(external);
+    const link = join(external, "link"), target = join(external, "target");
+    await symlink("target", link);
+    await assert.rejects(withDiagnosticSnapshot(repository, ".tasks", (snapshot) => snapshot.readBytes(repository, link, async () => {
+      await writeFile(target, "temporary");
+      const bytes = await readFile(link);
+      await rm(target);
+      return bytes;
+    })), /Diagnostic snapshot unavailable/);
+    await symlink("link", target);
+    await assert.rejects(withDiagnosticSnapshot(repository, ".tasks", (snapshot) => snapshot.readBytes(repository, link)), /cyclic or excessive input symlink chain/);
+  });
+});
