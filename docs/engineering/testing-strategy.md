@@ -124,11 +124,13 @@ The disposable six-task fixture has one claimed and verified task, one registere
 | Evidence journal reads | 21 | 1 | 21 | 1 |
 | Agent registry file reads | 22 | 2 | 22 | 2 |
 | Run-log file reads | 8 | 2 | 8 | 2 |
-| Git subprocesses | 53 | 33 | 53 | 33 |
+| Git subprocesses | 53 | 39 | 53 | 39 |
 | Directory API calls | 49 | 22 | 51 | 22 |
-| Metadata API calls | 4 | 100 | 4 | 100 |
+| Metadata API calls | 4 | 231 | 4 | 231 |
 | status / gate / provenance entries | 1 / 6 / 1 | 1 / 6 / 1 | 1 / 6 / 1 | 1 / 6 / 1 |
 
 Registry and run-log counts represent one pass across their two physical legacy/sharded locations, not two logical reloads. Metadata operations are `lstat`, `stat`, `realpath` and `readlink`; directory operations are `readdir` and `opendir`. These counters do not claim to measure every kernel syscall or the cost of each operation. The consistency witness adds metadata work, including a bounded walk of canonical inputs; repositories exceeding its bound fail closed rather than receiving an unverified reused result. Raw measurements are `/tmp/apk-0229-{status,attention}-{before,after}-complete.json`, with companion output comparisons and `/tmp/apk-0229-observe.mjs` in the implementation session.
 
 Canonical Task 0229 verification exposed the existing unavailable-launcher fixture: requiring Git for an ordinary filesystem-only directory was a regression. Snapshot creation now proves absent Git markers before its filesystem-only fallback when the Git executable is missing. Existing or inaccessible repository metadata remains unavailable; nested repository discovery and a `.git` appearing mid-invocation are regression-tested. `/tmp/apk-0229-nogit-focused.log` records eight passing focused groups including the original counterexample.
+
+Independent review rejected `09e1460`: temporary/restored repository or external excludes could hide an out-of-scope file, and a temporary/restored clean manifest could bypass `build-current`. The witness now includes effective Git config origins and includes, platform default config paths, ignore/attribute inputs, actual alternate/shared index locations, package manifest, supported lockfile paths and dist presence. Parent metadata detects create/remove cycles for absent inputs. Git must expose its configuration input locations; otherwise diagnostics fail closed. The package contract is shared once per invocation without changing its validator. Eleven focused groups pass, including nested exclude creation/removal, included configuration, alternate index, default ignore parent creation/removal and package/lock/dist counterexamples. All three independent reproduction scripts now reject the mixed projection (`/tmp/apk-0229-independent-repros-fixed.log`). The final operation table includes this additional consistency cost.

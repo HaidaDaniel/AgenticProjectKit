@@ -1,5 +1,6 @@
 import { lstat, readFile, readdir, readlink, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { homedir } from "node:os";
 
 import { readAgenticConfigFile, type AgenticConfig } from "../config/index.js";
 import { observedExecFile } from "../perf/index.js";
@@ -163,23 +164,28 @@ export class TaskDiagnosticSnapshot {
 
   private async gitState(): Promise<string> {
     let location: string;
-    try { location = await git(this.rootDirectory, ["rev-parse", "--show-toplevel", "--absolute-git-dir", "--git-common-dir"]); }
+    try { location = await git(this.rootDirectory, ["rev-parse", "--show-toplevel", "--absolute-git-dir", "--git-common-dir", "--git-path", "index", "--git-path", "info/exclude", "--git-path", "config.worktree", "--shared-index-path"]); }
     catch (error) {
       const stderr = error && typeof error === "object" && "stderr" in error ? String(error.stderr) : "";
       if (/not a git repository/i.test(stderr)) return "no-git";
       if (errorCode(error) === "ENOENT" && await this.filesystemOnly()) return "no-git";
       throw new DiagnosticSnapshotError("Git repository identity could not be established");
     }
-    const [top, directory, common] = location.trim().split(/\r?\n/);
-    if (!top || !directory || !common) throw new DiagnosticSnapshotError("Git location cannot be established");
+    const [top, directory, common, index, exclude, worktreeConfig, sharedIndex] = location.trimEnd().split(/\r?\n/);
+    if (!top || !directory || !common || !index || !exclude || !worktreeConfig) throw new DiagnosticSnapshotError("Git location cannot be established");
     const commonDirectory = isAbsolute(common) ? common : resolve(this.rootDirectory, common);
     // Git's read commands may create/remove an optional index.lock. The Git
     // directory timestamp is not a version of its contents; watch the actual
     // index/HEAD/refs and the linked-worktree pointer instead.
     const marker = join(top, ".git");
-    if (!(await lstat(marker)).isDirectory()) this.roots.set(marker, false);
-    for (const path of [join(directory, "HEAD"), join(directory, "index"), join(commonDirectory, "packed-refs"), join(commonDirectory, "config")]) this.roots.set(path, false);
+    const markerVersion = await metadata(marker);
+    if (["ENOENT", "ENOTDIR"].includes(markerVersion) || !(await lstat(marker)).isDirectory()) await this.watchPath(marker);
+    for (const path of [join(directory, "HEAD"), resolve(this.rootDirectory, index), resolve(this.rootDirectory, exclude), resolve(this.rootDirectory, worktreeConfig), join(commonDirectory, "packed-refs"), join(commonDirectory, "config"), join(commonDirectory, "info/attributes")]) await this.watchPath(path);
+    if (sharedIndex) await this.watchPath(resolve(this.rootDirectory, sharedIndex));
     this.roots.set(join(commonDirectory, "refs"), true);
+    const configuration = await this.gitConfiguration();
+    await this.watchPath(join(top, ".gitignore"));
+    await this.watchPath(join(top, ".gitattributes"));
     let head: string;
     try { head = await git(this.rootDirectory, ["rev-parse", "--verify", "HEAD"]); }
     catch { head = "unborn-or-unavailable"; }
@@ -189,10 +195,70 @@ export class TaskDiagnosticSnapshot {
     for (let i = 0; i < entries.length; i++) {
       const entry = entries[i];
       if (!entry) continue;
-      this.roots.set(join(top, entry.slice(3)), true);
-      if (/[RC]/.test(entry.slice(0, 2)) && entries[i + 1]) this.roots.set(join(top, entries[++i]), true);
+      const paths = [join(top, entry.slice(3))];
+      if (/[RC]/.test(entry.slice(0, 2)) && entries[i + 1]) paths.push(join(top, entries[++i]));
+      for (const path of paths) {
+        this.roots.set(path, true);
+        for (let parent = dirname(path); parent !== top && parent !== dirname(parent); parent = dirname(parent)) {
+          await this.watchPath(join(parent, ".gitignore"));
+          await this.watchPath(join(parent, ".gitattributes"));
+        }
+      }
     }
-    return JSON.stringify([location, head, status]);
+    return JSON.stringify([location, head, status, configuration]);
+  }
+
+  /** Include the nearest existing parent: creating and removing an initially
+   * absent input must not look unchanged at the final witness. */
+  private async watchPath(path: string): Promise<void> {
+    if (!this.roots.has(resolve(path))) this.roots.set(resolve(path), false);
+    let parent = dirname(resolve(path));
+    for (;;) {
+      if (!this.roots.has(parent)) this.roots.set(parent, false);
+      if (!["ENOENT", "ENOTDIR"].includes(await metadata(parent))) return;
+      const next = dirname(parent);
+      if (next === parent) return;
+      parent = next;
+    }
+  }
+
+  private async gitConfiguration(): Promise<string> {
+    // Git supplies its platform-specific default config/attribute locations,
+    // including absent files. Merely listing existing origins misses ABA writes.
+    const variables = (await git(this.rootDirectory, ["var", "-l"]))
+      .split("\n").filter((line) => /^GIT_(CONFIG_(SYSTEM|GLOBAL)|ATTR_(SYSTEM|GLOBAL))=/.test(line));
+    if (!variables.some((line) => line.startsWith("GIT_CONFIG_SYSTEM="))
+      || !variables.some((line) => line.startsWith("GIT_CONFIG_GLOBAL="))) {
+      throw new DiagnosticSnapshotError("Git cannot expose configuration input locations");
+    }
+    for (const line of variables) await this.watchPath(line.slice(line.indexOf("=") + 1));
+    const config = await git(this.rootDirectory, ["config", "--null", "--show-origin", "--list"]);
+    const fields = config.split("\0");
+    for (let i = 0; i + 1 < fields.length; i += 2) {
+      if (fields[i].startsWith("file:")) await this.watchPath(resolve(this.rootDirectory, fields[i].slice(5)));
+    }
+    let paths = "";
+    try {
+      paths = await git(this.rootDirectory, ["config", "--null", "--show-origin", "--path", "--get-regexp", "^(include(if\\..*)?\\.path|core\\.(excludesfile|attributesfile))$"]);
+    } catch (error) {
+      if (errorCode(error) !== "1") throw error;
+    }
+    const pathFields = paths.split("\0");
+    let explicitExcludes = false;
+    for (let i = 0; i + 1 < pathFields.length; i += 2) {
+      const separator = pathFields[i + 1].indexOf("\n");
+      if (separator < 0) throw new DiagnosticSnapshotError("Git configuration paths cannot be decoded");
+      const key = pathFields[i + 1].slice(0, separator);
+      const value = pathFields[i + 1].slice(separator + 1);
+      explicitExcludes ||= key === "core.excludesfile";
+      const origin = pathFields[i].startsWith("file:") ? resolve(this.rootDirectory, pathFields[i].slice(5)) : undefined;
+      const base = /^include(if\..*)?\.path$/.test(key) && origin ? dirname(origin) : this.rootDirectory;
+      if (value) await this.watchPath(resolve(base, value));
+    }
+    if (!explicitExcludes) {
+      await this.watchPath(join(process.env.XDG_CONFIG_HOME || join(process.env.HOME || homedir(), ".config"), "git/ignore"));
+    }
+    return JSON.stringify([variables, config, paths]);
   }
 
   /** Preserve filesystem-only diagnostics when Git is not installed. Never
@@ -235,6 +301,7 @@ export class TaskDiagnosticSnapshot {
     for (const path of [".agentic/config.json", ".agentic/evidence.jsonl", ".agentic/task-baselines.jsonl", ".agentic/agents.jsonl", ".agentic/runs.jsonl"]) snapshot.roots.set(resolve(root, path), false);
     for (const path of [".agentic/agents", ".agentic/runs", ".agentic/sessions/work"]) snapshot.roots.set(resolve(root, path), true);
     try {
+      for (const path of ["package.json", "pnpm-lock.yaml", "package-lock.json", "yarn.lock", "bun.lock", "bun.lockb", "dist"]) await snapshot.watchPath(resolve(root, path));
       snapshot.gitIdentity = await snapshot.gitState();
       snapshot.versions = await witness(snapshot.roots);
       if (snapshot.versions.get(resolve(configPath)) !== beforeConfig) throw new DiagnosticSnapshotError("configuration changed during capture");

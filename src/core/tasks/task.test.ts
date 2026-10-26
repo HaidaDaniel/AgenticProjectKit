@@ -10693,3 +10693,116 @@ test("diagnostic snapshots preserve filesystem-only status without Git and refus
     }
   });
 });
+
+test("diagnostic snapshots reject restored Git exclusions and included configuration", async () => {
+  for (const kind of ["info", "external", "included", "nested"] as const) {
+    await withTempDirectory(async (directory) => {
+      const fixture = await setupDiagnosticRepo(directory, 1);
+      const info = join(directory, ".git/info/exclude");
+      let input = info;
+      let hiddenPath = "private.json";
+      let original = await readFile(info, "utf8");
+      let replacement = `${original}\n${hiddenPath}\n`;
+      if (kind === "external" || kind === "included") {
+        input = join(directory, ".agentic/external-ignore");
+        original = ""; replacement = `${hiddenPath}\n`;
+        await writeFile(input, original);
+        if (kind === "external") await fixture.git("config", "core.excludesFile", input);
+        else {
+          const excludes = input;
+          input = join(directory, ".agentic/included-git-config");
+          original = "[core]\n  filemode = true\n";
+          replacement = `${original}  excludesFile = ${excludes}\n`;
+          await writeFile(excludes, `${hiddenPath}\n`);
+          await writeFile(input, original);
+          await fixture.git("config", "include.path", input);
+        }
+      } else if (kind === "nested") {
+        await mkdir(join(directory, "private"));
+        await writeFile(info, `${original}\n.gitignore\n`);
+        hiddenPath = "private/secret.json";
+        input = join(directory, "private/.gitignore");
+        original = ""; replacement = "secret.json\n";
+      }
+      await writeFile(join(directory, hiddenPath), "{}\n");
+      assert.equal((await evaluateTaskCompletionGate(fixture.options)).passed, false, kind);
+      await assert.rejects(withDiagnosticSnapshot(directory, ".tasks", async (snapshot) => {
+        await readTaskEvidence(directory, undefined, snapshot);
+        await writeFile(input, replacement);
+        const gate = await evaluateTaskCompletionGate({ ...fixture.options, diagnosticSnapshot: snapshot });
+        if (kind === "nested") await rm(input);
+        else await writeFile(input, original);
+        assert.equal(gate.passed, true, `${kind}: the projection would pass without the final witness`);
+        return gate;
+      }), /Diagnostic snapshot unavailable/, kind);
+      assert.equal((await evaluateTaskCompletionGate(fixture.options)).passed, false, kind);
+    });
+  }
+});
+
+test("diagnostic snapshots reject restored package contract and transient lock or dist inputs", async () => {
+  await withTempDirectory(async (directory) => {
+    const fixture = await setupDiagnosticRepo(directory, 1);
+    // Synthetic legacy fixture isolates the package-contract blocker from
+    // baseline attribution. It never writes operational state in the host repo.
+    await rm(join(directory, TASK_BASELINES_PATH));
+    const taskPath = join(directory, ".tasks/0001-snapshot.md");
+    const task = (await loadTaskFile(taskPath)).task;
+    await writeTaskFile(taskPath, { ...task, allowedFiles: ["src/**", "dist/**"] });
+    const manifest = join(directory, "package.json");
+    const original = JSON.stringify({ files: ["dist"], packageManager: "pnpm@10.28.1", scripts: { build: "true" } });
+    await writeFile(manifest, original);
+    await fixture.git("add", ".tasks/0001-snapshot.md", "package.json");
+    await fixture.git("commit", "--quiet", "-m", "package contract fixture");
+    await writeFile(join(directory, "src/a.ts"), "export {};\n");
+    const subject = (await captureTaskCompletionCandidate(fixture.options)).subject;
+    await appendTaskEvidence(directory, {
+      taskId: "0001", runId: "synthetic-package-verification", agent: "snapshot-owner", gateEligible: true,
+      type: "automated-test", result: "pass", subject, checkId: "check-1", profile: "deterministic", command: "node --version",
+    });
+    assert.equal((await evaluateTaskCompletionGate(fixture.options)).passed, false);
+    await assert.rejects(withDiagnosticSnapshot(directory, ".tasks", async (snapshot) => {
+      await captureTaskCompletionCandidate({ ...fixture.options, diagnosticSnapshot: snapshot });
+      await writeFile(manifest, '{"files":["src"]}');
+      const gate = await evaluateTaskCompletionGate({ ...fixture.options, diagnosticSnapshot: snapshot });
+      await writeFile(manifest, original);
+      assert.equal(gate.passed, true, "temporary manifest would bypass build-current without the witness");
+      return gate;
+    }), /Diagnostic snapshot unavailable/);
+    assert.equal((await evaluateTaskCompletionGate(fixture.options)).passed, false);
+    for (const name of ["pnpm-lock.yaml", "package-lock.json", "yarn.lock", "bun.lock", "bun.lockb", "dist"]) {
+      const path = join(directory, name);
+      await assert.rejects(withDiagnosticSnapshot(directory, ".tasks", async () => {
+        if (name === "dist") await mkdir(path);
+        else await writeFile(path, "temporary");
+        await rm(path, { recursive: true });
+      }), /Diagnostic snapshot unavailable/, name);
+    }
+  });
+});
+
+test("diagnostic snapshots witness the alternate Git index and missing default exclude parents", async () => {
+  await withTempDirectory(async (directory) => {
+    const fixture = await setupDiagnosticRepo(directory, 1);
+    const index = join(directory, ".agentic/alternate-index");
+    const bytes = await readFile(join(directory, ".git/index"));
+    await writeFile(index, bytes);
+    const xdg = join(directory, ".agentic/xdg");
+    await mkdir(xdg);
+    const originalIndex = process.env.GIT_INDEX_FILE, originalXdg = process.env.XDG_CONFIG_HOME;
+    process.env.GIT_INDEX_FILE = index;
+    process.env.XDG_CONFIG_HOME = xdg;
+    try {
+      assert.equal((await withDiagnosticSnapshot(directory, ".tasks", (snapshot) => evaluateTaskCompletionGate({ ...fixture.options, diagnosticSnapshot: snapshot }))).passed, true);
+      await assert.rejects(withDiagnosticSnapshot(directory, ".tasks", async () => { await writeFile(index, bytes); }), /Diagnostic snapshot unavailable/);
+      await assert.rejects(withDiagnosticSnapshot(directory, ".tasks", async () => {
+        await mkdir(join(xdg, "git"));
+        await writeFile(join(xdg, "git/ignore"), "private.json\n");
+        await rm(join(xdg, "git"), { recursive: true });
+      }), /Diagnostic snapshot unavailable/);
+    } finally {
+      if (originalIndex === undefined) delete process.env.GIT_INDEX_FILE; else process.env.GIT_INDEX_FILE = originalIndex;
+      if (originalXdg === undefined) delete process.env.XDG_CONFIG_HOME; else process.env.XDG_CONFIG_HOME = originalXdg;
+    }
+  });
+});

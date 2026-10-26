@@ -244,7 +244,8 @@ export async function evaluateTaskCompletionGate(options) {
     if (attributionApproval && !attributionApproved) {
         diagnostics.push(...attributionApproval.diagnostics);
     }
-    const packagedDistContract = await repositoryPackagedDistContract(options.rootDirectory);
+    const packagedDistContract = await (options.diagnosticSnapshot?.memo(options.rootDirectory, "packaged-dist-contract", () => repositoryPackagedDistContract(options.rootDirectory))
+        ?? repositoryPackagedDistContract(options.rootDirectory));
     if (packagedDistContract.shipsCommittedDist && candidate.changedFiles.some(isPackagedInputPath)) {
         blockers.push(...packagedDistTaskContractBlockers(task, {
             buildScriptAvailable: packagedDistContract.buildScriptAvailable,
