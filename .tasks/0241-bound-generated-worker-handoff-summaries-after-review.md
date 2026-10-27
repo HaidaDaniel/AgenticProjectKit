@@ -1,6 +1,6 @@
 # Task 0241 - Bound generated worker handoff summaries after review
 
-State: doing
+State: done
 Owner: codex-corrective-0241
 Mode: maintenance
 Lane: bugfix
