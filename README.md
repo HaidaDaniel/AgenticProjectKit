@@ -9,7 +9,7 @@ APK gives maintainers a repeatable way to describe work, limit the files a task 
 Install the validated release tag in the repository where you want to use APK:
 
 ```bash
-pnpm add -D agentic-project-kit@git+https://github.com/HaidaDaniel/AgenticProjectKit.git#v0.5.1
+pnpm add -D agentic-project-kit@git+https://github.com/HaidaDaniel/AgenticProjectKit.git#v0.5.2
 pnpm exec apkit --help
 ```
 
@@ -21,7 +21,7 @@ pnpm exec apkit init
 
 For an existing project, preview adoption first with `pnpm exec apkit adopt --preview`. Review the proposed changes before applying them. The [Getting Started guide](docs/getting-started.md) covers the full workflow; the [brownfield guide](docs/guides/brownfield-adoption.md) explains safe adoption.
 
-The development CLI also supports `pnpm exec apkit --version` (aliases `apk` and `agentic-project-kit`). It reports the installed APK package version, independently of the host project's manifest and Git state. This flag is a post-v0.5.1 addition; the validated v0.5.1 pin above continues to use `--help` for installation smoke until a newer release is validated.
+The CLI also supports `pnpm exec apkit --version` (aliases `apk` and `agentic-project-kit`). It reports the installed APK package version independently of the host project's manifest and Git state.
 
 ## What APK provides
 
@@ -44,7 +44,7 @@ APK prepares and records the workflow around coding agents; it does not launch o
 
 ## Maturity and compatibility
 
-The current validated installable release is [v0.5.1](docs/releases/v0.5.1.md). The package declares Node.js `>=22.22.1`; release validation used Node.js `22.22.1`, pnpm `10.28.1`, and an Ubuntu runner. Other Node.js or pnpm versions and end-to-end macOS or Windows installs are unverified. A first Git-tag install requires Git and network access; offline use requires the release and dependencies to be cached.
+The current validated installable release is [v0.5.2](docs/releases/v0.5.2.md). The package declares Node.js `>=22.22.1`; release validation used Node.js `22.22.1`, pnpm `10.28.1`, and an Ubuntu runner. Other Node.js or pnpm versions and end-to-end macOS or Windows installs are unverified. A first Git-tag install requires Git and network access; offline use requires the release and dependencies to be cached.
 
 See the [maturity and compatibility policy](docs/product/maturity-and-compatibility.md) for the evidence and support limits.
 

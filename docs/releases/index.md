@@ -1,12 +1,12 @@
 # Release index
 
-<!-- APK_VALIDATED_RELEASE: v0.5.1 -->
+<!-- APK_VALIDATED_RELEASE: v0.5.2 -->
 
 The current package/candidate version is `0.5.2`.
-The latest validated tagged release is [v0.5.1](v0.5.1.md), with the separate
-[post-tag validation record](../delivery/workflow-v0.5.1-post-release.md).
-Its annotated tag peels to candidate `e45760b8d68c0d5955e99b50a6ac9ca064952524`.
-The prior v0.5.0 and v0.4.9 releases remain immutable historical evidence.
+The latest validated tagged release is [v0.5.2](v0.5.2.md), with the separate
+[post-tag validation record](../delivery/workflow-v0.5.2-post-release.md).
+Its annotated tag peels to candidate `c4fa572ebfd38954093d9f58db0caa6f2cbba89b`.
+The prior v0.5.1, v0.5.0 and v0.4.9 releases remain immutable historical evidence.
 
 This index lists tags and committed release documentation; the documentation consistency
 checker does not query GitHub, the network, or repository tags. Its validated-release
@@ -22,12 +22,11 @@ post-tag validation evidence; it supplements the note and does not repeat its ch
 The tagged note contains only facts known before publication and is never backfilled with
 post-tag results.
 
-The [v0.5.2 candidate note](v0.5.2.md) records corrective changes under pre-tag validation. Its publication and actual-tag validation are pending.
-
 ## Versioned release records
 
 | Tag | Tagged source | Canonical detailed note or retained historical detail | Additional delivery/evidence record |
 | --- | --- | --- | --- |
+| `v0.5.2` | [source](https://github.com/HaidaDaniel/AgenticProjectKit/tree/v0.5.2) | [v0.5.2 release note](v0.5.2.md) | [post-tag validation](../delivery/workflow-v0.5.2-post-release.md) |
 | `v0.5.1` | [source](https://github.com/HaidaDaniel/AgenticProjectKit/tree/v0.5.1) | [v0.5.1 release note](v0.5.1.md) | [post-tag validation](../delivery/workflow-v0.5.1-post-release.md) |
 | `v0.5.0` | [source](https://github.com/HaidaDaniel/AgenticProjectKit/tree/v0.5.0) | [v0.5.0 release note](v0.5.0.md) | [post-tag validation](../delivery/workflow-v0.5.0-post-release.md) |
 | `v0.4.9` | [source](https://github.com/HaidaDaniel/AgenticProjectKit/tree/v0.4.9) | [v0.4.9 release note](v0.4.9.md) | [post-tag validation](../delivery/workflow-v0.4.9-post-release.md) |
@@ -45,6 +44,6 @@ The [v0.5.2 candidate note](v0.5.2.md) records corrective changes under pre-tag 
 | `v0.2.0` | [tagged source](https://github.com/HaidaDaniel/AgenticProjectKit/tree/v0.2.0) | No per-version narrative note or validation report is retained; the source tag is the release artifact. See the [historical milestone record](../delivery/milestones.md) for planning context. | No separate versioned delivery record is retained. |
 | `v0.1.0` | [tagged source](https://github.com/HaidaDaniel/AgenticProjectKit/tree/v0.1.0) | No per-version narrative note or validation report is retained; the source tag is the release artifact. See the [historical milestone record](../delivery/milestones.md) for planning context. | No separate versioned delivery record is retained. |
 
-The rows reflect repository tags observed on 2026-09-26. Before each release, recheck
+The rows reflect repository tags observed on 2026-10-27. Before each release, recheck
 `package.json`, existing local and remote tags, and the exact candidate; do not infer a next
 version from this historical list.

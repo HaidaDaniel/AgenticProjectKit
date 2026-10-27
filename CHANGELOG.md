@@ -6,17 +6,11 @@ source, and separate validation record without copying their details here.
 
 ## Current validated release
 
-[v0.5.1](docs/releases/v0.5.1.md) is the latest validated installable release. The
+[v0.5.2](docs/releases/v0.5.2.md) is the latest validated installable release. The
 release index records that validated version separately from the current package/candidate
 version. During pre-tag work, the package may advance while this entry continues to identify
 the previous validated release. See the [release index](docs/releases/index.md) for the
 canonical version marker and promotion chronology.
-
-## Candidate under validation
-
-The [v0.5.2 candidate note](docs/releases/v0.5.2.md) describes the corrective patch
-under validation. v0.5.1 remains the validated installation target until publication
-and actual-tag checks finish.
 
 ## Unreleased work
 
