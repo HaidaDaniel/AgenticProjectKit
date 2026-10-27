@@ -94,6 +94,56 @@ function assuranceStatus(
   return review.status === "current" && review.outcome === "pass" ? "satisfied" : "unavailable";
 }
 
+function attentionAction(status: ActiveTaskStatus, independentReview: boolean): Pick<AttentionItem, "needsHuman" | "nextAction"> {
+  const ordinary = { needsHuman: false, nextAction: status.nextAction };
+  if (status.gate.status === "pass") return ordinary;
+  const inspect = { needsHuman: false, nextAction: `inspect task ${status.id} evidence and worker-session diagnostics; retry attention` };
+  // Error text is not a policy decision, even if it contains operator keywords.
+  if (status.gate.status === "unavailable") return inspect;
+
+  const review = status.review;
+  const budget = independentReview ? review.budget : undefined;
+  const passing = review.status === "current" && review.outcome === "pass";
+  const accepted = review.decision?.freshness === "current"
+    && review.decision.decision === "accept-current"
+    && review.decision.resolvedBlocker === "review-budget-exhausted";
+  // The status blocker list is bounded. Structured counts retain operator-only
+  // conditions even when earlier verification/scope blockers fill that list.
+  // MAX_SAFE_INTEGER is the gate's unavailable-session sentinel, not spend.
+  const frontierUnknown = budget?.frontierPassesUsed === Number.MAX_SAFE_INTEGER
+    || budget?.frontierRunsUsed === Number.MAX_SAFE_INTEGER;
+  const frontierBlocked = budget && [
+    [budget.frontierPassesUsed, budget.maxFrontierReviewPasses],
+    [budget.frontierRunsUsed, budget.maxFrontierRuns],
+  ].some(([used, maximum]) => used !== Number.MAX_SAFE_INTEGER
+    && (used > maximum || (used >= maximum && !passing)));
+  if (budget && (budget.passesUsed > budget.effectiveMaxReviewPasses || frontierBlocked)) {
+    return { needsHuman: true, nextAction: `request explicit operator policy change for task ${status.id}; inspect apk task gate ${status.id}` };
+  }
+  if (budget?.exhausted && !passing && !accepted) {
+    return { needsHuman: true, nextAction: `request explicit operator decision with apk task decision ${status.id}` };
+  }
+  const explicitApproval = status.gate.blockers.some((blocker) => (
+    /^(?:Explicit )?(?:operator|human) (?:approval|decision) (?:is )?required(?:[.:;]|$)/i.test(blocker)
+    || /^needs-human(?:[.:;]|$)/i.test(blocker)
+  ));
+  if (explicitApproval) {
+    return { needsHuman: true, nextAction: `request the explicit operator approval identified by apk task gate ${status.id}` };
+  }
+  if (frontierUnknown || (independentReview && review.status === "unknown")) return inspect;
+  if (!independentReview) return ordinary;
+  if (review.decision?.freshness === "current" && review.decision.decision === "changes-required") {
+    return { needsHuman: false, nextAction: `run fixer for ${status.id}; then request independent review` };
+  }
+  if (review.status === "current" && review.outcome === "changes_requested") {
+    return { needsHuman: false, nextAction: `run fixer for ${status.id}; then request independent review` };
+  }
+  if (!accepted && ["missing", "stale"].includes(review.status)) {
+    return { needsHuman: false, nextAction: `request independent review for ${status.id}` };
+  }
+  return ordinary;
+}
+
 /**
  * Bounded, deterministic attention projection over existing status, gate,
  * review, policy, provenance, and resource state. It reports semantic facts
@@ -134,7 +184,7 @@ async function buildCapturedAttention(rootDirectory: string, taskDirectory: stri
         owner: status.owner,
         priority: priorityFor(status),
         reason: reasonFor(status),
-        nextAction: status.nextAction,
+        ...attentionAction(status, independentReview),
         blockers,
         assurance: policy?.requirements.assurance ?? "legacy-compatible",
         review: {
@@ -144,8 +194,6 @@ async function buildCapturedAttention(rootDirectory: string, taskDirectory: stri
         },
         assuranceStatus: assurance,
         reviewEscalation: independentReview && ["missing", "stale", "unknown"].includes(status.review.status),
-        needsHuman: blockers.some((blocker) => /needs-human|review budget exhausted/i.test(blocker))
-          || (assurance === "unavailable" && status.gate.status !== "pass"),
         runs: status.provenance.runs,
         reviewBudget: budget ? `${budget.maxReviewPasses} passes/${budget.maxFrontierReviewPasses} frontier` : "legacy-compatible",
       };

@@ -1,7 +1,7 @@
 # Task 0230 - Classify pending independent review without false needsHuman
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-corrective-0230
 Mode: maintenance
 Lane: bugfix
 Type: bugfix

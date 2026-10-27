@@ -582,6 +582,138 @@ test("CLI attention and workers project semantic state without live process clai
   });
 });
 
+interface AttentionReviewScenario {
+  name: string;
+  reviews?: number;
+  outcome?: "pass" | "changes_requested";
+  stale?: boolean;
+  noReview?: boolean;
+  frontier?: boolean;
+  missingVerification?: boolean;
+  malformed?: boolean;
+  unreadableSessions?: boolean;
+  blocked?: boolean;
+  decision?: "current-accept" | "stale-accept" | "grant" | "changes-required";
+  needsHuman: boolean;
+  assurance: string;
+  escalation: boolean;
+  action: RegExp;
+}
+
+const attentionReviewScenarios: AttentionReviewScenario[] = [
+  { name: "missing review", needsHuman: false, assurance: "unavailable", escalation: true, action: /request independent review/ },
+  { name: "blocked missing review", blocked: true, needsHuman: false, assurance: "unavailable", escalation: true, action: /request independent review/ },
+  { name: "stale review", reviews: 1, stale: true, needsHuman: false, assurance: "unavailable", escalation: true, action: /request independent review/ },
+  { name: "changes requested", reviews: 1, outcome: "changes_requested", needsHuman: false, assurance: "unavailable", escalation: false, action: /run fixer/ },
+  { name: "exhausted nonpassing review", reviews: 8, outcome: "changes_requested", needsHuman: true, assurance: "unavailable", escalation: false, action: /operator decision with apk task decision 0001/ },
+  { name: "exhausted stale review", reviews: 8, stale: true, needsHuman: true, assurance: "unavailable", escalation: true, action: /operator decision/ },
+  { name: "explicit frontier policy approval", reviews: 1, frontier: true, outcome: "changes_requested", needsHuman: true, assurance: "unavailable", escalation: false, action: /explicit operator policy change/ },
+  { name: "review not required", noReview: true, missingVerification: true, needsHuman: false, assurance: "not-required", escalation: false, action: /run verification/ },
+  { name: "passing review with verification blocker", reviews: 1, missingVerification: true, needsHuman: false, assurance: "satisfied", escalation: false, action: /run verification/ },
+  { name: "unknown journal with operator keywords", malformed: true, needsHuman: false, assurance: "unavailable", escalation: true, action: /inspect task 0001 evidence.*retry attention/ },
+  { name: "unknown session usage", unreadableSessions: true, needsHuman: false, assurance: "unavailable", escalation: true, action: /inspect task 0001 evidence.*retry attention/ },
+  { name: "passing at total cap with another blocker", reviews: 8, missingVerification: true, needsHuman: false, assurance: "satisfied", escalation: false, action: /run verification/ },
+  { name: "passing at frontier cap with another blocker", reviews: 1, frontier: true, missingVerification: true, needsHuman: false, assurance: "satisfied", escalation: false, action: /run verification/ },
+  { name: "passing after total overrun", reviews: 9, needsHuman: true, assurance: "satisfied", escalation: false, action: /operator policy change/ },
+  { name: "passing after frontier overrun", reviews: 2, frontier: true, needsHuman: true, assurance: "satisfied", escalation: false, action: /operator policy change/ },
+  { name: "budget blocker omitted from bounded list", reviews: 8, stale: true, missingVerification: true, needsHuman: true, assurance: "unavailable", escalation: true, action: /operator decision/ },
+  { name: "current acceptance with other blocker", reviews: 8, stale: true, decision: "current-accept", missingVerification: true, needsHuman: false, assurance: "unavailable", escalation: true, action: /run verification/ },
+  { name: "stale acceptance cannot reopen budget", reviews: 8, stale: true, decision: "stale-accept", needsHuman: true, assurance: "unavailable", escalation: true, action: /operator decision/ },
+  { name: "current grant reopens review budget", reviews: 8, stale: true, decision: "grant", needsHuman: false, assurance: "unavailable", escalation: true, action: /request independent review/ },
+  { name: "operator requests changes", reviews: 1, decision: "changes-required", needsHuman: false, assurance: "satisfied", escalation: false, action: /run fixer/ },
+];
+
+for (const scenario of attentionReviewScenarios) {
+  test(`CLI attention operator boundary: ${scenario.name}`, async (t) => {
+    await withTempDirectory(async (directory) => {
+      const git = (...args: string[]) => execFileAsync("git", args, { cwd: directory });
+      await git("init", "--quiet");
+      await git("config", "user.name", "Fixture");
+      await git("config", "user.email", "fixture@example.test");
+      await mkdir(join(directory, ".tasks"));
+      await writeFile(join(directory, ".gitignore"), ".agentic/\n");
+      const checks = Array.from({ length: scenario.name.includes("bounded list") ? 12 : 1 }, (_, index) => ({
+        id: `check-${index}`, type: "automated", required: true,
+        environment: "local", profile: "report", command: "node --version", evidence: "synthetic report",
+      }));
+      const markdown = buildTaskMarkdown("0001", "Attention review fixture", "todo")
+        .replace("Risk: low", "Risk: medium")
+        .replace("Tags: none", scenario.noReview ? "Tags: none" : "Tags: worker")
+        .replace("- .tasks/0001-task.md", "- example.txt")
+        .replace("## Verification commands\n\n- pnpm test", `## Verification\n\n${checks.map((check) => `- \`${JSON.stringify(check)}\``).join("\n")}`);
+      const taskPath = join(directory, ".tasks/0001-task.md");
+      await writeFile(taskPath, markdown);
+      await git("add", ".gitignore", ".tasks/0001-task.md");
+      await git("commit", "--quiet", "-m", "synthetic fixture");
+      for (const id of ["fixture-owner", "fixture-reviewer"]) {
+        const registered = await runCli(["agent", "register", "--id", id, "--platform", "codex", "--model", "fixture"], directory);
+        assert.equal(registered.exitCode, 0, registered.stderr);
+      }
+      const claim = await runCli(["claim", "0001", "--owner", "fixture-owner"], directory);
+      assert.equal(claim.exitCode, 0, claim.stderr);
+      const verified = await runCli(["task", "verify", "0001", "--owner", "fixture-owner"], directory);
+      assert.equal(verified.exitCode, 0, verified.stdout + verified.stderr);
+      if (scenario.blocked) {
+        const blocked = await runCli(["block", "0001", "--owner", "fixture-owner"], directory);
+        assert.equal(blocked.exitCode, 0, blocked.stderr);
+      }
+      const journalPath = join(directory, ".agentic/evidence.jsonl");
+      const initial = (await readFile(journalPath, "utf8")).trim().split("\n").map((line) => JSON.parse(line));
+      const subject = initial[0].subject;
+      const records = scenario.missingVerification ? [] : [...initial];
+      // These are synthetic records in disposable repositories, never repository evidence.
+      for (let index = 0; index < (scenario.reviews ?? 0); index++) {
+        const runId = `review-fixture-${index}`;
+        records.push({
+          id: `evidence-fixture-${index}`, taskId: "0001", runId, agent: "fixture-reviewer",
+          gateEligible: true, type: "review", result: scenario.outcome ?? "pass",
+          reviewer: "fixture-reviewer", findings: ["Synthetic review"],
+          time: new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString(),
+          subject: { ...subject, runId, ...(scenario.stale ? { candidateId: "candidate:other" } : {}) },
+          ...(scenario.frontier ? { resourceId: "fixture-frontier", resourceCostClass: "scarce-frontier" } : {}),
+        });
+      }
+      if (scenario.decision) {
+        const runId = "decision-fixture";
+        records.push({
+          id: "evidence-decision-fixture", taskId: "0001", runId, agent: "fixture-owner",
+          gateEligible: true, type: "human-decision", result: scenario.decision === "changes-required" ? "changes_requested" : "pass", actor: "fixture-operator",
+          trustModel: "operator-asserted", time: "2026-02-01T00:00:00.000Z",
+          decision: scenario.decision === "grant" ? "grant-review-passes" : scenario.decision === "changes-required" ? "changes-required" : "accept-current",
+          ...(scenario.decision === "grant" ? { reviewBudgetGrant: 2 } : scenario.decision === "changes-required" ? {} : { resolvedBlocker: "review-budget-exhausted" }),
+          subject: { ...subject, runId, ...(scenario.decision === "stale-accept" ? { candidateId: "candidate:other" } : {}) },
+        });
+      }
+      await writeFile(journalPath, scenario.malformed ? "operator approval required; review budget exhausted\n" : records.map((record) => JSON.stringify(record)).join("\n") + "\n");
+      if (scenario.unreadableSessions) {
+        await mkdir(join(directory, ".agentic/sessions"), { recursive: true });
+        await writeFile(join(directory, ".agentic/sessions/work"), "not a directory");
+      }
+      const attention = await runCli(["attention", "--json"], directory);
+      assert.equal(attention.exitCode, 0, attention.stdout + attention.stderr);
+      const item = JSON.parse(attention.stdout).items[0];
+      t.diagnostic(JSON.stringify({ scenario: scenario.name, ...item }));
+      assert.equal(item.needsHuman, scenario.needsHuman);
+      assert.equal(item.assuranceStatus, scenario.assurance);
+      assert.equal(item.reviewEscalation, scenario.escalation);
+      assert.match(item.nextAction, scenario.action);
+      if (scenario.name === "missing review") {
+        assert.deepEqual(item.blockers, ["Missing independent review evidence."]);
+        const gate = await runCli(["task", "gate", "0001"], directory);
+        assert.equal(gate.exitCode, 1);
+        assert.match(gate.stdout, /Missing independent review evidence/);
+      }
+      if (scenario.name.includes("bounded list")) {
+        assert.equal(item.blockers.length, 8);
+        assert.ok(item.blockers.every((blocker: string) => !/budget/.test(blocker)));
+      }
+      const status = await runCli(["status", "--detail"], directory);
+      assert.equal(status.exitCode, 0, status.stderr);
+      if (scenario.blocked) assert.match(status.stdout, /resolve: Missing independent review evidence/);
+    });
+  });
+}
+
 interface SessionFixtureOptions {
   resourceId: string;
   role?: string;
