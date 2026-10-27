@@ -7,6 +7,7 @@ import { observedExecFile } from "../perf/index.js";
 import type { TaskEvidenceCandidateSubject } from "./evidence.js";
 
 const MAX_WITNESS_ENTRIES = 50_000;
+type WitnessMode = boolean | "ancestor";
 
 export class DiagnosticSnapshotError extends Error {
   constructor(message: string) {
@@ -44,13 +45,15 @@ async function metadata(path: string): Promise<string> {
 }
 
 /** Optimistic, bounded version witness. It never reads journal/task contents. */
-async function witness(roots: ReadonlyMap<string, boolean>): Promise<Map<string, string>> {
+async function witness(roots: ReadonlyMap<string, WitnessMode>): Promise<Map<string, string>> {
   const result = new Map<string, string>();
   const ancestors = new Set<string>();
   const visit = async (path: string, recursive: boolean): Promise<void> => {
     if (result.has(path)) return;
     if (result.size >= MAX_WITNESS_ENTRIES) throw new DiagnosticSnapshotError("input metadata exceeds the consistency bound");
-    result.set(path, await metadata(path));
+    const version = await metadata(path);
+    if (["EACCES", "EPERM"].includes(version)) throw new DiagnosticSnapshotError("input metadata cannot be inspected");
+    result.set(path, version);
     if (!recursive) return;
     let directory: boolean;
     try { directory = (await stat(path)).isDirectory(); }
@@ -75,38 +78,70 @@ async function witness(roots: ReadonlyMap<string, boolean>): Promise<Map<string,
       for (const entry of entries.sort()) await visit(join(path, entry), true);
     } finally { ancestors.delete(identity); }
   };
-  for (const [path, recursive] of roots) await visit(path, recursive);
+  for (const [path, recursive] of roots) await visit(path, recursive === true);
   return result;
 }
 
+function inputChanged(path: string, before: ReadonlyMap<string, string>, after: ReadonlyMap<string, string>, roots: ReadonlyMap<string, WitnessMode>): boolean {
+  if (before.get(path) === after.get(path)) return false;
+  if (roots.get(path) !== "ancestor") return true;
+  const directoryFields = (value: string | undefined): string[] | undefined => {
+    if (!value?.startsWith("[")) return undefined;
+    const fields: unknown = JSON.parse(value);
+    return Array.isArray(fields) && fields.length === 6 && fields.every((field) => typeof field === "string")
+      && (BigInt(fields[2]) & 0o170000n) === 0o040000n ? fields : undefined;
+  };
+  const prior = directoryFields(before.get(path)), current = directoryFields(after.get(path));
+  if (!prior || !current || prior.slice(0, 3).some((field, index) => field !== current[index])) return true;
+  // An ancestor's unrelated child activity (notably other /tmp fixtures) does
+  // not change this input's location. Rename-and-restore changes both the
+  // directory ctime and its parent entry. Keep full checks on direct parents
+  // and symlinks; only remote ordinary ancestors use this namespace check.
+  const parent = dirname(path);
+  return parent !== path && prior[5] !== current[5]
+    && before.get(parent) !== after.get(parent);
+}
+
 /** Guard lexical paths, symlink resolution and missing-input create/remove cycles. */
-async function watchInputPath(roots: Map<string, boolean>, path: string, links = new Set<string>()): Promise<void> {
+async function watchInputPath(roots: Map<string, WitnessMode>, path: string, links = new Set<string>(), discovered = new Set<string>()): Promise<void> {
   const absolute = resolve(path);
-  const add = (input: string) => {
-    if (roots.has(input)) return;
+  const add = (input: string, mode: WitnessMode = false) => {
+    if (roots.has(input)) {
+      if (roots.get(input) === "ancestor" && mode !== "ancestor") roots.set(input, mode);
+      return;
+    }
     if (roots.size >= MAX_WITNESS_ENTRIES) throw new DiagnosticSnapshotError("input metadata exceeds the consistency bound");
-    roots.set(input, false);
+    roots.set(input, mode);
   };
   const followLink = async (input: string): Promise<void> => {
     try {
       if (!(await lstat(input)).isSymbolicLink()) return;
+      add(input);
       if (links.has(input) || links.size >= 64) throw new DiagnosticSnapshotError("cyclic or excessive input symlink chain");
-      await watchInputPath(roots, resolve(dirname(input), await readlink(input)), new Set([...links, input]));
+      await watchInputPath(roots, resolve(dirname(input), await readlink(input)), new Set([...links, input]), discovered);
     } catch (error) {
       if (!["ENOENT", "ENOTDIR"].includes(errorCode(error))) throw error;
     }
   };
   add(absolute);
+  if (discovered.has(absolute)) return;
   await followLink(absolute);
   let parent = dirname(absolute);
+  let missingParent = true;
+  const visited = [absolute];
   for (;;) {
-    add(parent);
+    add(parent, missingParent ? false : "ancestor");
+    if (discovered.has(parent)) break;
+    visited.push(parent);
     await followLink(parent);
-    if (!["ENOENT", "ENOTDIR"].includes(await metadata(parent))) return;
+    if (missingParent && !["ENOENT", "ENOTDIR"].includes(await metadata(parent))) missingParent = false;
     const next = dirname(parent);
-    if (next === parent) return;
+    if (next === parent) break;
     parent = next;
   }
+  // Only discovery is reused. Every registered path is still re-statted by
+  // the closing witness; no observed version is refreshed through this set.
+  for (const input of visited) discovered.add(input);
 }
 
 async function git(root: string, args: string[]): Promise<string> {
@@ -121,7 +156,8 @@ export class TaskDiagnosticSnapshot {
   private readonly values = new Map<string, Promise<unknown>>();
   private readonly bytes = new Map<string, Promise<Buffer>>();
   private readonly subjects = new Map<string, string>();
-  private readonly roots = new Map<string, boolean>();
+  private readonly roots = new Map<string, WitnessMode>();
+  private readonly discoveredInputs = new Set<string>();
   private versions = new Map<string, string>();
   private gitIdentity = "";
   readonly rootDirectory: string;
@@ -242,7 +278,7 @@ export class TaskDiagnosticSnapshot {
   /** Include the nearest existing parent: creating and removing an initially
    * absent input must not look unchanged at the final witness. */
   private async watchPath(path: string): Promise<void> {
-    await watchInputPath(this.roots, path);
+    await watchInputPath(this.roots, path, new Set(), this.discoveredInputs);
   }
 
   private async gitConfiguration(): Promise<string> {
@@ -309,7 +345,7 @@ export class TaskDiagnosticSnapshot {
     const state = await this.gitState();
     const after = await witness(this.roots);
     const changed = [...new Set([...this.versions.keys(), ...after.keys()])]
-      .find((path) => this.versions.get(path) !== after.get(path));
+      .find((path) => inputChanged(path, this.versions, after, this.roots));
     if (state !== this.gitIdentity || changed !== undefined) {
       throw new DiagnosticSnapshotError(`inputs changed during capture${changed ? ` (${relative(this.rootDirectory, changed).slice(0, 160)})` : " (Git state)"}`);
     }
@@ -317,7 +353,7 @@ export class TaskDiagnosticSnapshot {
 
   static async run<T>(root: string, taskDirectory: string | undefined, project: (snapshot: TaskDiagnosticSnapshot) => Promise<T>): Promise<T> {
     const configPath = join(root, ".agentic/config.json");
-    const configRoots = new Map<string, boolean>();
+    const configRoots = new Map<string, WitnessMode>();
     await watchInputPath(configRoots, configPath);
     const configVersions = await witness(configRoots);
     const beforeConfig = configVersions.get(resolve(configPath))!;
@@ -334,7 +370,7 @@ export class TaskDiagnosticSnapshot {
       }
       snapshot.gitIdentity = await snapshot.gitState();
       snapshot.versions = await witness(snapshot.roots);
-      if ([...configVersions].some(([path, version]) => snapshot.versions.get(path) !== version)) throw new DiagnosticSnapshotError("configuration changed during capture");
+      if ([...configVersions.keys()].some((path) => inputChanged(path, configVersions, snapshot.versions, configRoots))) throw new DiagnosticSnapshotError("configuration changed during capture");
       const result = await project(snapshot);
       await snapshot.finish();
       return result;
@@ -342,6 +378,11 @@ export class TaskDiagnosticSnapshot {
       snapshot.active = false;
       snapshot.values.clear();
       snapshot.bytes.clear();
+      snapshot.subjects.clear();
+      snapshot.roots.clear();
+      snapshot.versions.clear();
+      snapshot.discoveredInputs.clear();
+      snapshot.gitIdentity = "";
     }
   }
 }

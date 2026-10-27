@@ -3,7 +3,7 @@ import { summarizeStatus } from "../status/index.js";
 import { buildAttentionView } from "../status/attention.js";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import fsPromises, { appendFile, chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import fsPromises, { appendFile, chmod, mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10903,4 +10903,51 @@ test("diagnostic snapshots guard newly discovered byte inputs and reject symlink
     await symlink("link", target);
     await assert.rejects(withDiagnosticSnapshot(repository, ".tasks", (snapshot) => snapshot.readBytes(repository, link)), /cyclic or excessive input symlink chain/);
   });
+});
+
+test("diagnostic snapshots reject restored non-immediate symlink and directory ancestors", async () => {
+  for (const kind of ["symlink", "directory"] as const) {
+    await withTempDirectory(async (directory) => {
+      const repository = join(directory, "repository");
+      const fixture = await setupDiagnosticRepo(repository, 1);
+      const journal = join(repository, TASK_EVIDENCE_PATH);
+      const evidence = await readFile(journal);
+      await rm(journal);
+      const external = join(directory, "external");
+      const original = join(external, "original"), passing = join(external, "passing");
+      await mkdir(join(original, "nested"), { recursive: true });
+      await mkdir(join(passing, "nested"), { recursive: true });
+      await writeFile(join(original, "nested/evidence.jsonl"), "");
+      await writeFile(join(passing, "nested/evidence.jsonl"), evidence);
+      const active = join(external, "active"), saved = join(external, "saved");
+      if (kind === "symlink") await symlink(original, active);
+      else await rename(original, active);
+      await symlink(join(active, "nested/evidence.jsonl"), journal);
+      assert.equal((await evaluateTaskCompletionGate(fixture.options)).passed, false);
+      await assert.rejects(withDiagnosticSnapshot(repository, ".tasks", async (snapshot) => {
+        await rename(active, saved);
+        if (kind === "symlink") await symlink(passing, active);
+        else await rename(passing, active);
+        const gate = await evaluateTaskCompletionGate({ ...fixture.options, diagnosticSnapshot: snapshot });
+        if (kind === "symlink") await rm(active);
+        else await rename(active, passing);
+        await rename(saved, active);
+        assert.equal(gate.passed, true, `${kind}: unchecked ancestor replacement would mix inputs`);
+        return gate;
+      }), /Diagnostic snapshot unavailable/, kind);
+      assert.equal((await evaluateTaskCompletionGate(fixture.options)).passed, false);
+      const stable = await withDiagnosticSnapshot(repository, ".tasks", async (snapshot) => {
+        // Unrelated children of remote ancestors must not masquerade as an
+        // input rename: the ancestor's own parent entry remains unchanged.
+        if (kind === "directory") {
+          await mkdir(join(active, "unrelated"));
+          await rm(join(active, "unrelated"), { recursive: true });
+        }
+        const sibling = await mkdtemp(join(tmpdir(), "apk-unrelated-sibling-"));
+        await rm(sibling, { recursive: true });
+        return evaluateTaskCompletionGate({ ...fixture.options, diagnosticSnapshot: snapshot });
+      });
+      assert.equal(stable.passed, false);
+    });
+  }
 });

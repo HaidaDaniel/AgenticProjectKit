@@ -51,7 +51,10 @@ async function witness(roots) {
             return;
         if (result.size >= MAX_WITNESS_ENTRIES)
             throw new DiagnosticSnapshotError("input metadata exceeds the consistency bound");
-        result.set(path, await metadata(path));
+        const version = await metadata(path);
+        if (["EACCES", "EPERM"].includes(version))
+            throw new DiagnosticSnapshotError("input metadata cannot be inspected");
+        result.set(path, version);
         if (!recursive)
             return;
         let directory;
@@ -89,26 +92,53 @@ async function witness(roots) {
         }
     };
     for (const [path, recursive] of roots)
-        await visit(path, recursive);
+        await visit(path, recursive === true);
     return result;
 }
+function inputChanged(path, before, after, roots) {
+    if (before.get(path) === after.get(path))
+        return false;
+    if (roots.get(path) !== "ancestor")
+        return true;
+    const directoryFields = (value) => {
+        if (!value?.startsWith("["))
+            return undefined;
+        const fields = JSON.parse(value);
+        return Array.isArray(fields) && fields.length === 6 && fields.every((field) => typeof field === "string")
+            && (BigInt(fields[2]) & 61440n) === 16384n ? fields : undefined;
+    };
+    const prior = directoryFields(before.get(path)), current = directoryFields(after.get(path));
+    if (!prior || !current || prior.slice(0, 3).some((field, index) => field !== current[index]))
+        return true;
+    // An ancestor's unrelated child activity (notably other /tmp fixtures) does
+    // not change this input's location. Rename-and-restore changes both the
+    // directory ctime and its parent entry. Keep full checks on direct parents
+    // and symlinks; only remote ordinary ancestors use this namespace check.
+    const parent = dirname(path);
+    return parent !== path && prior[5] !== current[5]
+        && before.get(parent) !== after.get(parent);
+}
 /** Guard lexical paths, symlink resolution and missing-input create/remove cycles. */
-async function watchInputPath(roots, path, links = new Set()) {
+async function watchInputPath(roots, path, links = new Set(), discovered = new Set()) {
     const absolute = resolve(path);
-    const add = (input) => {
-        if (roots.has(input))
+    const add = (input, mode = false) => {
+        if (roots.has(input)) {
+            if (roots.get(input) === "ancestor" && mode !== "ancestor")
+                roots.set(input, mode);
             return;
+        }
         if (roots.size >= MAX_WITNESS_ENTRIES)
             throw new DiagnosticSnapshotError("input metadata exceeds the consistency bound");
-        roots.set(input, false);
+        roots.set(input, mode);
     };
     const followLink = async (input) => {
         try {
             if (!(await lstat(input)).isSymbolicLink())
                 return;
+            add(input);
             if (links.has(input) || links.size >= 64)
                 throw new DiagnosticSnapshotError("cyclic or excessive input symlink chain");
-            await watchInputPath(roots, resolve(dirname(input), await readlink(input)), new Set([...links, input]));
+            await watchInputPath(roots, resolve(dirname(input), await readlink(input)), new Set([...links, input]), discovered);
         }
         catch (error) {
             if (!["ENOENT", "ENOTDIR"].includes(errorCode(error)))
@@ -116,18 +146,29 @@ async function watchInputPath(roots, path, links = new Set()) {
         }
     };
     add(absolute);
+    if (discovered.has(absolute))
+        return;
     await followLink(absolute);
     let parent = dirname(absolute);
+    let missingParent = true;
+    const visited = [absolute];
     for (;;) {
-        add(parent);
+        add(parent, missingParent ? false : "ancestor");
+        if (discovered.has(parent))
+            break;
+        visited.push(parent);
         await followLink(parent);
-        if (!["ENOENT", "ENOTDIR"].includes(await metadata(parent)))
-            return;
+        if (missingParent && !["ENOENT", "ENOTDIR"].includes(await metadata(parent)))
+            missingParent = false;
         const next = dirname(parent);
         if (next === parent)
-            return;
+            break;
         parent = next;
     }
+    // Only discovery is reused. Every registered path is still re-statted by
+    // the closing witness; no observed version is refreshed through this set.
+    for (const input of visited)
+        discovered.add(input);
 }
 async function git(root, args) {
     return (await observedExecFile("git", ["--no-optional-locks", ...args], {
@@ -141,6 +182,7 @@ export class TaskDiagnosticSnapshot {
     bytes = new Map();
     subjects = new Map();
     roots = new Map();
+    discoveredInputs = new Set();
     versions = new Map();
     gitIdentity = "";
     rootDirectory;
@@ -271,7 +313,7 @@ export class TaskDiagnosticSnapshot {
     /** Include the nearest existing parent: creating and removing an initially
      * absent input must not look unchanged at the final witness. */
     async watchPath(path) {
-        await watchInputPath(this.roots, path);
+        await watchInputPath(this.roots, path, new Set(), this.discoveredInputs);
     }
     async gitConfiguration() {
         // Git supplies its platform-specific default config/attribute locations,
@@ -345,7 +387,7 @@ export class TaskDiagnosticSnapshot {
         const state = await this.gitState();
         const after = await witness(this.roots);
         const changed = [...new Set([...this.versions.keys(), ...after.keys()])]
-            .find((path) => this.versions.get(path) !== after.get(path));
+            .find((path) => inputChanged(path, this.versions, after, this.roots));
         if (state !== this.gitIdentity || changed !== undefined) {
             throw new DiagnosticSnapshotError(`inputs changed during capture${changed ? ` (${relative(this.rootDirectory, changed).slice(0, 160)})` : " (Git state)"}`);
         }
@@ -371,7 +413,7 @@ export class TaskDiagnosticSnapshot {
             }
             snapshot.gitIdentity = await snapshot.gitState();
             snapshot.versions = await witness(snapshot.roots);
-            if ([...configVersions].some(([path, version]) => snapshot.versions.get(path) !== version))
+            if ([...configVersions.keys()].some((path) => inputChanged(path, configVersions, snapshot.versions, configRoots)))
                 throw new DiagnosticSnapshotError("configuration changed during capture");
             const result = await project(snapshot);
             await snapshot.finish();
@@ -381,6 +423,11 @@ export class TaskDiagnosticSnapshot {
             snapshot.active = false;
             snapshot.values.clear();
             snapshot.bytes.clear();
+            snapshot.subjects.clear();
+            snapshot.roots.clear();
+            snapshot.versions.clear();
+            snapshot.discoveredInputs.clear();
+            snapshot.gitIdentity = "";
         }
     }
 }
