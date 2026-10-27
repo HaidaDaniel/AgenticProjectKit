@@ -10951,3 +10951,47 @@ test("diagnostic snapshots reject restored non-immediate symlink and directory a
     });
   }
 });
+
+test("diagnostic snapshots guard linked registry shards and recursive store entries", async () => {
+  await withTempDirectory(async (directory) => {
+    const repository = join(directory, "repository");
+    const fixture = await setupDiagnosticRepo(repository, 1);
+    const shard = join(repository, ".agentic/agents/snapshot-owner.json");
+    const registered = await readFile(shard, "utf8");
+    await rm(shard);
+    const external = join(directory, "external");
+    const original = join(external, "original"), passing = join(external, "passing");
+    await mkdir(join(original, "nested"), { recursive: true });
+    await mkdir(join(passing, "nested"), { recursive: true });
+    await writeFile(join(original, "nested/agent.json"), JSON.stringify({ ...JSON.parse(registered), id: "other-agent" }));
+    await writeFile(join(passing, "nested/agent.json"), registered);
+    const link = join(external, "link"), saved = join(external, "saved");
+    await symlink(original, link);
+    await symlink(join(link, "nested/agent.json"), shard);
+    assert.equal((await evaluateTaskCompletionGate(fixture.options)).passed, false);
+    await assert.rejects(withDiagnosticSnapshot(repository, ".tasks", async (snapshot) => {
+      await rename(link, saved);
+      await symlink(passing, link);
+      const gate = await evaluateTaskCompletionGate({ ...fixture.options, diagnosticSnapshot: snapshot });
+      await rm(link); await rename(saved, link);
+      assert.equal(gate.passed, true, "unchecked shard ancestry would accept unregistered verification");
+      return gate;
+    }), /Diagnostic snapshot unavailable/);
+    assert.equal((await evaluateTaskCompletionGate(fixture.options)).passed, false);
+    // Exercise both file and directory links found inside every recursive
+    // store, without making the normal readers accept malformed records.
+    for (const store of [".agentic/agents", ".agentic/runs", ".agentic/sessions/work", ".tasks"])
+      for (const kind of ["file", "directory"]) {
+        const path = join(repository, store, `linked-${kind}`);
+        await mkdir(join(repository, store), { recursive: true });
+        await symlink(kind === "file" ? join(link, "nested/agent.json") : join(link, "nested"), path);
+        await assert.rejects(withDiagnosticSnapshot(repository, ".tasks", async () => {
+          await rename(link, saved);
+          await symlink(passing, link);
+          await readFile(kind === "file" ? path : join(path, "agent.json"));
+          await rm(link); await rename(saved, link);
+        }), /Diagnostic snapshot unavailable/, `${store}/${kind}`);
+        await rm(path);
+      }
+  });
+});

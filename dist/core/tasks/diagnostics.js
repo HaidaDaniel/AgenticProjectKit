@@ -46,6 +46,7 @@ async function metadata(path) {
 async function witness(roots) {
     const result = new Map();
     const ancestors = new Set();
+    const discoveredLinks = new Set();
     const visit = async (path, recursive) => {
         if (result.has(path))
             return;
@@ -55,6 +56,10 @@ async function witness(roots) {
         if (["EACCES", "EPERM"].includes(version))
             throw new DiagnosticSnapshotError("input metadata cannot be inspected");
         result.set(path, version);
+        // A recursive store can contain linked shards or directories that its
+        // reader opens directly. Their external ancestry is an input too.
+        if (version.startsWith("[["))
+            await watchInputPath(roots, path, new Set(), discoveredLinks);
         if (!recursive)
             return;
         let directory;
@@ -223,7 +228,12 @@ export class TaskDiagnosticSnapshot {
             value = (async () => {
                 await this.watchPath(absolute);
                 const additions = new Map([...this.roots].filter(([input]) => !this.versions.has(input)));
-                for (const [input, version] of await witness(additions)) {
+                const addedVersions = await witness(additions);
+                for (const [input, mode] of additions) {
+                    if (!this.roots.has(input) || (this.roots.get(input) === "ancestor" && mode !== "ancestor"))
+                        this.roots.set(input, mode);
+                }
+                for (const [input, version] of addedVersions) {
                     if (!this.versions.has(input))
                         this.versions.set(input, version);
                 }

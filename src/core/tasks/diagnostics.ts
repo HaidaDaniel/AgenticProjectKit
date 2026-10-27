@@ -45,15 +45,19 @@ async function metadata(path: string): Promise<string> {
 }
 
 /** Optimistic, bounded version witness. It never reads journal/task contents. */
-async function witness(roots: ReadonlyMap<string, WitnessMode>): Promise<Map<string, string>> {
+async function witness(roots: Map<string, WitnessMode>): Promise<Map<string, string>> {
   const result = new Map<string, string>();
   const ancestors = new Set<string>();
+  const discoveredLinks = new Set<string>();
   const visit = async (path: string, recursive: boolean): Promise<void> => {
     if (result.has(path)) return;
     if (result.size >= MAX_WITNESS_ENTRIES) throw new DiagnosticSnapshotError("input metadata exceeds the consistency bound");
     const version = await metadata(path);
     if (["EACCES", "EPERM"].includes(version)) throw new DiagnosticSnapshotError("input metadata cannot be inspected");
     result.set(path, version);
+    // A recursive store can contain linked shards or directories that its
+    // reader opens directly. Their external ancestry is an input too.
+    if (version.startsWith("[[")) await watchInputPath(roots, path, new Set(), discoveredLinks);
     if (!recursive) return;
     let directory: boolean;
     try { directory = (await stat(path)).isDirectory(); }
@@ -201,7 +205,11 @@ export class TaskDiagnosticSnapshot {
       value = (async () => {
         await this.watchPath(absolute);
         const additions = new Map([...this.roots].filter(([input]) => !this.versions.has(input)));
-        for (const [input, version] of await witness(additions)) {
+        const addedVersions = await witness(additions);
+        for (const [input, mode] of additions) {
+          if (!this.roots.has(input) || (this.roots.get(input) === "ancestor" && mode !== "ancestor")) this.roots.set(input, mode);
+        }
+        for (const [input, version] of addedVersions) {
           if (!this.versions.has(input)) this.versions.set(input, version);
         }
         return load();
