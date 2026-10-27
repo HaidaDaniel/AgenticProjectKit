@@ -1,6 +1,6 @@
 # Task 0229 - Reuse one invocation-local diagnostic snapshot for task evidence and scope reads
 
-State: doing
+State: done
 Owner: codex-corrective-0229
 Mode: maintenance
 Lane: bugfix
