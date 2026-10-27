@@ -1,7 +1,7 @@
 # Task 0242 - Validate the v0.5.2 patch release candidate before publication
 
-State: todo
-Owner: none
+State: doing
+Owner: codex-release-v052
 Mode: production
 Lane: release
 Type: release

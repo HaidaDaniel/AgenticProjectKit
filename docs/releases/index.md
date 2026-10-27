@@ -2,7 +2,7 @@
 
 <!-- APK_VALIDATED_RELEASE: v0.5.1 -->
 
-The current package/candidate version is `0.5.1`.
+The current package/candidate version is `0.5.2`.
 The latest validated tagged release is [v0.5.1](v0.5.1.md), with the separate
 [post-tag validation record](../delivery/workflow-v0.5.1-post-release.md).
 Its annotated tag peels to candidate `e45760b8d68c0d5955e99b50a6ac9ca064952524`.
@@ -21,6 +21,8 @@ For each release, `docs/releases/vX.Y.Z.md` is its canonical narrative note. A s
 post-tag validation evidence; it supplements the note and does not repeat its change list.
 The tagged note contains only facts known before publication and is never backfilled with
 post-tag results.
+
+The [v0.5.2 candidate note](v0.5.2.md) records corrective changes under pre-tag validation. Its publication and actual-tag validation are pending.
 
 ## Versioned release records
 

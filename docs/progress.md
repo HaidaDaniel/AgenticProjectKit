@@ -2,7 +2,7 @@
 
 ## Current state
 
-Task 0242 is planned: validate one frozen 0.5.2 pre-tag candidate with canonical local checks, exact-SHA hosted CI, installed consumer smoke and independent review. Publication follows only after its gate; actual-tag validation and stable-document promotion remain subsequent work.
+Task 0242 is doing with owner `codex-release-v052`: version 0.5.2 and pre-tag notes are prepared after all corrective dependencies completed. One frozen candidate must pass canonical local checks, exact-SHA hosted CI, installed consumer smoke and independent review before publication; actual-tag validation and stable-document promotion follow.
 
 Task 0241 is done at amended candidate `bc4acc0` (source fix `f750377`): seven current canonical automated checks including 59 command tests, report `evidence-1793137959310-vxb31o`, independent PASS `evidence-1793138095302-miz2qr`, and gate passed. The operator approved only the exact clean-build command correction, applied via epoch `08a00dfa85e481a4acc185af4753933470635d690c68f2bb5dd5f32ffd733a02`; scope and acceptance were unchanged. The same valid 810-character source now issues a marked 320-character handoff without changing canonical bytes. Twenty-two producer fixtures and six fresh independent counterexamples cover Unicode, absent text, fallback and strict parser bounds.
 

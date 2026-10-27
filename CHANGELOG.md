@@ -12,6 +12,12 @@ version. During pre-tag work, the package may advance while this entry continues
 the previous validated release. See the [release index](docs/releases/index.md) for the
 canonical version marker and promotion chronology.
 
+## Candidate under validation
+
+The [v0.5.2 candidate note](docs/releases/v0.5.2.md) describes the corrective patch
+under validation. v0.5.1 remains the validated installation target until publication
+and actual-tag checks finish.
+
 ## Unreleased work
 
 There is no `Unreleased` section. Proposed and active work belongs in task contracts and
