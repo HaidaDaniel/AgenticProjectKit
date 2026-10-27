@@ -6,7 +6,7 @@ import { appendRunLog, requireAgent } from "../agents/index.js";
 import { readAgenticConfigFile } from "../config/index.js";
 import { buildTaskPromptInput, renderTaskPrompt } from "../docs/prompt.js";
 import type { ContextLevel } from "../docs/context.js";
-import { appendTaskEvidence, readTaskEvidence, type TaskEvidenceRecord } from "../tasks/evidence.js";
+import { appendTaskEvidence, readTaskEvidence, TASK_EVIDENCE_PATH, type TaskEvidenceRecord } from "../tasks/evidence.js";
 import {
   captureTaskCompletionCandidate,
   evaluateTaskCompletionGate,
@@ -436,19 +436,49 @@ function workerFindings(result: WorkerResult): string[] {
   return [...new Set(findings)].slice(0, 32);
 }
 
+/** Generated handoffs are bounded summaries; their source run stays authoritative. */
+function handoffText(value: string | undefined): string | undefined {
+  if (!value?.trim()) return undefined;
+  const singleLine = value.replace(/[\r\n]+/g, " ");
+  if (singleLine.length <= 320) return singleLine;
+  const suffix = `… [full: ${TASK_EVIDENCE_PATH}; fromRunId]`;
+  let prefix = "";
+  for (const character of singleLine) {
+    if (prefix.length + character.length > 320 - suffix.length) break;
+    prefix += character;
+  }
+  return prefix.trimEnd() + suffix;
+}
+
+function boundedHandoff(handoff: WorkerHandoff): WorkerHandoff {
+  const findings = handoff.findings.map(handoffText).filter((finding): finding is string => finding !== undefined);
+  const bounded = findings.slice(0, 32);
+  if (findings.length > 32) {
+    bounded[31] = `… [${findings.length - 31} findings omitted; full: ${TASK_EVIDENCE_PATH}; fromRunId]`;
+  }
+  const reason = handoffText(handoff.reason);
+  return {
+    fromRunId: handoff.fromRunId,
+    fromRole: handoff.fromRole,
+    status: handoff.status,
+    findings: bounded,
+    ...(reason === undefined ? {} : { reason }),
+  };
+}
+
 function handoffFromRecord(record: TaskEvidenceRecord): WorkerHandoff | undefined {
   if (!record.workerRole || !record.workerStatus) return undefined;
   const role = record.workerRole as WorkerRole;
   const status = record.workerStatus as WorkerStatus;
   const findings = [...(record.findings ?? [])];
   if (findings.length === 0 && record.summary) findings.push(record.summary);
-  return {
+  return boundedHandoff({
     fromRunId: record.runId,
     fromRole: role,
     status,
-    findings: findings.slice(0, 32),
+    findings,
     ...(record.summary ? { reason: record.summary } : {}),
-  };
+  });
 }
 
 async function resolveLatestHandoff(
@@ -467,13 +497,13 @@ async function resolveLatestHandoff(
     .sort((left, right) => left.time.localeCompare(right.time))
     .at(-1);
   if (!reviewFailure) return undefined;
-  return {
+  return boundedHandoff({
     fromRunId: reviewFailure.runId,
     fromRole: "review",
     status: reviewFailure.result === "changes_requested" ? "changes_requested" : "failed",
-    findings: (reviewFailure.findings ?? [reviewFailure.summary ?? "Review requires fixes."]).slice(0, 32),
+    findings: reviewFailure.findings ?? [reviewFailure.summary ?? "Review requires fixes."],
     ...(reviewFailure.summary ? { reason: reviewFailure.summary } : {}),
-  };
+  });
 }
 
 function summarizeWorkerEvidence(result: WorkerResult): string | undefined {

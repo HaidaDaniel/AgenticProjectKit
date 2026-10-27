@@ -2,7 +2,7 @@
 
 ## Current state
 
-Task 0241 is planned after completed 0230/0239. It addresses the reproduced long review-summary failure when issuing a fix-worker; its narrow contract preserves canonical records and strict external package bounds.
+Task 0241 is doing with owner `codex-corrective-0241`. A disposable review-state task reproduced the fix-package failure from an 810-character canonical summary, with source evidence unchanged. The same 810-character source now issues a fix package with a marked 320-character summary and unchanged journal bytes. Focused producer matrices cover failed-worker and standalone review records, Unicode and fallback findings; malformed canonical/external data remains rejected. Canonical verification and independent review are pending.
 
 Task 0230 is done at candidate `5af3fef`: seven canonical automated checks and all 138 CLI tests passed (`verify-1793137005321-2mgasb`), including twenty operator-boundary scenarios. Gate passed; independent review is not required by this medium-risk policy. Missing/stale review and changes_requested stay agent actions; genuine exhausted budgets, overruns and policy approvals require the operator. Unknown evidence/session usage requests inspection. Current grants/acceptance and truncated blockers are covered. The disposable pre-fix sole-review-blocker fixture and actual post-fix JSON are retained in `/tmp/apk-0230-before.json` and `/tmp/apk-0230-canonical-command-output.log`.
 

@@ -12,7 +12,8 @@ import { execFileSync } from "node:child_process";
 import { createWorkerPackage, parseWorkerPackage } from "../core/work/contract.js";
 import { resolveExecutionRoute, resolveAssurancePlan } from "../core/execution/index.js";
 import { resolveTaskPolicy } from "../core/tasks/policy.js";
-import { parseTaskMarkdown } from "../core/tasks/index.js";
+import { captureTaskEvidenceSubject, parseTaskMarkdown } from "../core/tasks/index.js";
+import { appendTaskEvidence } from "../core/tasks/evidence.js";
 import { dispatchPublicCommand, PUBLIC_COMMANDS } from "./command-registry.js";
 
 interface CommandResult {
@@ -2027,6 +2028,101 @@ test("status and attention refuse an invocation whose journal changes during pro
       if (args[0] === "attention") {
         assert.deepEqual(Object.keys(JSON.parse(next.stdout)).sort(), ["diagnostics", "items", "workers"]);
       }
+    });
+  }
+});
+
+test("fix packages bound canonical handoff summaries and preserve complete source evidence", async (t) => {
+  for (const producer of ["worker", "standalone"] as const) {
+    for (const [name, summary, findings] of [
+      ["short-spacing", "  short summary  ", ["  short finding  "]],
+      ["finding-boundary", undefined, ["f".repeat(319), "g".repeat(320)]],
+      ["319", "r".repeat(319), ["short"]],
+      ["320", "r".repeat(320), ["short"]],
+      ["321", "r".repeat(321), ["short"]],
+      ["joined", Array.from({ length: 4 }, (_, i) => `${i}: ${"r".repeat(198)}`).join("; "), Array.from({ length: 4 }, (_, i) => `${i}: ${"r".repeat(198)}`)],
+      ["unicode", "😀".repeat(400), ["уточнение 😀"]],
+      ["fallback", "r".repeat(810), []],
+      ["no-summary", undefined, ["short finding"]],
+      ["no-text", undefined, []],
+      ["32-findings", "summary", Array.from({ length: 32 }, (_, i) => `${i}: ${"r".repeat(315)}`)],
+    ] as const) {
+      await withTempDirectory(async (directory) => {
+        await writeExecutionRepo(directory);
+        const markdown = buildTaskMarkdown("0001", "Handoff boundary", "review", "handoff-owner");
+        await writeFile(join(directory, ".tasks/0001-task.md"), markdown);
+        const registered = await runCommand(["agent", "register", "--id", "handoff-owner", "--platform", "fixture", "--model", "fixture"], directory);
+        assert.equal(registered.exitCode, 0, registered.stderr);
+        const subject = await captureTaskEvidenceSubject(directory, parseTaskMarkdown(markdown), []);
+        const source = await appendTaskEvidence(directory, {
+          taskId: "0001", runId: "handoff-source", agent: "fixture-reviewer", gateEligible: false,
+          subject, result: producer === "worker" ? "fail" : "changes_requested",
+          type: producer === "worker" ? "report" : "review", summary, findings: [...findings],
+          ...(producer === "worker"
+            ? { workerProtocol: "apk-worker-v1", workerRole: "implement", workerStatus: "failed" }
+            : { reviewer: "fixture-reviewer" }),
+        });
+        const journalPath = join(directory, ".agentic/evidence.jsonl");
+        const original = await readFile(journalPath, "utf8");
+        const issued = await runCommand(["work", "0001", "--owner", "handoff-owner", "--target", "codex", "--role", "fix", "--level", "1", "--write-session", "--json"], directory);
+        assert.equal(issued.exitCode, 0, issued.stderr);
+        const payload = JSON.parse(issued.stdout);
+        const pkg = parseWorkerPackage(payload.workerPackage);
+        const handoff = pkg.handoff!;
+        assert.equal(handoff.fromRunId, source.runId);
+        assert.equal(handoff.fromRole, producer === "worker" ? "implement" : "review");
+        assert.equal(handoff.status, producer === "worker" ? "failed" : "changes_requested");
+        assert.equal(pkg.role, "fix");
+        assert.ok(handoff.findings.length <= 32);
+        for (const value of [...handoff.findings, ...(handoff.reason ? [handoff.reason] : [])]) {
+          assert.ok(value.length <= 320);
+          assert.doesNotMatch(value, /[\r\n]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u);
+        }
+        if (summary && summary.length <= 320) assert.equal(handoff.reason, summary);
+        if (summary && summary.length > 320) assert.match(handoff.reason!, /… \[full: \.agentic\/evidence\.jsonl; fromRunId\]$/);
+        if (!summary) assert.equal(handoff.reason, undefined);
+        if (findings.length > 0) assert.deepEqual(handoff.findings, findings);
+        if (producer === "worker" && findings.length === 0 && summary) {
+          assert.equal(handoff.findings[0], handoff.reason);
+        }
+        assert.equal(await readFile(journalPath, "utf8"), original);
+        assert.ok((await readFile(join(directory, payload.session.package), "utf8")).includes("handoff-source"));
+        assert.throws(() => parseWorkerPackage({ ...pkg, handoff: { ...handoff, reason: "x".repeat(321) } }), /at most 320/);
+        assert.throws(() => parseWorkerPackage({ ...pkg, handoff: { ...handoff, findings: ["x".repeat(321)] } }), /at most 320/);
+        assert.throws(() => parseWorkerPackage({ ...pkg, handoff: { ...handoff, findings: Array(33).fill("finding") } }), /at most 32/);
+        assert.throws(() => parseWorkerPackage({ ...pkg, handoff: { ...handoff, reason: "line\nbreak" } }), /single-line/);
+        t.diagnostic(JSON.stringify({ producer, scenario: name, sourceSummaryLength: summary?.length, reasonLength: handoff.reason?.length, findingLengths: handoff.findings.map((value) => value.length), fromRunId: handoff.fromRunId, canonicalUnchanged: true }));
+      });
+    }
+  }
+});
+
+test("fix issuance preserves strict rejection of malformed canonical handoff sources", async () => {
+  for (const invalid of [
+    { summary: "line\nbreak" },
+    { summary: "x".repeat(1001) },
+    { findings: ["x".repeat(321)] },
+    { findings: ["line\nbreak"] },
+    { findings: Array(33).fill("finding") },
+  ]) {
+    await withTempDirectory(async (directory) => {
+      await writeExecutionRepo(directory);
+      const markdown = buildTaskMarkdown("0001", "Invalid handoff", "review", "handoff-owner");
+      await writeFile(join(directory, ".tasks/0001-task.md"), markdown);
+      await runCommand(["agent", "register", "--id", "handoff-owner", "--platform", "fixture", "--model", "fixture"], directory);
+      const subject = await captureTaskEvidenceSubject(directory, parseTaskMarkdown(markdown), []);
+      const record = {
+        id: "invalid-source", taskId: "0001", runId: "handoff-source", agent: "fixture-reviewer", gateEligible: false,
+        type: "review", result: "changes_requested", reviewer: "fixture-reviewer", time: new Date().toISOString(),
+        subject: { ...subject, runId: "handoff-source" }, ...invalid,
+      };
+      const journalPath = join(directory, ".agentic/evidence.jsonl");
+      const original = JSON.stringify(record) + "\n";
+      await writeFile(journalPath, original);
+      const issued = await runCommand(["work", "0001", "--owner", "handoff-owner", "--target", "codex", "--role", "fix", "--level", "1", "--write-session", "--json"], directory);
+      assert.equal(issued.exitCode, 1);
+      assert.match(issued.stderr, /Invalid task evidence/);
+      assert.equal(await readFile(journalPath, "utf8"), original);
     });
   }
 });

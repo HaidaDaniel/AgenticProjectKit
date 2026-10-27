@@ -4,7 +4,7 @@ import { join, relative } from "node:path";
 import { appendRunLog, requireAgent } from "../agents/index.js";
 import { readAgenticConfigFile } from "../config/index.js";
 import { buildTaskPromptInput, renderTaskPrompt } from "../docs/prompt.js";
-import { appendTaskEvidence, readTaskEvidence } from "../tasks/evidence.js";
+import { appendTaskEvidence, readTaskEvidence, TASK_EVIDENCE_PATH } from "../tasks/evidence.js";
 import { captureTaskCompletionCandidate, evaluateTaskCompletionGate, readTaskFrontierUsage, } from "../tasks/gate.js";
 import { resolveTaskPolicy } from "../tasks/policy.js";
 import { cleanupPreparedWorkerReview, prepareTaskReview, recordTaskReview, withTaskReviewBudgetLock, } from "../tasks/review.js";
@@ -284,6 +284,37 @@ function workerFindings(result) {
     }
     return [...new Set(findings)].slice(0, 32);
 }
+/** Generated handoffs are bounded summaries; their source run stays authoritative. */
+function handoffText(value) {
+    if (!value?.trim())
+        return undefined;
+    const singleLine = value.replace(/[\r\n]+/g, " ");
+    if (singleLine.length <= 320)
+        return singleLine;
+    const suffix = `… [full: ${TASK_EVIDENCE_PATH}; fromRunId]`;
+    let prefix = "";
+    for (const character of singleLine) {
+        if (prefix.length + character.length > 320 - suffix.length)
+            break;
+        prefix += character;
+    }
+    return prefix.trimEnd() + suffix;
+}
+function boundedHandoff(handoff) {
+    const findings = handoff.findings.map(handoffText).filter((finding) => finding !== undefined);
+    const bounded = findings.slice(0, 32);
+    if (findings.length > 32) {
+        bounded[31] = `… [${findings.length - 31} findings omitted; full: ${TASK_EVIDENCE_PATH}; fromRunId]`;
+    }
+    const reason = handoffText(handoff.reason);
+    return {
+        fromRunId: handoff.fromRunId,
+        fromRole: handoff.fromRole,
+        status: handoff.status,
+        findings: bounded,
+        ...(reason === undefined ? {} : { reason }),
+    };
+}
 function handoffFromRecord(record) {
     if (!record.workerRole || !record.workerStatus)
         return undefined;
@@ -292,13 +323,13 @@ function handoffFromRecord(record) {
     const findings = [...(record.findings ?? [])];
     if (findings.length === 0 && record.summary)
         findings.push(record.summary);
-    return {
+    return boundedHandoff({
         fromRunId: record.runId,
         fromRole: role,
         status,
-        findings: findings.slice(0, 32),
+        findings,
         ...(record.summary ? { reason: record.summary } : {}),
-    };
+    });
 }
 async function resolveLatestHandoff(rootDirectory, taskId) {
     const records = await readTaskEvidence(rootDirectory, taskId);
@@ -314,13 +345,13 @@ async function resolveLatestHandoff(rootDirectory, taskId) {
         .at(-1);
     if (!reviewFailure)
         return undefined;
-    return {
+    return boundedHandoff({
         fromRunId: reviewFailure.runId,
         fromRole: "review",
         status: reviewFailure.result === "changes_requested" ? "changes_requested" : "failed",
-        findings: (reviewFailure.findings ?? [reviewFailure.summary ?? "Review requires fixes."]).slice(0, 32),
+        findings: reviewFailure.findings ?? [reviewFailure.summary ?? "Review requires fixes."],
         ...(reviewFailure.summary ? { reason: reviewFailure.summary } : {}),
-    };
+    });
 }
 function summarizeWorkerEvidence(result) {
     if (!result.evidence || result.evidence.length === 0) {
