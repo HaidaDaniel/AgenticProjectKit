@@ -1,6 +1,6 @@
 # Task 0243 - Validate published v0.5.2 and promote stable documentation
 
-State: doing
+State: done
 Owner: codex-validate-v052
 Mode: maintenance
 Lane: docs
