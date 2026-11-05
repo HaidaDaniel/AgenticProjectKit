@@ -1,7 +1,7 @@
 # Task 0246 - Make CI planning maturity-aware and proportional
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-0244-0251
 Mode: product
 Lane: instructions
 Type: feature

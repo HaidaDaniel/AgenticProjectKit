@@ -2,6 +2,8 @@
 
 ## Current state
 
+Task 0246 is done at candidate `0ea0c94`: planning skills, generated agent policy, mode/testing/task-system/maturity docs, and an accepted ADR now make CI stage-appropriate instead of automatic for discovery or MVP. `quality.required` and approved contracts remain authoritative, `quality.recommended` stays recommended, and Task 0223 remains a separate opt-in feature. Canonical verification `verify-1793885043781-2uw81b` passed quality, contract lint, diff check, and committed-dist currency; the gate passed without independent review under the medium-risk policy.
+
 Task 0245 is done at candidate `21e51f6`: `apk init` and idempotent `apk adopt` prepare `<worktree>/tmp/apk/`, the root-anchored `/tmp/apk/` ignore entry is generated without ignoring the rest of `tmp/`, symlinked or non-directory paths are refused, and ignored scratch is excluded from task scope discovery. Canonical verification `verify-1793884169057-y3dwr0` passed quality, contract lint, diff check, and current committed-dist build; independent review `evidence-1793884877502-i9n3g7` passed and the gate passed. Coverage limits recorded by the reviewer: no TOCTOU symlink-race, Windows junction/case-insensitive, or permission-failure matrix.
 
 Task 0244 is done at candidate `6a69b42`: `docs/getting-started.md` now pins the validated install tag, the documentation checker validates both README and getting-started install commands against the validated-release sentinel, and historical walkthrough versions remain exempt. Canonical verification `verify-1793883440656-0577z0` passed docs tests, docs consistency, contract lint, and diff check; the gate passed without independent review under the low-risk docs policy.
