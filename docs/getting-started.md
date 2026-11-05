@@ -11,10 +11,10 @@ Have Git, Node.js, and pnpm available. The package declares Node.js `>=22.22.1`;
 From the repository root, install the validated release tag as a development dependency:
 
 ```bash
-pnpm add -D agentic-project-kit@git+https://github.com/HaidaDaniel/AgenticProjectKit.git#v0.4.7
+pnpm add -D agentic-project-kit@git+https://github.com/HaidaDaniel/AgenticProjectKit.git#v0.5.2
 ```
 
-Inspect `package.json` and `pnpm-lock.yaml` before committing. The manifest should name the exact `v0.4.7` tag, and the lockfile should record its resolved Git commit. In the clean-directory walkthrough recorded below, pnpm 10.28.1 resolved it to `2797556344eb25cc34d3f51afbe10532147aca85`. If the repository had no manifest, pnpm created both files. For a tooling-only manifest, set `"private": true` if it must not be published, and add `node_modules/` to `.gitignore` when it is not already ignored.
+Inspect `package.json` and `pnpm-lock.yaml` before committing. The manifest should name the exact tag shown in the install command, and the lockfile should record its resolved Git commit. The historical v0.4.7 clean-directory walkthrough recorded below resolved that older tag to `2797556344eb25cc34d3f51afbe10532147aca85`; re-run resolution for the tag you actually install. If the repository had no manifest, pnpm created both files. For a tooling-only manifest, set `"private": true` if it must not be published, and add `node_modules/` to `.gitignore` when it is not already ignored.
 
 Confirm the saved lock and package-local command:
 
@@ -184,4 +184,4 @@ After this walkthrough, `docs/project-note.md` and task `0002` are complete. A f
 
 The flow above was run on 2026-09-26 in a clean temporary Git repository. pnpm 10.28.1 created `package.json` and `pnpm-lock.yaml` from the exact tag; the lock recorded the commit shown in step 1. `init` created 21 files, and after generated-file sync the repository contained `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md`. The task contract was `.tasks/0002-write-the-first-project-note.md`; the committed output was `docs/project-note.md`. Local verification passed one required lint check, the gate passed with no review required, and `done` recorded task `0002` as complete. The walkthrough host used Node.js 24.14.0; that version is not individually validated by the current compatibility policy, so this observation does not extend the documented support boundary.
 
-For APK source development rather than use inside an application repository, follow the separate [contributor quickstart](../README.md#contributor-quickstart-from-source).
+For APK source development rather than use inside an application repository, follow the [contributor checkout guide](../CONTRIBUTING.md#start-from-a-checkout).

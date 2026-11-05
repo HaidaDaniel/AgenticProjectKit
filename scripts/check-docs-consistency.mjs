@@ -6,6 +6,7 @@ const LINK_CHECK_FILES = [
   "README.md",
   "CHANGELOG.md",
   "docs/index.md",
+  "docs/getting-started.md",
   "docs/roadmap.md",
   "docs/progress.md",
   "docs/scope.md",
@@ -86,6 +87,14 @@ function validatedReleaseVersion(markdown, issues) {
 
   const rawVersion = marker[1].slice(1);
   return numericVersion(rawVersion, "docs/releases/index.md", issues, "validated-release sentinel version");
+}
+
+function checkInstallCommand({ file, text, expectedInstall, description, issues }) {
+  const installLines = [...text.matchAll(/^pnpm add -D [^\r\n]+$/gm)];
+  if (installLines.length !== 1 || installLines[0]?.[0] !== expectedInstall) {
+    const line = installLines[0] ? lineNumber(text, installLines[0].index) : 1;
+    report(issues, file, line, `${description} install command must be exactly: ${expectedInstall}`);
+  }
 }
 
 function checkVersionClaim({ file, text, pattern, expected, issues, description, expectedLabel = "validated release" }) {
@@ -470,6 +479,7 @@ export async function checkDocumentationConsistency(root, expectedCliReference) 
   }
 
   const readme = documents.get("README.md") ?? "";
+  const gettingStarted = documents.get("docs/getting-started.md") ?? "";
   const changelog = documents.get("CHANGELOG.md") ?? "";
   const index = documents.get("docs/index.md") ?? "";
   const roadmap = documents.get("docs/roadmap.md") ?? "";
@@ -582,11 +592,8 @@ export async function checkDocumentationConsistency(root, expectedCliReference) 
     } else {
       const gitUrl = repositoryUrl.startsWith("git+") ? repositoryUrl : `git+${repositoryUrl}`;
       const expectedInstall = `pnpm add -D ${packageData.name}@${gitUrl}#v${validatedVersion}`;
-      const installLines = [...readme.matchAll(/^pnpm add -D [^\r\n]+$/gm)];
-      if (installLines.length !== 1 || installLines[0]?.[0] !== expectedInstall) {
-        const line = installLines[0] ? lineNumber(readme, installLines[0].index) : 1;
-        report(issues, "README.md", line, `quickstart install command must be exactly: ${expectedInstall}`);
-      }
+      checkInstallCommand({ file: "README.md", text: readme, expectedInstall, description: "quickstart", issues });
+      checkInstallCommand({ file: "docs/getting-started.md", text: gettingStarted, expectedInstall, description: "getting-started", issues });
     }
   }
 

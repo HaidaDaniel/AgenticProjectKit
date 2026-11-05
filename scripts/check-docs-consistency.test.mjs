@@ -122,6 +122,19 @@ async function fixture(t, taskRows = [{ id: nextTaskId(), state: "done" }], { ve
     "",
     "## Install APK in another repository",
   ].join("\n"));
+  await write(root, "docs/getting-started.md", [
+    "# Getting Started",
+    "",
+    "Install the validated release.",
+    "",
+    "```bash",
+    install,
+    "```",
+    "",
+    "The historical v0.1.0 walkthrough remains recorded history.",
+    "",
+    "[Documentation](index.md)",
+  ].join("\n"));
   await write(root, "CHANGELOG.md", `# Changelog\n\n[v${validatedVersion}](docs/releases/v${validatedVersion}.md) is the latest validated installable release.\n`);
   await write(root, "docs/index.md", `# Documentation\n\n[Latest Release: v${validatedVersion}](releases/v${validatedVersion}.md)\n`);
   await write(root, "docs/roadmap.md", [
@@ -237,6 +250,25 @@ test("the README quickstart install remains pinned to the validated release", as
 
   const issues = await checkDocumentationConsistency(repo.root, cliReference);
   assert.ok(issues.some((issue) => issue.startsWith("README.md:") && issue.includes("quickstart install command")));
+});
+
+test("the getting-started install remains pinned to the validated release", async (t) => {
+  const repo = await fixture(t, undefined, { version: "0.5.0", validatedVersion: "0.4.7" });
+  const path = join(repo.root, "docs/getting-started.md");
+  const source = await readFile(path, "utf8");
+  await write(repo.root, "docs/getting-started.md", source.replace(repo.install, repo.install.replace("v0.4.7", "v0.4.6")));
+
+  const issues = await checkDocumentationConsistency(repo.root, cliReference);
+  assert.ok(issues.some((issue) => issue.startsWith("docs/getting-started.md:") && issue.includes("getting-started install command")));
+});
+
+test("historical getting-started walkthrough versions remain exempt", async (t) => {
+  const repo = await fixture(t, undefined, { version: "0.5.0", validatedVersion: "0.4.7" });
+  const path = join(repo.root, "docs/getting-started.md");
+  const source = await readFile(path, "utf8");
+  await write(repo.root, "docs/getting-started.md", `${source}\nThe v0.3.1 walkthrough used an older tag and hash.\n`);
+
+  assert.deepEqual(await checkDocumentationConsistency(repo.root, cliReference), []);
 });
 
 test("a package candidate below the validated release fails", async (t) => {
