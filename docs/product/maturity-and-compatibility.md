@@ -6,7 +6,7 @@ This policy describes the evidence-backed support boundary for evaluating Agenti
 
 The latest validated, installable release at this policy snapshot is `v0.5.2`. It is a pre-1.0 release under active development. “Validated release” means that the tagged candidate passed the release checks documented for that version; it does not promise a stable public API, long-term support (LTS), service-level agreement, or a fixed support period. See the [v0.5.2 release notes](../releases/v0.5.2.md) and [post-tag validation record](../delivery/workflow-v0.5.2-post-release.md).
 
-Do not infer a broader compatibility guarantee from the package's version number alone. Check the release notes for the exact version being installed and the evidence links below.
+Do not infer a broader compatibility guarantee from the package's version number alone. Check the release notes for the exact version being installed and the evidence links below. Upgrade acceptance remains fixture-based and bounded: see the [downstream upgrade acceptance record](../delivery/downstream-upgrade-acceptance.md).
 
 CI planning for a host project is separate from this APK support matrix. It follows the project's operating mode: discovery and MVP use relevant local checks by default, product recommends minimal clean-checkout CI only after MVP acceptance and when useful, and production uses checks sufficient for real users, integration, publication, and security. `quality.required` and approved task contracts remain authoritative, and `quality.recommended` never becomes required.
 

@@ -104,6 +104,7 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0093](#adr-0093---backlog-items-are-lightweight-tracked-future-work-not-tasks) | accepted | Backlog items are lightweight tracked future work, not tasks | — |
 | [ADR-0094](#adr-0094---backlog-promotion-is-explicit-serialized-and-operator-asserted) | accepted | Backlog promotion is explicit, serialized, and operator-asserted | — |
 | [ADR-0095](#adr-0095---planning-agents-use-the-backlog-only-for-durable-future-ideas) | accepted | Planning agents use the backlog only for durable future ideas | — |
+| [ADR-0096](#adr-0096---downstream-upgrade-acceptance-reuses-existing-compatibility-diagnostics) | accepted | Downstream upgrade acceptance reuses existing compatibility diagnostics | — |
 
 ### ADR index cross-check
 
@@ -1948,3 +1949,23 @@ Planning skills use backlog cards only when the human asks to remember or defer 
 ### Consequences
 
 Planners can preserve durable ideas without inflating the executable task graph. Benefits are bounded to planning context, while the canonical task workflow remains authoritative for work that is ready now. The backlog remains a Git-tracked repository artifact rather than a second database or hidden model state.
+
+## ADR-0096 - Downstream upgrade acceptance reuses existing compatibility diagnostics
+
+Status: accepted
+
+Date: 2026-11-05
+
+### Context
+
+Downstream repositories span pinned tags, legacy config/task formats, and unpinned external installations. A single imperative upgrade command would need package-manager mutation, repository-specific merge decisions, history migration, and rollback authority that APK cannot prove safely.
+
+### Decision
+
+Pinned-tag upgrades, legacy config/task-contract migrations, and unpinned external installations are separate procedures. Acceptance and guidance reuse the existing read-only `doctor`, `adopt --preview`, compatibility, lint, dependency, and generated-instruction surfaces. Fixture-based tests prove classification and the documented sequence. The acceptance record labels observed, inferred, and unverified facts; unavailable private repositories are not claimed validated.
+
+A migration engine, automatic task-history rewrite, downstream repair, or claim of end-to-end validation from fixtures is out of scope. Legacy `agentStyle: caveman` remains a read-only observation and is never changed automatically.
+
+### Consequences
+
+Upgrade guidance remains repository-specific and evidence-bounded without adding a second lifecycle or migration authority. Operators retain the decision to change package pins, task contracts, and host verification, and must revalidate candidate-bound evidence after any contract change.

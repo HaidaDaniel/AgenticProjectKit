@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -8,6 +8,7 @@ import test from "node:test";
 import { runDoctor } from "./index.js";
 import { inspectApkGitignore } from "../init/index.js";
 import { inspectApkInstallation } from "./installation.js";
+import { detectCompatibility } from "../config/compatibility.js";
 
 async function fixture(run: (root: string) => Promise<void>): Promise<void> {
   const root = await mkdtemp(join(tmpdir(), "apk-doctor-"));
@@ -148,6 +149,38 @@ test("installation keeps stale locks, mutable pins and unsupported lock syntax u
     assert.equal((await inspectApkInstallation(root)).locked, "unknown");
     await writeFile(join(root, "package.json"), JSON.stringify({ devDependencies: { "agentic-project-kit": "^0.5.1" } }));
     assert.equal((await inspectApkInstallation(root)).declared, "unfixed");
+  });
+});
+
+test("upgrade acceptance separates pinned, legacy, and unpinned installations", async () => {
+  await fixture(async (root) => {
+    await pinnedFixture(root);
+    const installation = await inspectApkInstallation(root);
+    assert.equal(installation.declared, "pinned");
+    assert.equal(installation.locked, "matched");
+    assert.ok(installation.findings.some((finding) => finding.code === "pinned-declaration"));
+  });
+
+  await fixture(async (root) => {
+    await cp(join(process.cwd(), "src/core/tasks/fixtures/v0.3.1"), root, { recursive: true });
+    await pinnedFixture(root);
+    const compatibility = await detectCompatibility(root);
+    assert.equal(compatibility.overall, "legacy");
+    assert.equal(compatibility.migrationRequired, true);
+    const installation = await inspectApkInstallation(root);
+    assert.equal(installation.declared, "pinned");
+    assert.equal(installation.locked, "matched");
+  });
+
+  await fixture(async (root) => {
+    await writeFile(
+      join(root, "README.md"),
+      "Install APK separately from github:HaidaDaniel/AgenticProjectKit#v0.5.2 before running apkit tasks.\n",
+    );
+    const installation = await inspectApkInstallation(root);
+    assert.equal(installation.declared, "absent");
+    assert.ok(installation.findings.some((finding) => finding.code === "external-prerequisite" && finding.message.includes("reference is present")));
+    assert.ok(!installation.findings.some((finding) => finding.code === "pinned-declaration"));
   });
 });
 

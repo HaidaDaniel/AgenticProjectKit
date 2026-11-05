@@ -507,3 +507,14 @@ subset and finite read limits are documented in [the adoption guide](../adoption
 Unsupported formats and dynamic launchers require manual inspection; diagnostics
 never execute bootstrap scripts, acquire packages, rewrite task history, or
 change the repository-local distribution model.
+
+## Safe upgrade acceptance
+
+The three upgrade shapes are separate: a pinned-tag tooling upgrade, a legacy
+config/task-contract migration, and an unpinned or external installation. The
+bounded, fixture-tested sequence is recorded in
+[downstream upgrade and legacy migration acceptance](../delivery/downstream-upgrade-acceptance.md).
+It uses the existing doctor, adoption, compatibility, lint, dependency, and
+generated-instruction surfaces. It does not add an `apk upgrade` command, rewrite
+task history, repair downstream repositories, or claim unavailable private
+repositories were validated.

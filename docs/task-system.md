@@ -776,6 +776,10 @@ Completed-task provenance retains the historical contract path only when bounded
 Keep archived contracts byte-identical so lifecycle history and old acceptance criteria remain intact. Update affected current documentation links, then run `apk lint --json`, `apk task deps <active-task-id>`, and `node scripts/check-docs-consistency.mjs`. The docs checker covers only its listed documentation sources; inspect other affected links separately. Archive maintenance belongs to its own scoped task, outside a frozen release candidate: moving files changes the candidate and makes existing evidence stale.
 
 
+## Upgrade compatibility
+
+Pinned-tag upgrades, legacy config/task-contract migrations, and unpinned external installations are distinct procedures. Use `apk doctor` and `apk adopt --preview` for bounded compatibility facts, preserve task bytes and evidence, and follow the [safe upgrade acceptance](delivery/downstream-upgrade-acceptance.md) instead of adding a migration engine or rewriting history. Unavailable private repositories remain explicitly unverified.
+
 ## Read-only task compatibility
 
 `apk adopt --preview` and `apk lint` use one bounded canonical-parser inspection of active and archived contracts. Their reports distinguish supported legacy verification headings from invalid metadata or sections, enumerate inspected parser issues, and disclose unreadable/not-inspected files and incomplete coverage. They preserve existing tasks and local evidence; no lifecycle alias or automatic history migration is introduced. Follow the [manual compatibility repair sequence](adoption-flow.md#task-compatibility-and-manual-repair) for explicit semantic decisions, scoped edits, and independent provenance revalidation. A config schema-marker update cannot repair an incompatible task contract.
