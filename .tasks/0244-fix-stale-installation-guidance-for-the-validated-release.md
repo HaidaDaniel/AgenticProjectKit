@@ -1,7 +1,7 @@
 # Task 0244 - Fix stale installation guidance for the validated release
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-0244-0251
 Mode: maintenance
 Lane: docs
 Type: docs
