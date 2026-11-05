@@ -1,7 +1,7 @@
 # Task 0250 - Validate safe downstream upgrade and legacy migration guidance
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-0244-0251
 Mode: maintenance
 Lane: adoption
 Type: migration
