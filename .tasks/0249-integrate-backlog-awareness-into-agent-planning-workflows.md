@@ -1,7 +1,7 @@
 # Task 0249 - Integrate backlog awareness into agent planning workflows
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-0244-0251
 Mode: product
 Lane: instructions
 Type: feature
