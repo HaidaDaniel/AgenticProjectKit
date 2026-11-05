@@ -1,7 +1,7 @@
 # Task 0248 - Promote backlog items into canonical APK tasks safely
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-0244-0251
 Mode: product
 Lane: implementation
 Type: feature
