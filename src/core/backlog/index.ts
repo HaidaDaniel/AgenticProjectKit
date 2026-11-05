@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { lstat, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, mkdir, open, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 export const BACKLOG_STATUSES = ["idea", "deferred", "promoted", "discarded"] as const;
@@ -133,6 +134,12 @@ export function parseBacklogMarkdown(markdown: string, slug: string, path = slug
   }
   const lines = markdown.replace(/\r\n?/g, "\n").split("\n");
   const issues: string[] = [];
+  for (const line of lines) {
+    if (line.length > BACKLOG_LIMITS.lineCharacters) {
+      issues.push(`Line exceeds the ${BACKLOG_LIMITS.lineCharacters} character limit.`);
+      break;
+    }
+  }
   let index = 0;
   while (index < lines.length && lines[index]!.trim() === "") index += 1;
   const titleMatch = /^# (.+)$/.exec(lines[index] ?? "");
@@ -284,6 +291,34 @@ export function backlogRelativePath(taskDirectory: string, slug: string): string
   return `${taskDirectory.replace(/\/+$/, "")}/backlog/${slug}.md`;
 }
 
+async function lstatOptional(path: string): Promise<Awaited<ReturnType<typeof lstat>> | undefined> {
+  try {
+    return await lstat(path);
+  } catch (error: unknown) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+async function assertBacklogDirectorySafe(rootDirectory: string, taskDirectory: string): Promise<void> {
+  const taskRoot = join(rootDirectory, taskDirectory);
+  const taskInfo = await lstatOptional(taskRoot);
+  if (taskInfo?.isSymbolicLink()) {
+    throw new BacklogFormatError([`Task directory must not be a symbolic link: ${taskDirectory}`]);
+  }
+  if (taskInfo && !taskInfo.isDirectory()) {
+    throw new BacklogFormatError([`Task directory is not a directory: ${taskDirectory}`]);
+  }
+  const directory = backlogDirectory(rootDirectory, taskDirectory);
+  const info = await lstatOptional(directory);
+  if (info?.isSymbolicLink()) {
+    throw new BacklogFormatError([`Backlog directory must not be a symbolic link: ${taskDirectory}/backlog`]);
+  }
+  if (info && !info.isDirectory()) {
+    throw new BacklogFormatError([`Backlog path is not a directory: ${taskDirectory}/backlog`]);
+  }
+}
+
 async function readBoundedCard(path: string): Promise<string> {
   const info = await lstat(path);
   if (info.isSymbolicLink()) throw new BacklogFormatError([`Backlog card must not be a symbolic link: ${path}`]);
@@ -291,7 +326,29 @@ async function readBoundedCard(path: string): Promise<string> {
   if (info.size > BACKLOG_LIMITS.bytesPerCard) {
     throw new BacklogFormatError([`Backlog card exceeds the ${BACKLOG_LIMITS.bytesPerCard} byte limit: ${path}`]);
   }
-  return readFile(path, "utf8");
+
+  const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
+  let handle;
+  try {
+    handle = await open(path, constants.O_RDONLY | noFollow);
+  } catch (error: unknown) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ELOOP") {
+      throw new BacklogFormatError([`Backlog card must not be a symbolic link: ${path}`]);
+    }
+    throw error;
+  }
+  try {
+    const opened = await handle.stat();
+    if (!opened.isFile()) throw new BacklogFormatError([`Backlog card must be a regular file: ${path}`]);
+    const buffer = Buffer.alloc(BACKLOG_LIMITS.bytesPerCard + 1);
+    const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+    if (bytesRead > BACKLOG_LIMITS.bytesPerCard) {
+      throw new BacklogFormatError([`Backlog card exceeds the ${BACKLOG_LIMITS.bytesPerCard} byte limit: ${path}`]);
+    }
+    return buffer.subarray(0, bytesRead).toString("utf8");
+  } finally {
+    await handle.close();
+  }
 }
 
 export async function readBacklogItem(
@@ -300,6 +357,7 @@ export async function readBacklogItem(
   slug: string,
 ): Promise<BacklogItem> {
   const normalized = normalizeBacklogSlug(slug);
+  await assertBacklogDirectorySafe(rootDirectory, taskDirectory);
   const path = join(backlogDirectory(rootDirectory, taskDirectory), `${normalized}.md`);
   const markdown = await readBoundedCard(path);
   return parseBacklogMarkdown(markdown, normalized, backlogRelativePath(taskDirectory, normalized));
@@ -309,6 +367,7 @@ export async function listBacklogItems(
   rootDirectory: string,
   taskDirectory = ".tasks",
 ): Promise<BacklogListResult> {
+  await assertBacklogDirectorySafe(rootDirectory, taskDirectory);
   const directory = backlogDirectory(rootDirectory, taskDirectory);
   let entries;
   try {
@@ -385,6 +444,7 @@ export async function createBacklogItem(
   const markdown = renderBacklogMarkdown(item);
   parseBacklogMarkdown(markdown, slug, item.path);
 
+  await assertBacklogDirectorySafe(rootDirectory, taskDirectory);
   const directory = backlogDirectory(rootDirectory, taskDirectory);
   await mkdir(directory, { recursive: true });
   try {

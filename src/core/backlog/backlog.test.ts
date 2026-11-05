@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -117,6 +117,88 @@ test("backlog parser rejects malformed metadata sections criteria ids and duplic
 test("backlog parser enforces the bounded card size", async () => {
   const huge = `# Card\n\nBacklog-Id: abc\nStatus: idea\n\n## Motivation\n\n${"x".repeat(BACKLOG_LIMITS.bytesPerCard)}`;
   assert.throws(() => parseBacklogMarkdown(huge, "card"), /byte limit/);
+});
+
+test("backlog refuses a symlinked backlog directory without writing outside the store", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-backlog-outside-"));
+    try {
+      await mkdir(join(directory, ".tasks"), { recursive: true });
+      await symlink(outside, backlogDirectory(directory));
+      await assert.rejects(
+        () => createBacklogItem(directory, ".tasks", { title: "Escape" }),
+        /symbolic link/,
+      );
+      await assert.rejects(
+        () => listBacklogItems(directory, ".tasks"),
+        /symbolic link/,
+      );
+      assert.equal((await readFile(join(outside, "escape.md"), "utf8").catch(() => "")), "");
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+});
+
+test("renaming a backlog card preserves Backlog-Id while changing the slug", async () => {
+  await withTempDirectory(async (directory) => {
+    const created = await createBacklogItem(directory, ".tasks", { title: "Rename me" });
+    const oldPath = join(backlogDirectory(directory), `${created.slug}.md`);
+    const renamedSlug = "renamed-card";
+    await rename(oldPath, join(backlogDirectory(directory), `${renamedSlug}.md`));
+
+    const moved = await readBacklogItem(directory, ".tasks", renamedSlug);
+    assert.equal(moved.id, created.id);
+    assert.equal(moved.slug, renamedSlug);
+  });
+});
+
+test("manual criterion edits and reordering keep stable criterion ids", async () => {
+  await withTempDirectory(async (directory) => {
+    const created = await createBacklogItem(directory, ".tasks", {
+      title: "Criteria stability",
+      status: "deferred",
+      criteria: ["MVP is accepted.", "A clean-checkout need exists."],
+    });
+    const path = join(backlogDirectory(directory), `${created.slug}.md`);
+    const source = await readFile(path, "utf8");
+    const edited = source
+      .replace("criterion-1: MVP is accepted.", "criterion-1: MVP acceptance is recorded.")
+      .replace("- criterion-1: MVP acceptance is recorded.\n- criterion-2: A clean-checkout need exists.", "- criterion-2: A clean-checkout need exists.\n- criterion-1: MVP acceptance is recorded.");
+    await writeFile(path, edited, "utf8");
+
+    const item = await readBacklogItem(directory, ".tasks", created.slug);
+    assert.deepEqual(item.promotionCriteria.map((criterion) => criterion.id), ["criterion-2", "criterion-1"]);
+    assert.equal(item.promotionCriteria[1]!.text, "MVP acceptance is recorded.");
+  });
+});
+
+test("backlog supports a custom task directory and manual prose edits", async () => {
+  await withTempDirectory(async (directory) => {
+    const created = await createBacklogItem(directory, ".work", { title: "Custom store" });
+    const path = join(directory, ".work", "backlog", `${created.slug}.md`);
+    const source = await readFile(path, "utf8");
+    await writeFile(path, source.replace("Not recorded yet.", "Manual motivation."), "utf8");
+    const item = await readBacklogItem(directory, ".work", created.slug);
+    assert.equal(item.id, created.id);
+    assert.equal(item.motivation, "Manual motivation.");
+    assert.equal((await listBacklogItems(directory, ".work")).items.length, 1);
+  });
+});
+
+test("list reports oversized backlog cards instead of reading them unbounded", async () => {
+  await withTempDirectory(async () => {
+    const directory = await mkdtemp(join(tmpdir(), "apk-backlog-large-"));
+    try {
+      await mkdir(backlogDirectory(directory), { recursive: true });
+      await writeFile(join(backlogDirectory(directory), "large.md"), "x".repeat(BACKLOG_LIMITS.bytesPerCard + 1), "utf8");
+      const listed = await listBacklogItems(directory, ".tasks");
+      assert.equal(listed.items.length, 0);
+      assert.ok(listed.diagnostics.some((diagnostic) => diagnostic.includes("byte limit")));
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 test("backlog filesystem reads reject symlinked cards", async () => {
