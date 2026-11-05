@@ -112,7 +112,7 @@ export function parseBacklogMarkdown(markdown, slug, path = slug) {
         index += 1;
         if (line.trim() === "")
             continue;
-        const match = /^(Backlog-Id|Status|Priority):[ \t]*(.*)$/.exec(line);
+        const match = /^(Backlog-Id|Status|Priority|Promoted-Task):[ \t]*(.*)$/.exec(line);
         if (!match) {
             issues.push(`Unexpected metadata line: ${line.slice(0, 160)}`);
             continue;
@@ -158,6 +158,14 @@ export function parseBacklogMarkdown(markdown, slug, path = slug) {
     const priority = metadata.get("Priority");
     if (priority !== undefined)
         bounded(issues, priority.length > 0 && priority.length <= 40, "Priority must contain 1-40 characters.");
+    const promotedTask = metadata.get("Promoted-Task");
+    if (promotedTask !== undefined) {
+        bounded(issues, /^\d{4}$/.test(promotedTask), "Promoted-Task must be a four-digit task id.");
+        bounded(issues, status === "promoted", "Promoted-Task is only valid for a promoted card.");
+    }
+    else {
+        bounded(issues, status !== "promoted", "Promoted cards require a Promoted-Task id.");
+    }
     const motivation = sectionText(sections.get("Motivation") ?? []);
     const whyNotNow = sectionText(sections.get("Why not now") ?? []);
     const proposedOutcome = sectionText(sections.get("Proposed outcome") ?? []);
@@ -181,6 +189,7 @@ export function parseBacklogMarkdown(markdown, slug, path = slug) {
         title,
         status: status,
         ...(priority !== undefined ? { priority } : {}),
+        ...(promotedTask !== undefined ? { promotedTask } : {}),
         motivation,
         whyNotNow,
         promotionCriteria,
@@ -195,6 +204,7 @@ export function renderBacklogMarkdown(item) {
         `Backlog-Id: ${item.id}`,
         `Status: ${item.status}`,
         ...(item.priority !== undefined ? [`Priority: ${item.priority}`] : []),
+        ...(item.promotedTask !== undefined ? [`Promoted-Task: ${item.promotedTask}`] : []),
         "",
         "## Motivation",
         "",

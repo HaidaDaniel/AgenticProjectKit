@@ -102,6 +102,7 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0091](#adr-0091---repository-local-agent-scratch-is-ignored-and-disposable) | accepted | Repository-local agent scratch is ignored and disposable | — |
 | [ADR-0092](#adr-0092---ci-planning-follows-project-stage-and-explicit-requirements) | accepted | CI planning follows project stage and explicit requirements | — |
 | [ADR-0093](#adr-0093---backlog-items-are-lightweight-tracked-future-work-not-tasks) | accepted | Backlog items are lightweight tracked future work, not tasks | — |
+| [ADR-0094](#adr-0094---backlog-promotion-is-explicit-serialized-and-operator-asserted) | accepted | Backlog promotion is explicit, serialized, and operator-asserted | — |
 
 ### ADR index cross-check
 
@@ -1908,3 +1909,23 @@ The CLI surface is limited to bounded `apk backlog add`, `list`, `show`, and `va
 ### Consequences
 
 Planners can record deferred work without polluting executable task state or evidence requirements. Backlog identity survives filename renames, and malformed or duplicate cards fail closed. The backlog is not a second lifecycle store and cannot satisfy task verification, review, or completion requirements.
+
+## ADR-0094 - Backlog promotion is explicit, serialized, and operator-asserted
+
+Status: accepted
+
+Date: 2026-11-05
+
+### Context
+
+Promotion creates executable work from a lightweight card. A split check-then-create window could create two tasks under concurrent promotion, and a crash between task creation and card update could lose traceability. A command-line flag also cannot prove that a human, rather than an agent, supplied a criterion decision.
+
+### Decision
+
+`apk backlog promote <slug> --preview` is read-only. `--apply` runs the whole re-read, criteria check, task validation, canonical task creation, and card update under one task mutation lock or an equivalent serialized protocol. It reuses `createTask` through a lock-scoped internal path rather than recursively acquiring `.tasks/.apk.lock`. Idempotency is keyed by immutable `Backlog-Id`, not filename: a renamed card remains the same promotion.
+
+The card records `Status: promoted` and `Promoted-Task: NNNN`; the task notes record `Source backlog: ... (Backlog-Id: ...)`. If a crash leaves a task without the card marker, a rerun finds the backlink and repairs the card without creating another task. Human-only criteria require explicit `--confirm <criterion-id>` values and an operator-supplied reason. The CLI records an operator assertion, not authentication, and `--apply` alone is not confirmation. Promotion performs no claim, implementation, review, verification, evidence, or completion transition.
+
+### Consequences
+
+Promotion is auditable and duplicate-resistant without a second task database. Concurrent promoters serialize; interrupted writes are recoverable; malformed or duplicate identities fail closed. The trust boundary is honest: an agent must relay only operator-communicated confirmations, and APK does not claim cryptographic human identity.

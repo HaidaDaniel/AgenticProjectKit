@@ -2040,12 +2040,13 @@ export function buildTaskFileName(id: string, title: string): string {
   return `${id}-${slugify(title)}.md`;
 }
 
-async function withTaskMutationLock<T>(
+export async function withTaskMutationLock<T>(
   rootDirectory: string,
   taskDirectory: string,
   command: string,
   taskId: string | undefined,
   run: () => Promise<T>,
+  lockOptions: { timeoutMs?: number; retryMs?: number } = {},
 ): Promise<T> {
   const lockPath = join(rootDirectory, taskDirectory, ".apk.lock");
   return withLocalMutationLock({
@@ -2053,15 +2054,16 @@ async function withTaskMutationLock<T>(
     kind: "task-mutation",
     command,
     taskId,
+    ...lockOptions,
   }, run);
 }
 
-export async function createTask(
+/** Create a task while the caller already holds the task mutation lock. */
+export async function createTaskUnderTaskLock(
   rootDirectory: string,
   taskDirectory: string,
   input: TaskCreateInput,
 ): Promise<TaskCreateResult> {
-  return withTaskMutationLock(rootDirectory, taskDirectory, "task create", undefined, async () => {
     const files = await listTaskFiles(rootDirectory, taskDirectory);
     const archived = await listArchivedTaskFiles(rootDirectory, taskDirectory);
     const id = nextTaskId(files, archived);
@@ -2180,7 +2182,20 @@ export async function createTask(
       path: relative(rootDirectory, taskPath).replace(/\\/g, "/"),
       task,
     };
-  });
+}
+
+export async function createTask(
+  rootDirectory: string,
+  taskDirectory: string,
+  input: TaskCreateInput,
+): Promise<TaskCreateResult> {
+  return withTaskMutationLock(
+    rootDirectory,
+    taskDirectory,
+    "task create",
+    undefined,
+    () => createTaskUnderTaskLock(rootDirectory, taskDirectory, input),
+  );
 }
 
 async function fileExists(path: string): Promise<boolean> {

@@ -1351,128 +1351,131 @@ export function nextTaskId(files, archivedFiles = []) {
 export function buildTaskFileName(id, title) {
     return `${id}-${slugify(title)}.md`;
 }
-async function withTaskMutationLock(rootDirectory, taskDirectory, command, taskId, run) {
+export async function withTaskMutationLock(rootDirectory, taskDirectory, command, taskId, run, lockOptions = {}) {
     const lockPath = join(rootDirectory, taskDirectory, ".apk.lock");
     return withLocalMutationLock({
         path: lockPath,
         kind: "task-mutation",
         command,
         taskId,
+        ...lockOptions,
     }, run);
 }
-export async function createTask(rootDirectory, taskDirectory, input) {
-    return withTaskMutationLock(rootDirectory, taskDirectory, "task create", undefined, async () => {
-        const files = await listTaskFiles(rootDirectory, taskDirectory);
-        const archived = await listArchivedTaskFiles(rootDirectory, taskDirectory);
-        const id = nextTaskId(files, archived);
-        const fileName = buildTaskFileName(id, input.title);
-        const taskPath = join(rootDirectory, taskDirectory, fileName);
-        if (await fileExists(taskPath)) {
-            const err = new Error(`Task file already exists: ${fileName}`);
-            err.name = "TaskCreateError";
-            throw err;
-        }
-        const newSlug = slugify(input.title);
-        const existingSlug = files.find((file) => {
-            const existingFile = file.path.split(/[\\/]/).pop()?.replace(/\.md$/, "");
-            if (!existingFile)
-                return false;
-            const dashIndex = existingFile.indexOf("-");
-            if (dashIndex === -1)
-                return false;
-            return existingFile.slice(dashIndex + 1) === newSlug;
-        });
-        if (existingSlug) {
-            const err = new Error(`Task file already exists: ${existingSlug.path.split("/").pop()}`);
-            err.name = "TaskCreateError";
-            throw err;
-        }
-        const verification = input.verification ?? normalizeVerificationCommands(input.verificationCommands ?? []);
-        const task = {
-            id,
-            title: input.title,
-            state: "todo",
-            owner: "none",
-            mode: input.mode,
-            lane: input.lane,
-            ...(input.type ? { type: input.type } : {}),
-            scope: input.scope,
-            risk: input.risk,
-            parallel: input.parallel,
-            dependsOn: input.dependsOn,
-            tags: input.tags,
-            goal: input.goal,
-            contextFiles: input.contextFiles,
-            allowedFiles: input.allowedFiles,
-            forbiddenFiles: input.forbiddenFiles,
-            steps: input.steps,
-            acceptanceCriteria: input.acceptanceCriteria,
-            ...(input.correctnessAssumptions && input.correctnessAssumptions.length > 0
-                ? { correctnessAssumptions: input.correctnessAssumptions } : {}),
-            ...(input.invariants && input.invariants.length > 0
-                ? { invariants: input.invariants } : {}),
-            ...(input.requiredEvidence && input.requiredEvidence.length > 0
-                ? { requiredEvidence: input.requiredEvidence } : {}),
-            ...(input.reviewQuestions && input.reviewQuestions.length > 0
-                ? { reviewQuestions: input.reviewQuestions } : {}),
-            ...(input.counterexampleSearches && input.counterexampleSearches.length > 0
-                ? { counterexampleSearches: input.counterexampleSearches } : {}),
-            verification,
-            verificationCommands: verificationCommandsFromChecks(verification),
-            documentationUpdates: input.documentationUpdates,
-            notes: input.notes,
-        };
-        const invalidPathPatterns = [
-            ...task.allowedFiles.map((pattern) => ({ kind: "allowed", pattern })),
-            ...task.forbiddenFiles.map((pattern) => ({ kind: "forbidden", pattern })),
-        ]
-            .map(({ kind, pattern }) => ({ kind, pattern, issue: taskPathPatternIssue(pattern) }))
-            .filter((entry) => entry.issue !== undefined);
-        const pathOverlaps = findTaskPathContractOverlaps(task.allowedFiles, task.forbiddenFiles);
-        if (invalidPathPatterns.length > 0 || pathOverlaps.length > 0) {
-            const messages = [
-                ...invalidPathPatterns.map((entry) => `${entry.kind} pattern ${JSON.stringify(entry.pattern)}: ${entry.issue}.`),
-                ...pathOverlaps.map(renderTaskPathContractOverlap),
-            ];
-            const err = new Error(`Path contract validation failed before writing task:
-- ${messages.join("\n- ")}`);
-            err.name = "TaskCreateError";
-            throw err;
-        }
-        try {
-            renderTaskMarkdown(task);
-        }
-        catch (error) {
-            const err = new Error(`Failed to render task: ${error instanceof Error ? error.message : String(error)}`);
-            err.name = "TaskCreateError";
-            throw err;
-        }
-        try {
-            parseTaskMarkdown(renderTaskMarkdown(task));
-        }
-        catch (error) {
-            if (error instanceof TaskFormatError) {
-                const err = new Error(`Rendered task validation failed:\n- ${error.issues.join("\n- ")}`);
-                err.name = "TaskCreateError";
-                throw err;
-            }
-            throw error;
-        }
-        const candidateFiles = [...files, { path: taskPath, task }];
-        const depIssues = validateTaskDependencies(candidateFiles, archived).filter((issue) => issue.taskId === id);
-        if (depIssues.length > 0) {
-            const messages = depIssues.map((issue) => issue.message).join("\n- ");
-            const err = new Error(`Dependency validation failed:\n- ${messages}`);
-            err.name = "TaskCreateError";
-            throw err;
-        }
-        await writeTaskFile(taskPath, task);
-        return {
-            id,
-            path: relative(rootDirectory, taskPath).replace(/\\/g, "/"),
-            task,
-        };
+/** Create a task while the caller already holds the task mutation lock. */
+export async function createTaskUnderTaskLock(rootDirectory, taskDirectory, input) {
+    const files = await listTaskFiles(rootDirectory, taskDirectory);
+    const archived = await listArchivedTaskFiles(rootDirectory, taskDirectory);
+    const id = nextTaskId(files, archived);
+    const fileName = buildTaskFileName(id, input.title);
+    const taskPath = join(rootDirectory, taskDirectory, fileName);
+    if (await fileExists(taskPath)) {
+        const err = new Error(`Task file already exists: ${fileName}`);
+        err.name = "TaskCreateError";
+        throw err;
+    }
+    const newSlug = slugify(input.title);
+    const existingSlug = files.find((file) => {
+        const existingFile = file.path.split(/[\\/]/).pop()?.replace(/\.md$/, "");
+        if (!existingFile)
+            return false;
+        const dashIndex = existingFile.indexOf("-");
+        if (dashIndex === -1)
+            return false;
+        return existingFile.slice(dashIndex + 1) === newSlug;
     });
+    if (existingSlug) {
+        const err = new Error(`Task file already exists: ${existingSlug.path.split("/").pop()}`);
+        err.name = "TaskCreateError";
+        throw err;
+    }
+    const verification = input.verification ?? normalizeVerificationCommands(input.verificationCommands ?? []);
+    const task = {
+        id,
+        title: input.title,
+        state: "todo",
+        owner: "none",
+        mode: input.mode,
+        lane: input.lane,
+        ...(input.type ? { type: input.type } : {}),
+        scope: input.scope,
+        risk: input.risk,
+        parallel: input.parallel,
+        dependsOn: input.dependsOn,
+        tags: input.tags,
+        goal: input.goal,
+        contextFiles: input.contextFiles,
+        allowedFiles: input.allowedFiles,
+        forbiddenFiles: input.forbiddenFiles,
+        steps: input.steps,
+        acceptanceCriteria: input.acceptanceCriteria,
+        ...(input.correctnessAssumptions && input.correctnessAssumptions.length > 0
+            ? { correctnessAssumptions: input.correctnessAssumptions } : {}),
+        ...(input.invariants && input.invariants.length > 0
+            ? { invariants: input.invariants } : {}),
+        ...(input.requiredEvidence && input.requiredEvidence.length > 0
+            ? { requiredEvidence: input.requiredEvidence } : {}),
+        ...(input.reviewQuestions && input.reviewQuestions.length > 0
+            ? { reviewQuestions: input.reviewQuestions } : {}),
+        ...(input.counterexampleSearches && input.counterexampleSearches.length > 0
+            ? { counterexampleSearches: input.counterexampleSearches } : {}),
+        verification,
+        verificationCommands: verificationCommandsFromChecks(verification),
+        documentationUpdates: input.documentationUpdates,
+        notes: input.notes,
+    };
+    const invalidPathPatterns = [
+        ...task.allowedFiles.map((pattern) => ({ kind: "allowed", pattern })),
+        ...task.forbiddenFiles.map((pattern) => ({ kind: "forbidden", pattern })),
+    ]
+        .map(({ kind, pattern }) => ({ kind, pattern, issue: taskPathPatternIssue(pattern) }))
+        .filter((entry) => entry.issue !== undefined);
+    const pathOverlaps = findTaskPathContractOverlaps(task.allowedFiles, task.forbiddenFiles);
+    if (invalidPathPatterns.length > 0 || pathOverlaps.length > 0) {
+        const messages = [
+            ...invalidPathPatterns.map((entry) => `${entry.kind} pattern ${JSON.stringify(entry.pattern)}: ${entry.issue}.`),
+            ...pathOverlaps.map(renderTaskPathContractOverlap),
+        ];
+        const err = new Error(`Path contract validation failed before writing task:
+- ${messages.join("\n- ")}`);
+        err.name = "TaskCreateError";
+        throw err;
+    }
+    try {
+        renderTaskMarkdown(task);
+    }
+    catch (error) {
+        const err = new Error(`Failed to render task: ${error instanceof Error ? error.message : String(error)}`);
+        err.name = "TaskCreateError";
+        throw err;
+    }
+    try {
+        parseTaskMarkdown(renderTaskMarkdown(task));
+    }
+    catch (error) {
+        if (error instanceof TaskFormatError) {
+            const err = new Error(`Rendered task validation failed:\n- ${error.issues.join("\n- ")}`);
+            err.name = "TaskCreateError";
+            throw err;
+        }
+        throw error;
+    }
+    const candidateFiles = [...files, { path: taskPath, task }];
+    const depIssues = validateTaskDependencies(candidateFiles, archived).filter((issue) => issue.taskId === id);
+    if (depIssues.length > 0) {
+        const messages = depIssues.map((issue) => issue.message).join("\n- ");
+        const err = new Error(`Dependency validation failed:\n- ${messages}`);
+        err.name = "TaskCreateError";
+        throw err;
+    }
+    await writeTaskFile(taskPath, task);
+    return {
+        id,
+        path: relative(rootDirectory, taskPath).replace(/\\/g, "/"),
+        task,
+    };
+}
+export async function createTask(rootDirectory, taskDirectory, input) {
+    return withTaskMutationLock(rootDirectory, taskDirectory, "task create", undefined, () => createTaskUnderTaskLock(rootDirectory, taskDirectory, input));
 }
 async function fileExists(path) {
     try {

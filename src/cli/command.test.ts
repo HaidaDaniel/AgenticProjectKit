@@ -2165,3 +2165,49 @@ test("CLI backlog add list show validate stays outside task inventory", async ()
     assert.doesNotMatch(next.stdout, /add-ci-after-mvp/);
   });
 });
+
+test("CLI backlog promote previews and applies through the canonical task creator", async () => {
+  await withTempDirectory(async (directory) => {
+    const add = await runCommand([
+      "backlog", "add",
+      "--title", "Promote this idea",
+      "--status", "deferred",
+      "--criteria", "MVP acceptance is recorded",
+      "--json",
+    ], directory);
+    assert.equal(add.exitCode, 0, add.stderr);
+    const card = JSON.parse(add.stdout) as { slug: string };
+
+    const fields = [
+      "--scope", "backlog",
+      "--context", "AGENTS.md",
+      "--allowed", "src/**",
+      "--verification", "true",
+    ];
+    const preview = await runCommand(["backlog", "promote", card.slug, "--preview", ...fields, "--json"], directory);
+    assert.equal(preview.exitCode, 1);
+    const previewData = JSON.parse(preview.stdout) as { valid: boolean; missingCriteria: string[] };
+    assert.equal(previewData.valid, false);
+    assert.deepEqual(previewData.missingCriteria, ["criterion-1"]);
+    assert.doesNotMatch((await runCommand(["tasks", "--all"], directory)).stdout, /Promote this idea/);
+
+    const applied = await runCommand([
+      "backlog", "promote", card.slug, "--apply", ...fields,
+      "--confirm", "criterion-1", "--reason", "Operator confirmed the MVP criterion.",
+      "--json",
+    ], directory);
+    assert.equal(applied.exitCode, 0, applied.stderr);
+    const result = JSON.parse(applied.stdout) as { outcome: string; task: { id: string; path: string } };
+    assert.equal(result.outcome, "promoted");
+    assert.match(result.task.path, /^\.tasks\/\d{4}-promote-this-idea\.md$/);
+    assert.match((await runCommand(["tasks", "--all"], directory)).stdout, /Promote this idea/);
+
+    const repeated = await runCommand([
+      "backlog", "promote", card.slug, "--apply", ...fields,
+      "--confirm", "criterion-1", "--reason", "Operator confirmed the MVP criterion.",
+      "--json",
+    ], directory);
+    assert.equal(repeated.exitCode, 0, repeated.stderr);
+    assert.equal((JSON.parse(repeated.stdout) as { outcome: string }).outcome, "already-promoted");
+  });
+});

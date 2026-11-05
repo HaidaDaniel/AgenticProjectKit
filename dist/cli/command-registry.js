@@ -82,6 +82,7 @@ export const PUBLIC_COMMANDS = [
             { usage: "backlog list [--status <idea|deferred|promoted|discarded>] [--json]", description: "list bounded backlog cards without reading executable task inventories." },
             { usage: "backlog show <slug> [--json]", description: "show one backlog card by its stable slug." },
             { usage: "backlog validate [--json]", description: "validate backlog cards and report duplicate identities or malformed Markdown." },
+            { usage: "backlog promote <slug> --preview|--apply [task fields] [--confirm <criterion-id>] [--reason <text>] [--json]", description: "preview or explicitly promote one card through the canonical task creator; human-only criteria require operator-asserted confirmations." },
         ],
     },
     {

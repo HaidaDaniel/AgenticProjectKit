@@ -147,7 +147,9 @@ Future ideas can be stored as lightweight Markdown cards under `<taskDirectory>/
 
 Backlog cards are not tasks: they have no numeric task ID, owner, review, gate, verification, or evidence requirements, and they never enter `listTaskFiles`, `inspectTaskContracts`, `next-task`, status, attention, workers, lint, audit, doctor, adopt, archive, or the dependency graph. Creating one does not allocate a task ID. The CLI surface is `apk backlog add`, `list`, `show`, and `validate`; `--json` is available for automation. The parser is bounded and fails closed on malformed cards, escaping paths, and symlinks; `validate` reports duplicate `Backlog-Id` values. Manual Markdown editing through Git is supported; a slug rename does not change `Backlog-Id`.
 
-Promotion to a canonical task is a separate explicit operation and is not automatic. The backlog is not a second task database and has no service, daemon, cron job, API, or model inference.
+Promotion to a canonical task is a separate explicit operation and is not automatic. `apk backlog promote <slug> --preview` is read-only and reports missing task fields, unconfirmed criteria, duplicate `Backlog-Id` values, and any existing task backlink. `--apply` reuses the canonical task creator and task mutation lock, creates an ordinary `todo` task, and records `Promoted-Task: NNNN` on the card plus a `Source backlog:` backlink in the task notes. The whole re-read/validate/create/card-update operation is serialized; a crash after task creation is recovered by finding the Backlog-Id backlink and repairing the card without creating a second task.
+
+Human-only promotion criteria require explicit `--confirm <criterion-id>` values plus an operator-supplied `--reason`; `--apply` alone is not confirmation. The CLI records this as an operator assertion, not cryptographic authentication. Promotion does not claim, implement, review, or mark the task done, and creates no verification or evidence record. The backlog is not a second task database and has no service, daemon, cron job, API, or model inference.
 
 ## CI planning by project stage
 
