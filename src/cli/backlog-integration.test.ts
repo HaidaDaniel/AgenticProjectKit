@@ -194,18 +194,26 @@ test("integrated scratch is ignored, generated instructions are current, and CI 
   });
 });
 
-test("hot read-only commands do not add backlog I/O relative to the baseline", async () => {
+test("hot read-only commands read no backlog content but expose per-card metadata I/O", async () => {
   await withTempDirectory(async (directory) => {
     const base = join(directory, "base");
-    const withBacklog = join(directory, "with-backlog");
+    const withCard = join(directory, "with-card");
+    const withMany = join(directory, "with-many");
     await mkdir(base, { recursive: true });
     assert.equal((await runCommand(["init"], base)).exitCode, 0);
-    await cp(base, withBacklog, { recursive: true });
-    await createBacklogItem(withBacklog, ".tasks", {
+    await cp(base, withCard, { recursive: true });
+    await cp(base, withMany, { recursive: true });
+    await createBacklogItem(withCard, ".tasks", {
       title: "Deferred performance fixture",
       status: "deferred",
       criteria: ["A later decision is recorded"],
     });
+    for (let index = 0; index < 20; index += 1) {
+      await createBacklogItem(withMany, ".tasks", {
+        title: `Deferred performance fixture ${index}`,
+        status: "idea",
+      });
+    }
 
     const commands = [
       ["status", "--detail"],
@@ -214,18 +222,23 @@ test("hot read-only commands do not add backlog I/O relative to the baseline", a
       ["next-task"],
     ] as const;
 
-    const measure = async (cwd: string): Promise<{ operations: number; backlogAccesses: string[]; backlogContentReads: string[] }> => {
+    const measure = async (cwd: string): Promise<{ operations: number; metadataOperations: number; backlogAccesses: string[]; backlogContentReads: string[] }> => {
       const original = {
         readdir: fsPromises.readdir,
         open: fsPromises.open,
         readFile: fsPromises.readFile,
         opendir: fsPromises.opendir,
+        lstat: fsPromises.lstat,
+        stat: fsPromises.stat,
+        readlink: fsPromises.readlink,
       };
       let operations = 0;
+      let metadataOperations = 0;
       const backlogAccesses: string[] = [];
       const backlogContentReads: string[] = [];
       const record = (operation: string, path: unknown): void => {
         operations += 1;
+        if (operation === "lstat" || operation === "stat" || operation === "readlink") metadataOperations += 1;
         const text = String(path);
         if (text.includes(".tasks") && /(?:^|[\\/])backlog(?:[\\/]|$)/.test(text)) {
           backlogAccesses.push(`${operation}:${text}`);
@@ -248,6 +261,18 @@ test("hot read-only commands do not add backlog I/O relative to the baseline", a
         record("opendir", args[0]);
         return original.opendir(...args);
       }) as typeof fsPromises.opendir;
+      fsPromises.lstat = (async (...args: Parameters<typeof fsPromises.lstat>) => {
+        record("lstat", args[0]);
+        return original.lstat(...args);
+      }) as typeof fsPromises.lstat;
+      fsPromises.stat = (async (...args: Parameters<typeof fsPromises.stat>) => {
+        record("stat", args[0]);
+        return original.stat(...args);
+      }) as typeof fsPromises.stat;
+      fsPromises.readlink = (async (...args: Parameters<typeof fsPromises.readlink>) => {
+        record("readlink", args[0]);
+        return original.readlink(...args);
+      }) as typeof fsPromises.readlink;
       syncBuiltinESMExports();
       try {
         for (const command of commands) {
@@ -259,19 +284,22 @@ test("hot read-only commands do not add backlog I/O relative to the baseline", a
         fsPromises.open = original.open;
         fsPromises.readFile = original.readFile;
         fsPromises.opendir = original.opendir;
+        fsPromises.lstat = original.lstat;
+        fsPromises.stat = original.stat;
+        fsPromises.readlink = original.readlink;
         syncBuiltinESMExports();
       }
-      return { operations, backlogAccesses, backlogContentReads };
+      return { operations, metadataOperations, backlogAccesses, backlogContentReads };
     };
 
     const baseline = await measure(base);
-    const withCard = await measure(withBacklog);
-    assert.deepEqual(withCard.backlogContentReads, []);
-    assert.ok(withCard.backlogAccesses.every((access) => access.startsWith("readdir:")));
-    assert.ok(
-      withCard.operations - baseline.operations <= commands.length,
-      `expected at most one backlog directory enumeration per command; baseline=${baseline.operations} withCard=${withCard.operations}`,
-    );
+    const one = await measure(withCard);
+    const many = await measure(withMany);
+    assert.deepEqual(one.backlogContentReads, []);
+    assert.deepEqual(many.backlogContentReads, []);
+    assert.ok(one.backlogAccesses.every((access) => access.startsWith("readdir:") || access.startsWith("lstat:") || access.startsWith("stat:") || access.startsWith("readlink:")));
+    assert.ok(many.metadataOperations > baseline.metadataOperations, "diagnostic snapshot must show the known per-card metadata cost");
+    assert.ok(many.metadataOperations > one.metadataOperations, "metadata work must scale with backlog card count");
   });
 });
 

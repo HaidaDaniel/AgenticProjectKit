@@ -6,7 +6,9 @@ Date: 2026-11-05
 
 ## Integration readiness decision
 
-The Tasks 0244-0249 candidate is ready for a planning commit and a subsequent integrated **minor** release candidate after the normal verification/review/gate workflow. This record is not a tag, publication, or release approval. A standalone patch release containing only Task 0244 remains independent of this readiness decision.
+The Tasks 0244-0249 candidate is **planning-ready**, but it is **not yet integrated-release-ready**. Functional integration scenarios pass, but the existing diagnostic snapshot performs per-card metadata I/O over `.tasks/backlog` on hot read-only commands. No card content is read, but the metadata cost grows with card count. The readiness decision is therefore downgraded until that limitation is explicitly accepted or fixed in a follow-up task; `src/core/tasks/diagnostics.ts` is outside this task's allowed files.
+
+This record is not a tag, publication, or release approval. A standalone patch release containing only Task 0244 remains independent of this readiness decision.
 
 ## Scenario results
 
@@ -21,19 +23,22 @@ The Tasks 0244-0249 candidate is ready for a planning commit and a subsequent in
 | Explicit required CI | Covered by policy tests | `quality.required` and approved contracts remain authoritative in the policy and skill tests. |
 | Backlog versus blocked tasks | Pass | Blocked Task `0001` stayed executable; the backlog card stayed outside executable inventories. |
 | Task ID allocation and archive | Pass | Init created `0001`; promotion allocated `0002`; archiving the completed promoted task remained safe and re-promotion stayed idempotent. |
-| Generated agent instructions | Pass | `sync` reported three current generated files after explicit write; AGENTS.md contains the scratch, CI, and backlog rules. |
-| Snapshot/provenance/worker projection | Pass | `task provenance` succeeded after archive; hot read-only commands ran without parse/projection failures. |
-| Performance parity | Pass, bounded | Compared identical fixtures with and without a backlog card. No backlog card content was opened or read. At most one backlog-directory enumeration per command came from the existing diagnostic snapshot; no per-card scan was introduced. |
+| Generated agent instructions | Pass | `sync` reported three current generated files after explicit write; AGENTS.md contains the CI and backlog rules. Scratch behavior is covered by Task 0245 tests. |
+| Snapshot/provenance/worker projection | Pass, composed | `task provenance` succeeded after archive; hot read-only commands ran without parse/projection failures. Existing CLI/snapshot tests remain authoritative for deeper projection behavior. |
+| Performance | Known limitation | No backlog card content is opened or read, but the existing diagnostic snapshot `lstat`/`stat`-scans each backlog card on every hot command. The integration test measures a higher metadata count with 20 cards than with one or zero. |
+| Explicit required CI | Covered by policy tests | `quality.required` and approved-contract precedence are asserted by policy/skill tests; this integration fixture does not add a live hosted-CI run. |
 | Installation instructions | Pass | Task 0244's checker validates README and getting-started against the validated-release sentinel. |
 | Downstream-shaped fixtures | Pass | Doctor retained Go, Python, and Node application-stack visibility on disposable fixtures. |
 
 ## Performance note
 
-The integration fixture counts `readdir`, `open`, `readFile`, and `opendir` operations for `status --detail`, `attention --json`, `workers --json`, and `next-task` on byte-identical repositories with and without a backlog card. The only difference is at most one backlog-directory enumeration per invocation from the existing diagnostic snapshot; no card content is opened or read, and no new per-command expensive check or aggregate rerun was added.
+The integration fixture counts `readdir`, `open`, `readFile`, `opendir`, `lstat`, `stat`, and `readlink` operations for `status --detail`, `attention --json`, `workers --json`, and `next-task` on byte-identical repositories with zero, one, and twenty backlog cards. No backlog card content is opened or read. The existing diagnostic snapshot does perform per-card metadata checks, so `lstat`/`stat` counts scale with card count. This is a known limitation of the current diagnostics implementation, outside this task's allowed files, not a claim of performance parity.
 
 ## Corrective follow-ups
 
-No blocking integration defect was found in these scenarios, so no corrective task is required before the planning commit. Recorded non-blocking limitations:
+No functional integration defect was found. The metadata-I/O limitation above is the one known follow-up: a later scoped change to diagnostics should avoid recursively witnessing the backlog store, or the repository should explicitly accept the cost for its expected backlog size. No corrective task is filed in this task; the readiness decision is downgraded accordingly.
+
+Other limitations:
 
 - Linux-only acceptance; no Windows junction/reparse-point matrix and no TOCTOU symlink-swap race injection.
 - No live private downstream repositories, remote tag resolution, hosted CI, paid LLM, or unavailable external service was used.
@@ -43,5 +48,5 @@ No blocking integration defect was found in these scenarios, so no corrective ta
 ## Release boundary
 
 - Task 0244 may be released as a small standalone patch after its own completion; it does not depend on this readiness task.
-- The integrated backlog/scratch/CI/planning work is a **minor** release candidate only after the normal task verification, review, gate, and release evidence process.
+- The integrated backlog/scratch/CI/planning work is **not** an integrated minor-release candidate until the per-card metadata limitation is accepted or fixed.
 - No tag, push, publication, or deployment is part of this task.
