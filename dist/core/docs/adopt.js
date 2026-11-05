@@ -4,7 +4,7 @@ import { CURRENT_CONFIG_SCHEMA_VERSION, DEFAULT_CONFIG, detectCompatibility, par
 import { CONFIG_PATH } from "../config/file.js";
 import { renderTaskContractInspection } from "../config/compatibility.js";
 import { styleRulesFor, DEFAULT_AGENT_POLICY, renderAgentExportFiles, } from "../exporters/index.js";
-import { GITIGNORE_PATH, planApkGitignore, } from "../init/index.js";
+import { GITIGNORE_PATH, ensureApkScratchDirectory, inspectApkScratchDirectory, planApkGitignore, } from "../init/index.js";
 import { scanRepository } from "../scanners/index.js";
 import { renderTaskMarkdown } from "../tasks/index.js";
 import { inspectApkInstallation, renderInstallationFinding } from "../doctor/installation.js";
@@ -500,15 +500,35 @@ async function buildAdoptionPlan(rootDirectory, includeMigration) {
             content: gitignorePlan.content,
         });
     }
+    const scratchDirectory = await inspectApkScratchDirectory(rootDirectory);
+    if (scratchDirectory.state === "missing") {
+        operations.push({
+            action: "create",
+            kind: "directory",
+            path: scratchDirectory.path,
+            reason: "canonical agent scratch directory",
+            content: "",
+        });
+    }
     return {
         plan: {
             installation,
             scan,
             compatibility,
-            changes: operations.map(({ action, path, reason }) => ({ action, path, reason })),
+            changes: operations.map(({ action, kind, path, reason }) => ({
+                action,
+                ...(kind ? { kind } : {}),
+                path,
+                reason,
+            })),
             skipped,
             gitignore: gitignorePlan.result,
-            diagnostics: [...compatibility.diagnostics, ...gitignorePlan.result.diagnostics, ...installation.findings.map(renderInstallationFinding)],
+            diagnostics: [
+                ...compatibility.diagnostics,
+                ...gitignorePlan.result.diagnostics,
+                ...scratchDirectory.diagnostics,
+                ...installation.findings.map(renderInstallationFinding),
+            ],
         },
         operations,
     };
@@ -523,6 +543,10 @@ export async function adoptRepository(rootDirectory, options = {}) {
     const skipped = [...built.plan.skipped];
     for (const operation of built.operations) {
         const path = join(rootDirectory, operation.path);
+        if (operation.kind === "directory") {
+            await ensureApkScratchDirectory(rootDirectory);
+            continue;
+        }
         await mkdir(dirname(path), { recursive: true });
         if (operation.action === "create" && await fileExists(path)) {
             skipped.push(operation.path);

@@ -89,6 +89,12 @@ The flow is detect -> report -> recommend -> explicit opt-in setup. A missing op
 - Prefer documentation cleanup before code changes.
 - Use scanner facts in adoption reports; do not run audit as a separate write step.
 
+## Repository-local agent scratch
+
+`apk init` creates `<worktree>/tmp/apk/` and adds the root-anchored `/tmp/apk/` ignore entry. `apk adopt --preview` reports the missing directory as an additive change; `apk adopt --apply` creates it without a tracked placeholder. The directory is for intermediate research, reproducers, temporary scripts, and working notes. It is not the operating-system temp directory and does not ignore the rest of `tmp/`.
+
+Existing scratch content is never deleted or rewritten automatically. A symlinked or non-directory `tmp` or `tmp/apk` path is reported and left unchanged rather than followed outside the repository. Ignored scratch does not become task candidate scope or required evidence; keep reports, evidence, and final artifacts in tracked paths.
+
 ## Application diagnostics and Python builds
 
 Doctor uses the scanner's bounded runtime ownership projection (including

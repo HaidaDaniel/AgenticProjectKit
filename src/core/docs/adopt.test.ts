@@ -1,4 +1,4 @@
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
@@ -100,6 +100,57 @@ test("adoptRepository scans repository shape and creates kit files", async () =>
       /pnpm exec apk agent register --id codex-a --platform codex --model gpt-5\.5/,
     );
     assert.doesNotMatch(taskSystem, /^apk agent register/m);
+  });
+});
+
+test("adoption previews and applies the canonical scratch directory", async () => {
+  await withTempRepository(async (directory) => {
+    await createExistingRepository(directory);
+
+    const preview = await planAdoption(directory);
+    assert.ok(preview.changes.some((change) => (
+      change.action === "create" && change.kind === "directory" && change.path === "tmp/apk/"
+    )));
+    await assert.rejects(() => stat(join(directory, "tmp", "apk")));
+
+    await adoptRepository(directory);
+    assert.ok((await stat(join(directory, "tmp", "apk"))).isDirectory());
+    const repeated = await planAdoption(directory);
+    assert.equal(repeated.changes.some((change) => change.path === "tmp/apk/"), false);
+  });
+});
+
+test("adoption preserves existing scratch files and never deletes them", async () => {
+  await withTempRepository(async (directory) => {
+    await createExistingRepository(directory);
+    await mkdir(join(directory, "tmp", "apk"), { recursive: true });
+    await writeFile(join(directory, "tmp", "apk", "user-note.md"), "keep me\n", "utf8");
+
+    const preview = await planAdoption(directory);
+    assert.equal(preview.changes.some((change) => change.path === "tmp/apk/"), false);
+    await adoptRepository(directory);
+
+    assert.equal(await readFile(join(directory, "tmp", "apk", "user-note.md"), "utf8"), "keep me\n");
+  });
+});
+
+test("adoption refuses a symlinked scratch path without writing outside the repository", async () => {
+  await withTempRepository(async (directory) => {
+    await createExistingRepository(directory);
+    const outside = await mkdtemp(join(tmpdir(), "apk-adopt-scratch-outside-"));
+    try {
+      await mkdir(join(directory, "tmp"), { recursive: true });
+      await symlink(outside, join(directory, "tmp", "apk"));
+
+      const preview = await planAdoption(directory);
+      assert.equal(preview.changes.some((change) => change.path === "tmp/apk/"), false);
+      assert.ok(preview.diagnostics.some((diagnostic) => diagnostic.includes("symbolic link")));
+
+      await adoptRepository(directory);
+      await assert.rejects(() => stat(join(outside, "apk")));
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
   });
 });
 

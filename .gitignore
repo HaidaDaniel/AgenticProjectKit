@@ -16,6 +16,7 @@ coverage/
 .agentic/perf/*
 .agentic/workspaces/*
 .apk-workspaces/
+/tmp/apk/
 docs/audit-report.md
 docs/project-map.md
 .opencode/node_modules/

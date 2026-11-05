@@ -17,6 +17,8 @@ const initTemplateDirectory = join(
 );
 
 export const GITIGNORE_PATH = ".gitignore";
+export const APK_SCRATCH_DIRECTORY = "tmp/apk";
+export const APK_SCRATCH_IGNORE_ENTRY = "/tmp/apk/";
 
 /**
  * Canonical APK-owned operational/generated ignore entries. This is an additive
@@ -39,6 +41,7 @@ export const APK_OPERATIONAL_IGNORE_ENTRIES = [
   ".agentic/perf/*",
   ".agentic/workspaces/*",
   ".apk-workspaces/",
+  APK_SCRATCH_IGNORE_ENTRY,
   "docs/audit-report.md",
   "docs/project-map.md",
 ] as const;
@@ -307,12 +310,86 @@ export async function planApkGitignore(
   };
 }
 
+export type ApkScratchDirectoryState = "present" | "missing" | "blocked";
+
+export interface ApkScratchDirectoryResult {
+  path: string;
+  state: ApkScratchDirectoryState;
+  created: boolean;
+  diagnostics: string[];
+}
+
 export interface InitResult {
   created: string[];
   skipped: string[];
   updated: string[];
   gitignore: ApkGitignoreResult;
+  scratchDirectory: ApkScratchDirectoryResult;
   diagnostics: string[];
+}
+
+async function lstatOptional(path: string): Promise<Awaited<ReturnType<typeof lstat>> | undefined> {
+  try {
+    return await lstat(path);
+  } catch (error: unknown) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+function blockedScratch(path: string, reason: string): ApkScratchDirectoryResult {
+  return {
+    path,
+    state: "blocked",
+    created: false,
+    diagnostics: [`Agent scratch directory ${path} was not prepared: ${reason}.`],
+  };
+}
+
+/** Read-only scratch-directory inspection used by init and adopt preview. */
+export async function inspectApkScratchDirectory(
+  rootDirectory: string,
+): Promise<ApkScratchDirectoryResult> {
+  const relativePath = `${APK_SCRATCH_DIRECTORY}/`;
+  const parentPath = join(rootDirectory, "tmp");
+  const parent = await lstatOptional(parentPath);
+  if (parent?.isSymbolicLink()) {
+    return blockedScratch(relativePath, "tmp is a symbolic link and may escape the repository");
+  }
+  if (parent && !parent.isDirectory()) {
+    return blockedScratch(relativePath, "tmp exists but is not a directory");
+  }
+
+  const scratchPath = join(rootDirectory, APK_SCRATCH_DIRECTORY);
+  const scratch = await lstatOptional(scratchPath);
+  if (scratch?.isSymbolicLink()) {
+    return blockedScratch(relativePath, "tmp/apk is a symbolic link and may escape the repository");
+  }
+  if (scratch && !scratch.isDirectory()) {
+    return blockedScratch(relativePath, "tmp/apk exists but is not a directory");
+  }
+
+  return {
+    path: relativePath,
+    state: scratch ? "present" : "missing",
+    created: false,
+    diagnostics: [],
+  };
+}
+
+/** Idempotently create the canonical ignored scratch directory. */
+export async function ensureApkScratchDirectory(
+  rootDirectory: string,
+): Promise<ApkScratchDirectoryResult> {
+  const inspection = await inspectApkScratchDirectory(rootDirectory);
+  if (inspection.state !== "missing") {
+    return inspection;
+  }
+
+  await mkdir(join(rootDirectory, APK_SCRATCH_DIRECTORY), { recursive: true });
+  return { ...inspection, state: "present", created: true };
 }
 
 type StarterFile =
@@ -634,11 +711,14 @@ export async function initProject(rootDirectory: string): Promise<InitResult> {
     updated.push(gitignore.path);
   }
 
+  const scratchDirectory = await ensureApkScratchDirectory(rootDirectory);
+
   return {
     created,
     skipped,
     updated,
     gitignore,
-    diagnostics: gitignore.diagnostics,
+    scratchDirectory,
+    diagnostics: [...gitignore.diagnostics, ...scratchDirectory.diagnostics],
   };
 }

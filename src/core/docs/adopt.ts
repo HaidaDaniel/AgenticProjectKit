@@ -18,6 +18,8 @@ import {
 } from "../exporters/index.js";
 import {
   GITIGNORE_PATH,
+  ensureApkScratchDirectory,
+  inspectApkScratchDirectory,
   planApkGitignore,
   type ApkGitignoreResult,
 } from "../init/index.js";
@@ -38,6 +40,7 @@ export interface AdoptResult {
 
 export interface AdoptionChange {
   action: "create" | "update";
+  kind?: "file" | "directory";
   path: string;
   reason: string;
 }
@@ -587,15 +590,36 @@ async function buildAdoptionPlan(
     });
   }
 
+  const scratchDirectory = await inspectApkScratchDirectory(rootDirectory);
+  if (scratchDirectory.state === "missing") {
+    operations.push({
+      action: "create",
+      kind: "directory",
+      path: scratchDirectory.path,
+      reason: "canonical agent scratch directory",
+      content: "",
+    });
+  }
+
   return {
     plan: {
       installation,
       scan,
       compatibility,
-      changes: operations.map(({ action, path, reason }) => ({ action, path, reason })),
+      changes: operations.map(({ action, kind, path, reason }) => ({
+        action,
+        ...(kind ? { kind } : {}),
+        path,
+        reason,
+      })),
       skipped,
       gitignore: gitignorePlan.result,
-      diagnostics: [...compatibility.diagnostics, ...gitignorePlan.result.diagnostics, ...installation.findings.map(renderInstallationFinding)],
+      diagnostics: [
+        ...compatibility.diagnostics,
+        ...gitignorePlan.result.diagnostics,
+        ...scratchDirectory.diagnostics,
+        ...installation.findings.map(renderInstallationFinding),
+      ],
     },
     operations,
   };
@@ -619,6 +643,10 @@ export async function adoptRepository(
 
   for (const operation of built.operations) {
     const path = join(rootDirectory, operation.path);
+    if (operation.kind === "directory") {
+      await ensureApkScratchDirectory(rootDirectory);
+      continue;
+    }
     await mkdir(dirname(path), { recursive: true });
     if (operation.action === "create" && await fileExists(path)) {
       skipped.push(operation.path);

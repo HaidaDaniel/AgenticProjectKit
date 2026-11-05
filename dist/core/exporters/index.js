@@ -117,6 +117,7 @@ export const DEFAULT_AGENT_POLICY = { projectName: "Agentic Project Kit",
         "Stay inside the task allowed files.",
         "Do not add dependencies without updating docs/decisions.md.",
         "Update docs/progress.md when task status changes.",
+        "Use `<repo>/tmp/apk/` for intermediate research, reproducers, temporary scripts, and notes; keep required reports, evidence, and final artifacts outside ignored scratch.",
     ],
     taskRules: [
         "Register agent before task work: pnpm exec apk agent register --id <id> --platform <platform> --model <model>.",

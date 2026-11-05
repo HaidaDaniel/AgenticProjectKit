@@ -65,9 +65,10 @@ The following operational files are not prompt context by default:
 - `.agentic/runs.jsonl`;
 - `.agentic/evidence.jsonl`;
 - `.agentic/agents/**`;
-- `.agentic/runs/**`.
+- `.agentic/runs/**`;
+- `tmp/apk/**`.
 
-Agent registry, run logs, and archived tasks are analytics and history, not implementation context.
+Agent registry, run logs, and archived tasks are analytics and history, not implementation context. Ignored `tmp/apk/` scratch is intermediate work, not canonical evidence or a durable handoff location; required reports and final artifacts belong in tracked repository paths.
 
 Budgeted discovery prefers Git's canonical repository view (`git ls-files --cached --others --exclude-standard`) so root and nested `.gitignore` rules, negation patterns, and CRLF line endings are honored through Git-native semantics without a custom `.gitignore` parser. A bounded filesystem walk is the fallback when Git is unavailable, retaining the hardcoded heavy-directory exclusions (`node_modules`, `dist`, `build`, `.next`, `.turbo`, `.cache`, `coverage`, `.git`). Ignored/untracked runtime state therefore does not become a context candidate and a large ignored directory is not walked.
 

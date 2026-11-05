@@ -10995,3 +10995,22 @@ test("diagnostic snapshots guard linked registry shards and recursive store entr
       }
   });
 });
+
+test("ignored agent scratch never enters git changed-file discovery", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: directory });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await writeFile(join(directory, ".gitignore"), "/tmp/apk/\n", "utf8");
+    await writeFile(join(directory, "tracked.txt"), "tracked\n", "utf8");
+    await git("add", ".gitignore", "tracked.txt");
+    await git("commit", "--quiet", "-m", "base");
+    await mkdir(join(directory, "tmp", "apk", "research"), { recursive: true });
+    await writeFile(join(directory, "tmp", "apk", "research", "note.md"), "scratch\n", "utf8");
+
+    assert.deepEqual(await listGitChangedFiles(directory), []);
+  });
+});

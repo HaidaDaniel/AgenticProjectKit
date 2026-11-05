@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
@@ -181,6 +181,69 @@ test("initProject creates the canonical ignore block idempotently", async () => 
     assert.equal(second.gitignore.action, "unchanged");
     assert.equal(second.created.includes(".gitignore"), false);
     assert.equal(await readFile(join(directory, ".gitignore"), "utf8"), gitignore);
+  });
+});
+
+test("initProject prepares the canonical ignored scratch directory idempotently", async () => {
+  await withTempDirectory(async (directory) => {
+    const first = await initProject(directory);
+
+    assert.equal(first.scratchDirectory.state, "present");
+    assert.equal(first.scratchDirectory.created, true);
+    assert.ok((await stat(join(directory, "tmp", "apk"))).isDirectory());
+    const gitignore = await readFile(join(directory, ".gitignore"), "utf8");
+    assert.ok(gitignore.split("\n").includes("/tmp/apk/"));
+    assert.equal(gitignore.split("\n").includes("tmp/"), false);
+
+    await writeFile(join(directory, "tmp", "apk", "user-note.md"), "keep me\n", "utf8");
+    const second = await initProject(directory);
+    assert.equal(second.scratchDirectory.state, "present");
+    assert.equal(second.scratchDirectory.created, false);
+    assert.equal(await readFile(join(directory, "tmp", "apk", "user-note.md"), "utf8"), "keep me\n");
+  });
+});
+
+test("initProject refuses a symlinked scratch path without escaping the repository", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-scratch-outside-"));
+    try {
+      await mkdir(join(directory, "tmp"), { recursive: true });
+      await symlink(outside, join(directory, "tmp", "apk"));
+
+      const result = await initProject(directory);
+
+      assert.equal(result.scratchDirectory.state, "blocked");
+      assert.ok(result.diagnostics.some((diagnostic) => diagnostic.includes("symbolic link")));
+      await assert.rejects(() => stat(join(outside, "apk")));
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+});
+
+test("initProject prepares independent scratch directories in separate Git worktrees", async () => {
+  await withTempDirectory(async (directory) => {
+    const repository = join(directory, "repository");
+    const worktree = join(directory, "worktree");
+    await mkdir(repository, { recursive: true });
+    const git = async (...args: string[]) => {
+      await execFileAsync("git", args, { cwd: repository });
+    };
+    await git("init", "--quiet");
+    await git("config", "user.email", "codex@example.test");
+    await git("config", "user.name", "Codex");
+    await writeFile(join(repository, "README.md"), "base\n", "utf8");
+    await git("add", "README.md");
+    await git("commit", "--quiet", "-m", "base");
+    await git("worktree", "add", "-b", "scratch-worktree", worktree);
+
+    const mainInit = await initProject(repository);
+    const worktreeInit = await initProject(worktree);
+
+    assert.equal(mainInit.scratchDirectory.state, "present");
+    assert.equal(worktreeInit.scratchDirectory.state, "present");
+    assert.ok((await stat(join(repository, "tmp", "apk"))).isDirectory());
+    assert.ok((await stat(join(worktree, "tmp", "apk"))).isDirectory());
   });
 });
 

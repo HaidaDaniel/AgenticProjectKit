@@ -99,6 +99,7 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0088](#adr-0088---v2-performance-traces-include-a-startup-aware-rewrite-boundary) | accepted | v2 performance traces include a startup-aware rewrite boundary | — |
 | [ADR-0089](#adr-0089---portable-task-handoff-starts-as-untrusted-context) | proposed | Portable task handoff starts as untrusted context | — |
 | [ADR-0090](#adr-0090---diagnostics-share-a-guarded-invocation) | accepted | Diagnostics share a guarded invocation | — |
+| [ADR-0091](#adr-0091---repository-local-agent-scratch-is-ignored-and-disposable) | accepted | Repository-local agent scratch is ignored and disposable | — |
 
 ### ADR index cross-check
 
@@ -1845,3 +1846,23 @@ This is optimistic validation of a read-only view, not a filesystem transaction 
 ### Consequences
 
 Content reads and repeated Git comparisons decrease, while metadata checks increase. The testing strategy records both costs and verifies unchanged healthy output, new-invocation freshness, concurrent mutation refusal and worktree isolation. An unavailable diagnostic must be retried with a new invocation rather than refreshing individual components.
+
+## ADR-0091 - Repository-local agent scratch is ignored and disposable
+
+Status: accepted
+
+Date: 2026-11-05
+
+### Context
+
+Agents need a predictable place for intermediate research, reproducers, temporary scripts, and working notes. Ad hoc files under tracked paths create scope noise, accidental evidence, and merge conflicts. Using the operating-system temp directory hides work from the repository and can confuse multi-worktree sessions.
+
+### Decision
+
+`<worktree>/tmp/apk/` is the canonical repository-local scratch area. `apk init` creates it when absent and `apk adopt --preview`/`--apply` report and apply the additive directory change. The only generated ignore entry is the root-anchored `/tmp/apk/`; the rest of `tmp/` and the operating-system temp directory remain unaffected. Repeated init/adopt is idempotent, existing scratch content is preserved, and symlinked or non-directory `tmp`/`tmp/apk` paths are refused rather than followed outside the worktree.
+
+Ignored scratch is not task candidate scope, evidence, or a durable handoff location. Required reports, evidence, and final artifacts stay in tracked repository paths. No file sandbox, automatic cleanup, extra CLI call, or LLM inference is introduced.
+
+### Consequences
+
+Agents can write intermediate files without polluting task scope or Git status. Users remain responsible for keeping durable evidence outside ignored scratch and for using operating-system temp when a tool genuinely requires it. Existing `.agentic/` and `.apk-workspaces/` ignore and worktree guarantees are unchanged.
