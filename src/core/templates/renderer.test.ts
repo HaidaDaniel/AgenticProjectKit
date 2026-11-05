@@ -530,6 +530,45 @@ test("planning guidance makes CI stage-appropriate and preserves explicit requir
   }
 });
 
+test("planning skills separate backlog ideas from executable tasks", async () => {
+  const agents = (await renderAgentExportFiles()).find((file) => file.outputPath === "AGENTS.md");
+  assert.ok(agents);
+  assert.match(agents.content, /Use the backlog for durable future ideas/);
+  assert.match(agents.content, /never auto-promote/);
+
+  const expectations: Record<string, RegExp[]> = {
+    "apk-task-author": [
+      /backlog card/i,
+      /explicitly permits|explicit permission/i,
+      /are not tasks|not a task/i,
+      /never an automatic promotion/i,
+      /ordinary implementation, verification, review, or status/i,
+    ],
+    "apk-task-split": [
+      /backlog card/i,
+      /promotion is a separate explicit operation/i,
+      /future idea/i,
+      /ordinary implementation or review work/i,
+    ],
+    "apk-project-grill": [
+      /backlog card/i,
+      /do not create backlog items automatically/i,
+      /not ready to execute/i,
+    ],
+    "apk-task-grill": [
+      /blocked task is still an executable task, not a backlog item/i,
+      /explicit human approval/i,
+    ],
+  };
+  for (const [name, patterns] of Object.entries(expectations)) {
+    const content = normalizeLineEndings(
+      await readFile(join(process.cwd(), "src/core/templates/skills", name, "SKILL.md.hbs"), "utf8"),
+    );
+    for (const pattern of patterns) assert.match(content, pattern, name);
+    assert.doesNotMatch(content, /\{\{/, name);
+  }
+});
+
 test("apk-task-author ships a portable planning-only task authoring asset", async () => {
   const content = normalizeLineEndings(
     await readFile(

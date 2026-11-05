@@ -151,6 +151,8 @@ Promotion to a canonical task is a separate explicit operation and is not automa
 
 Human-only promotion criteria require explicit `--confirm <criterion-id>` values plus an operator-supplied bounded `--reason`; `--apply` alone is not confirmation. The CLI records this as an operator assertion, not cryptographic authentication. Promotion does not claim, implement, review, or mark the task done, and creates no verification or evidence record. The card records only the numeric `Promoted-Task` id, not the task's literal path, so archiving the promoted task does not leave a blocking backlog reference; a repeated promotion resolves active or archived tasks by `Backlog-Id`. The backlog is not a second task database and has no service, daemon, cron job, API, or model inference.
 
+Planning agents treat backlog work as bounded planning context: a request to remember or defer an idea may produce a card only with explicit permission; an existing contract is not duplicated; reaching promotion criteria produces a proposal, not automatic promotion. A blocked executable task is not a backlog item. Ordinary implementation, verification, review, and status work does not scan the backlog or create persistent model memory.
+
 ## CI planning by project stage
 
 Task authoring must choose CI proportionally to the current project stage. This is planning guidance, not a new lifecycle state or runtime policy engine.

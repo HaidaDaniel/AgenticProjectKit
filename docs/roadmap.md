@@ -26,6 +26,10 @@ Tasks 0216 (bounded Go startup prototype), 0218 (historical provenance recovery 
 
 Public readiness is the one current planned milestone. Tasks 0145-0148 are already shipped as the v0.4.7 correctness foundation. Product-truth tasks 0151-0157 are complete. Corrective Task 0178 separates a pre-tag package candidate from the last validated release; Task 0179 closes the hosted-CI completion-gate gap. Task 0173 runs only after those corrections and its existing prerequisites pass.
 
+## Future work backlog
+
+Durable ideas that are not ready to execute live in `.tasks/backlog/<slug>.md` as Git-tracked Markdown cards with an immutable `Backlog-Id`, a status of `idea`, `deferred`, `promoted`, or `discarded`, and explicit promotion criteria. They are not executable tasks: they have no numeric task ID, owner, review, verification, or gate, and they never appear in `apk tasks`, `apk next-task`, status, attention, or the dependency graph. Planning agents offer backlog cards only when the human asks to remember or defer work; they never auto-promote a card or turn every idea into a mandatory stage. Use `apk backlog add`, `list`, `show`, `validate`, and the explicit `promote --preview|--apply` flow.
+
 ### Task state rows
 
 Each row repeats its contract's lifecycle state so readers can compare the roadmap with the task source of truth. The documentation consistency check validates every row against task metadata discovered from `.tasks/`.

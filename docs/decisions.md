@@ -103,6 +103,7 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0092](#adr-0092---ci-planning-follows-project-stage-and-explicit-requirements) | accepted | CI planning follows project stage and explicit requirements | — |
 | [ADR-0093](#adr-0093---backlog-items-are-lightweight-tracked-future-work-not-tasks) | accepted | Backlog items are lightweight tracked future work, not tasks | — |
 | [ADR-0094](#adr-0094---backlog-promotion-is-explicit-serialized-and-operator-asserted) | accepted | Backlog promotion is explicit, serialized, and operator-asserted | — |
+| [ADR-0095](#adr-0095---planning-agents-use-the-backlog-only-for-durable-future-ideas) | accepted | Planning agents use the backlog only for durable future ideas | — |
 
 ### ADR index cross-check
 
@@ -1929,3 +1930,21 @@ The card records `Status: promoted` and `Promoted-Task: NNNN`; the task notes re
 ### Consequences
 
 Promotion is auditable and duplicate-resistant without a second task database. Concurrent promoters serialize; interrupted writes are recoverable; malformed or duplicate identities fail closed. The card stores only the numeric promoted-task id, not a literal task path, so later task archive remains safe and re-promotion resolves active or archived tasks by Backlog-Id. The trust boundary is honest: an agent must relay only operator-communicated confirmations, and APK does not claim cryptographic human identity.
+
+## ADR-0095 - Planning agents use the backlog only for durable future ideas
+
+Status: accepted
+
+Date: 2026-11-05
+
+### Context
+
+Planning agents need a way to preserve an idea without turning it into executable work. Creating a task for every suggestion adds numeric IDs and lifecycle ceremony to ideas that may never be implemented, while a separate ungoverned note system would be easy to lose.
+
+### Decision
+
+Planning skills use backlog cards only when the human asks to remember or defer work. Before authoring a task they inspect relevant backlog cards for motivation and prior decisions, but do not duplicate an existing contract. Deferred post-MVP work becomes a card with a why-not-now and promotion criteria; reaching criteria produces a proposal, never automatic promotion. A blocked executable task is not a backlog item. Ordinary implementation, verification, review, and status work does not scan the backlog, and no persistent model memory, RAG, vector store, polling, or background agent is introduced.
+
+### Consequences
+
+Planners can preserve durable ideas without inflating the executable task graph. Benefits are bounded to planning context, while the canonical task workflow remains authoritative for work that is ready now. The backlog remains a Git-tracked repository artifact rather than a second database or hidden model state.
