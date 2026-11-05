@@ -1,7 +1,7 @@
 # Task 0251 - Run integrated backlog scratch and CI regression for release readiness
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-0244-0251
 Mode: maintenance
 Lane: quality
 Type: test
