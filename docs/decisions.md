@@ -100,6 +100,7 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0089](#adr-0089---portable-task-handoff-starts-as-untrusted-context) | proposed | Portable task handoff starts as untrusted context | — |
 | [ADR-0090](#adr-0090---diagnostics-share-a-guarded-invocation) | accepted | Diagnostics share a guarded invocation | — |
 | [ADR-0091](#adr-0091---repository-local-agent-scratch-is-ignored-and-disposable) | accepted | Repository-local agent scratch is ignored and disposable | — |
+| [ADR-0092](#adr-0092---ci-planning-follows-project-stage-and-explicit-requirements) | accepted | CI planning follows project stage and explicit requirements | — |
 
 ### ADR index cross-check
 
@@ -1866,3 +1867,23 @@ Ignored scratch is not task candidate scope, evidence, or a durable handoff loca
 ### Consequences
 
 Agents can write intermediate files without polluting task scope or Git status. Users remain responsible for keeping durable evidence outside ignored scratch and for using operating-system temp when a tool genuinely requires it. Existing `.agentic/` and `.apk-workspaces/` ignore and worktree guarantees are unchanged.
+
+## ADR-0092 - CI planning follows project stage and explicit requirements
+
+Status: accepted
+
+Date: 2026-11-05
+
+### Context
+
+Planning agents often add mandatory CI to early projects before a working user scenario exists. That consumes time and creates gates that do not match the experiment, while a repository may already require CI through `quality.required` or an approved task contract.
+
+### Decision
+
+CI planning is proportional to the project stage. Discovery and MVP use relevant local checks and optional fast hooks; product recommends minimal clean-checkout CI only after MVP acceptance is recorded or explicitly confirmed and only when useful; production uses checks sufficient for real users, integration, publication, and security. A pre-MVP CI exception needs a verifiable reason such as deployment, multiple developers, release/security policy, or a reproducible clean-checkout problem.
+
+`quality.required` and explicitly approved task contracts remain authoritative, and `quality.recommended` never becomes required. A premature CI need may be recorded as a deferred backlog candidate. No CI engine, mandatory lifecycle gate, or global maturity schema is introduced, and Task 0223's opt-in local CI parity remains a separate feature.
+
+### Consequences
+
+Planning skills and documentation surface the stage-based choice instead of treating CI as a slogan. Project mode and task mode stay independent, and an accepted MVP is never inferred from dates, task completion, or agent output.

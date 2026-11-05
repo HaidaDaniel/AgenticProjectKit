@@ -68,6 +68,18 @@ and unchanged coverage thresholds. Only move a scenario when fresh-process or en
 isolation is not the property it proves; document retained boundary coverage. See
 [Task 0194 measurements](../research/cli-test-layering.md).
 
+## CI planning by maturity
+
+CI is not a default stage gate. Planning should match checks to the project mode and the task's actual risk:
+
+- discovery/prototype: no CI by default; exercise the experiment with the smallest useful check.
+- MVP: prefer local lint, typecheck, focused tests, and build or smoke checks; optional fast hooks are useful when they shorten feedback. Do not add mandatory CI merely because it is a best practice.
+- product: after MVP acceptance is recorded or explicitly confirmed, recommend a minimal clean-checkout CI when it adds useful feedback.
+- production: use checks sufficient for real users, integration, publication, and security.
+- maintenance: preserve existing required checks and add focused regression protection.
+
+A pre-MVP CI exception needs a verifiable reason: automated deployment, multiple active developers, release or security requirements, a reproducible clean-checkout problem, or an established repository quality policy. `quality.required` and explicitly approved task contracts override the default; `quality.recommended` stays recommended. APK does not add a CI engine, a mandatory gate, or a global maturity schema.
+
 ## Clean-checkout CI
 
 `.github/workflows/quality.yml` uses one bounded Ubuntu job for pull requests and `main` pushes. It asserts the checked-out revision equals `GITHUB_SHA`, installs Node.js `22.22.1` and pnpm `10.28.1` with `pnpm install --frozen-lockfile`, and runs this deterministic sequence:

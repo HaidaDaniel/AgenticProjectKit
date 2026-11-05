@@ -76,6 +76,12 @@ rigid sentence count. Terse and specialty styles (`caveman` or other compression
 wording but must not suppress the required decision context: established facts, remaining
 ambiguity, and consequence stay in every non-trivial question.
 
+When the task touches verification or CI, clarify whether CI is required by `quality.required`, an
+approved contract, a production/release/security obligation, or a concrete exception. Discovery or
+MVP work should use relevant local checks rather than mandatory CI; production work may need
+stronger integration, publication, and security checks. Do not add mandatory CI merely because it
+is conventional, and do not turn `quality.recommended` into a requirement.
+
 Stop when the contract is "ready enough"; local implementation details belong to the
 implementation agent. Explicitly list any remaining material questions instead of hiding them.
 

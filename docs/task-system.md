@@ -141,6 +141,20 @@ Legacy `.agentic/agents.jsonl` and `.agentic/runs.jsonl` are migration inputs on
 - Update `docs/progress.md` when task status changes.
 - Use `Lane`, `Scope`, `Tags`, and `Parallel` to split work across agents.
 
+## CI planning by project stage
+
+Task authoring must choose CI proportionally to the current project stage. This is planning guidance, not a new lifecycle state or runtime policy engine.
+
+| Project stage | Default CI expectation |
+| --- | --- |
+| discovery | No CI by default; use checks proportional to the experiment and its risk. |
+| mvp | Relevant local lint, typecheck, focused tests, and build or smoke checks; optional fast hooks when useful. Do not add mandatory CI merely because it is conventional. |
+| product | After MVP acceptance is recorded or explicitly confirmed, recommend a minimal clean-checkout CI when useful. |
+| production | Sufficient checks for real users, integration, publication, and security. |
+| maintenance | Preserve existing required checks and add focused regression protection. |
+
+A pre-MVP CI exception requires a verifiable reason: automated deployment, multiple active developers, release or security requirements, a reproducible clean-checkout problem, or an established repository quality policy. `quality.required` and explicitly approved task contracts remain authoritative; `quality.recommended` never becomes required. A premature CI need may be recorded as a deferred backlog candidate instead of an executable task. APK does not add a CI engine or a mandatory gate for this policy.
+
 ## Contract lint
 
 `pnpm exec apk lint` is a read-only aggregate check for task graph, metadata, path/policy, ownership, and generated-instruction drift. It reports malformed task files, duplicate or invalid dependencies, path contradictions, policy conflicts, state/owner violations, and missing or stale generated files through check-only sync. Exact planned output paths remain valid, and free-form steps are not interpreted with NLP guesses. Human output is concise; `--json` emits stable machine-readable findings. The command does not write reports, task files, or generated instructions; structural and sync errors return exit code 1.

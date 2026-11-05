@@ -8,6 +8,8 @@ The latest validated, installable release at this policy snapshot is `v0.5.2`. I
 
 Do not infer a broader compatibility guarantee from the package's version number alone. Check the release notes for the exact version being installed and the evidence links below.
 
+CI planning for a host project is separate from this APK support matrix. It follows the project's operating mode: discovery and MVP use relevant local checks by default, product recommends minimal clean-checkout CI only after MVP acceptance and when useful, and production uses checks sufficient for real users, integration, publication, and security. `quality.required` and approved task contracts remain authoritative, and `quality.recommended` never becomes required.
+
 ## Compatibility matrix
 
 | Surface | Current statement | Evidence and limits |

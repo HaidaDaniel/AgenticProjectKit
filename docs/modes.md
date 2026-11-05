@@ -10,6 +10,18 @@ The planned `executionProfile` is an independent resource-spending policy (`loca
 
 See [Resource-Aware Execution](execution-profiles.md) for the accepted architecture. The four profile values and deterministic explain/routing foundation are implemented by Task 0084; assurance, calibration, attention, and workspace behavior remain separate tasks.
 
+## CI expectations by mode
+
+CI is a stage-appropriate choice, not a default requirement. The mode describes the project phase; `quality.required` and explicitly approved task contracts remain authoritative, and `quality.recommended` never becomes required by this guidance.
+
+- **discovery:** no CI by default; checks should fit the experiment and its risks.
+- **mvp:** prefer relevant local checks such as lint, typecheck, focused tests, and build or smoke checks; fast pre-commit/pre-push hooks are optional when useful. Do not add mandatory CI merely because it is conventional.
+- **product:** after MVP acceptance is recorded or explicitly confirmed, recommend a minimal clean-checkout CI when it provides useful feedback.
+- **production:** use checks sufficient for real users, integration, publication, and security.
+- **maintenance:** preserve existing required checks and add focused regression protection for the change.
+
+A pre-MVP CI exception needs a verifiable reason: automated deployment, multiple active developers, release or security requirements, a reproducible clean-checkout problem, or an established repository quality policy. If CI is premature, record a deferred backlog candidate rather than creating a mandatory executable task.
+
 ## discovery
 
 Used when the user has a rough idea and needs to turn it into requirements.

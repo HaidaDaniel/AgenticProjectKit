@@ -106,6 +106,14 @@ test/quality/release aggregates. Documentation tasks need applicable contract, l
 example checks; add application tests only when those changes affect executable behavior. Keep
 required domain, package-currency, hosted-CI, and independent-review proof where applicable.
 
+CI is stage-appropriate, not automatic. Do not create a mandatory CI task for discovery or MVP just
+because it is a common practice; prefer relevant local checks there. Recommend minimal clean-checkout
+CI only after MVP acceptance is recorded or explicitly confirmed and only when useful. Production
+tasks may require stronger integration, publication, and security checks. A pre-MVP CI exception
+must name a verifiable reason such as deployment, multiple developers, release/security policy, or a
+reproducible clean-checkout problem. Preserve `quality.required` and explicitly approved CI
+contracts, and never turn `quality.recommended` into a requirement.
+
 ## Explicit approval is required before task creation
 
 Ask for explicit approval of the concrete preview, including its one-task count, paths, dependencies,

@@ -63,6 +63,12 @@ separate from the final candidate checks, and avoid overlapping test/coverage/qu
 aggregates. Documentation-only slices need applicable contract/link/example checks rather than
 unrelated full application suites. Preserve mandatory domain, package, CI, and review evidence.
 
+Do not create a CI slice merely because CI is conventional. Discovery and MVP slices use relevant
+local checks; recommend clean-checkout CI only after MVP acceptance is recorded or explicitly
+confirmed and only when it adds useful feedback. Production slices may need stronger integration,
+publication, and security checks. Pre-MVP CI needs a verifiable exception, and `quality.required` or
+an approved contract always wins over the default. Leave `quality.recommended` recommended.
+
 ## Approval before writes
 
 Present the complete proposed structural delta, including any new task contracts, symbolic

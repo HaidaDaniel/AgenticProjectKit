@@ -68,6 +68,16 @@ questionnaire; skip what the project does not touch):
 - Which future-compatibility doors genuinely deserve to stay open, and which are deliberately
   closed now?
 
+CI is not a default stage gate. Discovery/prototype work should test the experiment and its risks;
+MVP work normally uses relevant local lint, typecheck, focused tests, and build or smoke checks plus
+optional fast hooks. Recommend a minimal clean-checkout CI only after MVP acceptance is recorded or
+explicitly confirmed and only when it adds useful feedback. Production work needs checks sufficient
+for real users, integration, publication, and security. A pre-MVP CI exception needs a verifiable
+reason such as automated deployment, multiple active developers, release or security requirements,
+a reproducible clean-checkout problem, or an established repository policy. `quality.required` and
+explicitly approved task contracts remain authoritative, and `quality.recommended` never becomes
+required merely because CI is a common practice.
+
 ### B. Checkpoint / re-grill
 
 The key use case: repeat the grill after a series of tasks, a milestone, or a material project

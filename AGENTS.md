@@ -11,6 +11,7 @@ Repository docs and task files are the source of truth.
 - Do not add dependencies without updating docs/decisions.md.
 - Update docs/progress.md when task status changes.
 - Use `<repo>/tmp/apk/` for intermediate research, reproducers, temporary scripts, and notes; keep required reports, evidence, and final artifacts outside ignored scratch.
+- Match CI to project stage and explicit requirements: do not mandate hosted CI for discovery or MVP without a concrete reason; preserve quality.required and approved CI contracts.
 
 ## Default Style
 

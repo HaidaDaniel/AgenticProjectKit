@@ -510,6 +510,26 @@ test("exported policy and authoring assets keep verification proportional to hos
   }
 });
 
+test("planning guidance makes CI stage-appropriate and preserves explicit requirements", async () => {
+  const agents = (await renderAgentExportFiles()).find((file) => file.outputPath === "AGENTS.md");
+  assert.ok(agents);
+  assert.match(agents.content, /Match CI to project stage/);
+  assert.match(agents.content, /quality\.required/);
+  assert.match(agents.content, /approved CI contracts/);
+
+  for (const name of ["apk-project-grill", "apk-task-author", "apk-task-split", "apk-task-grill"]) {
+    const content = normalizeLineEndings(
+      await readFile(join(process.cwd(), "src/core/templates/skills", name, "SKILL.md.hbs"), "utf8"),
+    );
+    assert.match(content, /MVP/i, name);
+    assert.match(content, /production/i, name);
+    assert.match(content, /quality\.required/, name);
+    assert.match(content, /quality\.recommended/, name);
+    assert.match(content, /convention|common practice|best practice/i, name);
+    assert.doesNotMatch(content, /\{\{/, name);
+  }
+});
+
 test("apk-task-author ships a portable planning-only task authoring asset", async () => {
   const content = normalizeLineEndings(
     await readFile(
