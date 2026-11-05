@@ -1,0 +1,121 @@
+# Task 0248 - Promote backlog items into canonical APK tasks safely
+
+State: todo
+Owner: none
+Mode: product
+Lane: implementation
+Type: feature
+Scope: backlog,promotion,tasks,cli,archive
+Risk: high
+Parallel: false
+Depends on: 0247
+Tags: p2,backlog,promotion,tasks,cli,archive
+
+## Goal
+
+Implement an explicit preview-and-apply promotion path that converts one backlog card into a normal canonical APK task through the existing task creation API and mutation lock while preserving the source card as history and leaving candidate IDs verification evidence review gate claim and implementation untouched.
+
+## Context files
+
+- AGENTS.md
+- docs/task-system.md
+- docs/architecture.md
+- docs/decisions.md
+- docs/cli-commands.md
+- src/core/tasks/index.ts
+- src/core/tasks/task.test.ts
+- src/cli/commands/task.ts
+- src/cli/command-registry.ts
+- src/cli/command.test.ts
+- .tasks/0247-add-lightweight-backlog-storage-and-cli.md
+
+## Files allowed to edit
+
+- src/core/backlog/**
+- src/cli/commands/backlog.ts
+- src/cli/command-registry.ts
+- src/cli/command.test.ts
+- src/cli/cli.test.ts
+- src/core/tasks/index.ts
+- src/core/tasks/task.test.ts
+- package.json
+- docs/cli-commands.md
+- docs/task-system.md
+- docs/decisions.md
+- docs/progress.md
+- dist/**
+
+## Files forbidden to edit
+
+- .tasks/archive/**
+- .agentic/**
+- docs/releases/**
+- pnpm-lock.yaml
+- .github/**
+- src/core/tasks/evidence.ts
+- src/core/tasks/gate.ts
+- src/core/tasks/provenance.ts
+- src/core/config/**
+
+## Steps
+
+1. Define the read-only preview contract for `apk backlog promote <slug> --preview`: missing required task fields, unmet promotion criteria, and every human-only decision still required.
+2. Resolve the full task contract input from the card plus explicit operator input without creating a second task creator.
+3. Validate paths, dependencies, and verification before mutation; then let the canonical createTask path allocate the numeric ID under the existing task mutation lock.
+4. After the task write succeeds, atomically update the source card to promoted with a durable task reference; require an explicit operator confirmation for human-only criteria rather than treating `--apply` as approval.
+5. Reapplying must detect the existing promotion and refuse duplication, including when the promoted card was manually renamed.
+6. Recover predictably from a crash between task creation and card update with a bounded diagnostic and safe rerun behavior.
+7. Verify that promotion issues no claim, implementation, review, approval, verification, or provenance record.
+8. Analyze the card backlink against existing archive reference scanning and choose an ID-based or explicitly relocatable reference that keeps canonical archive safe.
+9. Add deterministic tests for duplicate promotions, concurrency, ID collisions, unmet criteria, malformed cards, missing dependencies, symlink traversal, interrupted writes, source-card preservation, renamed cards, archive-after-promotion, and the resulting task graph.
+
+## Acceptance criteria
+
+- This remains a high-risk operation regardless of how small the backlog card appears.
+- apk backlog promote --preview is read-only and shows missing mandatory fields, unmet promotion criteria, and every condition requiring human judgement.
+- No date, card text, --apply invocation, or agent output automatically satisfies an unverifiable criterion; human-only criteria require a separate explicit operator confirmation.
+- apply creates an ordinary .tasks/NNNN-*.md task through canonical ID allocation and the existing task mutation lock.
+- Path, dependency, and verification validation is preserved.
+- The source card remains and records the promoted state plus a durable reference to the new task.
+- The new task carries a source-card reference, giving bidirectional traceability without creating a second task store.
+- A repeated apply creates no duplicate, including after a promoted card is manually renamed.
+- Failure or interruption leaves either a clearly diagnosable recoverable state or no mutation; a crash between task creation and card update is detected and recoverable.
+- Promotion does not claim, implement, review, or mark done, and creates no approval, verification, or evidence record.
+- The promotion reference does not make later task archive unsafe or silently broken; archive behavior after promotion is tested and documented.
+- Malformed or escaping cards are refused before mutation.
+
+## Correctness assumptions
+
+- The canonical createTask path is sufficient for task creation and validation; a backlog card can carry the candidate contract fields needed for preview; operators remain responsible for genuinely human promotion criteria
+
+## Invariants
+
+- One canonical task creator only; no automatic promotion; no second task database or ID allocator; no partial silent corruption; source card history is preserved; no lifecycle transition beyond task creation
+
+## Required evidence
+
+- Focused test output for every duplicate concurrency collision unmet-criteria malformed missing-dependency symlink interruption and archive-link case; evidence that preview changes nothing; evidence that apply reuses canonical task creation and lock; resulting graph and dependency inspection
+
+## Review questions
+
+- Can concurrent or repeated apply create two tasks or overwrite the card; can a crafted slug or symlink write outside the backlog directory; does interruption after task creation but before card update produce an actionable recovery rather than a silent duplicate; can the retained backlink block or misdirect task archive; does preview accidentally mutate anything
+
+## Counterexample searches
+
+- Two promoters run at once; task ID already taken; card has unmet promotion criteria; human-only criterion without explicit operator confirmation; card is malformed or has an unknown status; dependency is missing; card path is a symlink; process dies after task write; card already promoted; promoted card manually renamed; promoted task later archived
+
+## Verification
+
+- `{"id":"quality","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"pnpm quality","evidenceRef":"docs/task-system.md"}`
+- `{"id":"task-lint","type":"automated","required":true,"environment":"local","profile":"deterministic","apkOperation":"lint"}`
+- `{"id":"diff-check","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"git diff --check"}`
+- `{"id":"build-current","type":"automated","required":true,"environment":"local","profile":"deterministic","command":"rm -rf dist && pnpm build && test -z \"$(git status --porcelain --untracked-files=all --ignored=matching -- dist)\""}`
+
+## Documentation updates
+
+- Document preview apply recovery and archive-link behavior in docs/task-system.md docs/cli-commands.md and docs/decisions.md; update docs/progress.md when task state changes
+
+## Notes
+
+- Depends on task 0247 for backlog storage and CLI; do not implement a parallel task creator; the archive backlink must be tested against the existing literal-reference scanning rather than assumed safe; no automatic promotion; treat promotion as high-risk even when the card is small
+- Task 0223 is an active todo that shares CLI registry test decision docs and dist paths with this task; blocked Task 0221 would also touch src/core/tasks/index.ts command-registry and task tests if unblocked; sequence the shared CLI and task-file edits rather than running them concurrently in one checkout
