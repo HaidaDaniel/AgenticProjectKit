@@ -92,6 +92,10 @@ git diff --check && reject tracked/unexpected untracked drift
 
 The runner is disposable, so audit output cannot affect a developer checkout. `build` clears generated `dist/` before compilation; the currency check rejects tracked, untracked, or ignored build output, including recursively copied `.hbs` assets. The final drift check also catches later mutation. One concurrency group per branch/PR cancels superseded runs; canceled runs are not passes. Hosted status/URL and exact SHA remain separate evidence; CI does not replace task review/gate or frozen-candidate proof. No retry, matrix, credentials, publish, deployment, or adopted-repository workflow generation belongs in this check.
 
+## Integrated backlog, scratch, and CI regression
+
+`src/cli/backlog-integration.test.ts` composes the new surfaces on disposable repositories: greenfield init -> backlog -> promote -> verify -> done -> archive, existing-repository adoption preview/apply, deferred backlog separation from blocked tasks, scratch ignore semantics, generated-instruction currency, stage-aware CI guidance, promotion refusal paths, dependency/provenance checks, and Go/Python/Node downstream-shaped doctor fixtures. It also compares `readdir`/`open`/`readFile`/`opendir` counts for `status --detail`, `attention --json`, `workers --json`, and `next-task` between identical repositories with and without a backlog card; the only permitted difference is at most one diagnostic backlog-directory enumeration per command with no card content read. The readiness decision and limits are recorded in [the integration readiness record](../delivery/backlog-integration-readiness.md).
+
 ## Proportional task verification
 
 Run focused checks while changing code. Commit the final candidate before one canonical verification run; do not run an overlapping `pnpm test`/`pnpm quality` immediately before it. APK source tasks can declare `quality:static`, `test:coverage`, read-only APK lint, `build-current`, and diff validation. Coverage runs the source suite once; `build-current` preserves exact package currency. A changed candidate or failed/missing check needs new evidence.
