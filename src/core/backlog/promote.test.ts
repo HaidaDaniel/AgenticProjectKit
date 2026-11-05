@@ -4,7 +4,16 @@ import { join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { listTaskFiles, type TaskCreateInput } from "../tasks/index.js";
+import {
+  archiveTask,
+  buildTaskDeps,
+  createTask,
+  listTaskFiles,
+  loadTaskFile,
+  previewArchiveTask,
+  writeTaskFile,
+  type TaskCreateInput,
+} from "../tasks/index.js";
 import { backlogDirectory, createBacklogItem, readBacklogItem } from "./index.js";
 import {
   BacklogPromotionError,
@@ -32,7 +41,7 @@ function taskInput(overrides: Partial<TaskCreateInput> = {}): TaskCreateInput {
     parallel: false,
     dependsOn: [],
     tags: ["backlog"],
-    goal: "",
+    goal: "Test task.",
     contextFiles: ["AGENTS.md"],
     allowedFiles: ["src/**"],
     forbiddenFiles: [],
@@ -185,6 +194,86 @@ test("concurrent promotion creates exactly one task", async () => {
     assert.equal(new Set(results.map((result) => result.task.id)).size, 1);
     assert.ok(results.some((result) => result.outcome === "promoted"));
     assert.equal((await listTaskFiles(directory, ".tasks")).length, 1);
+  });
+});
+
+test("promotion refuses unbounded reasons and ambiguous Backlog-Id inventories", async () => {
+  await withTempDirectory(async (directory) => {
+    const card = await deferredCard(directory);
+    await assert.rejects(
+      () => promoteBacklogItem(directory, ".tasks", card.slug, { ...request(), reason: "x".repeat(2049) }),
+      /character limit/,
+    );
+
+    const second = await createBacklogItem(directory, ".tasks", {
+      title: "Second card",
+      status: "idea",
+    });
+    const secondPath = join(backlogDirectory(directory), `${second.slug}.md`);
+    await writeFile(
+      secondPath,
+      (await readFile(secondPath, "utf8")).replace(second.id, card.id),
+      "utf8",
+    );
+    const duplicate = await previewBacklogPromotion(directory, ".tasks", card.slug, request());
+    assert.equal(duplicate.valid, false);
+    assert.ok(duplicate.diagnostics.some((diagnostic) => diagnostic.includes("also used by")));
+
+    await writeFile(join(backlogDirectory(directory), "broken.md"), "# Broken\n", "utf8");
+    const broken = await previewBacklogPromotion(directory, ".tasks", card.slug, request());
+    assert.equal(broken.valid, false);
+    assert.ok(broken.diagnostics.some((diagnostic) => diagnostic.includes("inventory is not healthy")));
+  });
+});
+
+test("multiple tasks with the same Backlog-Id backlink are ambiguous", async () => {
+  await withTempDirectory(async (directory) => {
+    const card = await deferredCard(directory);
+    const first = await promoteBacklogItem(directory, ".tasks", card.slug, request());
+    await createTask(directory, ".tasks", taskInput({
+      title: "Duplicate backlink",
+      notes: [`Source backlog: ${card.path} (Backlog-Id: ${card.id})`],
+    }));
+
+    const preview = await previewBacklogPromotion(directory, ".tasks", card.slug, request());
+    assert.equal(preview.valid, false);
+    assert.ok(preview.diagnostics.some((diagnostic) => diagnostic.includes("Multiple tasks carry the same Backlog-Id")));
+    assert.equal(first.task.id, (await readBacklogItem(directory, ".tasks", card.slug)).promotedTask);
+  });
+});
+
+test("promoted task archive remains safe and archived promotion stays idempotent", async () => {
+  await withTempDirectory(async (directory) => {
+    const card = await deferredCard(directory);
+    const promoted = await promoteBacklogItem(directory, ".tasks", card.slug, request());
+    const taskPath = join(directory, promoted.task.path);
+    const loaded = await loadTaskFile(taskPath);
+    await writeTaskFile(taskPath, { ...loaded.task, state: "done", owner: "fixture-owner" });
+
+    const plan = await previewArchiveTask(directory, ".tasks", promoted.task.id);
+    assert.deepEqual(plan.blockers, []);
+    await archiveTask(directory, ".tasks", promoted.task.id);
+
+    const repeated = await promoteBacklogItem(directory, ".tasks", card.slug, request());
+    assert.equal(repeated.outcome, "already-promoted");
+    assert.equal(repeated.task.id, promoted.task.id);
+    assert.match(repeated.task.path, /^\.tasks\/archive\//);
+  });
+});
+
+test("promotion preserves the resulting dependency graph", async () => {
+  await withTempDirectory(async (directory) => {
+    const dependency = await createTask(directory, ".tasks", taskInput({ title: "Dependency task" }));
+    const card = await deferredCard(directory);
+    const promoted = await promoteBacklogItem(directory, ".tasks", card.slug, {
+      ...request(),
+      task: taskInput({ dependsOn: [dependency.id] }),
+    });
+
+    assert.deepEqual(promoted.task.task.dependsOn, [dependency.id]);
+    const deps = buildTaskDeps(await listTaskFiles(directory, ".tasks"), promoted.task.id, promoted.task.path);
+    assert.ok(deps);
+    assert.deepEqual(deps.prerequisites.map((task) => task.id), [dependency.id]);
   });
 });
 

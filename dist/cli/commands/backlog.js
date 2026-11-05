@@ -49,7 +49,7 @@ function allValues(argv, flag) {
 function singleLine(value) {
     return value.replace(/\s+/g, " ").trim();
 }
-function taskInputFromFlags(argv, item, defaultMode) {
+function taskInputFromFlags(argv, defaultMode) {
     const mode = value(argv, "--mode") ?? defaultMode;
     if (!TASK_MODES.includes(mode))
         throw new Error(`--mode must be one of: ${TASK_MODES.join(", ")}.`);
@@ -70,9 +70,8 @@ function taskInputFromFlags(argv, item, defaultMode) {
         }
     }
     const verificationCommands = csv(argv, "--verification");
-    const criteria = item.promotionCriteria.map((criterion) => criterion.text);
     return {
-        title: item.title,
+        title: "Backlog promotion",
         mode: mode,
         lane: value(argv, "--lane") ?? "implementation",
         ...(value(argv, "--type") ? { type: value(argv, "--type") } : {}),
@@ -81,22 +80,20 @@ function taskInputFromFlags(argv, item, defaultMode) {
         parallel: argv.includes("--parallel"),
         dependsOn: csv(argv, "--depends"),
         tags: csv(argv, "--tags").length > 0 ? csv(argv, "--tags") : ["backlog"],
-        goal: singleLine(value(argv, "--goal") ?? (item.proposedOutcome !== "Not recorded yet." ? item.proposedOutcome : item.title)),
+        goal: singleLine(value(argv, "--goal") ?? ""),
         contextFiles: csv(argv, "--context"),
         allowedFiles: csv(argv, "--allowed"),
         forbiddenFiles: csv(argv, "--forbidden"),
-        steps: csv(argv, "--steps").length > 0 ? csv(argv, "--steps") : (criteria.length > 0 ? criteria : ["Implement the proposed outcome."]),
-        acceptanceCriteria: csv(argv, "--acceptance").length > 0
-            ? csv(argv, "--acceptance")
-            : (criteria.length > 0 ? criteria : ["The proposed outcome is implemented and verified."]),
+        steps: csv(argv, "--steps"),
+        acceptanceCriteria: csv(argv, "--acceptance"),
         verification: verification ?? (verificationCommands.length > 0 ? normalizeVerificationCommands(verificationCommands) : []),
-        documentationUpdates: csv(argv, "--docs").length > 0 ? csv(argv, "--docs") : ["Update docs/progress.md when task state changes."],
+        documentationUpdates: csv(argv, "--docs"),
         notes: csv(argv, "--notes"),
     };
 }
-function promotionRequest(argv, item, defaultMode) {
+function promotionRequest(argv, defaultMode) {
     return {
-        task: taskInputFromFlags(argv, item, defaultMode),
+        task: taskInputFromFlags(argv, defaultMode),
         confirmations: allValues(argv, "--confirm").flatMap((entry) => entry.split(",")).map((entry) => entry.trim()).filter(Boolean),
         reason: value(argv, "--reason"),
     };
@@ -225,14 +222,14 @@ export async function runBacklogCommand(argv) {
             const applyRequested = args.includes("--apply");
             if (previewRequested === applyRequested)
                 throw new Error("Use exactly one of --preview or --apply.");
-            const item = await readBacklogItem(rootDirectory, taskDirectory, positional[0]);
-            const request = promotionRequest(args, item, config.defaultMode);
+            const slug = positional[0];
+            const request = promotionRequest(args, config.defaultMode);
             if (previewRequested) {
-                const preview = await previewBacklogPromotion(rootDirectory, taskDirectory, item.slug, request);
+                const preview = await previewBacklogPromotion(rootDirectory, taskDirectory, slug, request);
                 console.log(json ? JSON.stringify(preview, null, 2) : renderPromotionPreview(preview));
                 return preview.valid ? 0 : 1;
             }
-            const result = await promoteBacklogItem(rootDirectory, taskDirectory, item.slug, request);
+            const result = await promoteBacklogItem(rootDirectory, taskDirectory, slug, request);
             console.log(json
                 ? JSON.stringify(result, null, 2)
                 : `${result.outcome === "promoted" ? "Promoted" : result.outcome === "recovered" ? "Recovered" : "Already promoted"}: ${result.item.slug} -> ${result.task.path} (Task ${result.task.id}).`);

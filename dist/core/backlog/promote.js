@@ -3,6 +3,7 @@ import { rename, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { createTaskUnderTaskLock, listArchivedTaskFiles, listTaskFiles, withTaskMutationLock, } from "../tasks/index.js";
 import { backlogDirectory, listBacklogItems, readBacklogItem, renderBacklogMarkdown, } from "./index.js";
+export const PROMOTION_REASON_MAX_LENGTH = 2048;
 export class BacklogPromotionError extends Error {
     issues;
     constructor(issues) {
@@ -29,18 +30,27 @@ function markerFor(item) {
 function sourceReference(item) {
     return `Source backlog: ${item.path} ${markerFor(item)}`;
 }
-async function findPromotedTask(rootDirectory, taskDirectory, item) {
+function normalizedReason(reason) {
+    if (reason === undefined)
+        return undefined;
+    const normalized = reason.replace(/\s+/g, " ").trim();
+    return normalized.length > 0 ? normalized : undefined;
+}
+async function findPromotedTasks(rootDirectory, taskDirectory, item) {
     const files = [
         ...await listTaskFiles(rootDirectory, taskDirectory),
         ...await listArchivedTaskFiles(rootDirectory, taskDirectory),
     ];
     const marker = markerFor(item);
-    const match = files.find(({ task }) => task.notes.some((note) => note.startsWith("Source backlog:") && note.includes(marker)));
-    if (!match)
-        return undefined;
+    const matches = files.filter(({ task }) => task.notes.some((note) => note.startsWith("Source backlog:") && note.includes(marker)));
     return {
-        id: match.task.id,
-        path: relative(rootDirectory, match.path).replace(/\\/g, "/"),
+        tasks: matches.map((match) => ({
+            id: match.task.id,
+            path: relative(rootDirectory, match.path).replace(/\\/g, "/"),
+        })),
+        diagnostics: matches.length > 1
+            ? [`Multiple tasks carry the same Backlog-Id backlink: ${matches.map((match) => match.task.id).join(", ")}.`]
+            : [],
     };
 }
 function confirmationReview(item, confirmations, reason) {
@@ -62,8 +72,12 @@ function confirmationReview(item, confirmations, reason) {
         diagnostics.push(`Unknown promotion criteria: ${unknownCriteria.join(", ")}.`);
     if (duplicateConfirmations.length > 0)
         diagnostics.push(`Duplicate confirmation flags: ${duplicateConfirmations.join(", ")}.`);
-    if (confirmedCriteria.length > 0 && (!reason || reason.trim().length === 0)) {
+    const normalized = normalizedReason(reason);
+    if (confirmedCriteria.length > 0 && normalized === undefined) {
         diagnostics.push("Human-only criteria require an explicit --reason supplied by the operator.");
+    }
+    if (normalized !== undefined && normalized.length > PROMOTION_REASON_MAX_LENGTH) {
+        diagnostics.push(`Promotion reason exceeds the ${PROMOTION_REASON_MAX_LENGTH} character limit.`);
     }
     return { confirmedCriteria, missingCriteria, unknownCriteria, duplicateConfirmations, diagnostics };
 }
@@ -85,14 +99,23 @@ async function buildPreview(rootDirectory, taskDirectory, slug, request) {
     const confirmation = confirmationReview(item, request.confirmations, request.reason);
     diagnostics.push(...confirmation.diagnostics);
     blocking.push(...confirmation.diagnostics);
-    const otherCards = (await listBacklogItems(rootDirectory, taskDirectory)).items;
+    const cardInventory = await listBacklogItems(rootDirectory, taskDirectory);
+    if (cardInventory.diagnostics.length > 0) {
+        const message = `Backlog inventory is not healthy: ${cardInventory.diagnostics.join("; ")}`;
+        diagnostics.push(message);
+        blocking.push(message);
+    }
+    const otherCards = cardInventory.items;
     const duplicateIds = otherCards.filter((card) => card.id === item.id && card.slug !== item.slug);
     if (duplicateIds.length > 0) {
         const message = `Backlog-Id ${item.id} is also used by: ${duplicateIds.map((card) => card.path).join(", ")}.`;
         diagnostics.push(message);
         blocking.push(message);
     }
-    const existingTask = await findPromotedTask(rootDirectory, taskDirectory, item);
+    const taskReferences = await findPromotedTasks(rootDirectory, taskDirectory, item);
+    diagnostics.push(...taskReferences.diagnostics);
+    blocking.push(...taskReferences.diagnostics);
+    const existingTask = taskReferences.tasks[0];
     if (item.status === "promoted") {
         if (!item.promotedTask) {
             const message = "Promoted card is missing its Promoted-Task id.";
@@ -154,7 +177,11 @@ export async function promoteBacklogItem(rootDirectory, taskDirectory, slug, req
                 return {
                     outcome: "already-promoted",
                     item,
-                    task: { id: task.task.id, path: task.path, task: task.task },
+                    task: {
+                        id: task.task.id,
+                        path: relative(rootDirectory, task.path).replace(/\\/g, "/"),
+                        task: task.task,
+                    },
                 };
             }
             const promoted = { ...item, status: "promoted", promotedTask: preview.existingTask.id };
@@ -174,14 +201,16 @@ export async function promoteBacklogItem(rootDirectory, taskDirectory, slug, req
             ...request.task.notes,
             sourceReference(item),
             ...(preview.confirmedCriteria.length > 0
-                ? [`Backlog promotion confirmation: operator-asserted criteria ${preview.confirmedCriteria.join(", ")}; reason: ${request.reason.trim()}`]
+                ? [`Backlog promotion confirmation: operator-asserted criteria ${preview.confirmedCriteria.join(", ")}; reason: ${normalizedReason(request.reason)}`]
                 : []),
         ];
         const criteria = item.promotionCriteria.map((criterion) => criterion.text);
+        const goal = request.task.goal.replace(/\s+/g, " ").trim()
+            || (item.proposedOutcome !== "Not recorded yet." ? item.proposedOutcome.replace(/\s+/g, " ").trim() : item.title);
         const created = await createTaskUnderTaskLock(rootDirectory, taskDirectory, {
             ...request.task,
             title: item.title,
-            goal: request.task.goal.trim() || item.title,
+            goal,
             steps: request.task.steps.length > 0
                 ? request.task.steps
                 : criteria.length > 0 ? criteria : ["Implement the proposed outcome."],

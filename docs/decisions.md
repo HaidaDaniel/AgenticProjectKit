@@ -1928,4 +1928,4 @@ The card records `Status: promoted` and `Promoted-Task: NNNN`; the task notes re
 
 ### Consequences
 
-Promotion is auditable and duplicate-resistant without a second task database. Concurrent promoters serialize; interrupted writes are recoverable; malformed or duplicate identities fail closed. The trust boundary is honest: an agent must relay only operator-communicated confirmations, and APK does not claim cryptographic human identity.
+Promotion is auditable and duplicate-resistant without a second task database. Concurrent promoters serialize; interrupted writes are recoverable; malformed or duplicate identities fail closed. The card stores only the numeric promoted-task id, not a literal task path, so later task archive remains safe and re-promotion resolves active or archived tasks by Backlog-Id. The trust boundary is honest: an agent must relay only operator-communicated confirmations, and APK does not claim cryptographic human identity.
