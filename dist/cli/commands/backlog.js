@@ -12,7 +12,7 @@ const HELP_TEXT = [
     "  apk backlog show <slug> [--json]",
     "  apk backlog validate [--json]",
     "  apk backlog promote <slug> --preview [task fields] [--confirm <criterion-id>] [--reason <text>] [--json]",
-    "  apk backlog promote <slug> --apply [task fields] [--confirm <criterion-id>] [--reason <text>] [--json]",
+    "  apk backlog promote <slug> --apply [task fields] --confirm <criterion-id> --expect-criteria <fingerprint> [--reason <text>] [--json]",
     "",
     "Backlog items are lightweight Git-tracked Markdown cards, not executable tasks.",
     `Statuses: ${BACKLOG_STATUSES.join(", ")}.`,
@@ -96,12 +96,15 @@ function promotionRequest(argv, defaultMode) {
         task: taskInputFromFlags(argv, defaultMode),
         confirmations: allValues(argv, "--confirm").flatMap((entry) => entry.split(",")).map((entry) => entry.trim()).filter(Boolean),
         reason: value(argv, "--reason"),
+        expectedCriteriaFingerprint: value(argv, "--expect-criteria"),
     };
 }
 function renderPromotionPreview(preview) {
     return [
         `Card: ${preview.item.slug} (${preview.item.id})`,
         `Status: ${preview.item.status}`,
+        `Card revision: ${preview.cardRevision}`,
+        `Criteria fingerprint: ${preview.criteriaFingerprint}`,
         `Missing fields: ${preview.missingFields.length > 0 ? preview.missingFields.join(", ") : "none"}`,
         `Confirmed criteria: ${preview.confirmedCriteria.length > 0 ? preview.confirmedCriteria.join(", ") : "none"}`,
         `Missing criteria: ${preview.missingCriteria.length > 0 ? preview.missingCriteria.join(", ") : "none"}`,
@@ -204,7 +207,7 @@ export async function runBacklogCommand(argv) {
             const valueFlags = new Set([
                 "--mode", "--lane", "--type", "--scope", "--risk", "--depends", "--tags", "--goal",
                 "--context", "--allowed", "--forbidden", "--steps", "--acceptance", "--verification",
-                "--verification-json", "--docs", "--notes", "--confirm", "--reason",
+                "--verification-json", "--docs", "--notes", "--confirm", "--reason", "--expect-criteria",
             ]);
             rejectUnknown(args, [...valueFlags, "--preview", "--apply", "--parallel", "--json", "--help", "-h"]);
             const positional = [];

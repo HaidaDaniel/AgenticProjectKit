@@ -1,8 +1,8 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { rename, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { createTaskUnderTaskLock, listArchivedTaskFiles, listTaskFiles, withTaskMutationLock, } from "../tasks/index.js";
-import { backlogDirectory, listBacklogItems, readBacklogItem, renderBacklogMarkdown, } from "./index.js";
+import { backlogDirectory, listBacklogItems, readBacklogCardSnapshot, renderBacklogMarkdown, } from "./index.js";
 export const PROMOTION_REASON_MAX_LENGTH = 2048;
 export class BacklogPromotionError extends Error {
     issues;
@@ -22,7 +22,16 @@ function missingTaskFields(task) {
         missing.push("allowed");
     if ((task.verification?.length ?? 0) === 0 && (task.verificationCommands?.length ?? 0) === 0)
         missing.push("verification");
+    if (task.steps.length === 0)
+        missing.push("steps");
+    if (task.acceptanceCriteria.length === 0)
+        missing.push("acceptance");
     return missing;
+}
+export function criteriaFingerprint(item) {
+    return createHash("sha256")
+        .update(JSON.stringify({ id: item.id, criteria: item.promotionCriteria.map((criterion) => [criterion.id, criterion.text]) }), "utf8")
+        .digest("hex");
 }
 function markerFor(item) {
     return `(Backlog-Id: ${item.id})`;
@@ -53,7 +62,7 @@ async function findPromotedTasks(rootDirectory, taskDirectory, item) {
             : [],
     };
 }
-function confirmationReview(item, confirmations, reason) {
+function confirmationReview(item, confirmations, reason, expectedFingerprint) {
     const duplicateConfirmations = [...new Set(confirmations.filter((id, index) => confirmations.indexOf(id) !== index))];
     const requested = new Set(confirmations);
     const criteria = new Set(item.promotionCriteria.map((criterion) => criterion.id));
@@ -79,10 +88,18 @@ function confirmationReview(item, confirmations, reason) {
     if (normalized !== undefined && normalized.length > PROMOTION_REASON_MAX_LENGTH) {
         diagnostics.push(`Promotion reason exceeds the ${PROMOTION_REASON_MAX_LENGTH} character limit.`);
     }
+    const fingerprint = criteriaFingerprint(item);
+    if (confirmedCriteria.length > 0 && !expectedFingerprint) {
+        diagnostics.push("Criteria revision fingerprint is required with confirmations; rerun --preview and pass --expect-criteria.");
+    }
+    else if (expectedFingerprint !== undefined && expectedFingerprint !== fingerprint) {
+        diagnostics.push("Promotion criteria changed since preview; review the current criteria and generate a fresh confirmation fingerprint.");
+    }
     return { confirmedCriteria, missingCriteria, unknownCriteria, duplicateConfirmations, diagnostics };
 }
 async function buildPreview(rootDirectory, taskDirectory, slug, request) {
-    const item = await readBacklogItem(rootDirectory, taskDirectory, slug);
+    const card = await readBacklogCardSnapshot(rootDirectory, taskDirectory, slug);
+    const item = card.item;
     const diagnostics = [];
     const blocking = [];
     const missingFields = missingTaskFields(request.task);
@@ -96,7 +113,7 @@ async function buildPreview(rootDirectory, taskDirectory, slug, request) {
         diagnostics.push(message);
         blocking.push(message);
     }
-    const confirmation = confirmationReview(item, request.confirmations, request.reason);
+    const confirmation = confirmationReview(item, request.confirmations, request.reason, request.expectedCriteriaFingerprint);
     diagnostics.push(...confirmation.diagnostics);
     blocking.push(...confirmation.diagnostics);
     const cardInventory = await listBacklogItems(rootDirectory, taskDirectory);
@@ -138,6 +155,8 @@ async function buildPreview(rootDirectory, taskDirectory, slug, request) {
     }
     return {
         item,
+        cardRevision: card.revision,
+        criteriaFingerprint: criteriaFingerprint(item),
         missingFields,
         ...confirmation,
         ...(existingTask ? { existingTask } : {}),
@@ -148,12 +167,23 @@ async function buildPreview(rootDirectory, taskDirectory, slug, request) {
 export async function previewBacklogPromotion(rootDirectory, taskDirectory, slug, request) {
     return buildPreview(rootDirectory, taskDirectory, slug, request);
 }
-async function writeCard(rootDirectory, taskDirectory, item) {
+export async function writeBacklogCardWithRevision(rootDirectory, taskDirectory, item, expectedRevision) {
+    const current = await readBacklogCardSnapshot(rootDirectory, taskDirectory, item.slug);
+    if (current.revision !== expectedRevision) {
+        throw new BacklogPromotionError(["Backlog card changed during promotion; review the current Markdown and retry without overwriting it."]);
+    }
     const directory = backlogDirectory(rootDirectory, taskDirectory);
     const target = join(directory, `${item.slug}.md`);
     const temporary = join(directory, `.${item.slug}.${randomUUID()}.tmp`);
     await writeFile(temporary, renderBacklogMarkdown(item), { encoding: "utf8", flag: "wx" });
     try {
+        // Residual boundary: an external writer can still replace the card after
+        // this revision check but before rename. Check immediately before replace
+        // and never claim stronger atomicity than the filesystem provides.
+        const beforeRename = await readBacklogCardSnapshot(rootDirectory, taskDirectory, item.slug);
+        if (beforeRename.revision !== expectedRevision) {
+            throw new BacklogPromotionError(["Backlog card changed during promotion; review the current Markdown and retry without overwriting it."]);
+        }
         await rename(temporary, target);
     }
     catch (error) {
@@ -185,7 +215,7 @@ export async function promoteBacklogItem(rootDirectory, taskDirectory, slug, req
                 };
             }
             const promoted = { ...item, status: "promoted", promotedTask: preview.existingTask.id };
-            await writeCard(rootDirectory, taskDirectory, promoted);
+            await writeBacklogCardWithRevision(rootDirectory, taskDirectory, promoted, preview.cardRevision);
             return {
                 outcome: "recovered",
                 item: promoted,
@@ -204,26 +234,19 @@ export async function promoteBacklogItem(rootDirectory, taskDirectory, slug, req
                 ? [`Backlog promotion confirmation: operator-asserted criteria ${preview.confirmedCriteria.join(", ")}; reason: ${normalizedReason(request.reason)}`]
                 : []),
         ];
-        const criteria = item.promotionCriteria.map((criterion) => criterion.text);
         const goal = request.task.goal.replace(/\s+/g, " ").trim()
             || (item.proposedOutcome !== "Not recorded yet." ? item.proposedOutcome.replace(/\s+/g, " ").trim() : item.title);
         const created = await createTaskUnderTaskLock(rootDirectory, taskDirectory, {
             ...request.task,
             title: item.title,
             goal,
-            steps: request.task.steps.length > 0
-                ? request.task.steps
-                : criteria.length > 0 ? criteria : ["Implement the proposed outcome."],
-            acceptanceCriteria: request.task.acceptanceCriteria.length > 0
-                ? request.task.acceptanceCriteria
-                : criteria.length > 0 ? criteria : ["The proposed outcome is implemented and verified."],
             documentationUpdates: request.task.documentationUpdates.length > 0
                 ? request.task.documentationUpdates
                 : ["Update docs/progress.md when task state changes."],
             notes,
         });
         const promoted = { ...item, status: "promoted", promotedTask: created.id };
-        await writeCard(rootDirectory, taskDirectory, promoted);
+        await writeBacklogCardWithRevision(rootDirectory, taskDirectory, promoted, preview.cardRevision);
         return { outcome: "promoted", item: promoted, task: created };
     }, { timeoutMs: 10_000, retryMs: 25 });
 }

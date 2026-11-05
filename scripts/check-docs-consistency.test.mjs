@@ -59,6 +59,21 @@ test("source suite selects both CLI layers once and preserves process-boundary s
   assert.doesNotMatch(commands, /\brunCli\(/);
 });
 
+test("planning instructions keep backlog cards separate from numeric task IDs", async () => {
+  for (const file of ["docs/agent-exporters.md", "docs/task-system.md"]) {
+    const content = await readFile(new URL(`../${file}`, import.meta.url), "utf8");
+    assert.doesNotMatch(content, /backlog changes use fresh task IDs/i, file);
+    assert.match(content, /Backlog-Id/, file);
+    assert.match(content, /fresh canonical task IDs/, file);
+  }
+  const projectGrill = await readFile(
+    new URL("../src/core/templates/skills/apk-project-grill/SKILL.md.hbs", import.meta.url),
+    "utf8",
+  );
+  assert.match(projectGrill, /backlog card/i);
+  assert.doesNotMatch(projectGrill, /backlog changes use fresh task IDs/i);
+});
+
 test("compact test reporter preserves failures, diagnostics, and captured output", async () => {
   async function* events() {
     yield { type: "test:pass", data: { name: "quiet passing test" } };

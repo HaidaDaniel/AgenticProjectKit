@@ -18,7 +18,7 @@ Tasks 0082-0088 are complete and included in the [v0.4.0 release](releases/v0.4.
 
 ## Current state
 
-AgenticProjectKit remains the product identity. The latest validated installable release is v0.5.2. Tasks 0149 and 0150 remain deferred identity work and were not reopened. The Tasks 0244-0249 backlog, scratch, CI, and planning candidate has a bounded [integration readiness record](delivery/backlog-integration-readiness.md). It is planning-ready but not integrated-release-ready: existing diagnostic snapshot metadata I/O scales with backlog card count. It is not a tag or publication, and Task 0244 remains independently eligible for a small patch.
+AgenticProjectKit remains the product identity. The latest validated installable release is v0.5.2. Tasks 0149 and 0150 remain deferred identity work and were not reopened. The Tasks 0244-0249 backlog, scratch, CI, and planning candidate has a bounded [integration readiness record](delivery/backlog-integration-readiness.md). It is ready for a planning commit and a subsequent integrated minor-release candidate after normal review and release evidence. It is not a tag or publication, and Task 0244 remains independently eligible for a small patch.
 
 Tasks 0216 (bounded Go startup prototype), 0218 (historical provenance recovery research), and 0223 (opt-in exact-push CI parity) remain todo after v0.5.2. Task 0223 requires a separate substantial feature candidate; it is not a patch-release prerequisite. Task 0221 remains blocked historical attribution; Task 0224 completed the bounded remaining epoch repair.
 

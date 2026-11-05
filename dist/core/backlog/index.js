@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, readdir, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
@@ -21,6 +21,30 @@ const BACKLOG_SECTIONS = [
 ];
 const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{0,79}$/;
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+export async function readBoundedFileHandle(handle, limit = BACKLOG_LIMITS.bytesPerCard) {
+    const opened = await handle.stat();
+    if (!opened.isFile())
+        throw new BacklogFormatError(["Backlog card must be a regular file."]);
+    if (opened.size > limit)
+        throw new BacklogFormatError([`Backlog card exceeds the ${limit} byte limit.`]);
+    const buffer = Buffer.alloc(limit + 1);
+    let size = 0;
+    while (size < buffer.length) {
+        const { bytesRead } = await handle.read(buffer, size, buffer.length - size, size);
+        if (bytesRead === 0)
+            break;
+        size += bytesRead;
+    }
+    if (size > limit)
+        throw new BacklogFormatError([`Backlog card exceeds the ${limit} byte limit.`]);
+    if (size !== opened.size)
+        throw new BacklogFormatError(["Backlog card changed while being read (truncated or grown)."]);
+    const after = await handle.stat();
+    if (!after.isFile() || after.size !== opened.size) {
+        throw new BacklogFormatError(["Backlog card changed while being read."]);
+    }
+    return buffer.subarray(0, size).toString("utf8");
+}
 export class BacklogFormatError extends Error {
     issues;
     constructor(issues) {
@@ -310,26 +334,31 @@ async function readBoundedCard(path) {
         throw error;
     }
     try {
-        const opened = await handle.stat();
-        if (!opened.isFile())
-            throw new BacklogFormatError([`Backlog card must be a regular file: ${path}`]);
-        const buffer = Buffer.alloc(BACKLOG_LIMITS.bytesPerCard + 1);
-        const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-        if (bytesRead > BACKLOG_LIMITS.bytesPerCard) {
-            throw new BacklogFormatError([`Backlog card exceeds the ${BACKLOG_LIMITS.bytesPerCard} byte limit: ${path}`]);
+        return await readBoundedFileHandle(handle);
+    }
+    catch (error) {
+        if (error instanceof BacklogFormatError) {
+            throw new BacklogFormatError(error.issues.map((issue) => `${issue.replace(/\.$/, "")}: ${path}`));
         }
-        return buffer.subarray(0, bytesRead).toString("utf8");
+        throw error;
     }
     finally {
         await handle.close();
     }
 }
-export async function readBacklogItem(rootDirectory, taskDirectory, slug) {
+export async function readBacklogCardSnapshot(rootDirectory, taskDirectory, slug) {
     const normalized = normalizeBacklogSlug(slug);
     await assertBacklogDirectorySafe(rootDirectory, taskDirectory);
     const path = join(backlogDirectory(rootDirectory, taskDirectory), `${normalized}.md`);
-    const markdown = await readBoundedCard(path);
-    return parseBacklogMarkdown(markdown, normalized, backlogRelativePath(taskDirectory, normalized));
+    const content = await readBoundedCard(path);
+    return {
+        item: parseBacklogMarkdown(content, normalized, backlogRelativePath(taskDirectory, normalized)),
+        content,
+        revision: createHash("sha256").update(content, "utf8").digest("hex"),
+    };
+}
+export async function readBacklogItem(rootDirectory, taskDirectory, slug) {
+    return (await readBacklogCardSnapshot(rootDirectory, taskDirectory, slug)).item;
 }
 export async function listBacklogItems(rootDirectory, taskDirectory = ".tasks") {
     await assertBacklogDirectorySafe(rootDirectory, taskDirectory);

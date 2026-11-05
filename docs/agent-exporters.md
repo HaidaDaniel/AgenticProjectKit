@@ -71,8 +71,10 @@ milestone or material change. It resolves the requested scope, reads canonical p
 bounded context, asks one high-value question at a time, challenges stale or inconsistent
 assumptions while labeling evidence/inference/hypothesis/human preference, and writes nothing
 before explicit human approval of a concrete proposal. Approved decisions go to discovered
-canonical owners, never a parallel grill document, and backlog changes use fresh task IDs without
-rewriting completed history. It never implements product code, auto-activates, or becomes a gate.
+canonical owners, never a parallel grill document. Approved future ideas become backlog cards with
+an immutable `Backlog-Id`; approved executable work uses fresh canonical task IDs, and backlog
+promotion is the explicit conversion between them, without rewriting completed history. It never
+implements product code, auto-activates, or becomes a gate.
 
 `apk-task-grill` clarifies one existing task before implementation. It runs only on an explicit
 human request such as "Use the APK task-grill skill on task 0026"; it never auto-activates, adds

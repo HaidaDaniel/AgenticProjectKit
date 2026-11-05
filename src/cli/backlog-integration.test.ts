@@ -74,12 +74,19 @@ test("integrated greenfield flow initializes, promotes, verifies, completes, and
     ], directory);
     assert.equal(add.exitCode, 0, add.stderr);
     const card = JSON.parse(add.stdout) as { slug: string };
+    const fields = [
+      "--scope", "integration", "--context", "AGENTS.md", "--allowed", "src/**",
+      "--verification", "true",
+      "--steps", "Implement the integrated future feature",
+      "--acceptance", "The integrated future feature is implemented and tested",
+    ];
+    const preview = await runCommand(["backlog", "promote", card.slug, "--preview", ...fields, "--json"], directory);
+    const fingerprint = (JSON.parse(preview.stdout) as { criteriaFingerprint: string }).criteriaFingerprint;
 
     const promote = await runCommand([
-      "backlog", "promote", card.slug, "--apply",
-      "--scope", "integration", "--context", "AGENTS.md", "--allowed", "src/**",
-      "--verification", "true", "--confirm", "criterion-1", "--reason", "Operator confirmed the MVP criterion.",
-      "--json",
+      "backlog", "promote", card.slug, "--apply", ...fields,
+      "--confirm", "criterion-1", "--expect-criteria", fingerprint,
+      "--reason", "Operator confirmed the MVP criterion.", "--json",
     ], directory);
     assert.equal(promote.exitCode, 0, promote.stderr);
     const promoted = JSON.parse(promote.stdout) as { task: { id: string; path: string } };
@@ -102,10 +109,9 @@ test("integrated greenfield flow initializes, promotes, verifies, completes, and
     assert.match(provenance.stdout, new RegExp(promoted.task.id));
 
     const repeated = await runCommand([
-      "backlog", "promote", card.slug, "--apply",
-      "--scope", "integration", "--context", "AGENTS.md", "--allowed", "src/**",
-      "--verification", "true", "--confirm", "criterion-1", "--reason", "Operator confirmed the MVP criterion.",
-      "--json",
+      "backlog", "promote", card.slug, "--apply", ...fields,
+      "--confirm", "criterion-1", "--expect-criteria", fingerprint,
+      "--reason", "Operator confirmed the MVP criterion.", "--json",
     ], directory);
     assert.equal(repeated.exitCode, 0, repeated.stderr);
     assert.equal((JSON.parse(repeated.stdout) as { outcome: string }).outcome, "already-promoted");
@@ -157,14 +163,16 @@ test("integrated backlog stays outside tasks while blocked tasks remain executab
     const preview = await runCommand([
       "backlog", "promote", card.slug, "--preview",
       "--scope", "integration", "--context", "AGENTS.md", "--allowed", "src/**",
-      "--verification", "true", "--json",
+      "--verification", "true", "--steps", "Implement the deferred idea",
+      "--acceptance", "The deferred idea is implemented and tested", "--json",
     ], directory);
     assert.equal(preview.exitCode, 1);
     assert.equal((JSON.parse(preview.stdout) as { valid: boolean }).valid, false);
     const apply = await runCommand([
       "backlog", "promote", card.slug, "--apply",
       "--scope", "integration", "--context", "AGENTS.md", "--allowed", "src/**",
-      "--verification", "true", "--json",
+      "--verification", "true", "--steps", "Implement the deferred idea",
+      "--acceptance", "The deferred idea is implemented and tested", "--json",
     ], directory);
     assert.equal(apply.exitCode, 1);
     assert.match(apply.stderr, /Unconfirmed promotion criteria/);
@@ -194,22 +202,30 @@ test("integrated scratch is ignored, generated instructions are current, and CI 
   });
 });
 
-test("hot read-only commands read no backlog content but expose per-card metadata I/O", async () => {
+test("hot read-only commands perform no backlog I/O at any card count", async () => {
   await withTempDirectory(async (directory) => {
     const base = join(directory, "base");
     const withCard = join(directory, "with-card");
     const withMany = join(directory, "with-many");
+    const withThousand = join(directory, "with-thousand");
     await mkdir(base, { recursive: true });
     assert.equal((await runCommand(["init"], base)).exitCode, 0);
     await cp(base, withCard, { recursive: true });
     await cp(base, withMany, { recursive: true });
+    await cp(base, withThousand, { recursive: true });
     await createBacklogItem(withCard, ".tasks", {
       title: "Deferred performance fixture",
       status: "deferred",
       criteria: ["A later decision is recorded"],
     });
-    for (let index = 0; index < 20; index += 1) {
+    for (let index = 0; index < 100; index += 1) {
       await createBacklogItem(withMany, ".tasks", {
+        title: `Deferred performance fixture ${index}`,
+        status: "idea",
+      });
+    }
+    for (let index = 0; index < 1000; index += 1) {
+      await createBacklogItem(withThousand, ".tasks", {
         title: `Deferred performance fixture ${index}`,
         status: "idea",
       });
@@ -295,11 +311,13 @@ test("hot read-only commands read no backlog content but expose per-card metadat
     const baseline = await measure(base);
     const one = await measure(withCard);
     const many = await measure(withMany);
-    assert.deepEqual(one.backlogContentReads, []);
-    assert.deepEqual(many.backlogContentReads, []);
-    assert.ok(one.backlogAccesses.every((access) => access.startsWith("readdir:") || access.startsWith("lstat:") || access.startsWith("stat:") || access.startsWith("readlink:")));
-    assert.ok(many.metadataOperations > baseline.metadataOperations, "diagnostic snapshot must show the known per-card metadata cost");
-    assert.ok(many.metadataOperations > one.metadataOperations, "metadata work must scale with backlog card count");
+    const thousand = await measure(withThousand);
+    for (const measured of [one, many, thousand]) {
+      assert.deepEqual(measured.backlogAccesses, []);
+      assert.deepEqual(measured.backlogContentReads, []);
+      assert.equal(measured.operations, baseline.operations);
+      assert.equal(measured.metadataOperations, baseline.metadataOperations);
+    }
   });
 });
 

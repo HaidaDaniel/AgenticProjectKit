@@ -2183,18 +2183,21 @@ test("CLI backlog promote previews and applies through the canonical task creato
       "--context", "AGENTS.md",
       "--allowed", "src/**",
       "--verification", "true",
+      "--steps", "Implement the promoted idea",
+      "--acceptance", "The promoted idea is implemented and tested",
     ];
     const preview = await runCommand(["backlog", "promote", card.slug, "--preview", ...fields, "--json"], directory);
     assert.equal(preview.exitCode, 1);
-    const previewData = JSON.parse(preview.stdout) as { valid: boolean; missingCriteria: string[] };
+    const previewData = JSON.parse(preview.stdout) as { valid: boolean; missingCriteria: string[]; criteriaFingerprint: string };
     assert.equal(previewData.valid, false);
     assert.deepEqual(previewData.missingCriteria, ["criterion-1"]);
+    assert.match(previewData.criteriaFingerprint, /^[0-9a-f]{64}$/);
     assert.doesNotMatch((await runCommand(["tasks", "--all"], directory)).stdout, /Promote this idea/);
 
     const applied = await runCommand([
       "backlog", "promote", card.slug, "--apply", ...fields,
-      "--confirm", "criterion-1", "--reason", "Operator confirmed the MVP criterion.",
-      "--json",
+      "--confirm", "criterion-1", "--expect-criteria", previewData.criteriaFingerprint,
+      "--reason", "Operator confirmed the MVP criterion.", "--json",
     ], directory);
     assert.equal(applied.exitCode, 0, applied.stderr);
     const result = JSON.parse(applied.stdout) as { outcome: string; task: { id: string; path: string } };
@@ -2204,8 +2207,8 @@ test("CLI backlog promote previews and applies through the canonical task creato
 
     const repeated = await runCommand([
       "backlog", "promote", card.slug, "--apply", ...fields,
-      "--confirm", "criterion-1", "--reason", "Operator confirmed the MVP criterion.",
-      "--json",
+      "--confirm", "criterion-1", "--expect-criteria", previewData.criteriaFingerprint,
+      "--reason", "Operator confirmed the MVP criterion.", "--json",
     ], directory);
     assert.equal(repeated.exitCode, 0, repeated.stderr);
     assert.equal((JSON.parse(repeated.stdout) as { outcome: string }).outcome, "already-promoted");

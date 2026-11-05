@@ -43,11 +43,13 @@ async function metadata(path) {
     }
 }
 /** Optimistic, bounded version witness. It never reads journal/task contents. */
-async function witness(roots) {
+async function witness(roots, excludedDirectories = new Set()) {
     const result = new Map();
     const ancestors = new Set();
     const discoveredLinks = new Set();
     const visit = async (path, recursive) => {
+        if (excludedDirectories.has(path))
+            return;
         if (result.has(path))
             return;
         if (result.size >= MAX_WITNESS_ENTRIES)
@@ -89,8 +91,12 @@ async function witness(roots) {
                 }
                 throw error;
             }
-            for (const entry of entries.sort())
-                await visit(join(path, entry), true);
+            for (const entry of entries.sort()) {
+                const child = join(path, entry);
+                if (excludedDirectories.has(child))
+                    continue;
+                await visit(child, true);
+            }
         }
         finally {
             ancestors.delete(identity);
@@ -187,6 +193,7 @@ export class TaskDiagnosticSnapshot {
     bytes = new Map();
     subjects = new Map();
     roots = new Map();
+    excludedDirectories = new Set();
     discoveredInputs = new Set();
     versions = new Map();
     gitIdentity = "";
@@ -208,6 +215,14 @@ export class TaskDiagnosticSnapshot {
             throw new DiagnosticSnapshotError("repository or task-directory identity differs");
         }
     }
+    isExcludedPath(path) {
+        for (const excluded of this.excludedDirectories) {
+            const rel = relative(excluded, path);
+            if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel)))
+                return true;
+        }
+        return false;
+    }
     memo(root, key, load) {
         this.assertLocation(root);
         let value = this.values.get(key);
@@ -228,7 +243,7 @@ export class TaskDiagnosticSnapshot {
             value = (async () => {
                 await this.watchPath(absolute);
                 const additions = new Map([...this.roots].filter(([input]) => !this.versions.has(input)));
-                const addedVersions = await witness(additions);
+                const addedVersions = await witness(additions, this.excludedDirectories);
                 for (const [input, mode] of additions) {
                     if (!this.roots.has(input) || (this.roots.get(input) === "ancestor" && mode !== "ancestor"))
                         this.roots.set(input, mode);
@@ -311,6 +326,8 @@ export class TaskDiagnosticSnapshot {
             if (/[RC]/.test(entry.slice(0, 2)) && entries[i + 1])
                 paths.push(join(top, entries[++i]));
             for (const path of paths) {
+                if (this.isExcludedPath(path))
+                    continue;
                 this.roots.set(path, true);
                 for (let parent = dirname(path); parent !== top && parent !== dirname(parent); parent = dirname(parent)) {
                     await this.watchPath(join(parent, ".gitignore"));
@@ -395,7 +412,7 @@ export class TaskDiagnosticSnapshot {
     }
     async finish() {
         const state = await this.gitState();
-        const after = await witness(this.roots);
+        const after = await witness(this.roots, this.excludedDirectories);
         const changed = [...new Set([...this.versions.keys(), ...after.keys()])]
             .find((path) => inputChanged(path, this.versions, after, this.roots));
         if (state !== this.gitIdentity || changed !== undefined) {
@@ -412,6 +429,7 @@ export class TaskDiagnosticSnapshot {
         const snapshot = new TaskDiagnosticSnapshot(root, taskDirectory ?? config.taskDirectory, config, !["ENOENT", "ENOTDIR"].includes(beforeConfig));
         for (const [path, recursive] of configRoots)
             snapshot.roots.set(path, recursive);
+        snapshot.excludedDirectories.add(resolve(root, snapshot.taskDirectory, "backlog"));
         snapshot.roots.set(resolve(root, snapshot.taskDirectory), true);
         try {
             await snapshot.watchPath(resolve(root, snapshot.taskDirectory));
@@ -422,7 +440,7 @@ export class TaskDiagnosticSnapshot {
                 await snapshot.watchPath(resolve(root, path));
             }
             snapshot.gitIdentity = await snapshot.gitState();
-            snapshot.versions = await witness(snapshot.roots);
+            snapshot.versions = await witness(snapshot.roots, snapshot.excludedDirectories);
             if ([...configVersions.keys()].some((path) => inputChanged(path, configVersions, snapshot.versions, configRoots)))
                 throw new DiagnosticSnapshotError("configuration changed during capture");
             const result = await project(snapshot);
@@ -435,6 +453,7 @@ export class TaskDiagnosticSnapshot {
             snapshot.bytes.clear();
             snapshot.subjects.clear();
             snapshot.roots.clear();
+            snapshot.excludedDirectories.clear();
             snapshot.versions.clear();
             snapshot.discoveredInputs.clear();
             snapshot.gitIdentity = "";

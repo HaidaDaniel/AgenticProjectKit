@@ -45,11 +45,15 @@ async function metadata(path: string): Promise<string> {
 }
 
 /** Optimistic, bounded version witness. It never reads journal/task contents. */
-async function witness(roots: Map<string, WitnessMode>): Promise<Map<string, string>> {
+async function witness(
+  roots: Map<string, WitnessMode>,
+  excludedDirectories: ReadonlySet<string> = new Set(),
+): Promise<Map<string, string>> {
   const result = new Map<string, string>();
   const ancestors = new Set<string>();
   const discoveredLinks = new Set<string>();
   const visit = async (path: string, recursive: boolean): Promise<void> => {
+    if (excludedDirectories.has(path)) return;
     if (result.has(path)) return;
     if (result.size >= MAX_WITNESS_ENTRIES) throw new DiagnosticSnapshotError("input metadata exceeds the consistency bound");
     const version = await metadata(path);
@@ -79,7 +83,11 @@ async function witness(roots: Map<string, WitnessMode>): Promise<Map<string, str
         }
         throw error;
       }
-      for (const entry of entries.sort()) await visit(join(path, entry), true);
+      for (const entry of entries.sort()) {
+        const child = join(path, entry);
+        if (excludedDirectories.has(child)) continue;
+        await visit(child, true);
+      }
     } finally { ancestors.delete(identity); }
   };
   for (const [path, recursive] of roots) await visit(path, recursive === true);
@@ -161,6 +169,7 @@ export class TaskDiagnosticSnapshot {
   private readonly bytes = new Map<string, Promise<Buffer>>();
   private readonly subjects = new Map<string, string>();
   private readonly roots = new Map<string, WitnessMode>();
+  private readonly excludedDirectories = new Set<string>();
   private readonly discoveredInputs = new Set<string>();
   private versions = new Map<string, string>();
   private gitIdentity = "";
@@ -184,6 +193,14 @@ export class TaskDiagnosticSnapshot {
     }
   }
 
+  private isExcludedPath(path: string): boolean {
+    for (const excluded of this.excludedDirectories) {
+      const rel = relative(excluded, path);
+      if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) return true;
+    }
+    return false;
+  }
+
   memo<T>(root: string, key: string, load: () => Promise<T>): Promise<T> {
     this.assertLocation(root);
     let value = this.values.get(key);
@@ -205,7 +222,7 @@ export class TaskDiagnosticSnapshot {
       value = (async () => {
         await this.watchPath(absolute);
         const additions = new Map([...this.roots].filter(([input]) => !this.versions.has(input)));
-        const addedVersions = await witness(additions);
+        const addedVersions = await witness(additions, this.excludedDirectories);
         for (const [input, mode] of additions) {
           if (!this.roots.has(input) || (this.roots.get(input) === "ancestor" && mode !== "ancestor")) this.roots.set(input, mode);
         }
@@ -273,6 +290,7 @@ export class TaskDiagnosticSnapshot {
       const paths = [join(top, entry.slice(3))];
       if (/[RC]/.test(entry.slice(0, 2)) && entries[i + 1]) paths.push(join(top, entries[++i]));
       for (const path of paths) {
+        if (this.isExcludedPath(path)) continue;
         this.roots.set(path, true);
         for (let parent = dirname(path); parent !== top && parent !== dirname(parent); parent = dirname(parent)) {
           await this.watchPath(join(parent, ".gitignore"));
@@ -351,7 +369,7 @@ export class TaskDiagnosticSnapshot {
 
   private async finish(): Promise<void> {
     const state = await this.gitState();
-    const after = await witness(this.roots);
+    const after = await witness(this.roots, this.excludedDirectories);
     const changed = [...new Set([...this.versions.keys(), ...after.keys()])]
       .find((path) => inputChanged(path, this.versions, after, this.roots));
     if (state !== this.gitIdentity || changed !== undefined) {
@@ -368,6 +386,7 @@ export class TaskDiagnosticSnapshot {
     const config = await readAgenticConfigFile(root);
     const snapshot = new TaskDiagnosticSnapshot(root, taskDirectory ?? config.taskDirectory, config, !["ENOENT", "ENOTDIR"].includes(beforeConfig));
     for (const [path, recursive] of configRoots) snapshot.roots.set(path, recursive);
+    snapshot.excludedDirectories.add(resolve(root, snapshot.taskDirectory, "backlog"));
     snapshot.roots.set(resolve(root, snapshot.taskDirectory), true);
     try {
       await snapshot.watchPath(resolve(root, snapshot.taskDirectory));
@@ -377,7 +396,7 @@ export class TaskDiagnosticSnapshot {
         await snapshot.watchPath(resolve(root, path));
       }
       snapshot.gitIdentity = await snapshot.gitState();
-      snapshot.versions = await witness(snapshot.roots);
+      snapshot.versions = await witness(snapshot.roots, snapshot.excludedDirectories);
       if ([...configVersions.keys()].some((path) => inputChanged(path, configVersions, snapshot.versions, configRoots))) throw new DiagnosticSnapshotError("configuration changed during capture");
       const result = await project(snapshot);
       await snapshot.finish();
@@ -388,6 +407,7 @@ export class TaskDiagnosticSnapshot {
       snapshot.bytes.clear();
       snapshot.subjects.clear();
       snapshot.roots.clear();
+      snapshot.excludedDirectories.clear();
       snapshot.versions.clear();
       snapshot.discoveredInputs.clear();
       snapshot.gitIdentity = "";

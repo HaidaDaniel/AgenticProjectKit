@@ -18,7 +18,9 @@ import {
   normalizeBacklogSlug,
   parseBacklogMarkdown,
   readBacklogItem,
+  readBoundedFileHandle,
   renderBacklogMarkdown,
+  type BoundedReadHandle,
   slugifyBacklogTitle,
   validateBacklogItems,
 } from "./index.js";
@@ -200,6 +202,47 @@ test("list reports oversized backlog cards instead of reading them unbounded", a
       await rm(directory, { recursive: true, force: true });
     }
   });
+});
+
+function chunkedHandle(
+  content: Buffer,
+  chunks: number[],
+  reportedSize = content.length,
+  afterSize = reportedSize,
+  regular = true,
+): BoundedReadHandle {
+  let statCalls = 0;
+  let position = 0;
+  return {
+    async stat() {
+      statCalls += 1;
+      return { isFile: () => regular, size: statCalls === 1 ? reportedSize : afterSize };
+    },
+    async read(buffer, offset, length) {
+      const requested = chunks.shift() ?? 0;
+      const chunk = content.subarray(position, position + Math.min(requested, length));
+      position += chunk.length;
+      buffer.set(chunk, offset);
+      return { bytesRead: chunk.length };
+    },
+  };
+}
+
+test("bounded backlog reads handle short reads until EOF", async () => {
+  const content = Buffer.from("backlog card payload");
+  const text = await readBoundedFileHandle(chunkedHandle(content, [3, 2, 100]));
+  assert.equal(text, content.toString("utf8"));
+});
+
+test("bounded backlog reads reject truncation, growth, oversized and non-regular files", async () => {
+  const content = Buffer.from("0123456789");
+  await assert.rejects(() => readBoundedFileHandle(chunkedHandle(content, [4, 0])), /truncated or grown/);
+  await assert.rejects(() => readBoundedFileHandle(chunkedHandle(content, [4], 4, 8)), /changed while being read/);
+  await assert.rejects(
+    () => readBoundedFileHandle(chunkedHandle(Buffer.alloc(BACKLOG_LIMITS.bytesPerCard + 1), [], BACKLOG_LIMITS.bytesPerCard + 1)),
+    /byte limit/,
+  );
+  await assert.rejects(() => readBoundedFileHandle(chunkedHandle(content, [1], content.length, content.length, false)), /regular file/);
 });
 
 test("backlog filesystem reads reject symlinked cards", async () => {

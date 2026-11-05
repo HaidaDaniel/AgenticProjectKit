@@ -11014,3 +11014,23 @@ test("ignored agent scratch never enters git changed-file discovery", async () =
     assert.deepEqual(await listGitChangedFiles(directory), []);
   });
 });
+
+test("diagnostic snapshot ignores backlog metadata while still detecting task changes", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks", "backlog"), { recursive: true });
+    await writeFile(join(directory, ".tasks", "0001-task.md"), "# Task 0001 - Fixture\n\nState: todo\nOwner: none\n", "utf8");
+    const backlogCard = join(directory, ".tasks", "backlog", "future.md");
+    await writeFile(backlogCard, "# Future\n", "utf8");
+
+    await withDiagnosticSnapshot(directory, ".tasks", async () => {
+      await writeFile(backlogCard, "# Future\n\nedited\n", "utf8");
+    });
+
+    await assert.rejects(
+      () => withDiagnosticSnapshot(directory, ".tasks", async () => {
+        await writeFile(join(directory, ".tasks", "0001-task.md"), "# Task 0001 - Fixture\n\nState: doing\nOwner: owner\n", "utf8");
+      }),
+      /Diagnostic snapshot unavailable/,
+    );
+  });
+});

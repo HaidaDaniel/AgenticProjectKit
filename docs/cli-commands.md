@@ -49,7 +49,7 @@ The command synopsis and option list below are rendered from `src/cli/command-re
 - `apkit backlog list [--status <idea|deferred|promoted|discarded>] [--json]` - list bounded backlog cards without reading executable task inventories.
 - `apkit backlog show <slug> [--json]` - show one backlog card by its stable slug.
 - `apkit backlog validate [--json]` - validate backlog cards and report duplicate identities or malformed Markdown.
-- `apkit backlog promote <slug> --preview|--apply [task fields] [--confirm <criterion-id>] [--reason <text>] [--json]` - preview or explicitly promote one card through the canonical task creator; human-only criteria require operator-asserted confirmations.
+- `apkit backlog promote <slug> --preview|--apply [task fields] [--confirm <criterion-id>] [--expect-criteria <fingerprint>] [--reason <text>] [--json]` - preview or explicitly promote one card through the canonical task creator; human-only criteria require operator-asserted confirmations bound to the previewed criteria revision.
 - `apkit block <task-id> --owner <agent-id> [--reason <text>]` - block a task with an optional reason.
 - `apkit cancel <task-id> --owner <agent-id> [--reason <text>]` - cancel a task with an optional reason.
 - `apkit claim <task-id> --owner <agent-id>` - claim a todo task and capture its task baseline; another doing/review task in the same checkout must be released first, or work must use a separate Git worktree.
