@@ -2126,3 +2126,42 @@ test("fix issuance preserves strict rejection of malformed canonical handoff sou
     });
   }
 });
+
+test("CLI backlog add list show validate stays outside task inventory", async () => {
+  await withTempDirectory(async (directory) => {
+    const add = await runCommand([
+      "backlog", "add",
+      "--title", "Add CI after MVP",
+      "--status", "deferred",
+      "--motivation", "A clean-checkout signal would help.",
+      "--why-not-now", "No accepted MVP exists yet.",
+      "--criteria", "MVP acceptance is recorded",
+      "--outcome", "One small CI workflow",
+      "--json",
+    ], directory);
+    assert.equal(add.exitCode, 0, add.stderr);
+    const created = JSON.parse(add.stdout) as { slug: string; id: string; path: string };
+    assert.equal(created.slug, "add-ci-after-mvp");
+    assert.equal(created.path, ".tasks/backlog/add-ci-after-mvp.md");
+    assert.match(created.id, /^[0-9a-f-]{36}$/);
+
+    const list = await runCommand(["backlog", "list", "--json"], directory);
+    assert.equal(list.exitCode, 0, list.stderr);
+    const listed = JSON.parse(list.stdout) as { items: Array<{ slug: string; status: string }>; diagnostics: string[] };
+    assert.deepEqual(listed.items.map((item) => [item.slug, item.status]), [["add-ci-after-mvp", "deferred"]]);
+    assert.deepEqual(listed.diagnostics, []);
+
+    const show = await runCommand(["backlog", "show", "add-ci-after-mvp", "--json"], directory);
+    assert.equal(show.exitCode, 0, show.stderr);
+    assert.equal((JSON.parse(show.stdout) as { id: string }).id, created.id);
+
+    const validate = await runCommand(["backlog", "validate", "--json"], directory);
+    assert.equal(validate.exitCode, 0, validate.stderr);
+    assert.equal((JSON.parse(validate.stdout) as { diagnostics: string[] }).diagnostics.length, 0);
+
+    const tasks = await runCommand(["tasks", "--all"], directory);
+    assert.doesNotMatch(tasks.stdout, /add-ci-after-mvp/);
+    const next = await runCommand(["next-task"], directory);
+    assert.doesNotMatch(next.stdout, /add-ci-after-mvp/);
+  });
+});

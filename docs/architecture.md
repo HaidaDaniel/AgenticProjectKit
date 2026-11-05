@@ -16,6 +16,11 @@ Agentic Project Kit uses a layered architecture:
 - Use tasks as the primary unit of work.
 - Select context explicitly rather than loading the whole repository.
 - Keep commands thin and predictable.
+- Keep future ideas in a lightweight tracked backlog, separate from executable task lifecycle.
+
+## Backlog layer
+
+`<taskDirectory>/backlog/<slug>.md` stores future-work cards as Git-tracked Markdown. An immutable opaque `Backlog-Id` identifies a card independently of its human-readable slug; promotion criteria carry stable local IDs. Backlog cards are deliberately outside `ProjectTask`, `TASK_STATES`, task inventories, dependency resolution, status, workers, review, evidence, and completion gates. The CLI only reads or writes bounded repository-local files; there is no second task database, service, daemon, or model runtime.
 
 ## Application/runtime and repository tooling semantics
 

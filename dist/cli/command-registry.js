@@ -2,6 +2,7 @@ import { runAgentCommand } from "./commands/agent.js";
 import { runAdoptCommand } from "./commands/adopt.js";
 import { runAnalyticsCommand } from "./commands/analytics.js";
 import { runAttentionCommand } from "./commands/attention.js";
+import { runBacklogCommand } from "./commands/backlog.js";
 import { runAuditCommand } from "./commands/audit.js";
 import { runContextCommand } from "./commands/context.js";
 import { runDoctorCommand } from "./commands/doctor.js";
@@ -71,6 +72,17 @@ export const PUBLIC_COMMANDS = [
         summary: "Write repository audit reports.",
         handler: simple(runAuditCommand),
         variants: [{ usage: "audit [directory]", description: "write lightweight kit/workflow and repository-readiness reports using static inspection." }],
+    },
+    {
+        command: "backlog",
+        summary: "Manage lightweight future-work backlog items.",
+        handler: simple(runBacklogCommand),
+        variants: [
+            { usage: "backlog add --title <title> [--slug <slug>] [--status <status>] [--priority <text>] [--motivation <text>] [--why-not-now <text>] [--criteria <csv>] [--outcome <text>] [--references <csv>] [--json]", description: "create a Git-tracked Markdown backlog card without allocating a task id." },
+            { usage: "backlog list [--status <idea|deferred|promoted|discarded>] [--json]", description: "list bounded backlog cards without reading executable task inventories." },
+            { usage: "backlog show <slug> [--json]", description: "show one backlog card by its stable slug." },
+            { usage: "backlog validate [--json]", description: "validate backlog cards and report duplicate identities or malformed Markdown." },
+        ],
     },
     {
         command: "block",

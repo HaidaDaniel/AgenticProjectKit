@@ -101,6 +101,7 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0090](#adr-0090---diagnostics-share-a-guarded-invocation) | accepted | Diagnostics share a guarded invocation | — |
 | [ADR-0091](#adr-0091---repository-local-agent-scratch-is-ignored-and-disposable) | accepted | Repository-local agent scratch is ignored and disposable | — |
 | [ADR-0092](#adr-0092---ci-planning-follows-project-stage-and-explicit-requirements) | accepted | CI planning follows project stage and explicit requirements | — |
+| [ADR-0093](#adr-0093---backlog-items-are-lightweight-tracked-future-work-not-tasks) | accepted | Backlog items are lightweight tracked future work, not tasks | — |
 
 ### ADR index cross-check
 
@@ -1887,3 +1888,23 @@ CI planning is proportional to the project stage. Discovery and MVP use relevant
 ### Consequences
 
 Planning skills and documentation surface the stage-based choice instead of treating CI as a slogan. Project mode and task mode stay independent, and an accepted MVP is never inferred from dates, task completion, or agent output.
+
+## ADR-0093 - Backlog items are lightweight tracked future work, not tasks
+
+Status: accepted
+
+Date: 2026-11-05
+
+### Context
+
+Planners need a durable place for ideas that are not ready to execute. Reusing `ProjectTask` would allocate numeric IDs, require owner/review/verification ceremony, and make future ideas appear in actionable task inventories.
+
+### Decision
+
+Backlog cards live at `<taskDirectory>/backlog/<slug>.md` as Git-tracked Markdown. Each card has an immutable opaque `Backlog-Id`, a human-readable slug filename, a status of `idea`, `deferred`, `promoted`, or `discarded`, and promotion criteria with stable local IDs. Backlog cards are outside `ProjectTask`, `TASK_STATES`, task inventories, dependency resolution, next-task selection, status, attention, workers, lint, audit, doctor, adopt, archive, and completion gates. They allocate no numeric task ID.
+
+The CLI surface is limited to bounded `apk backlog add`, `list`, `show`, and `validate` operations with optional JSON. Cards remain manually editable through Git. No second task database, service, daemon, cron job, API, or model inference is introduced. Promotion is a separate explicit operation that reuses the canonical task creator and mutation lock.
+
+### Consequences
+
+Planners can record deferred work without polluting executable task state or evidence requirements. Backlog identity survives filename renames, and malformed or duplicate cards fail closed. The backlog is not a second lifecycle store and cannot satisfy task verification, review, or completion requirements.

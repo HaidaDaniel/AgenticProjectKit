@@ -45,6 +45,10 @@ The command synopsis and option list below are rendered from `src/cli/command-re
 - `apkit analytics summary [--month YYYY-MM] [--write]` - summarize a month of agent activity, optionally writing the report.
 - `apkit attention [--json]` - project task, gate, review, policy, and resource state without claiming live process facts.
 - `apkit audit [directory]` - write lightweight kit/workflow and repository-readiness reports using static inspection.
+- `apkit backlog add --title <title> [--slug <slug>] [--status <status>] [--priority <text>] [--motivation <text>] [--why-not-now <text>] [--criteria <csv>] [--outcome <text>] [--references <csv>] [--json]` - create a Git-tracked Markdown backlog card without allocating a task id.
+- `apkit backlog list [--status <idea|deferred|promoted|discarded>] [--json]` - list bounded backlog cards without reading executable task inventories.
+- `apkit backlog show <slug> [--json]` - show one backlog card by its stable slug.
+- `apkit backlog validate [--json]` - validate backlog cards and report duplicate identities or malformed Markdown.
 - `apkit block <task-id> --owner <agent-id> [--reason <text>]` - block a task with an optional reason.
 - `apkit cancel <task-id> --owner <agent-id> [--reason <text>]` - cancel a task with an optional reason.
 - `apkit claim <task-id> --owner <agent-id>` - claim a todo task and capture its task baseline; another doing/review task in the same checkout must be released first, or work must use a separate Git worktree.
