@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, readdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 export const BACKLOG_STATUSES = ["idea", "deferred", "promoted", "discarded"] as const;
 export type BacklogStatus = (typeof BACKLOG_STATUSES)[number];
@@ -301,15 +301,23 @@ async function lstatOptional(path: string): Promise<Awaited<ReturnType<typeof ls
 }
 
 async function assertBacklogDirectorySafe(rootDirectory: string, taskDirectory: string): Promise<void> {
-  const taskRoot = join(rootDirectory, taskDirectory);
-  const taskInfo = await lstatOptional(taskRoot);
-  if (taskInfo?.isSymbolicLink()) {
-    throw new BacklogFormatError([`Task directory must not be a symbolic link: ${taskDirectory}`]);
+  const normalized = taskDirectory.replace(/\\/g, "/").replace(/\/+$/, "");
+  const segments = normalized.split("/");
+  if (isAbsolute(normalized) || segments.some((segment) => segment === "" || segment === "." || segment === "..")) {
+    throw new BacklogFormatError([`Task directory must be a repository-relative path without dot segments: ${taskDirectory}`]);
   }
-  if (taskInfo && !taskInfo.isDirectory()) {
-    throw new BacklogFormatError([`Task directory is not a directory: ${taskDirectory}`]);
+  let current = rootDirectory;
+  for (const segment of segments) {
+    current = join(current, segment);
+    const info = await lstatOptional(current);
+    if (info?.isSymbolicLink()) {
+      throw new BacklogFormatError([`Task directory must not contain a symbolic link: ${taskDirectory}`]);
+    }
+    if (info && !info.isDirectory()) {
+      throw new BacklogFormatError([`Task directory component is not a directory: ${taskDirectory}`]);
+    }
   }
-  const directory = backlogDirectory(rootDirectory, taskDirectory);
+  const directory = join(current, "backlog");
   const info = await lstatOptional(directory);
   if (info?.isSymbolicLink()) {
     throw new BacklogFormatError([`Backlog directory must not be a symbolic link: ${taskDirectory}/backlog`]);

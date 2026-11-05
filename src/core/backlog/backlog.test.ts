@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import fsPromises, { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -229,6 +230,84 @@ test("duplicate Backlog-Ids and malformed cards appear in validation diagnostics
     const result = await validateBacklogItems(directory, ".tasks");
     assert.ok(result.diagnostics.some((diagnostic) => diagnostic.includes("duplicated")));
     assert.ok(result.diagnostics.some((diagnostic) => diagnostic.includes("broken.md")));
+  });
+});
+
+test("backlog refuses a custom task directory with a symlinked ancestor", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-backlog-taskdir-outside-"));
+    try {
+      await symlink(outside, join(directory, "linked"));
+      await assert.rejects(
+        () => createBacklogItem(directory, "linked/.tasks", { title: "Escape" }),
+        /symbolic link/,
+      );
+      await assert.rejects(
+        () => listBacklogItems(directory, "linked/.tasks"),
+        /symbolic link/,
+      );
+      await assert.rejects(
+        () => createBacklogItem(directory, "../outside", { title: "Escape" }),
+        /dot segments/,
+      );
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+});
+
+test("ordinary task inventory neither enumerates nor reads backlog content", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks", "backlog"), { recursive: true });
+    await writeFile(join(directory, ".tasks", "backlog", "large.md"), "x".repeat(1024), "utf8");
+    await writeFile(join(directory, ".tasks", "0001-task.md"), renderTaskMarkdown(sampleTask), "utf8");
+
+    const original = {
+      readdir: fsPromises.readdir,
+      open: fsPromises.open,
+      readFile: fsPromises.readFile,
+      opendir: fsPromises.opendir,
+    };
+    const backlogAccesses: string[] = [];
+    const record = (operation: string, path: unknown): void => {
+      const text = String(path);
+      if (text.includes(".tasks") && /(?:^|[\\/])backlog(?:[\\/]|$)/.test(text)) {
+        backlogAccesses.push(`${operation}:${text}`);
+      }
+    };
+    fsPromises.readdir = (async (path: Parameters<typeof fsPromises.readdir>[0], options?: Parameters<typeof fsPromises.readdir>[1]) => {
+      record("readdir", path);
+      return original.readdir(path, options as never);
+    }) as typeof fsPromises.readdir;
+    fsPromises.open = (async (...args: Parameters<typeof fsPromises.open>) => {
+      record("open", args[0]);
+      return original.open(...args);
+    }) as typeof fsPromises.open;
+    fsPromises.readFile = (async (...args: Parameters<typeof fsPromises.readFile>) => {
+      record("readFile", args[0]);
+      return original.readFile(...args);
+    }) as typeof fsPromises.readFile;
+    fsPromises.opendir = (async (...args: Parameters<typeof fsPromises.opendir>) => {
+      record("opendir", args[0]);
+      return original.opendir(...args);
+    }) as typeof fsPromises.opendir;
+    syncBuiltinESMExports();
+
+    try {
+      const tasks = await listTaskFiles(directory, ".tasks");
+      assert.equal(tasks.length, 1);
+      assert.equal(selectNextTask(tasks, [])?.task.id, "0001");
+      const inventory = await inspectTaskContracts(directory, ".tasks");
+      assert.equal(inventory.parsed.length, 1);
+    } finally {
+      fsPromises.readdir = original.readdir;
+      fsPromises.open = original.open;
+      fsPromises.readFile = original.readFile;
+      fsPromises.opendir = original.opendir;
+      syncBuiltinESMExports();
+    }
+
+    assert.deepEqual(backlogAccesses, []);
   });
 });
 
