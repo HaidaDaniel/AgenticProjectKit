@@ -1,4 +1,4 @@
-import { cp, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { promisify } from "node:util";
 
+import { detectCompatibility } from "../config/compatibility.js";
 import { listAgentExporters } from "../exporters/index.js";
 import {
   renderContextSuggestion,
@@ -664,6 +665,32 @@ test("adoption exposes invalid config diagnostics without migration", async () =
 
     const plan = await planAdoption(directory, { includeMigration: false });
     assert.ok(plan.diagnostics.some((diagnostic) => diagnostic.includes("Invalid .agentic/config.json")));
+  });
+});
+
+test("invalid config never drives compatibility inspection or adoption mutation", async () => {
+  await withTempRepository(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-invalid-config-outside-"));
+    try {
+      await writeFile(join(outside, "escaped-task.md"), "# Task 0001 - Escaped\n", "utf8");
+      await mkdir(join(directory, ".agentic"), { recursive: true });
+      await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({
+        taskDirectory: `../${outside.split("/").at(-1)}`,
+      }), "utf8");
+
+      const compatibility = await detectCompatibility(directory);
+      assert.equal(compatibility.config.state, "invalid");
+      assert.equal(compatibility.tasks.total, 0);
+      assert.equal(compatibility.tasks.directory, "(not inspected)");
+      assert.ok(compatibility.diagnostics.some((diagnostic) => diagnostic.includes("not inspected")));
+
+      const before = (await readdir(directory)).sort();
+      await assert.rejects(() => adoptRepository(directory), /Refusing to adopt|Invalid .*config|taskDirectory/);
+      assert.deepEqual((await readdir(directory)).sort(), before);
+      assert.equal(await readFile(join(outside, "escaped-task.md"), "utf8"), "# Task 0001 - Escaped\n");
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
   });
 });
 

@@ -639,6 +639,11 @@ export async function adoptRepository(
   options: { applyMigration?: boolean } = {},
 ): Promise<AdoptResult> {
   const built = await buildAdoptionPlan(rootDirectory, options.applyMigration ?? false);
+  if (built.plan.compatibility.config.state === "invalid" || built.plan.compatibility.config.state === "unsupported") {
+    throw new Error(
+      `${built.plan.compatibility.diagnostics[0] ?? "Invalid .agentic/config.json."} Refusing to adopt because the configured task directory is not trustworthy.`,
+    );
+  }
   const created: string[] = [];
   const updated: string[] = [];
   const skipped = [...built.plan.skipped];

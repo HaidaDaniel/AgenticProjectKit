@@ -159,6 +159,24 @@ function boundedText(value: string): string {
     ? `${value.slice(0, TASK_INSPECTION_LIMITS.issueCharacters - 1)}…` : value;
 }
 
+function notInspectedTaskContracts(): TaskContractInspection {
+  return {
+    entries: [],
+    coverage: {
+      discovered: 0,
+      inspected: 0,
+      parseable: 0,
+      incompatible: 0,
+      unreadable: 0,
+      notInspected: 0,
+      enumerationComplete: false,
+      complete: false,
+      limits: TASK_INSPECTION_LIMITS,
+    },
+    diagnostics: ["Task contracts were not inspected because the config is invalid or unsupported."],
+  };
+}
+
 /** Shared bounded read-only parser inventory for compatibility and lint. */
 export async function inspectTaskContracts(rootDirectory: string, taskDirectory: string): Promise<{
   inspection: TaskContractInspection;
@@ -286,10 +304,15 @@ function overallState(
 
 export async function detectCompatibility(rootDirectory: string): Promise<CompatibilityReport> {
   const config = await readConfig(rootDirectory);
-  const taskDirectory = typeof config.raw?.taskDirectory === "string" && config.raw.taskDirectory.trim().length > 0
-    ? config.raw.taskDirectory
-    : ".tasks";
-  const { inspection } = await inspectTaskContracts(rootDirectory, taskDirectory);
+  const untrustedConfig = config.state === "invalid" || config.state === "unsupported";
+  const taskDirectory = untrustedConfig
+    ? "(not inspected)"
+    : typeof config.raw?.taskDirectory === "string" && config.raw.taskDirectory.trim().length > 0
+      ? config.raw.taskDirectory
+      : ".tasks";
+  const inspection = untrustedConfig
+    ? notInspectedTaskContracts()
+    : (await inspectTaskContracts(rootDirectory, taskDirectory)).inspection;
   const legacy = inspection.entries.filter((entry) => entry.verification === "legacy").length;
   const gated = inspection.entries.filter((entry) => entry.verification === "gated").length;
   const unknown = inspection.entries.length - legacy - gated;

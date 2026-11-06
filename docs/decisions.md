@@ -1985,8 +1985,8 @@ Date: 2026-11-05
 
 Configuration parsing accepts only repository-relative forward-slash directory paths. It rejects absolute POSIX, Windows drive, UNC, `~`, backslash, empty, empty-segment, `.` and `..` forms. An optional trailing slash is normalized in the parsed value without rewriting the user's config file. Valid nested paths such as `work/tasks` remain supported and `schemaVersion` is unchanged.
 
-This is lexical validation. Filesystem writers still require their own symlink/containment checks where an existing path can be replaced or followed; configuration validation alone does not prove that a path is safe against a concurrent filesystem writer.
+This is lexical validation. Filesystem writers still require their own symlink/containment checks where an existing path can be replaced or followed; configuration validation alone does not prove that a path is safe against a concurrent filesystem writer. Compatibility inspection treats invalid or unsupported config as untrusted: it does not use the raw configured task directory, and adoption refuses mutation before writing any file.
 
 ### Consequences
 
-Unsafe configured directories fail before filesystem mutation, while valid existing nested configurations remain readable. The validator is shared by config consumers rather than duplicated per command.
+Unsafe configured directories fail during parsing, and diagnostic/adoption consumers fail closed rather than deriving filesystem paths from an invalid config. Valid existing nested configurations remain readable, and no automatic config rewrite is performed.
