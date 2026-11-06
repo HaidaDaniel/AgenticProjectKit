@@ -12,6 +12,8 @@ function hasControlCharacters(value) {
 export function repositoryRelativeDirectoryIssue(value) {
     if (value.length === 0)
         return "must be a non-empty repository-relative directory";
+    if (value !== value.trim())
+        return "must not have leading or trailing whitespace";
     if (hasControlCharacters(value))
         return "must not contain control characters";
     if (WINDOWS_ABSOLUTE.test(value) || WINDOWS_DRIVE.test(value))
@@ -24,7 +26,7 @@ export function repositoryRelativeDirectoryIssue(value) {
         return "must be repository-relative";
     if (value.includes("\\"))
         return "must use forward slashes";
-    const trimmed = value.replace(/\/+$/, "");
+    const trimmed = value.endsWith("/") ? value.slice(0, -1) : value;
     if (trimmed.length === 0)
         return "must not resolve to the repository root";
     const segments = trimmed.split("/");
@@ -34,7 +36,7 @@ export function repositoryRelativeDirectoryIssue(value) {
         return "must not contain dot segments";
     return undefined;
 }
-/** Normalize only an optional trailing separator; never rewrite user config. */
+/** Normalize one optional trailing separator; never rewrite user config. */
 export function canonicalRepositoryRelativeDirectory(value) {
-    return value.replace(/\/+$/, "");
+    return value.endsWith("/") ? value.slice(0, -1) : value;
 }
