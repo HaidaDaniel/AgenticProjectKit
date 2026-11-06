@@ -1,6 +1,6 @@
 # Task 0252 - Validate configured repository paths
 
-State: todo
+State: canceled
 Owner: none
 Mode: maintenance
 Lane: bugfix
@@ -91,3 +91,4 @@ Reject absolute, escaping, dot-segment and ambiguous Windows-style taskDirectory
 ## Notes
 
 - Confirmed at HEAD 5021f2e: parseAgenticConfig accepted ../outside /tmp/outside C:\outside work/../../outside and work/./tasks; do not change schemaVersion or rewrite configs
+- cancel: Superseded by 0261: parser validation is committed but the contract omitted compatibility/adopt consumers, so end-to-end invalid-config fail-closed behavior cannot be completed inside 0252 allowed files.
