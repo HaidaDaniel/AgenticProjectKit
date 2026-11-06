@@ -1,5 +1,5 @@
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { dirname, join, relative, resolve } from "node:path";
 
 import {
   CURRENT_CONFIG_SCHEMA_VERSION,
@@ -293,6 +293,23 @@ async function migrateConfigContent(rootDirectory: string): Promise<string> {
   }, null, 2)}\n`;
 }
 
+async function assertTaskDirectoryContained(rootDirectory: string, taskDirectory: string): Promise<void> {
+  let current = resolve(rootDirectory);
+  for (const segment of taskDirectory.split("/")) {
+    current = resolve(current, segment);
+    try {
+      const info = await lstat(current);
+      if (info.isSymbolicLink()) throw new Error(`Task directory must not contain a symbolic link: ${taskDirectory}`);
+      if (!info.isDirectory()) throw new Error(`Task directory component is not a directory: ${taskDirectory}`);
+    } catch (error: unknown) {
+      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") continue;
+      throw error;
+    }
+  }
+  const rel = relative(resolve(rootDirectory), resolve(rootDirectory, taskDirectory));
+  if (rel.startsWith("..") || rel.startsWith("/")) throw new Error(`Task directory escapes the repository: ${taskDirectory}`);
+}
+
 async function buildAdoptionPlan(
   rootDirectory: string,
   includeMigration: boolean,
@@ -315,6 +332,7 @@ async function buildAdoptionPlan(
   const taskDirectory = compatibility.config.state === "invalid" || compatibility.config.state === "unsupported"
     ? DEFAULT_CONFIG.taskDirectory
     : (await readAgenticConfigFile(rootDirectory)).taskDirectory;
+  await assertTaskDirectoryContained(rootDirectory, taskDirectory);
   const activeTaskFiles = await listMarkdownFiles(join(rootDirectory, taskDirectory));
   const archivedTaskFiles = await listMarkdownFiles(join(rootDirectory, taskDirectory, "archive"));
   const allTaskFiles = [

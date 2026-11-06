@@ -797,3 +797,19 @@ test("adoption honors custom task directories for task IDs links and idempotency
     });
   }
 });
+
+test("adoption rejects a symlinked configured task directory before writing", async () => {
+  await withTempRepository(async (directory) => {
+    await createExistingRepository(directory);
+    const outside = await mkdtemp(join(tmpdir(), "apk-adopt-taskdir-outside-"));
+    try {
+      await mkdir(join(directory, ".agentic"), { recursive: true });
+      await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({ schemaVersion: 2, taskDirectory: "contracts" }), "utf8");
+      await symlink(outside, join(directory, "contracts"));
+      await assert.rejects(() => adoptRepository(directory), /symbolic link|escapes the repository/);
+      assert.deepEqual(await readdir(outside), []);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+});
