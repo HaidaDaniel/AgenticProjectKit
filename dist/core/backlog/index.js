@@ -41,10 +41,20 @@ export async function readBoundedFileHandle(handle, limit = BACKLOG_LIMITS.bytes
     if (size !== opened.size)
         throw new BacklogFormatError(["Backlog card changed while being read (truncated or grown)."]);
     const after = await handle.stat();
-    if (!after.isFile() || after.size !== opened.size) {
+    if (!after.isFile()
+        || after.size !== opened.size
+        || after.mtimeMs !== opened.mtimeMs
+        || after.ctimeMs !== opened.ctimeMs
+        || after.ino !== opened.ino
+        || after.dev !== opened.dev) {
         throw new BacklogFormatError(["Backlog card changed while being read."]);
     }
-    return buffer.subarray(0, size).toString("utf8");
+    try {
+        return new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, size));
+    }
+    catch {
+        throw new BacklogFormatError(["Backlog card is not valid UTF-8."]);
+    }
 }
 export class BacklogFormatError extends Error {
     issues;

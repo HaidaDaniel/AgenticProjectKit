@@ -74,7 +74,14 @@ export interface BacklogCardSnapshot {
 }
 
 export interface BoundedReadHandle {
-  stat(): Promise<{ isFile(): boolean; size: number }>;
+  stat(): Promise<{
+    isFile(): boolean;
+    size: number;
+    mtimeMs?: number;
+    ctimeMs?: number;
+    ino?: number;
+    dev?: number;
+  }>;
   read(buffer: Buffer, offset: number, length: number, position: number): Promise<{ bytesRead: number }>;
 }
 
@@ -96,10 +103,19 @@ export async function readBoundedFileHandle(
   if (size > limit) throw new BacklogFormatError([`Backlog card exceeds the ${limit} byte limit.`]);
   if (size !== opened.size) throw new BacklogFormatError(["Backlog card changed while being read (truncated or grown)."]);
   const after = await handle.stat();
-  if (!after.isFile() || after.size !== opened.size) {
+  if (!after.isFile()
+    || after.size !== opened.size
+    || after.mtimeMs !== opened.mtimeMs
+    || after.ctimeMs !== opened.ctimeMs
+    || after.ino !== opened.ino
+    || after.dev !== opened.dev) {
     throw new BacklogFormatError(["Backlog card changed while being read."]);
   }
-  return buffer.subarray(0, size).toString("utf8");
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, size));
+  } catch {
+    throw new BacklogFormatError(["Backlog card is not valid UTF-8."]);
+  }
 }
 
 export class BacklogFormatError extends Error {

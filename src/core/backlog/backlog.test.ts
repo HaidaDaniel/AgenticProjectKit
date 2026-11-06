@@ -389,3 +389,25 @@ test("Unicode backlog titles produce safe non-empty slugs", () => {
     assert.notEqual(slug, "");
   }
 });
+
+test("bounded backlog reads reject invalid UTF-8 and detected same-size rewrites", async () => {
+  const invalid = chunkedHandle(Buffer.from([0xff, 0xfe, 0xfd]), [3]);
+  await assert.rejects(() => readBoundedFileHandle(invalid), /valid UTF-8/);
+
+  let statCalls = 0;
+  let position = 0;
+  const content = Buffer.from("same-size");
+  const rewriting: BoundedReadHandle = {
+    async stat() {
+      statCalls += 1;
+      return { isFile: () => true, size: content.length, mtimeMs: statCalls === 1 ? 1 : 2, ctimeMs: 1, ino: 1, dev: 1 };
+    },
+    async read(buffer, offset, length) {
+      const chunk = content.subarray(position, position + Math.min(content.length - position, length));
+      position += chunk.length;
+      buffer.set(chunk, offset);
+      return { bytesRead: chunk.length };
+    },
+  };
+  await assert.rejects(() => readBoundedFileHandle(rewriting), /changed while being read/);
+});
