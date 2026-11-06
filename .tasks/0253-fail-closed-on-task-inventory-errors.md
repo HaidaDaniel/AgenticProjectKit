@@ -1,7 +1,7 @@
 # Task 0253 - Fail closed on task inventory errors
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-correctness-milestone
 Mode: maintenance
 Lane: bugfix
 Type: bugfix
