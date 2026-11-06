@@ -678,6 +678,21 @@ export async function writeTaskFile(path, task) {
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, renderTaskMarkdown(task), "utf8");
 }
+/** Publish a brand-new task without ever replacing an existing target. */
+async function createTaskFileExclusive(path, task) {
+    await mkdir(dirname(path), { recursive: true });
+    try {
+        await writeFile(path, renderTaskMarkdown(task), { encoding: "utf8", flag: "wx" });
+    }
+    catch (error) {
+        if (error && typeof error === "object" && "code" in error && error.code === "EEXIST") {
+            const err = new Error(`Task file appeared during creation: ${path}. Retry with a fresh task ID.`);
+            err.name = "TaskCreateError";
+            throw err;
+        }
+        throw error;
+    }
+}
 async function readTaskInventoryDirectory(read, directory) {
     try {
         return await read();
@@ -1490,7 +1505,7 @@ export async function createTaskUnderTaskLock(rootDirectory, taskDirectory, inpu
         err.name = "TaskCreateError";
         throw err;
     }
-    await writeTaskFile(taskPath, task);
+    await createTaskFileExclusive(taskPath, task);
     return {
         id,
         path: relative(rootDirectory, taskPath).replace(/\\/g, "/"),

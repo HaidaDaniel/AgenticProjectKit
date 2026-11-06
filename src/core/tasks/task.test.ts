@@ -11335,3 +11335,45 @@ test("task inventory surfaces injected EACCES for active and archive directories
     }
   });
 });
+
+test("exclusive task creation refuses a target that appears after the precheck", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    const target = join(directory, ".tasks", "0001-race-task.md");
+    const original = fsPromises.writeFile;
+    fsPromises.writeFile = (async (...args: Parameters<typeof fsPromises.writeFile>) => {
+      const [path, , options] = args;
+      if (String(path) === target && typeof options === "object" && options?.flag === "wx") {
+        await original(path, "external writer content\n", "utf8");
+      }
+      return original(...args);
+    }) as typeof fsPromises.writeFile;
+    syncBuiltinESMExports();
+    try {
+      await assert.rejects(() => createTask(directory, ".tasks", {
+        title: "Race task",
+        mode: "mvp",
+        lane: "implementation",
+        scope: ["fixture"],
+        risk: "low",
+        parallel: false,
+        dependsOn: [],
+        tags: [],
+        goal: "Exercise exclusive creation.",
+        contextFiles: ["AGENTS.md"],
+        allowedFiles: ["src/**"],
+        forbiddenFiles: [],
+        steps: ["Create."],
+        acceptanceCriteria: ["Conflict is refused."],
+        verificationCommands: ["true"],
+        documentationUpdates: [],
+        notes: [],
+      }), /appeared during creation|already exists/);
+    } finally {
+      fsPromises.writeFile = original;
+      syncBuiltinESMExports();
+    }
+    assert.equal(await readFile(target, "utf8"), "external writer content\n");
+    assert.deepEqual(await readdir(join(directory, ".tasks")), ["0001-race-task.md"]);
+  });
+});

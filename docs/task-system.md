@@ -207,6 +207,7 @@ The command:
 - Auto-selects the next numeric task id.
 - Generates a slugged filename under the configured task directory.
 - Uses the task lock while selecting ids and writing files.
+- Publishes a new task with an exclusive create; an external target that appears after the precheck is refused without overwriting its bytes.
 - Defaults to `State: todo` and `Owner: none`.
 - Requires `--scope` and `--allowed` to include at least one value.
 - Validates the rendered task against the parser before writing.

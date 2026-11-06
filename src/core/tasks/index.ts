@@ -988,6 +988,21 @@ export async function writeTaskFile(path: string, task: ProjectTask): Promise<vo
   await writeFile(path, renderTaskMarkdown(task), "utf8");
 }
 
+/** Publish a brand-new task without ever replacing an existing target. */
+async function createTaskFileExclusive(path: string, task: ProjectTask): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  try {
+    await writeFile(path, renderTaskMarkdown(task), { encoding: "utf8", flag: "wx" });
+  } catch (error: unknown) {
+    if (error && typeof error === "object" && "code" in error && error.code === "EEXIST") {
+      const err = new Error(`Task file appeared during creation: ${path}. Retry with a fresh task ID.`) as TaskCreateError;
+      err.name = "TaskCreateError";
+      throw err;
+    }
+    throw error;
+  }
+}
+
 async function readTaskInventoryDirectory(
   read: () => Promise<string[]>,
   directory: string,
@@ -2211,7 +2226,7 @@ export async function createTaskUnderTaskLock(
       throw err;
     }
 
-    await writeTaskFile(taskPath, task);
+    await createTaskFileExclusive(taskPath, task);
 
     return {
       id,
