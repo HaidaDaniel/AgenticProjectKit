@@ -11273,3 +11273,65 @@ test("task ID allocation includes archived IDs when inventory is healthy", async
     assert.equal(created.id, "0100");
   });
 });
+
+test("task inventory rejects dangling symlink storage instead of treating it as empty", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await symlink("missing-archive-target", join(directory, ".tasks", "archive"));
+    await assert.rejects(() => listArchivedTaskFiles(directory, ".tasks"), /Task inventory unavailable/);
+    await assert.rejects(() => findTaskFile(directory, "0001", ".tasks"), /Task inventory unavailable/);
+    const input = {
+      title: "Must not allocate through dangling archive",
+      mode: "mvp" as const,
+      lane: "implementation",
+      scope: ["fixture"],
+      risk: "low" as const,
+      parallel: false,
+      dependsOn: [],
+      tags: [],
+      goal: "Refuse incomplete inventory.",
+      contextFiles: ["AGENTS.md"],
+      allowedFiles: ["src/**"],
+      forbiddenFiles: [],
+      steps: ["Do not allocate."],
+      acceptanceCriteria: ["No task file is written."],
+      verificationCommands: ["true"],
+      documentationUpdates: [],
+      notes: [],
+    };
+    await assert.rejects(() => createTask(directory, ".tasks", input), /Task inventory unavailable/);
+    assert.deepEqual(await readdir(join(directory, ".tasks")), ["archive"]);
+  });
+
+  await withTempDirectory(async (directory) => {
+    await symlink("missing-tasks-target", join(directory, ".tasks"));
+    await assert.rejects(() => listTaskFiles(directory, ".tasks"), /Task inventory unavailable/);
+  });
+});
+
+test("task inventory surfaces injected EACCES for active and archive directories", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks", "archive"), { recursive: true });
+    const active = join(directory, ".tasks");
+    const archive = join(directory, ".tasks", "archive");
+    const original = fsPromises.readdir;
+    try {
+      fsPromises.readdir = (async (path: Parameters<typeof fsPromises.readdir>[0], options?: Parameters<typeof fsPromises.readdir>[1]) => {
+        if (String(path) === active) throw Object.assign(new Error("denied"), { code: "EACCES" });
+        return original(path, options as never);
+      }) as typeof fsPromises.readdir;
+      syncBuiltinESMExports();
+      await assert.rejects(() => listTaskFiles(directory, ".tasks"), /Task inventory unavailable.*EACCES/);
+
+      fsPromises.readdir = (async (path: Parameters<typeof fsPromises.readdir>[0], options?: Parameters<typeof fsPromises.readdir>[1]) => {
+        if (String(path) === archive) throw Object.assign(new Error("denied"), { code: "EACCES" });
+        return original(path, options as never);
+      }) as typeof fsPromises.readdir;
+      syncBuiltinESMExports();
+      await assert.rejects(() => listArchivedTaskFiles(directory, ".tasks"), /Task inventory unavailable.*EACCES/);
+    } finally {
+      fsPromises.readdir = original;
+      syncBuiltinESMExports();
+    }
+  });
+});

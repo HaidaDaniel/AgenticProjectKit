@@ -996,7 +996,18 @@ async function readTaskInventoryDirectory(
     return await read();
   } catch (error: unknown) {
     const code = error && typeof error === "object" && "code" in error ? String(error.code) : "unknown";
-    if (code === "ENOENT") return [];
+    if (code === "ENOENT") {
+      try {
+        await lstat(directory);
+      } catch (lstatError: unknown) {
+        const lstatCode = lstatError && typeof lstatError === "object" && "code" in lstatError
+          ? String(lstatError.code)
+          : "unknown";
+        if (lstatCode === "ENOENT") return [];
+        throw new Error(`Task inventory unavailable (${directory}): ${lstatCode}.`, { cause: lstatError });
+      }
+      throw new Error(`Task inventory unavailable (${directory}): path exists but cannot be read as a directory.`, { cause: error });
+    }
     throw new Error(`Task inventory unavailable (${directory}): ${code}.`, { cause: error });
   }
 }
@@ -1566,7 +1577,10 @@ export async function findTaskFile(
 ): Promise<string> {
   diagnosticSnapshot?.assertLocation(rootDirectory, taskDirectory);
   const directory = join(rootDirectory, taskDirectory);
-  const entries = await (diagnosticSnapshot?.memo(rootDirectory, `directory:${directory}`, () => readdir(directory)) ?? readdir(directory));
+  const entries = await readTaskInventoryDirectory(
+    () => diagnosticSnapshot?.memo(rootDirectory, `directory:${directory}`, () => readdir(directory)) ?? readdir(directory),
+    directory,
+  );
   const match = entries.find((entry) => entry.startsWith(`${taskId}-`) && entry.endsWith(".md"));
 
   if (match) {
@@ -1574,7 +1588,10 @@ export async function findTaskFile(
   }
 
   const archiveDirectory = join(directory, "archive");
-  const archiveEntries = await (diagnosticSnapshot?.memo(rootDirectory, `directory:${archiveDirectory}`, () => readdir(archiveDirectory)) ?? readdir(archiveDirectory)).catch(() => []);
+  const archiveEntries = await readTaskInventoryDirectory(
+    () => diagnosticSnapshot?.memo(rootDirectory, `directory:${archiveDirectory}`, () => readdir(archiveDirectory)) ?? readdir(archiveDirectory),
+    archiveDirectory,
+  );
   const archiveMatch = archiveEntries.find((entry) =>
     entry.startsWith(`${taskId}-`) && entry.endsWith(".md"),
   );
