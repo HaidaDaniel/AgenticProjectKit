@@ -469,3 +469,9 @@ test("malformed task metadata is reported without guessing", async (t) => {
   assert.ok(issues.some((issue) => issue.includes("task State metadata is missing")));
   assert.ok(issues.some((issue) => issue.includes(`task ${task.id} is listed but no matching task file was discovered`)));
 });
+
+test("documentation checker accepts five-digit task ids", async (t) => {
+  const task = { id: "10000", state: "done" };
+  const repo = await fixture(t, [task]);
+  assert.deepEqual(await checkDocumentationConsistency(repo.root, cliReference), []);
+});

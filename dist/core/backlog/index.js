@@ -195,7 +195,7 @@ export function parseBacklogMarkdown(markdown, slug, path = slug) {
         bounded(issues, priority.length > 0 && priority.length <= 40, "Priority must contain 1-40 characters.");
     const promotedTask = metadata.get("Promoted-Task");
     if (promotedTask !== undefined) {
-        bounded(issues, /^\d{4}$/.test(promotedTask), "Promoted-Task must be a four-digit task id.");
+        bounded(issues, /^\d{4,}$/.test(promotedTask), "Promoted-Task must be a four-or-more-digit task id.");
         bounded(issues, status === "promoted", "Promoted-Task is only valid for a promoted card.");
     }
     else {
@@ -209,7 +209,7 @@ export function parseBacklogMarkdown(markdown, slug, path = slug) {
     }
     const promotionCriteria = parseCriteria(sections.get("Promotion criteria") ?? [], issues);
     const references = parseReferences(sections.get("References") ?? [], issues);
-    if (!SLUG_PATTERN.test(slug) || /^\d{4}(?:-|$)/.test(slug)) {
+    if (!SLUG_PATTERN.test(slug) || /^\d{4,}(?:-|$)/.test(slug)) {
         issues.push("Slug must be a lowercase hyphenated filename that does not resemble a numeric task id.");
     }
     if ((status === "deferred" || status === "promoted") && promotionCriteria.length === 0) {
@@ -268,10 +268,10 @@ export function slugifyBacklogTitle(title) {
     const slug = slugifyTitle(title).slice(0, BACKLOG_LIMITS.slugCharacters).replace(/-+$/g, "");
     if (!slug)
         throw new BacklogFormatError(["Title cannot produce a non-empty slug."]);
-    return /^\d{4}(?:-|$)/.test(slug) ? `item-${slug}`.slice(0, BACKLOG_LIMITS.slugCharacters) : slug;
+    return /^\d{4,}(?:-|$)/.test(slug) ? `item-${slug}`.slice(0, BACKLOG_LIMITS.slugCharacters) : slug;
 }
 export function normalizeBacklogSlug(slug) {
-    if (!SLUG_PATTERN.test(slug) || /^\d{4}(?:-|$)/.test(slug)) {
+    if (!SLUG_PATTERN.test(slug) || /^\d{4,}(?:-|$)/.test(slug)) {
         throw new BacklogFormatError(["Slug must be a lowercase hyphenated filename that does not resemble a numeric task id."]);
     }
     return slug;

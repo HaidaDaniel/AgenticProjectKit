@@ -11430,3 +11430,7 @@ test("Unicode task titles produce deterministic safe non-empty slugs", async () 
   }
   assert.equal(buildTaskFileName("0001", "Fix Git snapshot"), "0001-fix-git-snapshot.md");
 });
+
+test("nextTaskId advances from 9999 to 10000", () => {
+  assert.equal(nextTaskId([{ path: "0001-x.md", task: { ...TASK, id: "9999" } }]), "10000");
+});

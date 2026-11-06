@@ -411,3 +411,8 @@ test("bounded backlog reads reject invalid UTF-8 and detected same-size rewrites
   };
   await assert.rejects(() => readBoundedFileHandle(rewriting), /changed while being read/);
 });
+
+test("promoted backlog cards accept five-digit task ids", () => {
+  const card = "# Card\n\nBacklog-Id: abc\nStatus: promoted\nPromoted-Task: 10000\n\n## Motivation\n\nx\n\n## Why not now\n\nx\n\n## Promotion criteria\n\n- criterion-1: x\n\n## Proposed outcome\n\nx\n";
+  assert.equal(parseBacklogMarkdown(card, "card").promotedTask, "10000");
+});

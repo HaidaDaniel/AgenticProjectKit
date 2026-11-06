@@ -323,9 +323,9 @@ async function collectTaskStates(root, issues) {
         await visit(path);
         continue;
       }
-      if (!entry.isFile() || !/^\d{4}-.+\.md$/.test(entry.name)) continue;
+      if (!entry.isFile() || !/^\d{4,}-.+\.md$/.test(entry.name)) continue;
 
-      const match = entry.name.match(/^(\d{4})-/);
+      const match = entry.name.match(/^(\d{4,})-/);
       const taskId = match?.[1];
       if (!taskId) continue;
       if (states.has(taskId)) {
@@ -384,7 +384,7 @@ function checkRoadmapTaskStates(root, markdown, states, issues) {
     if (cells.every((cell) => /^:?-{3,}:?$/.test(cell))) continue;
     rowCount += 1;
 
-    if (cells.length !== 4 || !/^\d{4}$/.test(cells[1] ?? "")) {
+    if (cells.length !== 4 || !/^\d{4,}$/.test(cells[1] ?? "")) {
       report(issues, "docs/roadmap.md", index + 1, "task state row must identify one four-digit task ID and one contract link");
       continue;
     }
@@ -409,7 +409,7 @@ function checkRoadmapTaskStates(root, markdown, states, issues) {
 
     const contractTarget = cells[3].match(/\[[^\]]+\]\(([^)]+)\)/)?.[1];
     const contractPath = contractTarget ? resolve(dirname(resolve(root, "docs/roadmap.md")), contractTarget) : null;
-    if (!contractPath || !/^\d{4}-.+\.md$/.test(contractPath.split(sep).at(-1) ?? "") || !contractPath.split(sep).at(-1).startsWith(`${taskId}-`)) {
+    if (!contractPath || !/^\d{4,}-.+\.md$/.test(contractPath.split(sep).at(-1) ?? "") || !contractPath.split(sep).at(-1).startsWith(`${taskId}-`)) {
       report(issues, "docs/roadmap.md", index + 1, `task ${taskId} must link its matching task contract`);
       continue;
     }
