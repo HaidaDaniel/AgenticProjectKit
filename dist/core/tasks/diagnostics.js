@@ -315,7 +315,18 @@ export class TaskDiagnosticSnapshot {
         catch {
             head = "unborn-or-unavailable";
         }
-        const status = await git(this.rootDirectory, ["-c", "core.filemode=true", "status", "--porcelain=v1", "-z", "--untracked-files=all"]);
+        const backlogRelative = relative(top, resolve(this.rootDirectory, this.taskDirectory, "backlog"))
+            .replace(/\\/g, "/");
+        // Filter at Git level so backlog worktree entries never become part of the
+        // diagnostic identity or a large status payload. The index file remains a
+        // separately witnessed global input, so staged backlog changes still fail
+        // closed.
+        const pathspecs = backlogRelative && !backlogRelative.startsWith("..") && !isAbsolute(backlogRelative)
+            ? [":(top)", `:(top,exclude)${backlogRelative}`]
+            : [":(top)"];
+        const status = await git(this.rootDirectory, [
+            "-c", "core.filemode=true", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ...pathspecs,
+        ]);
         // Version already-dirty files too: a second edit need not change status flags.
         const entries = status.split("\0");
         for (let i = 0; i < entries.length; i++) {

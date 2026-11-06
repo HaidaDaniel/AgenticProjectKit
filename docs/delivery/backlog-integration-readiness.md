@@ -30,7 +30,9 @@ The Tasks 0244-0249 candidate is ready for a planning commit and a subsequent in
 
 ## Performance note
 
-The integration fixture counts `readdir`, `open`, `readFile`, `opendir`, `lstat`, `stat`, and `readlink` operations for `status --detail`, `attention --json`, `workers --json`, and `next-task` on byte-identical repositories with zero, one, one hundred, and one thousand backlog cards. The backlog subtree is excluded from the diagnostic witness, so backlog operations are zero and total operation counts match the baseline. A companion snapshot test proves that actual task-file changes are still detected.
+The integration fixture counts `readdir`, `open`, `readFile`, `opendir`, `lstat`, `stat`, and `readlink` operations for `status --detail`, `attention --json`, `workers --json`, and `next-task` on byte-identical repositories with zero, one, one hundred, and one thousand backlog cards. The backlog subtree is excluded from the diagnostic witness, so backlog operations are zero and total operation counts match the baseline. Git worktree status is also filtered at the Git level with a `:(top,exclude)<taskDirectory>/backlog` pathspec, so tracked, untracked, and renamed backlog worktree entries do not enter the snapshot identity. A companion snapshot test proves that actual task-file changes are still detected.
+
+The global Git index remains a witnessed input. A staged backlog entry changes the index file and therefore still fails the snapshot closed. This is an intentional documented limit: worktree backlog content is irrelevant to task diagnostics, while staged index mutations remain part of repository-wide consistency.
 
 ## Corrective follow-ups
 

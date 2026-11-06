@@ -11034,3 +11034,161 @@ test("diagnostic snapshot ignores backlog metadata while still detecting task ch
     );
   });
 });
+
+async function setupSnapshotGitRepo(
+  directory: string,
+  options: { taskDirectory?: string; backlogCards?: number } = {},
+): Promise<(...args: string[]) => Promise<{ stdout: string; stderr: string }>> {
+  const taskDirectory = options.taskDirectory ?? ".tasks";
+  const git = async (...args: string[]) => execFileAsync("git", args, { cwd: directory });
+  await git("init", "--quiet");
+  await git("config", "user.email", "snapshot@example.test");
+  await git("config", "user.name", "Snapshot");
+  if (taskDirectory !== ".tasks") {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({
+      schemaVersion: 2,
+      taskDirectory,
+    }), "utf8");
+  }
+  await mkdir(join(directory, taskDirectory, "backlog"), { recursive: true });
+  await mkdir(join(directory, "src"), { recursive: true });
+  await writeFile(join(directory, taskDirectory, "0001-task.md"), "# Task 0001 - Fixture\n\nState: todo\nOwner: none\n", "utf8");
+  await writeFile(join(directory, taskDirectory, "backlog", "card.md"), "# Backlog card\n", "utf8");
+  await writeFile(join(directory, "src", "app.ts"), "export const value = 1;\n", "utf8");
+  await writeFile(join(directory, "README.md"), "# Fixture\n", "utf8");
+  for (let index = 0; index < (options.backlogCards ?? 0); index += 1) {
+    await writeFile(join(directory, taskDirectory, "backlog", `card-${index}.md`), `# Card ${index}\n`, "utf8");
+  }
+  await git("add", "-A");
+  await git("-c", "user.name=Snapshot", "-c", "user.email=snapshot@example.test", "commit", "--quiet", "-m", "baseline");
+  return git;
+}
+
+test("git-backed diagnostic snapshot ignores tracked, untracked, renamed and many backlog entries", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupSnapshotGitRepo(directory, { backlogCards: 100 });
+    const backlog = join(directory, ".tasks", "backlog", "card.md");
+
+    await withDiagnosticSnapshot(directory, ".tasks", async () => {
+      await writeFile(backlog, "# Backlog card\n\nedited during snapshot\n", "utf8");
+      await writeFile(join(directory, ".tasks", "backlog", "created.md"), "# Created\n", "utf8");
+      await rename(backlog, join(directory, ".tasks", "backlog", "renamed.md"));
+    });
+  });
+});
+
+test("git-backed diagnostic snapshot detects real task worktree changes", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupSnapshotGitRepo(directory);
+    const taskPath = join(directory, ".tasks", "0001-task.md");
+
+    await assert.rejects(
+      () => withDiagnosticSnapshot(directory, ".tasks", async () => {
+        await writeFile(taskPath, "# Task 0001 - Fixture\n\nState: doing\nOwner: owner\n", "utf8");
+      }),
+      /Diagnostic snapshot unavailable/,
+    );
+    await writeFile(taskPath, "# Task 0001 - Fixture\n\nState: todo\nOwner: none\n", "utf8");
+
+    await assert.rejects(
+      () => withDiagnosticSnapshot(directory, ".tasks", async () => {
+        await writeFile(join(directory, ".tasks", "0002-new.md"), "# Task 0002 - New\n", "utf8");
+      }),
+      /Diagnostic snapshot unavailable/,
+    );
+    await rm(join(directory, ".tasks", "0002-new.md"), { force: true });
+
+    await assert.rejects(
+      () => withDiagnosticSnapshot(directory, ".tasks", async () => {
+        await rename(taskPath, join(directory, ".tasks", "0001-renamed.md"));
+      }),
+      /Diagnostic snapshot unavailable/,
+    );
+    await rename(join(directory, ".tasks", "0001-renamed.md"), taskPath);
+
+    await assert.rejects(
+      () => withDiagnosticSnapshot(directory, ".tasks", async () => {
+        await rm(taskPath);
+      }),
+      /Diagnostic snapshot unavailable/,
+    );
+  });
+});
+
+test("git-backed diagnostic snapshot still detects other worktree, HEAD and index changes", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = await setupSnapshotGitRepo(directory);
+
+    await assert.rejects(
+      () => withDiagnosticSnapshot(directory, ".tasks", async () => {
+        await writeFile(join(directory, "src", "app.ts"), "export const value = 2;\n", "utf8");
+      }),
+      /Diagnostic snapshot unavailable/,
+    );
+    await git("checkout", "--", "src/app.ts");
+
+    await assert.rejects(
+      () => withDiagnosticSnapshot(directory, ".tasks", async () => {
+        await writeFile(join(directory, "README.md"), "# Fixture\n\nchanged\n", "utf8");
+        await git("add", "README.md");
+        await git("-c", "user.name=Snapshot", "-c", "user.email=snapshot@example.test", "commit", "--quiet", "-m", "head change");
+      }),
+      /Diagnostic snapshot unavailable/,
+    );
+
+    await assert.rejects(
+      () => withDiagnosticSnapshot(directory, ".tasks", async () => {
+        await writeFile(join(directory, "src", "app.ts"), "export const value = 3;\n", "utf8");
+        await git("add", "src/app.ts");
+      }),
+      /Diagnostic snapshot unavailable/,
+    );
+  });
+});
+
+test("staged backlog changes still fail closed through the global Git index", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = await setupSnapshotGitRepo(directory);
+    await assert.rejects(
+      () => withDiagnosticSnapshot(directory, ".tasks", async () => {
+        await writeFile(join(directory, ".tasks", "backlog", "card.md"), "# Backlog card\n\nstaged\n", "utf8");
+        await git("add", ".tasks/backlog/card.md");
+      }),
+      /Diagnostic snapshot unavailable/,
+    );
+  });
+});
+
+test("git-backed diagnostic snapshot honors custom task directories and linked worktrees", async () => {
+  await withTempDirectory(async (directory) => {
+    await setupSnapshotGitRepo(directory, { taskDirectory: "contracts" });
+    await withDiagnosticSnapshot(directory, "contracts", async () => {
+      await writeFile(join(directory, "contracts", "backlog", "card.md"), "# Backlog card\n\ncustom edit\n", "utf8");
+    });
+    await assert.rejects(
+      () => withDiagnosticSnapshot(directory, "contracts", async () => {
+        await writeFile(join(directory, "contracts", "0001-task.md"), "# Task 0001 - Fixture\n\nState: doing\nOwner: owner\n", "utf8");
+      }),
+      /Diagnostic snapshot unavailable/,
+    );
+  });
+
+  await withTempDirectory(async (directory) => {
+    const repository = join(directory, "repository");
+    const worktree = join(directory, "worktree");
+    await mkdir(repository, { recursive: true });
+    await setupSnapshotGitRepo(repository);
+    await execFileAsync("git", ["worktree", "add", "-b", "diagnostic-worktree", worktree], { cwd: repository });
+
+    await withDiagnosticSnapshot(worktree, ".tasks", async () => {
+      await writeFile(join(worktree, ".tasks", "backlog", "card.md"), "# Backlog card\n\nworktree edit\n", "utf8");
+    });
+    await assert.rejects(
+      () => withDiagnosticSnapshot(worktree, ".tasks", async () => {
+        await writeFile(join(worktree, ".tasks", "0001-task.md"), "# Task 0001 - Fixture\n\nState: doing\nOwner: owner\n", "utf8");
+      }),
+      /Diagnostic snapshot unavailable/,
+    );
+  });
+});
