@@ -43,6 +43,8 @@ not detected capabilities or APK's repository-local installation model.
 
 New `init` and explicit adoption migrations write `schemaVersion: 2` to `.agentic/config.json`. A config without a marker, or with `schemaVersion: 1`, is treated as a legacy v0.3.1-style config. Legacy task Markdown remains readable: flat `## Verification commands` sections are normalized in memory and are not rewritten automatically. Structured `## Verification` tasks are reported as gated; mixed repositories are reported as mixed.
 
+Adoption uses the configured `taskDirectory` for its generated adoption task, active/archive ID discovery, links, and generated task-system text. A repository using `contracts` or `work/tasks` is not migrated to `.tasks`, and repeated apply remains idempotent.
+
 Pinned tooling upgrades, legacy config/task-contract migrations, and unpinned external installations use different evidence and stop conditions. Follow the bounded [safe upgrade acceptance](../delivery/downstream-upgrade-acceptance.md); it reuses doctor/adopt diagnostics and never rewrites task history or repairs a downstream repository automatically.
 
 Preview the exact adoption changes without writing anything:

@@ -6,6 +6,7 @@ import {
   DEFAULT_CONFIG,
   detectCompatibility,
   parseAgenticConfigJson,
+  readAgenticConfigFile,
   serializeAgenticConfig,
   type CompatibilityReport,
 } from "../config/index.js";
@@ -136,7 +137,7 @@ function renderProjectMap(scan: RepositoryScan): string {
   ].join("\n");
 }
 
-function renderAdoptionReport(scan: RepositoryScan, compatibility: CompatibilityReport): string {
+function renderAdoptionReport(scan: RepositoryScan, compatibility: CompatibilityReport, existingTaskCount: number): string {
   return [
     "# Adoption Report",
     "",
@@ -160,7 +161,7 @@ function renderAdoptionReport(scan: RepositoryScan, compatibility: Compatibility
     `- Missing kit docs: ${scan.kitDocs.missing.length}`,
     `- Missing agent exports: ${scan.agentExports.missing.length}`,
     `- Agentic config present: ${scan.hasAgenticConfig ? "yes" : "no"}`,
-    `- Existing task files: ${scan.taskFiles.length}`,
+    `- Existing task files: ${existingTaskCount}`,
     "",
     "## Compatibility",
     "",
@@ -232,7 +233,7 @@ function resolveAdoptionTask(
   return { id, fileName: `${id}-${ADOPTION_TASK_SLUG}.md` };
 }
 
-function createDocumentationCleanupTask(id: string): ProjectTask {
+function createDocumentationCleanupTask(id: string, taskDirectory: string): ProjectTask {
   return {
     id,
     title: "Document Adopted Repository",
@@ -259,7 +260,7 @@ function createDocumentationCleanupTask(id: string): ProjectTask {
       "docs/scope.md",
       "docs/architecture.md",
       "docs/progress.md",
-      `.tasks/${id}-document-adopted-repository.md`,
+      `${taskDirectory}/${id}-document-adopted-repository.md`,
     ],
     forbiddenFiles: ["application source files"],
     steps: [
@@ -311,12 +312,16 @@ async function buildAdoptionPlan(
     );
   }
 
-  const archivedTaskFiles = await listMarkdownFiles(join(rootDirectory, ".tasks", "archive"));
+  const taskDirectory = compatibility.config.state === "invalid" || compatibility.config.state === "unsupported"
+    ? DEFAULT_CONFIG.taskDirectory
+    : (await readAgenticConfigFile(rootDirectory)).taskDirectory;
+  const activeTaskFiles = await listMarkdownFiles(join(rootDirectory, taskDirectory));
+  const archivedTaskFiles = await listMarkdownFiles(join(rootDirectory, taskDirectory, "archive"));
   const allTaskFiles = [
-    ...scan.taskFiles,
-    ...archivedTaskFiles.map((file) => `.tasks/archive/${file}`),
+    ...activeTaskFiles,
+    ...archivedTaskFiles.map((file) => `${taskDirectory}/archive/${file}`),
   ];
-  const adoptionTask = resolveAdoptionTask(scan.taskFiles, allTaskFiles);
+  const adoptionTask = resolveAdoptionTask(activeTaskFiles, allTaskFiles);
 
   const exportFiles = await renderAgentExportFiles({
     ...DEFAULT_AGENT_POLICY,
@@ -348,7 +353,7 @@ async function buildAdoptionPlan(
     },
     {
       path: "docs/adoption-report.md",
-      content: renderAdoptionReport(scan, compatibility),
+      content: renderAdoptionReport(scan, compatibility, activeTaskFiles.length),
     },
     {
       path: "docs/project.md",
@@ -396,7 +401,7 @@ async function buildAdoptionPlan(
         "",
         "## Next step",
         "",
-        "Complete `.tasks/${adoptionTask.fileName}`.",
+        `Complete \`${taskDirectory}/${adoptionTask.fileName}\`.`,
         "",
       ].join("\n"),
     },
@@ -424,7 +429,7 @@ async function buildAdoptionPlan(
         "- `Owner: none` is allowed for `todo`, `blocked`, and `canceled`.",
         "- `doing` and `review` require a registered owner.",
         "- `claim`, `release`, `block`, `review`, `done`, and `cancel` require `--owner`.",
-        "- Task state changes are protected by transient `.tasks/.apk.lock`.",
+        `- Task state changes are protected by transient \`${taskDirectory}/.apk.lock\`.`,
         "",
         "## Agent registry",
         "",
@@ -509,7 +514,7 @@ async function buildAdoptionPlan(
         "",
         "The following operational files are not prompt context by default:",
         "",
-        "- `.tasks/.apk.lock`;",
+        `- \`${taskDirectory}/.apk.lock\`;`,
         "- `.agentic/agents.jsonl`;",
         "- `.agentic/runs.jsonl`;",
         "- `.agentic/agents/**`;",
@@ -548,8 +553,8 @@ async function buildAdoptionPlan(
       ].join("\n"),
     },
     {
-      path: `.tasks/${adoptionTask.fileName}`,
-      content: renderTaskMarkdown(createDocumentationCleanupTask(adoptionTask.id)),
+      path: `${taskDirectory}/${adoptionTask.fileName}`,
+      content: renderTaskMarkdown(createDocumentationCleanupTask(adoptionTask.id, taskDirectory)),
     },
     ...exportFiles.map((file) => ({
       path: file.outputPath,

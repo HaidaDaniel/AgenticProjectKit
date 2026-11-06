@@ -1,6 +1,6 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { CURRENT_CONFIG_SCHEMA_VERSION, DEFAULT_CONFIG, detectCompatibility, parseAgenticConfigJson, serializeAgenticConfig, } from "../config/index.js";
+import { CURRENT_CONFIG_SCHEMA_VERSION, DEFAULT_CONFIG, detectCompatibility, parseAgenticConfigJson, readAgenticConfigFile, serializeAgenticConfig, } from "../config/index.js";
 import { CONFIG_PATH } from "../config/file.js";
 import { renderTaskContractInspection } from "../config/compatibility.js";
 import { styleRulesFor, DEFAULT_AGENT_POLICY, renderAgentExportFiles, } from "../exporters/index.js";
@@ -72,7 +72,7 @@ function renderProjectMap(scan) {
         "",
     ].join("\n");
 }
-function renderAdoptionReport(scan, compatibility) {
+function renderAdoptionReport(scan, compatibility, existingTaskCount) {
     return [
         "# Adoption Report",
         "",
@@ -96,7 +96,7 @@ function renderAdoptionReport(scan, compatibility) {
         `- Missing kit docs: ${scan.kitDocs.missing.length}`,
         `- Missing agent exports: ${scan.agentExports.missing.length}`,
         `- Agentic config present: ${scan.hasAgenticConfig ? "yes" : "no"}`,
-        `- Existing task files: ${scan.taskFiles.length}`,
+        `- Existing task files: ${existingTaskCount}`,
         "",
         "## Compatibility",
         "",
@@ -158,7 +158,7 @@ function resolveAdoptionTask(activeTaskFiles, allTaskFiles = activeTaskFiles) {
     const id = nextAdoptionTaskId(allTaskFiles);
     return { id, fileName: `${id}-${ADOPTION_TASK_SLUG}.md` };
 }
-function createDocumentationCleanupTask(id) {
+function createDocumentationCleanupTask(id, taskDirectory) {
     return {
         id,
         title: "Document Adopted Repository",
@@ -185,7 +185,7 @@ function createDocumentationCleanupTask(id) {
             "docs/scope.md",
             "docs/architecture.md",
             "docs/progress.md",
-            `.tasks/${id}-document-adopted-repository.md`,
+            `${taskDirectory}/${id}-document-adopted-repository.md`,
         ],
         forbiddenFiles: ["application source files"],
         steps: [
@@ -225,12 +225,16 @@ async function buildAdoptionPlan(rootDirectory, includeMigration) {
         && (compatibility.config.state === "invalid" || compatibility.config.state === "unsupported")) {
         throw new Error(compatibility.diagnostics[0] ?? `Cannot migrate ${CONFIG_PATH}: unsupported compatibility state.`);
     }
-    const archivedTaskFiles = await listMarkdownFiles(join(rootDirectory, ".tasks", "archive"));
+    const taskDirectory = compatibility.config.state === "invalid" || compatibility.config.state === "unsupported"
+        ? DEFAULT_CONFIG.taskDirectory
+        : (await readAgenticConfigFile(rootDirectory)).taskDirectory;
+    const activeTaskFiles = await listMarkdownFiles(join(rootDirectory, taskDirectory));
+    const archivedTaskFiles = await listMarkdownFiles(join(rootDirectory, taskDirectory, "archive"));
     const allTaskFiles = [
-        ...scan.taskFiles,
-        ...archivedTaskFiles.map((file) => `.tasks/archive/${file}`),
+        ...activeTaskFiles,
+        ...archivedTaskFiles.map((file) => `${taskDirectory}/archive/${file}`),
     ];
-    const adoptionTask = resolveAdoptionTask(scan.taskFiles, allTaskFiles);
+    const adoptionTask = resolveAdoptionTask(activeTaskFiles, allTaskFiles);
     const exportFiles = await renderAgentExportFiles({
         ...DEFAULT_AGENT_POLICY,
         projectName: scan.rootName,
@@ -261,7 +265,7 @@ async function buildAdoptionPlan(rootDirectory, includeMigration) {
         },
         {
             path: "docs/adoption-report.md",
-            content: renderAdoptionReport(scan, compatibility),
+            content: renderAdoptionReport(scan, compatibility, activeTaskFiles.length),
         },
         {
             path: "docs/project.md",
@@ -309,7 +313,7 @@ async function buildAdoptionPlan(rootDirectory, includeMigration) {
                 "",
                 "## Next step",
                 "",
-                "Complete `.tasks/${adoptionTask.fileName}`.",
+                `Complete \`${taskDirectory}/${adoptionTask.fileName}\`.`,
                 "",
             ].join("\n"),
         },
@@ -337,7 +341,7 @@ async function buildAdoptionPlan(rootDirectory, includeMigration) {
                 "- `Owner: none` is allowed for `todo`, `blocked`, and `canceled`.",
                 "- `doing` and `review` require a registered owner.",
                 "- `claim`, `release`, `block`, `review`, `done`, and `cancel` require `--owner`.",
-                "- Task state changes are protected by transient `.tasks/.apk.lock`.",
+                `- Task state changes are protected by transient \`${taskDirectory}/.apk.lock\`.`,
                 "",
                 "## Agent registry",
                 "",
@@ -422,7 +426,7 @@ async function buildAdoptionPlan(rootDirectory, includeMigration) {
                 "",
                 "The following operational files are not prompt context by default:",
                 "",
-                "- `.tasks/.apk.lock`;",
+                `- \`${taskDirectory}/.apk.lock\`;`,
                 "- `.agentic/agents.jsonl`;",
                 "- `.agentic/runs.jsonl`;",
                 "- `.agentic/agents/**`;",
@@ -461,8 +465,8 @@ async function buildAdoptionPlan(rootDirectory, includeMigration) {
             ].join("\n"),
         },
         {
-            path: `.tasks/${adoptionTask.fileName}`,
-            content: renderTaskMarkdown(createDocumentationCleanupTask(adoptionTask.id)),
+            path: `${taskDirectory}/${adoptionTask.fileName}`,
+            content: renderTaskMarkdown(createDocumentationCleanupTask(adoptionTask.id, taskDirectory)),
         },
         ...exportFiles.map((file) => ({
             path: file.outputPath,

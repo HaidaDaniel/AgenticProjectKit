@@ -768,3 +768,32 @@ test("adoption exposes the same indexed operational report without changing trac
     assert.equal(await readFile(join(directory, ".agentic/runs/sample.jsonl"), "utf8"), "sample");
   });
 });
+
+test("adoption honors custom task directories for task IDs links and idempotency", async () => {
+  for (const taskDirectory of ["contracts", "work/tasks"]) {
+    await withTempRepository(async (directory) => {
+      await createExistingRepository(directory);
+      await mkdir(join(directory, ".agentic"), { recursive: true });
+      await writeFile(join(directory, ".agentic", "config.json"), JSON.stringify({
+        schemaVersion: 2,
+        taskDirectory,
+      }), "utf8");
+      await mkdir(join(directory, taskDirectory, "archive"), { recursive: true });
+      await writeFile(join(directory, taskDirectory, "archive", "0007-archived.md"), "# Task 0007 - Archived\n", "utf8");
+
+      const preview = await planAdoption(directory);
+      const expectedTask = `${taskDirectory}/0008-document-adopted-repository.md`;
+      assert.ok(preview.changes.some((change) => change.path === expectedTask), taskDirectory);
+      assert.equal(preview.changes.some((change) => change.path.startsWith(".tasks/")), false, taskDirectory);
+      await assert.rejects(() => stat(join(directory, ".tasks")), { code: "ENOENT" });
+      await assert.rejects(() => stat(join(directory, expectedTask)), { code: "ENOENT" });
+
+      const applied = await adoptRepository(directory);
+      assert.ok(applied.created.includes(expectedTask), taskDirectory);
+      assert.ok((await stat(join(directory, expectedTask))).isFile());
+      await assert.rejects(() => stat(join(directory, ".tasks")), { code: "ENOENT" });
+      const repeated = await planAdoption(directory);
+      assert.equal(repeated.changes.some((change) => change.path === expectedTask), false, taskDirectory);
+    });
+  }
+});
