@@ -3,10 +3,10 @@ import { summarizeStatus } from "../status/index.js";
 import { buildAttentionView } from "../status/attention.js";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import fsPromises, { appendFile, chmod, mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
+import fsPromises, { appendFile, chmod, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { promisify } from "node:util";
@@ -11375,5 +11375,46 @@ test("exclusive task creation refuses a target that appears after the precheck",
     }
     assert.equal(await readFile(target, "utf8"), "external writer content\n");
     assert.deepEqual(await readdir(join(directory, ".tasks")), ["0001-race-task.md"]);
+  });
+});
+
+test("atomic task updates preserve the original on write or publish failure", async () => {
+  await withTempDirectory(async (directory) => {
+    const path = join(directory, ".tasks", "0001-atomic.md");
+    await writeTaskFile(path, TASK);
+    await chmod(path, 0o640);
+    const original = await readFile(path, "utf8");
+    const updated = { ...TASK, acceptanceCriteria: ["Updated acceptance."] };
+
+    const originalWrite = fsPromises.writeFile;
+    fsPromises.writeFile = (async (...args: Parameters<typeof fsPromises.writeFile>) => {
+      if (String(args[0]).endsWith(".tmp")) throw Object.assign(new Error("write failed"), { code: "EIO" });
+      return originalWrite(...args);
+    }) as typeof fsPromises.writeFile;
+    syncBuiltinESMExports();
+    try {
+      await assert.rejects(() => writeTaskFile(path, updated), /write failed/);
+    } finally {
+      fsPromises.writeFile = originalWrite;
+      syncBuiltinESMExports();
+    }
+    assert.equal(await readFile(path, "utf8"), original);
+    assert.deepEqual((await readdir(dirname(path))).filter((name) => name.endsWith(".tmp")), []);
+
+    const originalRename = fsPromises.rename;
+    fsPromises.rename = (async () => { throw Object.assign(new Error("publish failed"), { code: "EIO" }); }) as typeof fsPromises.rename;
+    syncBuiltinESMExports();
+    try {
+      await assert.rejects(() => writeTaskFile(path, updated), /publish failed/);
+    } finally {
+      fsPromises.rename = originalRename;
+      syncBuiltinESMExports();
+    }
+    assert.equal(await readFile(path, "utf8"), original);
+    assert.deepEqual((await readdir(dirname(path))).filter((name) => name.endsWith(".tmp")), []);
+
+    await writeTaskFile(path, updated);
+    assert.equal((await stat(path)).mode & 0o777, 0o640);
+    assert.match(await readFile(path, "utf8"), /Updated acceptance\./);
   });
 });

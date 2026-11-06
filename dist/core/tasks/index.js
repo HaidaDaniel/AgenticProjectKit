@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
-import { appendFile, link, lstat, mkdir, readFile, readlink, readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { appendFile, chmod, link, lstat, mkdir, readFile, readlink, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { constants as osConstants } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { appendRunLog, readRunLog, requireAgent } from "../agents/index.js";
 import { appendTaskEvidence, compareTaskEvidenceFreshness, readTaskEvidence, TASK_EVIDENCE_REFERENCE_MAX_LENGTH, TASK_EVIDENCE_SUMMARY_MAX_LENGTH, } from "./evidence.js";
 import { TASK_APK_OPERATIONS, runTaskApkOperation, } from "./apk-verification.js";
@@ -674,9 +674,35 @@ export async function loadTaskFile(path, diagnosticSnapshot) {
     }));
     return diagnosticSnapshot ? diagnosticSnapshot.memo(diagnosticSnapshot.rootDirectory, `task-file:${resolve(path)}`, load) : load();
 }
+/**
+ * Update an existing task through a same-directory temporary file and rename.
+ * The temporary file is fully written before publication; a pre-publication
+ * failure leaves the original Markdown untouched. This is atomic replacement,
+ * not fsync-level crash durability, and Windows rename behavior follows the
+ * platform's replace semantics.
+ */
 export async function writeTaskFile(path, task) {
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, renderTaskMarkdown(task), "utf8");
+    const directory = dirname(path);
+    await mkdir(directory, { recursive: true });
+    const temporary = join(directory, `.${basename(path)}.${randomUUID()}.tmp`);
+    let mode;
+    try {
+        mode = (await stat(path)).mode & 0o777;
+    }
+    catch (error) {
+        if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT"))
+            throw error;
+    }
+    try {
+        await writeFile(temporary, renderTaskMarkdown(task), { encoding: "utf8", flag: "wx" });
+        if (mode !== undefined)
+            await chmod(temporary, mode);
+        await rename(temporary, path);
+    }
+    catch (error) {
+        await rm(temporary, { force: true }).catch(() => undefined);
+        throw error;
+    }
 }
 /** Publish a brand-new task without ever replacing an existing target. */
 async function createTaskFileExclusive(path, task) {
