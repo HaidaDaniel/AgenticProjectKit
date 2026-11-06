@@ -166,6 +166,42 @@ test("config schema markers distinguish legacy and gated formats without rewriti
   );
 });
 
+test("config rejects unsafe repository-relative task and docs directories", () => {
+  const invalid = [
+    "../outside",
+    "/tmp/outside",
+    "C:\\outside",
+    "C:/outside",
+    "\\\\server\\share",
+    "work/../../outside",
+    "work/./tasks",
+    "work//tasks",
+    "./tasks",
+    "~/tasks",
+    "work\\tasks",
+    "",
+  ];
+  for (const field of ["taskDirectory", "docsDirectory"] as const) {
+    for (const value of invalid) {
+      assert.throws(
+        () => parseAgenticConfig({ [field]: value }),
+        (error: unknown) => error instanceof ConfigValidationError && error.message.includes(field),
+        `${field}=${JSON.stringify(value)}`,
+      );
+    }
+  }
+});
+
+test("config accepts valid nested repository-relative directories without rewriting meaning", () => {
+  for (const field of ["taskDirectory", "docsDirectory"] as const) {
+    const config = parseAgenticConfig({ [field]: "work/tasks/" });
+    assert.equal(config[field], "work/tasks");
+  }
+  const defaults = parseAgenticConfig({});
+  assert.equal(defaults.taskDirectory, ".tasks");
+  assert.equal(defaults.docsDirectory, "docs");
+});
+
 test("parseAgenticConfig keeps execution profile separate from project mode", () => {
   const config = parseAgenticConfig({
     defaultMode: "production",

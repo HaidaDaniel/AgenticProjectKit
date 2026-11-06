@@ -1,5 +1,6 @@
 import { DEFAULT_CONFIG } from "./defaults.js";
 import { ConfigValidationError } from "./errors.js";
+import { canonicalRepositoryRelativeDirectory, repositoryRelativeDirectoryIssue } from "./paths.js";
 import { parseResourceRegistry, ResourceRegistryValidationError } from "../resources/index.js";
 import { parseExecutionOverride, parseExecutionProfile, ExecutionValidationError } from "../execution/index.js";
 import { QUALITY_CAPABILITY_IDS } from "../quality/index.js";
@@ -30,6 +31,21 @@ function readString(value, fallback, issues, issue) {
         return fallback;
     }
     return text;
+}
+function readDirectoryPath(value, field, fallback, issues) {
+    if (value === undefined)
+        return fallback;
+    const text = asString(value);
+    if (!text) {
+        issues.push(`${field} must be a non-empty repository-relative directory.`);
+        return fallback;
+    }
+    const issue = repositoryRelativeDirectoryIssue(text);
+    if (issue) {
+        issues.push(`${field} ${issue}.`);
+        return fallback;
+    }
+    return canonicalRepositoryRelativeDirectory(text);
 }
 function readOneOf(value, allowed, fallback, issues, issue) {
     if (value === undefined) {
@@ -212,8 +228,8 @@ export function parseAgenticConfig(raw) {
     const defaultMode = readOneOf(raw.defaultMode, OPERATING_MODES, DEFAULT_CONFIG.defaultMode, issues, `defaultMode must be one of: ${OPERATING_MODES.join(", ")}.`);
     const documentationProfile = readOneOf(raw.documentationProfile, DOCUMENTATION_PROFILES, DEFAULT_CONFIG.documentationProfile, issues, `documentationProfile must be one of: ${DOCUMENTATION_PROFILES.join(", ")}.`);
     const agentStyle = readOneOf(raw.agentStyle, AGENT_STYLES, DEFAULT_CONFIG.agentStyle, issues, `agentStyle must be one of: ${AGENT_STYLES.join(", ")}.`);
-    const taskDirectory = readString(raw.taskDirectory, DEFAULT_CONFIG.taskDirectory, issues, "taskDirectory must be a non-empty string.");
-    const docsDirectory = readString(raw.docsDirectory, DEFAULT_CONFIG.docsDirectory, issues, "docsDirectory must be a non-empty string.");
+    const taskDirectory = readDirectoryPath(raw.taskDirectory, "taskDirectory", DEFAULT_CONFIG.taskDirectory, issues);
+    const docsDirectory = readDirectoryPath(raw.docsDirectory, "docsDirectory", DEFAULT_CONFIG.docsDirectory, issues);
     const quality = readQualityPolicy(raw.quality, issues);
     let resources;
     if (raw.resources !== undefined) {

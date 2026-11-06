@@ -105,6 +105,7 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0094](#adr-0094---backlog-promotion-is-explicit-serialized-and-operator-asserted) | accepted | Backlog promotion is explicit, serialized, and operator-asserted | — |
 | [ADR-0095](#adr-0095---planning-agents-use-the-backlog-only-for-durable-future-ideas) | accepted | Planning agents use the backlog only for durable future ideas | — |
 | [ADR-0096](#adr-0096---downstream-upgrade-acceptance-reuses-existing-compatibility-diagnostics) | accepted | Downstream upgrade acceptance reuses existing compatibility diagnostics | — |
+| [ADR-0097](#adr-0097---configured-repository-directories-are-lexical-repository-relative-paths) | accepted | Configured repository directories are lexical repository-relative paths | — |
 
 ### ADR index cross-check
 
@@ -1969,3 +1970,23 @@ A migration engine, automatic task-history rewrite, downstream repair, or claim 
 ### Consequences
 
 Upgrade guidance remains repository-specific and evidence-bounded without adding a second lifecycle or migration authority. Operators retain the decision to change package pins, task contracts, and host verification, and must revalidate candidate-bound evidence after any contract change.
+
+## ADR-0097 - Configured repository directories are lexical repository-relative paths
+
+Status: accepted
+
+Date: 2026-11-05
+
+### Context
+
+`taskDirectory` and `docsDirectory` are used to form filesystem paths. Accepting absolute, parent-traversing, dot-segment, or ambiguous Windows/backslash forms can escape the repository or produce platform-dependent meanings.
+
+### Decision
+
+Configuration parsing accepts only repository-relative forward-slash directory paths. It rejects absolute POSIX, Windows drive, UNC, `~`, backslash, empty, empty-segment, `.` and `..` forms. An optional trailing slash is normalized in the parsed value without rewriting the user's config file. Valid nested paths such as `work/tasks` remain supported and `schemaVersion` is unchanged.
+
+This is lexical validation. Filesystem writers still require their own symlink/containment checks where an existing path can be replaced or followed; configuration validation alone does not prove that a path is safe against a concurrent filesystem writer.
+
+### Consequences
+
+Unsafe configured directories fail before filesystem mutation, while valid existing nested configurations remain readable. The validator is shared by config consumers rather than duplicated per command.

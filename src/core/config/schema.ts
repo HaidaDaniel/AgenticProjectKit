@@ -1,5 +1,6 @@
 import { DEFAULT_CONFIG } from "./defaults.js";
 import { ConfigValidationError } from "./errors.js";
+import { canonicalRepositoryRelativeDirectory, repositoryRelativeDirectoryIssue } from "./paths.js";
 import { parseResourceRegistry, ResourceRegistryValidationError } from "../resources/index.js";
 import { parseExecutionOverride, parseExecutionProfile, ExecutionValidationError } from "../execution/index.js";
 import { QUALITY_CAPABILITY_IDS, type QualityCapabilityId, type QualityPolicy } from "../quality/index.js";
@@ -54,6 +55,26 @@ function readString(
   }
 
   return text;
+}
+
+function readDirectoryPath(
+  value: unknown,
+  field: "taskDirectory" | "docsDirectory",
+  fallback: string,
+  issues: string[],
+): string {
+  if (value === undefined) return fallback;
+  const text = asString(value);
+  if (!text) {
+    issues.push(`${field} must be a non-empty repository-relative directory.`);
+    return fallback;
+  }
+  const issue = repositoryRelativeDirectoryIssue(text);
+  if (issue) {
+    issues.push(`${field} ${issue}.`);
+    return fallback;
+  }
+  return canonicalRepositoryRelativeDirectory(text);
 }
 
 function readOneOf<T extends string>(
@@ -277,18 +298,18 @@ export function parseAgenticConfig(raw: unknown): AgenticConfig {
     `agentStyle must be one of: ${AGENT_STYLES.join(", ")}.`,
   );
 
-  const taskDirectory = readString(
+  const taskDirectory = readDirectoryPath(
     raw.taskDirectory,
+    "taskDirectory",
     DEFAULT_CONFIG.taskDirectory,
     issues,
-    "taskDirectory must be a non-empty string.",
   );
 
-  const docsDirectory = readString(
+  const docsDirectory = readDirectoryPath(
     raw.docsDirectory,
+    "docsDirectory",
     DEFAULT_CONFIG.docsDirectory,
     issues,
-    "docsDirectory must be a non-empty string.",
   );
 
   const quality = readQualityPolicy(raw.quality, issues);
