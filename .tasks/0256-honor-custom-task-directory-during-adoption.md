@@ -1,14 +1,14 @@
 # Task 0256 - Honor custom task directory during adoption
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-correctness-milestone
 Mode: maintenance
 Lane: adoption
 Type: bugfix
 Scope: adoption,tasks,config,docs
 Risk: medium
 Parallel: false
-Depends on: 0252,0253
+Depends on: 0253,0261
 Tags: p2,adoption,custom-task-directory
 
 ## Goal
@@ -88,3 +88,4 @@ Make adoption create its adoption task links and inspect active and archived tas
 ## Notes
 
 - Depends on 0252 for validated directories and 0253 for safe inventory; confirmed at HEAD 5021f2e: adopt hardcodes .tasks
+- Successor dependency note: 0252 was canceled because its allowed files omitted config consumers; completed successor 0261 now provides the required fail-closed config foundation.
