@@ -1,7 +1,7 @@
 # Task 0259 - Add unambiguous CLI list arguments for task authoring
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-correctness-milestone
 Mode: maintenance
 Lane: cli
 Type: feature
