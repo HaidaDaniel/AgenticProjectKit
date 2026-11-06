@@ -119,8 +119,8 @@ test("parseAgenticConfig reports useful validation errors", () => {
         "defaultMode must be one of: discovery, mvp, product, production, maintenance, audit, adopt.",
         "documentationProfile must be one of: minimal, standard, production.",
         "agentStyle must be one of: caveman, normal.",
-        "taskDirectory must be a non-empty string.",
-        "docsDirectory must be a non-empty string.",
+        "taskDirectory must be a non-empty repository-relative directory.",
+        "docsDirectory must be a non-empty repository-relative directory.",
       ]);
       return true;
     },
