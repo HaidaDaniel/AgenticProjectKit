@@ -85,7 +85,7 @@ const TASK_HELP_TEXT = [
   "  apk task dogfood result <task-id> --owner <agent-id> --session <session-id> --outcome <pass|fail>",
   "  apk task verify <task-id> [--check-files-only] [--profile <profile|all>] [--owner <agent-id>]",
   "  apk task verify <task-id> --record --owner <agent-id> --check <check-id> --result <pass|fail> --evidence <reference> [--summary <text>]",
-  "  apk task create --title <title> --scope <csv> --allowed <csv> [--type <name>|--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>]",
+  "  apk task create --title <title> --scope <csv> --allowed <csv> [--type <name>|--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--lists-json <json>] [--goal <text>]",
   "",
   "Subcommands:",
   "  archive Archive a done or canceled task, or preview/archive all terminal tasks.",
@@ -198,7 +198,7 @@ const TASK_CREATE_HELP_TEXT = [
   "Agentic Project Kit",
   "",
   "Usage:",
-  "  apk task create --title <title> --scope <csv> --allowed <csv> [--type <name>|--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--goal <text>]",
+  "  apk task create --title <title> --scope <csv> --allowed <csv> [--type <name>|--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--verification <csv>] [--verification-json <json>] [--lists-json <json>] [--goal <text>]",
   "",
   "Required flags:",
   "  --title <title>         Task title.",
@@ -228,6 +228,7 @@ const TASK_CREATE_HELP_TEXT = [
   "  --counterexample-searches <csv>  Counterexamples the reviewer should seek.",
   "  --docs <csv>            Comma-separated documentation updates.",
   "  --notes <csv>           Comma-separated notes.",
+  "  --lists-json <json>     JSON object of string arrays for scope/context/allowed/forbidden/steps/acceptance/docs/notes/tags/depends; do not combine with the same CSV flag.",
   "",
   "Example:",
   '  apk task create --title "Add Feature" --mode mvp --lane implementation --scope api,docs --risk low --context "AGENTS.md,docs/task-system.md" --allowed "src/api/index.ts" --verification "pnpm test"',
@@ -305,6 +306,42 @@ function parseCsvFlag(value: string | undefined): string[] {
   return value.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
 }
 
+const LIST_JSON_KEYS = [
+  "scope", "context", "allowed", "forbidden", "steps", "acceptance", "docs", "notes", "tags", "depends",
+] as const;
+type ListJsonKey = (typeof LIST_JSON_KEYS)[number];
+type ListsJson = Partial<Record<ListJsonKey, string[]>>;
+
+function parseListsJson(value: string | undefined): ListsJson {
+  if (value === undefined) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch (error: unknown) {
+    throw new Error(`--lists-json must be valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("--lists-json must contain a JSON object.");
+  }
+  const result: ListsJson = {};
+  for (const [key, raw] of Object.entries(parsed)) {
+    if (!(LIST_JSON_KEYS as readonly string[]).includes(key)) throw new Error(`--lists-json contains unknown field: ${key}`);
+    if (!Array.isArray(raw) || raw.some((item) => typeof item !== "string")) {
+      throw new Error(`--lists-json.${key} must be an array of strings.`);
+    }
+    result[key as ListJsonKey] = raw as string[];
+  }
+  return result;
+}
+
+function resolveListField(csvValues: string[], lists: ListsJson, key: ListJsonKey, flag: string): string[] {
+  const jsonValues = lists[key];
+  if (csvValues.length > 0 && jsonValues !== undefined) {
+    throw new Error(`Use either ${flag} or --lists-json.${key}, not both.`);
+  }
+  return jsonValues ?? csvValues;
+}
+
 function hasFlag(argv: string[], flag: string): boolean {
   return argv.includes(flag);
 }
@@ -334,7 +371,7 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
     "--goal", "--template", "--type",
     "--depends", "--tags", "--context", "--allowed", "--forbidden",
     "--steps", "--acceptance", "--verification", "--verification-json", "--docs", "--notes",
-    "--assumptions", "--invariants", "--required-evidence", "--review-questions", "--counterexample-searches",
+    "--assumptions", "--invariants", "--required-evidence", "--review-questions", "--counterexample-searches", "--lists-json",
     "--help", "-h",
   ]);
   for (const arg of argv) {
@@ -392,7 +429,18 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
     ? reviewQuestions : template?.defaults.reviewQuestions ?? [];
   const resolvedCounterexampleSearches = counterexampleSearches.length > 0
     ? counterexampleSearches : template?.defaults.counterexampleSearches ?? [];
-  const resolvedContextFiles = contextFiles.length > 0 ? contextFiles : template?.defaults.contextFiles ?? [];
+  const lists = parseListsJson(parseFlag(argv, "--lists-json"));
+  const resolvedScope = resolveListField(scope, lists, "scope", "--scope");
+  const resolvedAllowedBase = resolveListField(allowedFiles, lists, "allowed", "--allowed");
+  const resolvedForbiddenFiles = resolveListField(parseCsvFlag(parseFlag(argv, "--forbidden")), lists, "forbidden", "--forbidden");
+  const resolvedSteps = resolveListField(parseCsvFlag(parseFlag(argv, "--steps")), lists, "steps", "--steps");
+  const resolvedAcceptance = resolveListField(parseCsvFlag(parseFlag(argv, "--acceptance")), lists, "acceptance", "--acceptance");
+  const resolvedDocs = resolveListField(parseCsvFlag(parseFlag(argv, "--docs")), lists, "docs", "--docs");
+  const resolvedNotes = resolveListField(parseCsvFlag(parseFlag(argv, "--notes")), lists, "notes", "--notes");
+  const resolvedTags = resolveListField(parseCsvFlag(parseFlag(argv, "--tags")), lists, "tags", "--tags");
+  const resolvedDepends = resolveListField(parseCsvFlag(parseFlag(argv, "--depends")), lists, "depends", "--depends");
+  const resolvedListsContext = resolveListField(contextFiles, lists, "context", "--context");
+  const resolvedContextFiles = resolvedListsContext.length > 0 ? resolvedListsContext : template?.defaults.contextFiles ?? [];
   const verificationJson = parseFlag(argv, "--verification-json");
   let structuredVerification: TaskVerificationCheck[] | undefined;
   if (verificationJson !== undefined) {
@@ -411,19 +459,18 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
     ?? (verificationCommands.length > 0
       ? normalizeVerificationCommands(verificationCommands)
       : template?.defaults.verification ?? []);
-  const forbiddenFiles = parseCsvFlag(parseFlag(argv, "--forbidden"));
-  const resolvedAllowedFiles = [...allowedFiles];
+  const resolvedAllowedFiles = [...resolvedAllowedBase];
   const finalVerification = [...resolvedVerification];
   const rootDirectory = resolve(process.cwd());
   const packagedDistContract = await repositoryPackagedDistContract(rootDirectory);
   if (
     packagedDistContract.shipsCommittedDist
-    && allowedFiles.some(mayIncludePackagedSource)
+    && resolvedAllowedBase.some(mayIncludePackagedSource)
   ) {
     if (!packagedDistContract.checkCommand) {
       throw new Error("This package ships dist but has no declared supported package manager; set packageManager or keep exactly one supported lockfile before creating a packaged-source task.");
     }
-    if (forbiddenFiles.some(taskPathPatternMayMatchDistOutput)) {
+    if (resolvedForbiddenFiles.some(taskPathPatternMayMatchDistOutput)) {
       throw new Error("Tasks that allow packaged source/assets cannot forbid dist output; remove the matching --forbidden path.");
     }
     if (!resolvedAllowedFiles.includes("dist/**")) resolvedAllowedFiles.push("dist/**");
@@ -454,11 +501,11 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
     throw new Error("--context must include at least one file.");
   }
 
-  if (scope.length === 0) {
+  if (resolvedScope.length === 0) {
     throw new Error("--scope must include at least one scope area.");
   }
 
-  if (allowedFiles.length === 0) {
+  if (resolvedAllowedFiles.length === 0) {
     throw new Error("--allowed must include at least one file.");
   }
 
@@ -471,35 +518,25 @@ async function runCreateSubcommand(argv: string[]): Promise<number> {
     mode: mode as (typeof TASK_MODES)[number],
     lane,
     type: template?.type,
-    scope,
+    scope: resolvedScope,
     risk: risk as (typeof TASK_RISKS)[number],
     parallel: hasFlag(argv, "--parallel"),
-    dependsOn: parseCsvFlag(parseFlag(argv, "--depends")),
-    tags: parseCsvFlag(parseFlag(argv, "--tags")).length > 0
-      ? parseCsvFlag(parseFlag(argv, "--tags"))
-      : template?.defaults.tags ?? [],
+    dependsOn: resolvedDepends,
+    tags: resolvedTags.length > 0 ? resolvedTags : template?.defaults.tags ?? [],
     goal: parseFlag(argv, "--goal") ?? title,
     contextFiles: resolvedContextFiles,
     allowedFiles: resolvedAllowedFiles,
-    forbiddenFiles,
-    steps: parseCsvFlag(parseFlag(argv, "--steps")).length > 0
-      ? parseCsvFlag(parseFlag(argv, "--steps"))
-      : template?.defaults.steps ?? [],
-    acceptanceCriteria: parseCsvFlag(parseFlag(argv, "--acceptance")).length > 0
-      ? parseCsvFlag(parseFlag(argv, "--acceptance"))
-      : template?.defaults.acceptanceCriteria ?? [],
+    forbiddenFiles: resolvedForbiddenFiles,
+    steps: resolvedSteps.length > 0 ? resolvedSteps : template?.defaults.steps ?? [],
+    acceptanceCriteria: resolvedAcceptance.length > 0 ? resolvedAcceptance : template?.defaults.acceptanceCriteria ?? [],
     correctnessAssumptions: resolvedCorrectnessAssumptions,
     invariants: resolvedInvariants,
     requiredEvidence: resolvedRequiredEvidence,
     reviewQuestions: resolvedReviewQuestions,
     counterexampleSearches: resolvedCounterexampleSearches,
     verification: finalVerification,
-    documentationUpdates: parseCsvFlag(parseFlag(argv, "--docs")).length > 0
-      ? parseCsvFlag(parseFlag(argv, "--docs"))
-      : template?.defaults.documentationUpdates ?? [],
-    notes: parseCsvFlag(parseFlag(argv, "--notes")).length > 0
-      ? parseCsvFlag(parseFlag(argv, "--notes"))
-      : template?.defaults.notes ?? [],
+    documentationUpdates: resolvedDocs.length > 0 ? resolvedDocs : template?.defaults.documentationUpdates ?? [],
+    notes: resolvedNotes.length > 0 ? resolvedNotes : template?.defaults.notes ?? [],
   };
 
   const config = await readAgenticConfigFile(rootDirectory);

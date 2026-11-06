@@ -2183,8 +2183,10 @@ test("CLI backlog promote previews and applies through the canonical task creato
       "--context", "AGENTS.md",
       "--allowed", "src/**",
       "--verification", "true",
-      "--steps", "Implement the promoted idea",
-      "--acceptance", "The promoted idea is implemented and tested",
+      "--lists-json", JSON.stringify({
+        steps: ["Implement the promoted idea, safely"],
+        acceptance: ["The promoted idea is implemented, tested, and documented"],
+      }),
     ];
     const preview = await runCommand(["backlog", "promote", card.slug, "--preview", ...fields, "--json"], directory);
     assert.equal(preview.exitCode, 1);
@@ -2212,5 +2214,35 @@ test("CLI backlog promote previews and applies through the canonical task creato
     ], directory);
     assert.equal(repeated.exitCode, 0, repeated.stderr);
     assert.equal((JSON.parse(repeated.stdout) as { outcome: string }).outcome, "already-promoted");
+  });
+});
+
+test("CLI task create accepts unambiguous JSON lists and rejects conflicting CSV", async () => {
+  await withTempDirectory(async (directory) => {
+    const created = await runCommand([
+      "task", "create", "--template", "docs", "--title", "JSON list task",
+      "--verification", "true",
+      "--lists-json", JSON.stringify({
+        scope: ["docs"],
+        context: ["AGENTS.md"],
+        allowed: ["docs/note.md"],
+        steps: ["Step, with comma", "Unicode — да"],
+        acceptance: ["Accept, with comma", "Unicode — так"],
+      }),
+    ], directory);
+    assert.equal(created.exitCode, 0, created.stderr);
+    const path = created.stdout.match(/Created: (.+)/)?.[1]?.trim();
+    assert.ok(path);
+    const task = parseTaskMarkdown(await readFile(join(directory, path), "utf8"));
+    assert.deepEqual(task.steps, ["Step, with comma", "Unicode — да"]);
+    assert.deepEqual(task.acceptanceCriteria, ["Accept, with comma", "Unicode — так"]);
+
+    const conflict = await runCommand([
+      "task", "create", "--template", "docs", "--title", "Conflict list task",
+      "--verification", "true", "--steps", "one,two",
+      "--lists-json", JSON.stringify({ scope: ["docs"], context: ["AGENTS.md"], allowed: ["docs/note.md"], steps: ["whole"] }),
+    ], directory);
+    assert.equal(conflict.exitCode, 1);
+    assert.match(conflict.stderr, /Use either --steps or --lists-json\.steps/);
   });
 });

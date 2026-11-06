@@ -231,6 +231,8 @@ Exactly one leading `./` remains a backward-compatible alias: `./src/file.ts` ha
 
 Task 0220's read-only preflight at main commit `139826621d33d7d2051e912e03672c5198fbcfd0` parsed all 224 active and archived task contracts (65 active, 159 archived). The active contracts contained 704 allowed and 525 forbidden patterns; archived contracts contained 1,464 allowed and 830 forbidden patterns. All patterns were canonical: there were zero single-leading-`./`, interior-dot, or repeated-leading-`./` cases. The task-template source had no `allowedFiles`/`forbiddenFiles` pattern entries or examples. A temporary fixture on Node 22.22.1 reproduced the authoring gap: task creation wrote contracts for `src/./file.ts` and `././src/file.ts`, and lint emitted no `path-pattern-invalid` finding for either pattern in either field. `verifyTaskFileScope` then rejected `src/file.ts` as out of scope for both malformed allowed patterns, while the single-prefix and canonical forms both matched it. The code normalizes by removing only one initial `./`, leaves interior dots untouched, and did not previously reject either case.
 
+`--lists-json <json>` accepts a JSON object of string arrays for `scope`, `context`, `allowed`, `forbidden`, `steps`, `acceptance`, `docs`, `notes`, `tags`, and `depends`. It carries commas, quotes, Unicode, and multiline text without CSV splitting and is rejected when the same field is also supplied through its CSV flag. Existing CSV flags remain compatible.
+
 Task templates reduce repetitive flags for common work:
 
 ```bash

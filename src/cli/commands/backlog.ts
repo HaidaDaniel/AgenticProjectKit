@@ -74,6 +74,37 @@ function singleLine(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+const LIST_JSON_KEYS = [
+  "scope", "context", "allowed", "forbidden", "steps", "acceptance", "docs", "notes", "tags", "depends",
+] as const;
+type ListJsonKey = (typeof LIST_JSON_KEYS)[number];
+type ListsJson = Partial<Record<ListJsonKey, string[]>>;
+
+function parseListsJson(value: string | undefined): ListsJson {
+  if (value === undefined) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch (error: unknown) {
+    throw new Error(`--lists-json must be valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("--lists-json must contain a JSON object.");
+  const result: ListsJson = {};
+  for (const [key, raw] of Object.entries(parsed)) {
+    if (!(LIST_JSON_KEYS as readonly string[]).includes(key)) throw new Error(`--lists-json contains unknown field: ${key}`);
+    if (!Array.isArray(raw) || raw.some((item) => typeof item !== "string")) throw new Error(`--lists-json.${key} must be an array of strings.`);
+    result[key as ListJsonKey] = raw as string[];
+  }
+  return result;
+}
+
+function resolveListField(argv: readonly string[], flag: string, lists: ListsJson, key: ListJsonKey): string[] {
+  const csvValues = csv(argv, flag);
+  const jsonValues = lists[key];
+  if (csvValues.length > 0 && jsonValues !== undefined) throw new Error(`Use either ${flag} or --lists-json.${key}, not both.`);
+  return jsonValues ?? csvValues;
+}
+
 function taskInputFromFlags(argv: string[], defaultMode: string): TaskCreateInput {
   const mode = value(argv, "--mode") ?? defaultMode;
   if (!(TASK_MODES as readonly string[]).includes(mode)) throw new Error(`--mode must be one of: ${TASK_MODES.join(", ")}.`);
@@ -91,25 +122,26 @@ function taskInputFromFlags(argv: string[], defaultMode: string): TaskCreateInpu
     }
   }
   const verificationCommands = csv(argv, "--verification");
+  const lists = parseListsJson(value(argv, "--lists-json"));
   return {
     title: "Backlog promotion",
     mode: mode as TaskCreateInput["mode"],
     lane: value(argv, "--lane") ?? "implementation",
     ...(value(argv, "--type") ? { type: value(argv, "--type") } : {}),
-    scope: csv(argv, "--scope"),
+    scope: resolveListField(argv, "--scope", lists, "scope"),
     risk: risk as TaskCreateInput["risk"],
     parallel: argv.includes("--parallel"),
-    dependsOn: csv(argv, "--depends"),
-    tags: csv(argv, "--tags").length > 0 ? csv(argv, "--tags") : ["backlog"],
+    dependsOn: resolveListField(argv, "--depends", lists, "depends"),
+    tags: resolveListField(argv, "--tags", lists, "tags").length > 0 ? resolveListField(argv, "--tags", lists, "tags") : ["backlog"],
     goal: singleLine(value(argv, "--goal") ?? ""),
-    contextFiles: csv(argv, "--context"),
-    allowedFiles: csv(argv, "--allowed"),
-    forbiddenFiles: csv(argv, "--forbidden"),
-    steps: csv(argv, "--steps"),
-    acceptanceCriteria: csv(argv, "--acceptance"),
+    contextFiles: resolveListField(argv, "--context", lists, "context"),
+    allowedFiles: resolveListField(argv, "--allowed", lists, "allowed"),
+    forbiddenFiles: resolveListField(argv, "--forbidden", lists, "forbidden"),
+    steps: resolveListField(argv, "--steps", lists, "steps"),
+    acceptanceCriteria: resolveListField(argv, "--acceptance", lists, "acceptance"),
     verification: verification ?? (verificationCommands.length > 0 ? normalizeVerificationCommands(verificationCommands) : []),
-    documentationUpdates: csv(argv, "--docs"),
-    notes: csv(argv, "--notes"),
+    documentationUpdates: resolveListField(argv, "--docs", lists, "docs"),
+    notes: resolveListField(argv, "--notes", lists, "notes"),
   };
 }
 
@@ -228,7 +260,7 @@ export async function runBacklogCommand(argv: string[]): Promise<number> {
       const valueFlags = new Set([
         "--mode", "--lane", "--type", "--scope", "--risk", "--depends", "--tags", "--goal",
         "--context", "--allowed", "--forbidden", "--steps", "--acceptance", "--verification",
-        "--verification-json", "--docs", "--notes", "--confirm", "--reason", "--expect-criteria",
+        "--verification-json", "--docs", "--notes", "--lists-json", "--confirm", "--reason", "--expect-criteria",
       ]);
       rejectUnknown(args, [...valueFlags, "--preview", "--apply", "--parallel", "--json", "--help", "-h"]);
       const positional: string[] = [];
