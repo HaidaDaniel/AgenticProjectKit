@@ -988,6 +988,19 @@ export async function writeTaskFile(path: string, task: ProjectTask): Promise<vo
   await writeFile(path, renderTaskMarkdown(task), "utf8");
 }
 
+async function readTaskInventoryDirectory(
+  read: () => Promise<string[]>,
+  directory: string,
+): Promise<string[]> {
+  try {
+    return await read();
+  } catch (error: unknown) {
+    const code = error && typeof error === "object" && "code" in error ? String(error.code) : "unknown";
+    if (code === "ENOENT") return [];
+    throw new Error(`Task inventory unavailable (${directory}): ${code}.`, { cause: error });
+  }
+}
+
 export async function listTaskFiles(
   rootDirectory: string,
   taskDirectory = ".tasks",
@@ -995,7 +1008,10 @@ export async function listTaskFiles(
 ): Promise<ProjectTaskFile[]> {
   return withPerfSpan("task-config", "task.list", async () => {
     const directory = join(rootDirectory, taskDirectory);
-    const entries = await (diagnosticSnapshot?.memo(rootDirectory, `directory:${directory}`, () => readdir(directory)) ?? readdir(directory)).catch(() => []);
+    const entries = await readTaskInventoryDirectory(
+      () => diagnosticSnapshot?.memo(rootDirectory, `directory:${directory}`, () => readdir(directory)) ?? readdir(directory),
+      directory,
+    );
     const files: ProjectTaskFile[] = [];
 
     for (const entry of entries.filter((name) => name.endsWith(".md")).sort()) {
@@ -1018,7 +1034,10 @@ export async function listArchivedTaskFiles(
   return withPerfSpan("task-config", "task.archive-list", async () => {
     const archiveDirectory = join(rootDirectory, taskDirectory, "archive");
     const excluded = new Set(excludedPaths.map((path) => normalizeRepoPath(path)));
-    const entries = await (diagnosticSnapshot?.memo(rootDirectory, `directory:${archiveDirectory}`, () => readdir(archiveDirectory)) ?? readdir(archiveDirectory)).catch(() => []);
+    const entries = await readTaskInventoryDirectory(
+      () => diagnosticSnapshot?.memo(rootDirectory, `directory:${archiveDirectory}`, () => readdir(archiveDirectory)) ?? readdir(archiveDirectory),
+      archiveDirectory,
+    );
     const files: ProjectTaskFile[] = [];
 
     for (const entry of entries.filter((name) => name.endsWith(".md")).sort()) {

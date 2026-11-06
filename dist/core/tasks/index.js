@@ -678,10 +678,21 @@ export async function writeTaskFile(path, task) {
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, renderTaskMarkdown(task), "utf8");
 }
+async function readTaskInventoryDirectory(read, directory) {
+    try {
+        return await read();
+    }
+    catch (error) {
+        const code = error && typeof error === "object" && "code" in error ? String(error.code) : "unknown";
+        if (code === "ENOENT")
+            return [];
+        throw new Error(`Task inventory unavailable (${directory}): ${code}.`, { cause: error });
+    }
+}
 export async function listTaskFiles(rootDirectory, taskDirectory = ".tasks", diagnosticSnapshot) {
     return withPerfSpan("task-config", "task.list", async () => {
         const directory = join(rootDirectory, taskDirectory);
-        const entries = await (diagnosticSnapshot?.memo(rootDirectory, `directory:${directory}`, () => readdir(directory)) ?? readdir(directory)).catch(() => []);
+        const entries = await readTaskInventoryDirectory(() => diagnosticSnapshot?.memo(rootDirectory, `directory:${directory}`, () => readdir(directory)) ?? readdir(directory), directory);
         const files = [];
         for (const entry of entries.filter((name) => name.endsWith(".md")).sort()) {
             files.push(await loadTaskFile(join(directory, entry), diagnosticSnapshot));
@@ -696,7 +707,7 @@ export async function listArchivedTaskFiles(rootDirectory, taskDirectory = ".tas
     return withPerfSpan("task-config", "task.archive-list", async () => {
         const archiveDirectory = join(rootDirectory, taskDirectory, "archive");
         const excluded = new Set(excludedPaths.map((path) => normalizeRepoPath(path)));
-        const entries = await (diagnosticSnapshot?.memo(rootDirectory, `directory:${archiveDirectory}`, () => readdir(archiveDirectory)) ?? readdir(archiveDirectory)).catch(() => []);
+        const entries = await readTaskInventoryDirectory(() => diagnosticSnapshot?.memo(rootDirectory, `directory:${archiveDirectory}`, () => readdir(archiveDirectory)) ?? readdir(archiveDirectory), archiveDirectory);
         const files = [];
         for (const entry of entries.filter((name) => name.endsWith(".md")).sort()) {
             const path = join(archiveDirectory, entry);

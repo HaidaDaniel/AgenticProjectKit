@@ -11192,3 +11192,84 @@ test("git-backed diagnostic snapshot honors custom task directories and linked w
     );
   });
 });
+
+test("task inventory distinguishes missing and empty storage from unavailable storage", async () => {
+  await withTempDirectory(async (directory) => {
+    assert.deepEqual(await listTaskFiles(directory, ".tasks"), []);
+    assert.deepEqual(await listArchivedTaskFiles(directory, ".tasks"), []);
+    await mkdir(join(directory, ".tasks", "archive"), { recursive: true });
+    assert.deepEqual(await listTaskFiles(directory, ".tasks"), []);
+    assert.deepEqual(await listArchivedTaskFiles(directory, ".tasks"), []);
+  });
+});
+
+test("task inventory fails closed on a file archive and prevents ID allocation", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await writeFile(join(directory, ".tasks", "archive"), "not a directory\n", "utf8");
+    await assert.rejects(() => listArchivedTaskFiles(directory, ".tasks"), /Task inventory unavailable/);
+    const input = {
+      title: "Must not be created",
+      mode: "mvp" as const,
+      lane: "implementation",
+      scope: ["fixture"],
+      risk: "low" as const,
+      parallel: false,
+      dependsOn: [],
+      tags: [],
+      goal: "Prove that incomplete inventory blocks allocation.",
+      contextFiles: ["AGENTS.md"],
+      allowedFiles: ["src/**"],
+      forbiddenFiles: [],
+      steps: ["Do not allocate."],
+      acceptanceCriteria: ["No task file is written."],
+      verificationCommands: ["true"],
+      documentationUpdates: [],
+      notes: [],
+    };
+    await assert.rejects(() => createTask(directory, ".tasks", input), /Task inventory unavailable/);
+    assert.deepEqual(await readdir(join(directory, ".tasks")), ["archive"]);
+  });
+});
+
+test("task inventory fails closed on symlink-loop storage", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    await symlink("archive", join(directory, ".tasks", "archive"));
+    await assert.rejects(() => listArchivedTaskFiles(directory, ".tasks"), /Task inventory unavailable/);
+  });
+});
+
+test("task ID allocation includes archived IDs when inventory is healthy", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks", "archive"), { recursive: true });
+    await writeTaskFile(join(directory, ".tasks", "archive", "0099-archived.md"), {
+      ...TASK,
+      id: "0099",
+      title: "Archived",
+      state: "done",
+      owner: "fixture-owner",
+      dependsOn: [],
+    });
+    const created = await createTask(directory, ".tasks", {
+      title: "Fresh task",
+      mode: "mvp",
+      lane: "implementation",
+      scope: ["fixture"],
+      risk: "low",
+      parallel: false,
+      dependsOn: [],
+      tags: [],
+      goal: "Allocate after archived ID.",
+      contextFiles: ["AGENTS.md"],
+      allowedFiles: ["src/**"],
+      forbiddenFiles: [],
+      steps: ["Create."],
+      acceptanceCriteria: ["Created after archive."],
+      verificationCommands: ["true"],
+      documentationUpdates: [],
+      notes: [],
+    });
+    assert.equal(created.id, "0100");
+  });
+});

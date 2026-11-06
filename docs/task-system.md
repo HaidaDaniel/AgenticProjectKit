@@ -182,6 +182,10 @@ Human and JSON output also include bounded **advisory context-hygiene estimates*
 - A task with a higher-numbered dependency is valid when that dependency exists.
 - Run `pnpm exec apk audit` to validate the dependency graph.
 
+## Task inventory fail-closed
+
+A missing active or archive directory is treated as an empty optional inventory during initial setup. Any other read failure (`EACCES`, `EPERM`, `ENOTDIR`, `ELOOP`, I/O error) surfaces as `Task inventory unavailable (path): code`; it is never silently converted to an empty list. A file or symlink loop at the archive path is rejected, and task creation refuses to allocate a new ID while either active or archive inventory is unavailable. Healthy archived IDs remain part of the allocation sequence.
+
 ## Task creation
 
 Use `pnpm exec apk task create` to generate new task files with validated metadata:
