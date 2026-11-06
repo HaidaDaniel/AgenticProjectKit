@@ -190,6 +190,10 @@ A missing active or archive directory is treated as an empty optional inventory 
 
 Existing task lifecycle updates are written to a same-directory temporary file, fully populated, given the original permission bits where available, and published with a rename. A pre-publication write or rename failure removes the temporary file and leaves the original contract bytes intact. New task creation uses the separate exclusive-create path. This is atomic replacement on supported filesystems, not an fsync-level durability claim; Windows replacement follows the platform rename semantics and is not separately validated in this repository.
 
+## Filename slugs
+
+Task and backlog filenames use deterministic ASCII slugs. Cyrillic titles are transliterated with a small built-in map; titles that still produce no usable ASCII component fall back to `item-<sha256-prefix>`. Existing ASCII filenames are unchanged, and path traversal/reserved-name checks still apply after slug generation.
+
 ## Task creation
 
 Use `pnpm exec apk task create` to generate new task files with validated metadata:

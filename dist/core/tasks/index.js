@@ -1395,7 +1395,13 @@ export class TaskBaselineFormatError extends Error {
         this.issues = issues;
     }
 }
-function slugify(text) {
+const CYRILLIC_SLUG_MAP = {
+    а: "a", б: "b", в: "v", г: "g", д: "d", е: "e", ё: "e", ж: "zh", з: "z", и: "i",
+    й: "i", к: "k", л: "l", м: "m", н: "n", о: "o", п: "p", р: "r", с: "s", т: "t",
+    у: "u", ф: "f", х: "kh", ц: "ts", ч: "ch", ш: "sh", щ: "shch", ъ: "", ы: "y",
+    ь: "", э: "e", ю: "yu", я: "ya", і: "i", ї: "yi", є: "ye", ґ: "g",
+};
+function asciiSlug(text) {
     return text
         .toLowerCase()
         .replace(/['']/g, "-")
@@ -1403,6 +1409,20 @@ function slugify(text) {
         .replace(/\s+/g, "-")
         .replace(/-+/g, "-")
         .replace(/^-|-$/g, "");
+}
+/** Deterministic filename component; never empty and never path-like. */
+export function slugifyTitle(text) {
+    const direct = asciiSlug(text);
+    if (direct)
+        return direct.slice(0, 80).replace(/-+$/g, "");
+    const transliterated = asciiSlug([...text.toLowerCase()].map((character) => CYRILLIC_SLUG_MAP[character] ?? character).join(""));
+    if (transliterated)
+        return transliterated.slice(0, 80).replace(/-+$/g, "");
+    const digest = createHash("sha256").update(text, "utf8").digest("hex").slice(0, 12);
+    return `item-${digest}`;
+}
+function slugify(text) {
+    return slugifyTitle(text);
 }
 export function nextTaskId(files, archivedFiles = []) {
     const all = [...files, ...archivedFiles];

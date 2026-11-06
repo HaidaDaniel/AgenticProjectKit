@@ -381,3 +381,11 @@ test("backlog cards stay Git-tracked rather than ignored", async () => {
     );
   });
 });
+
+test("Unicode backlog titles produce safe non-empty slugs", () => {
+  for (const title of ["Улучшить работу агента", "Покращити перевірку задач", "Qwen 27B — новая конфигурация"]) {
+    const slug = slugifyBacklogTitle(title);
+    assert.match(slug, /^[a-z0-9][a-z0-9-]*$/, title);
+    assert.notEqual(slug, "");
+  }
+});

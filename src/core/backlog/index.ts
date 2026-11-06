@@ -3,6 +3,8 @@ import { constants } from "node:fs";
 import { lstat, mkdir, open, readdir, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 
+import { slugifyTitle } from "../tasks/index.js";
+
 export const BACKLOG_STATUSES = ["idea", "deferred", "promoted", "discarded"] as const;
 export type BacklogStatus = (typeof BACKLOG_STATUSES)[number];
 
@@ -310,13 +312,7 @@ export function renderBacklogMarkdown(item: BacklogItem): string {
 }
 
 export function slugifyBacklogTitle(title: string): string {
-  const slug = title
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, BACKLOG_LIMITS.slugCharacters)
-    .replace(/-+$/g, "");
+  const slug = slugifyTitle(title).slice(0, BACKLOG_LIMITS.slugCharacters).replace(/-+$/g, "");
   if (!slug) throw new BacklogFormatError(["Title cannot produce a non-empty slug."]);
   return /^\d{4}(?:-|$)/.test(slug) ? `item-${slug}`.slice(0, BACKLOG_LIMITS.slugCharacters) : slug;
 }

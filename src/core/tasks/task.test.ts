@@ -11418,3 +11418,15 @@ test("atomic task updates preserve the original on write or publish failure", as
     assert.match(await readFile(path, "utf8"), /Updated acceptance\./);
   });
 });
+
+test("Unicode task titles produce deterministic safe non-empty slugs", async () => {
+  const titles = ["Улучшить работу агента", "Покращити перевірку задач", "Fix Git snapshot", "Qwen 27B — новая конфигурация"];
+  for (const title of titles) {
+    const filename = buildTaskFileName("0001", title);
+    assert.match(filename, /^0001-.+\.md$/, title);
+    assert.doesNotMatch(filename, /0001-\.md$/, title);
+    assert.doesNotMatch(filename, /[\\/]/, title);
+    assert.equal(buildTaskFileName("0001", title), filename);
+  }
+  assert.equal(buildTaskFileName("0001", "Fix Git snapshot"), "0001-fix-git-snapshot.md");
+});
