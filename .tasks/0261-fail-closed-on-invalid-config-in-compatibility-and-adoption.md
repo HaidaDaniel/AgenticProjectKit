@@ -1,7 +1,7 @@
 # Task 0261 - Fail closed on invalid config in compatibility and adoption
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-correctness-milestone
 Mode: maintenance
 Lane: bugfix
 Type: bugfix
