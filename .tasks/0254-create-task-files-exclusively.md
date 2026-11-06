@@ -1,7 +1,7 @@
 # Task 0254 - Create task files exclusively
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-correctness-milestone
 Mode: maintenance
 Lane: bugfix
 Type: bugfix
