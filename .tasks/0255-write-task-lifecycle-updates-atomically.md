@@ -1,7 +1,7 @@
 # Task 0255 - Write task lifecycle updates atomically
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-correctness-milestone
 Mode: maintenance
 Lane: bugfix
 Type: bugfix
