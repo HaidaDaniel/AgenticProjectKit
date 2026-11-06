@@ -1,7 +1,7 @@
 # Task 0257 - Generate Unicode-safe task and backlog slugs
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-correctness-milestone
 Mode: maintenance
 Lane: bugfix
 Type: bugfix
