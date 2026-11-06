@@ -1,7 +1,7 @@
 # Task 0260 - Support task IDs beyond 9999 consistently
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-correctness-milestone
 Mode: maintenance
 Lane: bugfix
 Type: bugfix
@@ -33,6 +33,7 @@ Make numeric task IDs above 9999 parse and render consistently across task alloc
 - src/core/backlog/backlog.test.ts
 - src/core/tasks/task.test.ts
 - scripts/check-docs-consistency.mjs
+- scripts/check-docs-consistency.test.mjs
 - docs/task-system.md
 - docs/progress.md
 - dist/**
