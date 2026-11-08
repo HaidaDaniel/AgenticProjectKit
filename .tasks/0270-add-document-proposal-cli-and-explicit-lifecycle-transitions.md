@@ -1,7 +1,7 @@
 # Task 0270 - Add document-proposal CLI and explicit lifecycle transitions
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-milestone
 Mode: maintenance
 Lane: implementation
 Type: feature
