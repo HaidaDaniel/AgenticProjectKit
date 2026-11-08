@@ -25,6 +25,12 @@ Historical Tasks 0252, 0256, 0260, and 0261 retain the classifications in the
 [corrective provenance audit](corrective-provenance-audit.md). Tasks 0256 and 0260 still require
 explicit operator decisions; this candidate does not self-accept them.
 
+The audit addendum also records the current-milestone attribution limit: canceled Task 0268
+retains implementation commit `cc290a9`, which predates the 0275 epoch baseline. The completed
+successor 0275 candidate evidence covers its later corrections and carried-forward delta, not that
+earlier implementation commit. This is documented as a limitation and is not repaired by rewriting
+history or claiming clean provenance.
+
 ## Proposal behavior
 
 - Storage: `<docsDirectory>/proposals/<slug>.md`, Git-tracked Markdown, no database, daemon,

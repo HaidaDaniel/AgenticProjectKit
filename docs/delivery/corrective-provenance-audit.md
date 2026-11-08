@@ -95,3 +95,12 @@ The corrected code tasks 0265 and 0266 are separate candidates and are not evide
 - It does not resolve cross-task provenance exclusions or same-file attribution.
 - It does not re-run historical verification or claim current gate eligibility for completed tasks.
 - It does not evaluate tasks outside 0252, 0256, 0260, and 0261.
+
+## Additional current-milestone attribution note (Tasks 0268 and 0275)
+
+This note is an addendum for the v0.6.0 corrective milestone. It does not reopen or rewrite any completed task, baseline, evidence record, or Git commit.
+
+- Task 0268 was planned in `dc43e2b` and the main `.agentic` containment implementation landed in `cc290a9`. Its verification failed because the claim baseline predated the milestone planning commit and its Allowed Files omitted `src/core/work/session.ts` (`verify-1794144112931-ryxza9`, `verify-1794144166308-idf95r`). An audited amendment/epoch was recorded for 0268 (`57fbe60`, epoch `d77badaf...`), but the task was then canceled in `629f2ef` with the incomplete-contract reason. 0268 has no completion or review evidence.
+- Task 0275 is the successor. Its final claim epoch baseline is `baseline:24033b7616c0ce970fa8e2b89fef12c567bb62f3096b2b95bba03a1e745b4ece` at `2959f96`, with predecessor `baseline:7855a07d...` carrying `src/core/tasks/dogfood.ts`, `src/core/tasks/task.test.ts`, and `dist/core/tasks/dogfood.js`. Its completion candidate is `3f8f283` with verification `verify-1794145522291-1b8ozs` and independent review `evidence-1794147511058-vgj2qr`.
+- Attribution limitation: `cc290a9` is before the 0275 epoch baseline. The 0275 candidate evidence therefore covers the later dogfood/calibrate corrections and carried-forward delta, not the original containment implementation commit. The 0275 task notes explicitly retain `cc290a9` as predecessor work; this is a documented limitation, not a claim that 0275 newly authored every retained change.
+- No history rewrite, baseline replacement, or invented epoch repairs this limitation. Release material must describe 0268 as canceled with retained implementation and 0275 as the completed successor, and must not claim clean provenance for the retained predecessor commit.
