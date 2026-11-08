@@ -1,6 +1,6 @@
 # Task 0276 - Harden proposal lifecycle concurrency and decision encoding
 
-State: doing
+State: done
 Owner: opencode-milestone
 Mode: maintenance
 Lane: bugfix
