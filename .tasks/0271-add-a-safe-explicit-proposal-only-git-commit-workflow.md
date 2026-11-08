@@ -1,7 +1,7 @@
 # Task 0271 - Add a safe explicit proposal-only Git commit workflow
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-milestone
 Mode: maintenance
 Lane: implementation
 Type: feature
