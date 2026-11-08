@@ -1,7 +1,7 @@
 # Task 0278 - Publish new proposal files with crash-safe exclusive linking
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-milestone
 Mode: maintenance
 Lane: bugfix
 Type: bugfix
