@@ -31,6 +31,11 @@ successor 0275 candidate evidence covers its later corrections and carried-forwa
 earlier implementation commit. This is documented as a limitation and is not repaired by rewriting
 history or claiming clean provenance.
 
+On `2026-11-08`, the operator explicitly chose `ACCEPT_WITH_DOCUMENTED_LIMITATION` for Tasks 0256
+and 0260 and `ACKNOWLEDGE` for the cross-task and 0268/0275 attribution limitations. The exact
+choices, SHAs, hashes, source, and limitations are recorded in the corrective provenance audit.
+These are documented decisions, not fabricated APK decision events or epochs.
+
 ## Proposal behavior
 
 - Storage: `<docsDirectory>/proposals/<slug>.md`, Git-tracked Markdown, no database, daemon,
@@ -105,10 +110,11 @@ unchanged in kind and scales with the number of tracked files, not with proposal
 
 New-work status: ready for release validation (`READY_FOR_RELEASE_VALIDATION`).
 
-Publication status: `BLOCKED_WITH_REASONS` until the operator records explicit decisions on the
-historical 0256 dependency correction and 0260 retrospective Allowed Files expansion, and
-acknowledges the documented cross-task attribution limitations. This record does not accept those
-deviations, does not rewrite history, and does not claim `CLEAN_PROVENANCE_PASS`.
+Publication status: `READY_WITH_DOCUMENTED_LIMITATIONS`. The operator recorded
+`ACCEPT_WITH_DOCUMENTED_LIMITATION` for Tasks 0256 and 0260 and acknowledged the cross-task and
+0268/0275 attribution limitations on `2026-11-08`. This does not rewrite history, create epochs,
+authenticate identity, or claim `CLEAN_PROVENANCE_PASS`. Tag publication, exact-SHA hosted CI, and
+post-tag validation remain separate release steps.
 
 No tag, push, GitHub release, version-sentinel change, or downstream upgrade is part of this
 candidate.
