@@ -163,6 +163,7 @@ pnpm exec apk proposal validate [--json]
 pnpm exec apk proposal accept <slug-or-id> --actor <operator-id> --reason "Accept for planning."
 pnpm exec apk proposal reject <slug-or-id> --actor <operator-id> --reason "Out of scope."
 pnpm exec apk proposal supersede <slug-or-id> --by <successor-id> --actor <operator-id> --reason "Replaced."
+pnpm exec apk proposal link <slug-or-id> --canonical <path> [--backlog <slug>] [--expect-revision <sha256>]
 pnpm exec apk proposal commit <slug-or-id> [--message <text>] [--expect-revision <sha256>]
 ```
 
@@ -176,3 +177,10 @@ reason. A stale revision or invalid transition fails closed without changing the
 
 Acceptance records an operator assertion. It does not authenticate the operator cryptographically,
 prove implementation, deploy anything, or make the proposal canonical.
+
+`link` records a canonical-document path or backlog slug on the proposal only when that destination
+already exists inside the repository and already contains a verifiable reference to the proposal
+(the stable ID, the proposal path, or `proposals/<slug>.md`). It never edits the canonical document
+or backlog card, creates a task, or promotes the proposal automatically. Rejected and superseded
+proposals remain readable and linkable. The recorded links are additive metadata, not proof that the
+destination has adopted the proposal as authoritative truth.

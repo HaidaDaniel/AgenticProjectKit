@@ -18,9 +18,11 @@ import {
   readProposalSnapshot,
   renderProposalMarkdown,
   slugifyProposalTitle,
+  transitionProposal,
   validateProposals,
 } from "./index.js";
 import { commitProposal } from "./git.js";
+import { linkProposal } from "./index.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -331,5 +333,91 @@ test("proposal commit in one worktree leaves another worktree unchanged", async 
     } finally {
       await rm(other, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
     }
+  });
+});
+
+test("links a canonical document and backlog card only when they reference the proposal", async () => {
+  await withTempDirectory(async (directory) => {
+    const item = await createProposal(directory, "docs", { title: "Linked proposal", summary: "Link me." });
+    await writeFile(join(directory, "docs", "architecture.md"), `# Architecture
+
+See proposals/${item.slug}.md for the proposal.\n`, "utf8");
+    const canonicalBefore = await readFile(join(directory, "docs", "architecture.md"), "utf8");
+    const linked = await linkProposal({
+      rootDirectory: directory,
+      docsDirectory: "docs",
+      taskDirectory: ".tasks",
+      idOrSlug: item.slug,
+      canonical: "docs/architecture.md",
+    });
+    assert.equal(linked.proposal.canonical, "docs/architecture.md");
+    assert.equal(await readFile(join(directory, "docs", "architecture.md"), "utf8"), canonicalBefore);
+
+    await mkdir(join(directory, ".tasks", "backlog"), { recursive: true });
+    await writeFile(join(directory, ".tasks", "backlog", "related-card.md"), `# Related card
+
+References: Proposal-Id ${item.id}\n`, "utf8");
+    const backlogBefore = await readFile(join(directory, ".tasks", "backlog", "related-card.md"), "utf8");
+    const backlogLinked = await linkProposal({
+      rootDirectory: directory,
+      docsDirectory: "docs",
+      taskDirectory: ".tasks",
+      idOrSlug: item.id,
+      backlog: "related-card",
+    });
+    assert.equal(backlogLinked.proposal.backlog, "related-card");
+    assert.equal(await readFile(join(directory, ".tasks", "backlog", "related-card.md"), "utf8"), backlogBefore);
+    assert.equal(backlogLinked.proposal.decisions.length, 0);
+  });
+});
+
+test("rejects canonical and backlog links without a verifiable reference", async () => {
+  await withTempDirectory(async (directory) => {
+    const item = await createProposal(directory, "docs", { title: "Unlinked proposal", summary: "No reference." });
+    await writeFile(join(directory, "docs", "architecture.md"), "# Architecture\n\nNo proposal reference here.\n", "utf8");
+    await assert.rejects(
+      () => linkProposal({ rootDirectory: directory, docsDirectory: "docs", taskDirectory: ".tasks", idOrSlug: item.slug, canonical: "docs/architecture.md" }),
+      /does not contain a verifiable reference/,
+    );
+    await mkdir(join(directory, ".tasks", "backlog"), { recursive: true });
+    await writeFile(join(directory, ".tasks", "backlog", "unrelated.md"), "# Unrelated\n", "utf8");
+    await assert.rejects(
+      () => linkProposal({ rootDirectory: directory, docsDirectory: "docs", taskDirectory: ".tasks", idOrSlug: item.slug, backlog: "unrelated" }),
+      /does not contain a verifiable reference/,
+    );
+    await assert.rejects(
+      () => linkProposal({ rootDirectory: directory, docsDirectory: "docs", taskDirectory: ".tasks", idOrSlug: item.slug, backlog: "missing" }),
+      /ENOENT|no such file/i,
+    );
+  });
+});
+
+test("links remain available for rejected proposals and symlinked canonical files are refused", async () => {
+  await withTempDirectory(async (directory) => {
+    await withOutsideDirectory(async (outside) => {
+      const item = await createProposal(directory, "docs", { title: "Rejected but linked", summary: "Keep linkable." });
+      const rejected = await transitionProposal({
+        rootDirectory: directory,
+        docsDirectory: "docs",
+        idOrSlug: item.slug,
+        decision: "rejected",
+        actor: "operator",
+        reason: "Rejected for now.",
+      });
+      assert.equal(rejected.proposal.status, "rejected");
+      await writeFile(join(directory, "docs", "architecture.md"), `References proposal ${item.id}.\n`, "utf8");
+      const linked = await linkProposal({ rootDirectory: directory, docsDirectory: "docs", taskDirectory: ".tasks", idOrSlug: item.id, canonical: "docs/architecture.md" });
+      assert.equal(linked.proposal.status, "rejected");
+      assert.equal(linked.proposal.canonical, "docs/architecture.md");
+
+      const external = join(outside, "canonical.md");
+      await writeFile(external, `References proposal ${item.id}.\n`, "utf8");
+      await symlink(external, join(directory, "docs", "linked-canonical.md"));
+      await assert.rejects(
+        () => linkProposal({ rootDirectory: directory, docsDirectory: "docs", taskDirectory: ".tasks", idOrSlug: item.id, canonical: "docs/linked-canonical.md" }),
+        /symbolic link/i,
+      );
+      assert.equal(await readFile(external, "utf8"), `References proposal ${item.id}.\n`);
+    });
   });
 });

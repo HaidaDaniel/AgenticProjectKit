@@ -225,6 +225,7 @@ export const PUBLIC_COMMANDS: readonly PublicCommand[] = [
       { usage: "proposal accept <slug|id> --actor <operator-id> --reason <text> [--expect-revision <sha256>] [--json]", description: "record an explicit operator acceptance bound to a verified proposal revision." },
       { usage: "proposal reject <slug|id> --actor <operator-id> --reason <text> [--expect-revision <sha256>] [--json]", description: "record an explicit operator rejection bound to a verified proposal revision." },
       { usage: "proposal supersede <slug|id> --by <successor-id> --actor <operator-id> --reason <text> [--expect-revision <sha256>] [--json]", description: "mark a proposal superseded with a traceable successor proposal." },
+      { usage: "proposal link <slug|id> [--canonical <path>] [--backlog <slug>] [--expect-revision <sha256>] [--json]", description: "record a validated canonical-document or backlog link only when the destination already references the proposal." },
       { usage: "proposal commit <slug|id> [--message <text>] [--expect-revision <sha256>] [--json]", description: "commit exactly one validated proposal through an isolated Git index; never pushes or rewrites history." },
     ],
   },

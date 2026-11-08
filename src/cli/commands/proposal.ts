@@ -4,6 +4,7 @@ import { readAgenticConfigFile } from "../../core/config/index.js";
 import {
   createProposal,
   findProposal,
+  linkProposal,
   listProposals,
   ProposalFormatError,
   PROPOSAL_KINDS,
@@ -28,6 +29,7 @@ const HELP_TEXT = [
   "  apk proposal accept <slug|id> --actor <operator-id> --reason <text> [--expect-revision <sha256>] [--json]",
   "  apk proposal reject <slug|id> --actor <operator-id> --reason <text> [--expect-revision <sha256>] [--json]",
   "  apk proposal supersede <slug|id> --by <successor-id> --actor <operator-id> --reason <text> [--expect-revision <sha256>] [--json]",
+  "  apk proposal link <slug|id> [--canonical <path>] [--backlog <slug>] [--expect-revision <sha256>] [--json]",
   "  apk proposal commit <slug|id> [--message <text>] [--expect-revision <sha256>] [--json]",
   "",
   "Proposals are Git-tracked Markdown documents, not executable tasks or backlog cards.",
@@ -36,6 +38,7 @@ const HELP_TEXT = [
   "add performs no git operation and creates no task. list/show/validate are read-only.",
   "accept and reject require an explicit operator decision; accepted does not mean implemented.",
   "commit publishes exactly one proposal in a local Git commit; it never pushes.",
+  "link accepts only a canonical document or backlog card that already references the proposal.",
 ].join("\n");
 
 function hasHelp(argv: readonly string[]): boolean {
@@ -206,6 +209,34 @@ export async function runProposalCommand(argv: string[]): Promise<number> {
         for (const diagnostic of result.diagnostics) console.error(`Error: ${diagnostic}`);
       }
       return result.diagnostics.length > 0 ? 1 : 0;
+    }
+
+    if (command === "link") {
+      const valueFlags = new Set(["--canonical", "--backlog", "--expect-revision"]);
+      rejectUnknown(args, [...valueFlags, "--json", "--help", "-h"]);
+      const terms = positional(args, valueFlags);
+      if (terms.length !== 1) throw new Error("Usage: apk proposal link <slug|id> [--canonical <path>] [--backlog <slug>] [--json]");
+      const canonical = value(args, "--canonical");
+      const backlog = value(args, "--backlog");
+      if (!canonical && !backlog) throw new Error("Provide --canonical or --backlog.");
+      const snapshot = await linkProposal({
+        rootDirectory,
+        docsDirectory: config.docsDirectory,
+        taskDirectory: config.taskDirectory,
+        idOrSlug: terms[0]!,
+        ...(canonical ? { canonical } : {}),
+        ...(backlog ? { backlog } : {}),
+        ...(value(args, "--expect-revision") ? { expectedRevision: value(args, "--expect-revision")! } : {}),
+      });
+      if (json) printJson(snapshot);
+      else {
+        const links = [
+          snapshot.proposal.canonical ? `canonical=${snapshot.proposal.canonical}` : undefined,
+          snapshot.proposal.backlog ? `backlog=${snapshot.proposal.backlog}` : undefined,
+        ].filter(Boolean).join(" ");
+        console.log(`Linked: ${snapshot.proposal.path} ${links} revision=${snapshot.revision}`);
+      }
+      return 0;
     }
 
     if (command === "commit") {

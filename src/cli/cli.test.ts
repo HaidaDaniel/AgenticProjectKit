@@ -2102,6 +2102,34 @@ test("CLI proposals add list show validate and lifecycle transitions stay outsid
   });
 });
 
+test("CLI proposal link requires a verifiable canonical or backlog reference", async () => {
+  await withTempDirectory(async (directory) => {
+    const added = await runCli(["proposal", "add", "--title", "Linkable proposal", "--summary", "Link.", "--json"], directory);
+    assert.equal(added.exitCode, 0, added.stderr);
+    const item = JSON.parse(added.stdout) as { id: string; slug: string };
+    await mkdir(join(directory, "docs"), { recursive: true });
+    await writeFile(join(directory, "docs", "architecture.md"), `# Architecture\n\nProposal-Id: ${item.id}\n`, "utf8");
+    const before = await readFile(join(directory, "docs", "architecture.md"), "utf8");
+
+    const linked = await runCli(["proposal", "link", item.slug, "--canonical", "docs/architecture.md", "--json"], directory);
+    assert.equal(linked.exitCode, 0, linked.stderr);
+    const snapshot = JSON.parse(linked.stdout) as { proposal: { canonical: string } };
+    assert.equal(snapshot.proposal.canonical, "docs/architecture.md");
+    assert.equal(await readFile(join(directory, "docs", "architecture.md"), "utf8"), before);
+
+    await writeFile(join(directory, "docs", "other.md"), "# Other\n\nNo proposal reference.\n", "utf8");
+    const refused = await runCli(["proposal", "link", item.slug, "--canonical", "docs/other.md"], directory);
+    assert.equal(refused.exitCode, 1);
+    assert.match(refused.stderr, /verifiable reference/);
+
+    await mkdir(join(directory, ".tasks", "backlog"), { recursive: true });
+    await writeFile(join(directory, ".tasks", "backlog", "card.md"), `# Card\n\nProposal-Id: ${item.id}\n`, "utf8");
+    const backlog = await runCli(["proposal", "link", item.slug, "--backlog", "card", "--json"], directory);
+    assert.equal(backlog.exitCode, 0, backlog.stderr);
+    assert.equal((JSON.parse(backlog.stdout) as { proposal: { backlog: string } }).proposal.backlog, "card");
+  });
+});
+
 test("CLI proposal commit publishes one proposal without touching unrelated staged work", async () => {
   await withTempDirectory(async (directory) => {
     const git = async (...args: string[]) => execFileAsync("git", args, { cwd: directory, encoding: "utf8" });

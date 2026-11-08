@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { repositoryRelativePathIssue, resolveContainedRepositoryPath } from "../config/paths.js";
 export const PROPOSAL_SCHEMA_VERSION = 1;
@@ -651,6 +651,101 @@ export async function transitionProposal(input) {
     if (proposalRevision(fresh) !== current.revision) {
         throw new ProposalFormatError([
             `Proposal ${next.slug} changed while the decision was being prepared; re-read it and retry.`,
+        ]);
+    }
+    const temporary = join(input.rootDirectory, proposalDirectoryRelative(input.docsDirectory), `.${next.slug}.${randomUUID()}.tmp`);
+    try {
+        await writeFile(temporary, markdown, { encoding: "utf8", flag: "wx" });
+        await rename(temporary, path);
+    }
+    catch (error) {
+        await rm(temporary, { force: true }).catch(() => undefined);
+        throw error;
+    }
+    return {
+        proposal: parseProposalMarkdown(markdown, next.slug, next.path),
+        content: markdown,
+        revision: proposalRevision(markdown),
+    };
+}
+const REFERENCE_FILE_LIMIT = 1024 * 1024;
+async function readReferenceFile(rootDirectory, relativePath) {
+    await resolveContainedRepositoryPath(rootDirectory, relativePath, "file");
+    const absolute = join(rootDirectory, relativePath);
+    const buffer = await readFile(absolute);
+    if (buffer.byteLength > REFERENCE_FILE_LIMIT) {
+        throw new ProposalFormatError([`Reference file exceeds the ${REFERENCE_FILE_LIMIT} byte limit: ${relativePath}`]);
+    }
+    try {
+        return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+    }
+    catch {
+        throw new ProposalFormatError([`Reference file is not valid UTF-8: ${relativePath}`]);
+    }
+}
+function containsProposalReference(content, item, docsDirectory) {
+    return content.includes(item.id)
+        || content.includes(proposalRelativePath(docsDirectory, item.slug))
+        || content.includes(`proposals/${item.slug}.md`);
+}
+export async function linkProposal(input) {
+    const canonical = input.canonical?.trim();
+    const backlog = input.backlog?.trim();
+    if (canonical === undefined && backlog === undefined) {
+        throw new ProposalFormatError(["Provide --canonical or --backlog."]);
+    }
+    if (canonical !== undefined) {
+        const issue = repositoryRelativePathIssue(canonical, "file");
+        if (issue)
+            throw new ProposalFormatError([`Canonical destination: ${issue}.`]);
+    }
+    if (backlog !== undefined && !SLUG_PATTERN.test(backlog)) {
+        throw new ProposalFormatError(["Backlog must name a valid backlog slug."]);
+    }
+    const taskIssue = repositoryRelativePathIssue(input.taskDirectory, "directory");
+    if (taskIssue)
+        throw new ProposalFormatError([`taskDirectory: ${taskIssue}.`]);
+    const current = await findProposal(input.rootDirectory, input.docsDirectory, input.idOrSlug);
+    if (!current)
+        throw new ProposalFormatError([`Proposal not found: ${input.idOrSlug}`]);
+    if (input.expectedRevision !== undefined && input.expectedRevision !== current.revision) {
+        throw new ProposalFormatError([
+            `Proposal revision changed: expected ${input.expectedRevision}, found ${current.revision}. Re-read the proposal and retry.`,
+        ]);
+    }
+    if (canonical !== undefined) {
+        const content = await readReferenceFile(input.rootDirectory, canonical);
+        if (!containsProposalReference(content, current.proposal, input.docsDirectory)) {
+            throw new ProposalFormatError([
+                `Canonical destination ${canonical} does not contain a verifiable reference to proposal ${current.proposal.id} or proposals/${current.proposal.slug}.md.`,
+            ]);
+        }
+    }
+    if (backlog !== undefined) {
+        const normalizedTaskDirectory = input.taskDirectory.replaceAll("\\", "/").replace(/\/+$/, "");
+        const backlogPath = `${normalizedTaskDirectory}/backlog/${backlog}.md`;
+        const content = await readReferenceFile(input.rootDirectory, backlogPath);
+        if (!containsProposalReference(content, current.proposal, input.docsDirectory)) {
+            throw new ProposalFormatError([
+                `Backlog card ${backlogPath} does not contain a verifiable reference to proposal ${current.proposal.id} or proposals/${current.proposal.slug}.md.`,
+            ]);
+        }
+    }
+    const next = {
+        ...current.proposal,
+        updated: new Date().toISOString(),
+        ...(canonical !== undefined ? { canonical } : {}),
+        ...(backlog !== undefined ? { backlog } : {}),
+    };
+    const markdown = renderProposalMarkdown(next);
+    parseProposalMarkdown(markdown, next.slug, next.path);
+    await assertProposalStorageSafe(input.rootDirectory, input.docsDirectory);
+    const path = join(input.rootDirectory, proposalDirectoryRelative(input.docsDirectory), `${next.slug}.md`);
+    const displayPath = proposalRelativePath(input.docsDirectory, next.slug);
+    const fresh = await readBoundedProposal(path, displayPath);
+    if (proposalRevision(fresh) !== current.revision) {
+        throw new ProposalFormatError([
+            `Proposal ${next.slug} changed while the link was being prepared; re-read it and retry.`,
         ]);
     }
     const temporary = join(input.rootDirectory, proposalDirectoryRelative(input.docsDirectory), `.${next.slug}.${randomUUID()}.tmp`);
