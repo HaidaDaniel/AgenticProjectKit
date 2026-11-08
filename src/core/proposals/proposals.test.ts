@@ -686,3 +686,29 @@ test("proposal commit detects duplicate identity in a colon-named committed path
     );
   });
 });
+
+test("proposal commit detects duplicate identity with CR-only or NUL-containing committed content", async () => {
+  for (const variant of ["cr", "nul"] as const) {
+    await withTempDirectory(async (directory) => {
+      await initRepository(directory);
+      const source = await createProposal(directory, "docs", { title: `Variant ${variant}`, summary: "Variant." });
+      const sourcePath = join(directory, source.path);
+      let content = await readFile(sourcePath, "utf8");
+      if (variant === "cr") content = content.replace(/\n/g, "\r");
+      else content = content.replace("Variant.\n", "Variant.\0hidden\n");
+      await rm(sourcePath);
+      await writeFile(join(directory, "docs", "proposals", `variant-${variant}.md`), content, "utf8");
+      await git(directory, "add", "-A", "docs/proposals");
+      await git(directory, "commit", "--quiet", "-m", `variant ${variant} fixture`);
+
+      const target = await createProposal(directory, "docs", { title: `Target ${variant}`, summary: "Target." });
+      const targetPath = join(directory, target.path);
+      await writeFile(targetPath, (await readFile(targetPath, "utf8")).replace(/^Proposal-Id: .*$/m, `Proposal-Id: ${source.id}`), "utf8");
+      await assert.rejects(
+        () => commitProposal(directory, "docs", target.slug),
+        /duplicate Proposal-Id/,
+        variant,
+      );
+    });
+  }
+});

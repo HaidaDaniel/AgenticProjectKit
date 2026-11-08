@@ -6,7 +6,9 @@ import { promisify } from "node:util";
 
 import {
   findProposal,
+  parseProposalMarkdown,
   ProposalFormatError,
+  PROPOSAL_LIMITS,
   proposalDirectoryRelative,
   proposalRevision,
   type ProposalSnapshot,
@@ -111,63 +113,48 @@ async function assertProspectiveProposalIdentity(
   expectedId: string,
 ): Promise<void> {
   const directory = proposalDirectoryRelative(docsDirectory);
-  const found = await gitProbe(rootDirectory, [
-    "grep", "-z", "-n", "-I", "-E", "^Proposal-Id:[[:space:]]*", tree, "--", directory,
+  const listed = await gitProbe(rootDirectory, [
+    "ls-tree", "-r", "-z", "--name-only", tree, "--", directory,
   ]);
-  if (!found.ok && found.code !== 1) {
+  if (!listed.ok) {
     throw new ProposalGitError(
-      `Could not inspect proposal identities in the prospective commit tree: ${found.stderr.trim() || "git grep failed"}.`,
+      `Could not list proposal paths in the prospective commit tree: ${listed.stderr.trim() || "git ls-tree failed"}.`,
     );
   }
-  const records = found.stdout.split("\0");
-  const identities = new Map<string, string[]>();
-  const treePrefix = `${tree}:`;
-  let index = 0;
-  let pendingFile: string | undefined;
-  while (index < records.length) {
-    const file = pendingFile ?? records[index++]!;
-    pendingFile = undefined;
-    if (file === "") break;
-    const line = records[index++];
-    const chunk = records[index++];
-    if (line === undefined || chunk === undefined || !/^[0-9]+$/.test(line)) {
-      throw new ProposalGitError(
-        "Could not parse proposal identity records from the prospective commit tree; refusing to commit.",
-      );
-    }
-    const newline = chunk.indexOf("\n");
-    let content: string;
-    if (newline === -1) {
-      content = chunk;
-    } else {
-      content = chunk.slice(0, newline);
-      const remainder = chunk.slice(newline + 1);
-      if (remainder.length > 0) pendingFile = remainder;
-    }
-    if (!file.startsWith(treePrefix)) {
-      throw new ProposalGitError(
-        `Unexpected proposal identity record in the prospective commit tree: ${file.slice(0, 160)}.`,
-      );
-    }
-    const path = file.slice(treePrefix.length);
-    const match = /^Proposal-Id:[ \t]*(.+)$/.exec(content.replace(/\r$/, ""));
-    if (!match) {
-      throw new ProposalGitError(
-        `Proposal identity record for ${path} is malformed; refusing to commit.`,
-      );
-    }
-    const id = match[1]!.trim();
-    if (id.length === 0) {
-      throw new ProposalGitError(`Proposal identity for ${path} is empty; refusing to commit.`);
-    }
-    const paths = identities.get(id) ?? [];
-    paths.push(path);
-    identities.set(id, paths);
+  const paths = listed.stdout.split("\0").filter((path) => path.endsWith(".md"));
+  if (paths.length > PROPOSAL_LIMITS.proposals) {
+    throw new ProposalGitError(
+      `Prospective commit tree contains more than ${PROPOSAL_LIMITS.proposals} proposals; refusing to commit without a bounded identity check.`,
+    );
   }
-  for (const [id, paths] of identities) {
-    if (paths.length > 1) {
+
+  const identities = new Map<string, string[]>();
+  for (const path of paths) {
+    const blob = await gitProbe(rootDirectory, ["show", `${tree}:${path}`]);
+    if (!blob.ok) {
       throw new ProposalGitError(
-        `Refusing to publish duplicate Proposal-Id ${id} at ${paths.join(", ")}. `
+        `Could not read proposal ${path} from the prospective commit tree: ${blob.stderr.trim() || "git show failed"}.`,
+      );
+    }
+    const slug = path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/, "");
+    let id: string;
+    try {
+      id = parseProposalMarkdown(blob.stdout, slug, path).id;
+    } catch (error: unknown) {
+      throw new ProposalGitError(
+        `Cannot prove proposal identity for ${path} in the prospective commit tree: `
+        + `${error instanceof Error ? error.message : String(error)}.`,
+      );
+    }
+    const pathsForId = identities.get(id) ?? [];
+    pathsForId.push(path);
+    identities.set(id, pathsForId);
+  }
+
+  for (const [id, identityPaths] of identities) {
+    if (identityPaths.length > 1) {
+      throw new ProposalGitError(
+        `Refusing to publish duplicate Proposal-Id ${id} at ${identityPaths.join(", ")}. `
         + "Publish a proposal rename as a separate controlled git mv commit; this command commits only one proposal path.",
       );
     }
