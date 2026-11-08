@@ -1,7 +1,7 @@
 # Task 0277 - Prevent duplicate proposal identity in prospective commit trees
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-milestone
 Mode: maintenance
 Lane: bugfix
 Type: bugfix
