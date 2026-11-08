@@ -1,7 +1,7 @@
 # Task 0284 - Update progress latest validated release reference to v0.6.0
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-milestone
 Mode: maintenance
 Lane: documentation
 Type: bugfix
