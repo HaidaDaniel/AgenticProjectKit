@@ -85,7 +85,7 @@ Task 0232 is done at candidate `46be644`: the operator approved exact attributio
 
 Task 0239 is done at candidate `0f6a308`: seven automated checks, the observed long-goal report, fresh independent review `evidence-1792824910132-r40epr`, and completion gate passed. The producer emits a marked bounded goal summary while retaining the full contract and prompt; 56 command tests and 14 reviewer counterexamples cover boundaries, Unicode and strict external parsing. Short multiline rejection is unchanged; grapheme clusters were not assessed. Task 0232 can now issue its worker package without amending its contract.
 
-Agentic Project Kit remains the current product identity. The latest validated, installable release is [v0.5.2](releases/v0.5.2.md); its exact tag, candidate, hosted CI result, pinned cold install, CLI smoke, and self-adoption are recorded in the [post-release validation record](delivery/workflow-v0.5.2-post-release.md).
+Agentic Project Kit remains the current product identity. The latest validated, installable release is [v0.6.0](releases/v0.6.0.md); its exact tag, candidate, hosted CI result, pinned cold install, CLI smoke, and self-adoption are recorded in the [post-release validation record](delivery/workflow-v0.6.0-post-release.md).
 
 Public readiness is the current milestone. Its workstreams and ordering are maintained in the [roadmap](roadmap.md#public-readiness-current-work), with task contracts as the source of lifecycle state.
 
