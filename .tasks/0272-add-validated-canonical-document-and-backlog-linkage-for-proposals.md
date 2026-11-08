@@ -1,7 +1,7 @@
 # Task 0272 - Add validated canonical-document and backlog linkage for proposals
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-milestone
 Mode: maintenance
 Lane: implementation
 Type: feature
