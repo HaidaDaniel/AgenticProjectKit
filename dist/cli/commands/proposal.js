@@ -179,7 +179,7 @@ export async function runProposalCommand(argv) {
             if (!snapshot)
                 throw new Error(`Proposal not found: ${terms[0]}`);
             if (json)
-                printJson(snapshot.proposal);
+                printJson(snapshot);
             else
                 console.log(renderProposalMarkdown(snapshot.proposal));
             return 0;
@@ -248,7 +248,7 @@ export async function runProposalCommand(argv) {
         }
         if (command === "accept" || command === "reject" || command === "supersede") {
             const decision = command === "accept" ? "accepted" : command === "reject" ? "rejected" : "superseded";
-            return runTransition(command, args, json, decision);
+            return await runTransition(command, args, json, decision);
         }
         throw new Error(`Unknown proposal subcommand: ${command}`);
     }

@@ -185,6 +185,15 @@ the verified current proposal revision and optionally accept `--expect-revision 
 a stale edit. The decision-history entry records the time, decision, actor, verified revision, and
 reason. A stale revision or invalid transition fails closed without changing the file.
 
+Lifecycle mutations are serialized across processes with the existing local mutation lock, keyed by
+the real repository, configured proposal directory, and slug. Concurrent commands re-read the
+proposal after acquiring the lock, so one operator decision cannot silently overwrite another.
+Supersede resolves the successor through the proposal lookup and stores its stable `Proposal-Id`,
+not the user-supplied slug; a proposal cannot supersede itself by either form. Decision reasons
+escape backslashes and pipe delimiters so free-text text round-trips without corrupting history.
+`show --json` includes the current revision for `--expect-revision`. Transition failures use the
+same human/JSON CLI error handler as the other proposal commands.
+
 Acceptance records an operator assertion. It does not authenticate the operator cryptographically,
 prove implementation, deploy anything, or make the proposal canonical.
 

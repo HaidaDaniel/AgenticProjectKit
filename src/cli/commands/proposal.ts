@@ -194,7 +194,7 @@ export async function runProposalCommand(argv: string[]): Promise<number> {
       if (terms.length !== 1) throw new Error("Usage: apk proposal show <slug|id> [--json]");
       const snapshot = await findProposal(rootDirectory, config.docsDirectory, terms[0]!);
       if (!snapshot) throw new Error(`Proposal not found: ${terms[0]}`);
-      if (json) printJson(snapshot.proposal);
+      if (json) printJson(snapshot);
       else console.log(renderProposalMarkdown(snapshot.proposal));
       return 0;
     }
@@ -258,7 +258,7 @@ export async function runProposalCommand(argv: string[]): Promise<number> {
 
     if (command === "accept" || command === "reject" || command === "supersede") {
       const decision: ProposalDecisionKind = command === "accept" ? "accepted" : command === "reject" ? "rejected" : "superseded";
-      return runTransition(command, args, json, decision);
+      return await runTransition(command, args, json, decision);
     }
 
     throw new Error(`Unknown proposal subcommand: ${command}`);

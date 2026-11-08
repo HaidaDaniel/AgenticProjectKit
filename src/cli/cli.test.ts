@@ -2060,7 +2060,9 @@ test("CLI proposals add list show validate and lifecycle transitions stay outsid
 
     const shown = await runCli(["proposal", "show", item.id, "--json"], directory);
     assert.equal(shown.exitCode, 0, shown.stderr);
-    assert.equal((JSON.parse(shown.stdout) as { id: string }).id, item.id);
+    const shownSnapshot = JSON.parse(shown.stdout) as { proposal: { id: string }; revision: string };
+    assert.equal(shownSnapshot.proposal.id, item.id);
+    assert.match(shownSnapshot.revision, /^[a-f0-9]{64}$/);
 
     const validated = await runCli(["proposal", "validate", "--json"], directory);
     assert.equal(validated.exitCode, 0, validated.stderr);
@@ -2068,6 +2070,9 @@ test("CLI proposals add list show validate and lifecycle transitions stay outsid
     const missingReason = await runCli(["proposal", "accept", item.slug, "--actor", "operator"], directory);
     assert.equal(missingReason.exitCode, 1);
     assert.match(missingReason.stderr, /--reason is required/);
+    const missingReasonJson = await runCli(["proposal", "accept", item.slug, "--actor", "operator", "--json"], directory);
+    assert.equal(missingReasonJson.exitCode, 1);
+    assert.match((JSON.parse(missingReasonJson.stderr) as { error: { message: string } }).error.message, /--reason is required/);
 
     const accepted = await runCli([
       "proposal", "accept", item.slug, "--actor", "operator", "--reason", "Accept for planning.", "--json",
@@ -2127,6 +2132,24 @@ test("CLI proposal link requires a verifiable canonical or backlog reference", a
     const backlog = await runCli(["proposal", "link", item.slug, "--backlog", "card", "--json"], directory);
     assert.equal(backlog.exitCode, 0, backlog.stderr);
     assert.equal((JSON.parse(backlog.stdout) as { proposal: { backlog: string } }).proposal.backlog, "card");
+  });
+});
+
+test("CLI concurrent proposal decisions serialize and only one succeeds", async () => {
+  await withTempDirectory(async (directory) => {
+    const added = await runCli(["proposal", "add", "--title", "Concurrent CLI proposal", "--summary", "Race.", "--json"], directory);
+    assert.equal(added.exitCode, 0, added.stderr);
+    const item = JSON.parse(added.stdout) as { slug: string };
+    const [accepted, rejected] = await Promise.all([
+      runCli(["proposal", "accept", item.slug, "--actor", "operator-a", "--reason", "Accept."], directory),
+      runCli(["proposal", "reject", item.slug, "--actor", "operator-b", "--reason", "Reject."], directory),
+    ]);
+    assert.equal([accepted.exitCode, rejected.exitCode].filter((code) => code === 0).length, 1);
+    const shown = JSON.parse((await runCli(["proposal", "show", item.slug, "--json"], directory)).stdout) as {
+      proposal: { status: string; decisions: unknown[] };
+    };
+    assert.ok(shown.proposal.status === "accepted" || shown.proposal.status === "rejected");
+    assert.equal(shown.proposal.decisions.length, 1);
   });
 });
 

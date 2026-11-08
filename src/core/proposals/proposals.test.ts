@@ -492,3 +492,112 @@ test("proposal storage works in Go Python and Node downstream-shaped repositorie
     });
   }
 });
+
+test("concurrent proposal decisions serialize and never lose the winning decision", async () => {
+  await withTempDirectory(async (directory) => {
+    const item = await createProposal(directory, "docs", { title: "Concurrent decision", summary: "Race." });
+    const results = await Promise.allSettled([
+      transitionProposal({
+        rootDirectory: directory,
+        docsDirectory: "docs",
+        idOrSlug: item.slug,
+        decision: "accepted",
+        actor: "operator-a",
+        reason: "Accept.",
+      }),
+      transitionProposal({
+        rootDirectory: directory,
+        docsDirectory: "docs",
+        idOrSlug: item.slug,
+        decision: "rejected",
+        actor: "operator-b",
+        reason: "Reject.",
+      }),
+    ]);
+    assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+    const read = await readProposalItem(directory, "docs", item.slug);
+    assert.ok(read.status === "accepted" || read.status === "rejected");
+    assert.equal(read.decisions.length, 1);
+  });
+});
+
+test("supersede rejects self-reference and stores the canonical successor id", async () => {
+  await withTempDirectory(async (directory) => {
+    const first = await createProposal(directory, "docs", { title: "First successor", summary: "First." });
+    const second = await createProposal(directory, "docs", { title: "Second successor", summary: "Second." });
+    await assert.rejects(
+      () => transitionProposal({
+        rootDirectory: directory,
+        docsDirectory: "docs",
+        idOrSlug: first.slug,
+        decision: "superseded",
+        actor: "operator",
+        reason: "Self.",
+        successor: first.slug,
+      }),
+      /cannot supersede itself/,
+    );
+
+    const superseded = await transitionProposal({
+      rootDirectory: directory,
+      docsDirectory: "docs",
+      idOrSlug: first.slug,
+      decision: "superseded",
+      actor: "operator",
+      reason: "Replaced.",
+      successor: second.slug,
+    });
+    assert.equal(superseded.proposal.supersededBy, second.id);
+    assert.equal(superseded.proposal.decisions[0]?.successor, second.id);
+  });
+});
+
+test("decision reasons containing delimiters survive link re-rendering", async () => {
+  await withTempDirectory(async (directory) => {
+    const item = await createProposal(directory, "docs", { title: "Delimited reason", summary: "Reason." });
+    const reason = "Accept | because C:\\tools\\path | tail";
+    const accepted = await transitionProposal({
+      rootDirectory: directory,
+      docsDirectory: "docs",
+      idOrSlug: item.slug,
+      decision: "accepted",
+      actor: "operator",
+      reason,
+    });
+    assert.equal(accepted.proposal.decisions[0]?.reason, reason);
+    await writeFile(join(directory, "docs", "architecture.md"), `Proposal-Id: ${item.id}\n`, "utf8");
+    const linked = await linkProposal({
+      rootDirectory: directory,
+      docsDirectory: "docs",
+      taskDirectory: ".tasks",
+      idOrSlug: item.id,
+      canonical: "docs/architecture.md",
+    });
+    assert.equal(linked.proposal.decisions[0]?.reason, reason);
+    assert.equal(linked.proposal.decisions[0]?.decision, "accepted");
+  });
+});
+
+test("validation reports dangling supersede references and contradictory status", async () => {
+  await withTempDirectory(async (directory) => {
+    const first = await createProposal(directory, "docs", { title: "Dangling first", summary: "First." });
+    const second = await createProposal(directory, "docs", { title: "Dangling second", summary: "Second." });
+    await transitionProposal({
+      rootDirectory: directory,
+      docsDirectory: "docs",
+      idOrSlug: first.slug,
+      decision: "superseded",
+      actor: "operator",
+      reason: "Replaced.",
+      successor: second.id,
+    });
+    await rm(join(directory, proposalRelativePath("docs", second.slug)));
+    const validated = await validateProposals(directory, "docs");
+    assert.ok(validated.diagnostics.some((diagnostic) => /Superseded-By .* does not match/.test(diagnostic)));
+
+    const firstPath = join(directory, proposalRelativePath("docs", first.slug));
+    const content = await readFile(firstPath, "utf8");
+    await writeFile(firstPath, content.replace("Status: superseded", "Status: accepted"), "utf8");
+    await assert.rejects(() => readProposalItem(directory, "docs", first.slug), /last decision .* must match Status/);
+  });
+});

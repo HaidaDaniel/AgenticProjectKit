@@ -110,10 +110,11 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0099](#adr-0099---apk-runtime-state-mutations-use-the-same-repository-containment-boundary) | accepted | APK runtime state mutations use the same repository containment boundary | — |
 | [ADR-0100](#adr-0100---document-proposals-are-bounded-non-authoritative-markdown) | accepted | Document proposals are bounded non-authoritative Markdown | — |
 | [ADR-0101](#adr-0101---proposal-only-commits-use-an-isolated-index-and-explicit-handoff) | accepted | Proposal-only commits use an isolated index and explicit handoff | — |
+| [ADR-0102](#adr-0102---proposal-lifecycle-transitions-are-serialized-and-decision-text-is-escaped) | accepted | Proposal lifecycle transitions are serialized and decision text is escaped | — |
 
 ### ADR index cross-check
 
-- [x] Each of the 91 index rows matches one retained ADR heading and its title.
+- [x] Each of the 92 index rows matches one retained ADR heading and its title.
 - [x] Each status matches that record's explicit `Status` field.
 - [x] The only supersession link is ADR-0006 -> ADR-0062, recorded by ADR-0006's status and ADR-0062's heading and decision text.
 
@@ -2081,3 +2082,24 @@ The command never pushes, force-pushes, rewrites history, automatically merges, 
 ### Consequences
 
 Proposal documentation can be committed safely without absorbing unrelated work, and parallel development should use a separate Git worktree. The command does not run commit hooks or signing, because it uses Git plumbing; repositories requiring hooks or signed commits must handle that through their own policy. Protected `main` still requires a separate branch and PR. A remote update after the local commit is not fetched or merged automatically.
+
+
+## ADR-0102 - Proposal lifecycle transitions are serialized and decision text is escaped
+
+Status: accepted
+
+Date: 2026-11-08
+
+### Context
+
+Proposal accept, reject, supersede, and link each read a revision, validate it, then replace the file. Two concurrent processes could both pass the revision check and both report success while the later write silently discarded the other operator decision. Supersede also compared the raw `--by` input with the proposal ID, so a slug could pass the self-reference guard and be stored instead of the stable successor ID. Decision history used a ` | ` field separator, so a free-text reason containing that sequence could corrupt the record. The CLI also returned the transition promise without awaiting it, bypassing the normal JSON/human error handler.
+
+### Decision
+
+Proposal lifecycle mutations acquire the existing local mutation lock through a lazy import. The lock path is deterministic in the OS temporary directory and keyed by the real repository root, configured proposal directory, and proposal slug; the mutation re-reads the proposal by stable ID after acquiring the lock and rechecks the expected revision. The lock is not repository content and adds no tracked state.
+
+Supersede resolves `--by` through the proposal lookup, rejects the current proposal's stable ID, and stores the successor's stable `Proposal-Id` in both `Superseded-By` and the decision entry. Decision-history free text escapes backslashes and pipe characters before rendering and reverses that escaping when parsing. Validation also reports dangling supersede references and contradictory status/decision history.
+
+### Consequences
+
+Two lifecycle commands cannot both report success while one decision disappears; the second sees the new status or revision and fails closed. Successor links remain stable across filename renames. Free-text reasons round-trip without corrupting decision metadata. The lock is host-local; a cross-host filesystem writer remains outside the guarantee, consistent with the existing local lock ownership model.

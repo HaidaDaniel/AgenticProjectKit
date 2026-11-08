@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, open, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { repositoryRelativePathIssue, resolveContainedRepositoryPath } from "../config/paths.js";
 export const PROPOSAL_SCHEMA_VERSION = 1;
@@ -118,6 +119,12 @@ function splitMetadataList(value, label, issues) {
     }
     return items;
 }
+function escapeDecisionField(text) {
+    return text.replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
+}
+function unescapeDecisionField(text) {
+    return text.replace(/\\([\\|])/g, "$1");
+}
 function parseDecisionLine(line, index, issues) {
     const prefix = `Decision history line ${index}`;
     if (!line.startsWith("- ")) {
@@ -125,11 +132,12 @@ function parseDecisionLine(line, index, issues) {
         return undefined;
     }
     const parts = line.slice(2).split(" | ");
-    if (parts.length < 5) {
-        issues.push(`${prefix} must use "- <time> | <decision> | <actor> | <revision> | <reason>" syntax.`);
+    if (parts.length < 5 || parts.length > 6) {
+        issues.push(`${prefix} must use "- <time> | <decision> | <actor> | <revision> | <reason>[ | <successor-id>]" syntax.`);
         return undefined;
     }
-    const [time, decision, actor, revision, reason, successor] = parts;
+    const [time, decision, actor, revision, escapedReason, successor] = parts;
+    const reason = unescapeDecisionField(escapedReason ?? "");
     if (Number.isNaN(Date.parse(time)))
         issues.push(`${prefix} time must be an ISO timestamp.`);
     if (!PROPOSAL_DECISIONS.includes(decision)) {
@@ -278,6 +286,24 @@ export function parseProposalMarkdown(markdown, slug, path = proposalRelativePat
         if (decision)
             decisions.push(decision);
     }
+    if (status === "proposed" && decisions.length > 0) {
+        issues.push("A proposed proposal must not have decision-history entries.");
+    }
+    if (status !== "proposed" && status !== "superseded" && status !== "accepted" && status !== "rejected") {
+        // Status validation already reported the unsupported value.
+    }
+    else if (status !== "proposed") {
+        const last = decisions[decisions.length - 1];
+        if (!last) {
+            issues.push(`A ${status} proposal requires a decision-history entry.`);
+        }
+        else if (last.decision !== status) {
+            issues.push(`The last decision (${last.decision}) must match Status: ${status}.`);
+        }
+        if (status === "superseded" && last?.successor !== undefined && supersededBy !== undefined && last.successor !== supersededBy) {
+            issues.push("The last superseded decision successor must match Superseded-By.");
+        }
+    }
     if (issues.length > 0)
         throw new ProposalFormatError(issues);
     return {
@@ -305,7 +331,7 @@ export function parseProposalMarkdown(markdown, slug, path = proposalRelativePat
     };
 }
 function decisionLine(decision) {
-    return `- ${decision.time} | ${decision.decision} | ${decision.actor} | ${decision.revision} | ${decision.reason}`
+    return `- ${decision.time} | ${decision.decision} | ${decision.actor} | ${decision.revision} | ${escapeDecisionField(decision.reason)}`
         + (decision.successor ? ` | ${decision.successor}` : "");
 }
 export function renderProposalMarkdown(item) {
@@ -536,6 +562,17 @@ export async function validateProposals(rootDirectory, docsDirectory) {
         if (paths.length > 1)
             diagnostics.push(`Proposal-Id ${id} is duplicated: ${paths.join(", ")}`);
     }
+    const known = new Set(listed.items.map((item) => item.id));
+    for (const item of listed.items) {
+        if (item.supersededBy !== undefined && !known.has(item.supersededBy)) {
+            diagnostics.push(`${item.path}: Superseded-By ${item.supersededBy} does not match an existing proposal.`);
+        }
+        for (const decision of item.decisions) {
+            if (decision.successor !== undefined && !known.has(decision.successor)) {
+                diagnostics.push(`${item.path}: decision successor ${decision.successor} does not match an existing proposal.`);
+            }
+        }
+    }
     return { items: listed.items, diagnostics };
 }
 export async function findProposal(rootDirectory, docsDirectory, idOrSlug) {
@@ -597,6 +634,21 @@ function assertTransitionAllowed(item, decision, successor) {
         throw new ProposalFormatError(["A proposal cannot supersede itself."]);
     }
 }
+async function withProposalMutationLock(rootDirectory, docsDirectory, slug, command, run) {
+    const rootReal = await realpath(rootDirectory);
+    const lockDirectory = join(tmpdir(), "apk-proposal-locks");
+    await mkdir(lockDirectory, { recursive: true });
+    const key = createHash("sha256")
+        .update(`${rootReal}\0${proposalDirectoryRelative(docsDirectory)}\0${slug}`, "utf8")
+        .digest("hex");
+    const { withLocalMutationLock } = await import("../tasks/lock.js");
+    return withLocalMutationLock({
+        path: join(lockDirectory, `${key}.lock`),
+        kind: "proposal-mutation",
+        command,
+        timeoutMs: 10_000,
+    }, run);
+}
 export async function transitionProposal(input) {
     const actor = input.actor.trim();
     if (!ACTOR_PATTERN.test(actor)) {
@@ -608,70 +660,85 @@ export async function transitionProposal(input) {
             `Reason must contain 1-${PROPOSAL_LIMITS.decisionReasonCharacters} characters.`,
         ]);
     }
-    const current = await findProposal(input.rootDirectory, input.docsDirectory, input.idOrSlug);
-    if (!current) {
+    const initial = await findProposal(input.rootDirectory, input.docsDirectory, input.idOrSlug);
+    if (!initial) {
         throw new ProposalFormatError([`Proposal not found: ${input.idOrSlug}`]);
     }
-    if (input.expectedRevision !== undefined && input.expectedRevision !== current.revision) {
-        throw new ProposalFormatError([
-            `Proposal revision changed: expected ${input.expectedRevision}, found ${current.revision}. Re-read the proposal and retry.`,
-        ]);
-    }
-    assertTransitionAllowed(current.proposal, input.decision, input.successor);
-    if (input.decision === "superseded" && input.successor) {
-        const successor = await findProposal(input.rootDirectory, input.docsDirectory, input.successor);
-        if (!successor) {
-            throw new ProposalFormatError([`Successor proposal not found: ${input.successor}`]);
+    return withProposalMutationLock(input.rootDirectory, input.docsDirectory, initial.proposal.slug, `proposal ${input.decision}`, async () => {
+        const current = await findProposal(input.rootDirectory, input.docsDirectory, initial.proposal.id);
+        if (!current) {
+            throw new ProposalFormatError([`Proposal not found: ${input.idOrSlug}`]);
         }
-    }
-    const now = new Date().toISOString();
-    const next = {
-        ...current.proposal,
-        status: input.decision === "accepted" ? "accepted" : input.decision === "rejected" ? "rejected" : "superseded",
-        updated: now,
-        ...(input.decision === "superseded" ? { supersededBy: input.successor } : {}),
-        decisions: [
-            ...current.proposal.decisions,
-            {
-                time: now,
-                decision: input.decision,
-                actor,
-                revision: current.revision,
-                reason,
-                ...(input.successor !== undefined ? { successor: input.successor } : {}),
-            },
-        ],
-    };
-    const markdown = renderProposalMarkdown(next);
-    parseProposalMarkdown(markdown, next.slug, next.path);
-    await assertProposalStorageSafe(input.rootDirectory, input.docsDirectory);
-    const path = join(input.rootDirectory, proposalDirectoryRelative(input.docsDirectory), `${next.slug}.md`);
-    const displayPath = proposalRelativePath(input.docsDirectory, next.slug);
-    const fresh = await readBoundedProposal(path, displayPath);
-    if (proposalRevision(fresh) !== current.revision) {
-        throw new ProposalFormatError([
-            `Proposal ${next.slug} changed while the decision was being prepared; re-read it and retry.`,
-        ]);
-    }
-    const temporary = join(input.rootDirectory, proposalDirectoryRelative(input.docsDirectory), `.${next.slug}.${randomUUID()}.tmp`);
-    try {
-        await writeFile(temporary, markdown, { encoding: "utf8", flag: "wx" });
-        await rename(temporary, path);
-    }
-    catch (error) {
-        await rm(temporary, { force: true }).catch(() => undefined);
-        throw error;
-    }
-    return {
-        proposal: parseProposalMarkdown(markdown, next.slug, next.path),
-        content: markdown,
-        revision: proposalRevision(markdown),
-    };
+        if (input.expectedRevision !== undefined && input.expectedRevision !== current.revision) {
+            throw new ProposalFormatError([
+                `Proposal revision changed: expected ${input.expectedRevision}, found ${current.revision}. Re-read the proposal and retry.`,
+            ]);
+        }
+        let successorId;
+        if (input.decision === "superseded") {
+            if (!input.successor) {
+                throw new ProposalFormatError(["Supersede requires --by with a successor proposal id."]);
+            }
+            const successor = await findProposal(input.rootDirectory, input.docsDirectory, input.successor);
+            if (!successor) {
+                throw new ProposalFormatError([`Successor proposal not found: ${input.successor}`]);
+            }
+            successorId = successor.proposal.id;
+        }
+        assertTransitionAllowed(current.proposal, input.decision, successorId);
+        const now = new Date().toISOString();
+        const next = {
+            ...current.proposal,
+            status: input.decision === "accepted" ? "accepted" : input.decision === "rejected" ? "rejected" : "superseded",
+            updated: now,
+            ...(input.decision === "superseded" ? { supersededBy: successorId } : {}),
+            decisions: [
+                ...current.proposal.decisions,
+                {
+                    time: now,
+                    decision: input.decision,
+                    actor,
+                    revision: current.revision,
+                    reason,
+                    ...(successorId !== undefined ? { successor: successorId } : {}),
+                },
+            ],
+        };
+        const markdown = renderProposalMarkdown(next);
+        parseProposalMarkdown(markdown, next.slug, next.path);
+        await assertProposalStorageSafe(input.rootDirectory, input.docsDirectory);
+        const path = join(input.rootDirectory, proposalDirectoryRelative(input.docsDirectory), `${next.slug}.md`);
+        const displayPath = proposalRelativePath(input.docsDirectory, next.slug);
+        const fresh = await readBoundedProposal(path, displayPath);
+        if (proposalRevision(fresh) !== current.revision) {
+            throw new ProposalFormatError([
+                `Proposal ${next.slug} changed while the decision was being prepared; re-read it and retry.`,
+            ]);
+        }
+        const temporary = join(input.rootDirectory, proposalDirectoryRelative(input.docsDirectory), `.${next.slug}.${randomUUID()}.tmp`);
+        try {
+            await writeFile(temporary, markdown, { encoding: "utf8", flag: "wx" });
+            await rename(temporary, path);
+        }
+        catch (error) {
+            await rm(temporary, { force: true }).catch(() => undefined);
+            throw error;
+        }
+        return {
+            proposal: parseProposalMarkdown(markdown, next.slug, next.path),
+            content: markdown,
+            revision: proposalRevision(markdown),
+        };
+    });
 }
 const REFERENCE_FILE_LIMIT = 1024 * 1024;
 async function readReferenceFile(rootDirectory, relativePath) {
     await resolveContainedRepositoryPath(rootDirectory, relativePath, "file");
     const absolute = join(rootDirectory, relativePath);
+    const info = await lstat(absolute);
+    if (info.size > REFERENCE_FILE_LIMIT) {
+        throw new ProposalFormatError([`Reference file exceeds the ${REFERENCE_FILE_LIMIT} byte limit: ${relativePath}`]);
+    }
     const buffer = await readFile(absolute);
     if (buffer.byteLength > REFERENCE_FILE_LIMIT) {
         throw new ProposalFormatError([`Reference file exceeds the ${REFERENCE_FILE_LIMIT} byte limit: ${relativePath}`]);
@@ -705,61 +772,66 @@ export async function linkProposal(input) {
     const taskIssue = repositoryRelativePathIssue(input.taskDirectory, "directory");
     if (taskIssue)
         throw new ProposalFormatError([`taskDirectory: ${taskIssue}.`]);
-    const current = await findProposal(input.rootDirectory, input.docsDirectory, input.idOrSlug);
-    if (!current)
+    const initial = await findProposal(input.rootDirectory, input.docsDirectory, input.idOrSlug);
+    if (!initial)
         throw new ProposalFormatError([`Proposal not found: ${input.idOrSlug}`]);
-    if (input.expectedRevision !== undefined && input.expectedRevision !== current.revision) {
-        throw new ProposalFormatError([
-            `Proposal revision changed: expected ${input.expectedRevision}, found ${current.revision}. Re-read the proposal and retry.`,
-        ]);
-    }
-    if (canonical !== undefined) {
-        const content = await readReferenceFile(input.rootDirectory, canonical);
-        if (!containsProposalReference(content, current.proposal, input.docsDirectory)) {
+    return withProposalMutationLock(input.rootDirectory, input.docsDirectory, initial.proposal.slug, "proposal link", async () => {
+        const current = await findProposal(input.rootDirectory, input.docsDirectory, initial.proposal.id);
+        if (!current)
+            throw new ProposalFormatError([`Proposal not found: ${input.idOrSlug}`]);
+        if (input.expectedRevision !== undefined && input.expectedRevision !== current.revision) {
             throw new ProposalFormatError([
-                `Canonical destination ${canonical} does not contain a verifiable reference to proposal ${current.proposal.id} or proposals/${current.proposal.slug}.md.`,
+                `Proposal revision changed: expected ${input.expectedRevision}, found ${current.revision}. Re-read the proposal and retry.`,
             ]);
         }
-    }
-    if (backlog !== undefined) {
-        const normalizedTaskDirectory = input.taskDirectory.replaceAll("\\", "/").replace(/\/+$/, "");
-        const backlogPath = `${normalizedTaskDirectory}/backlog/${backlog}.md`;
-        const content = await readReferenceFile(input.rootDirectory, backlogPath);
-        if (!containsProposalReference(content, current.proposal, input.docsDirectory)) {
+        if (canonical !== undefined) {
+            const content = await readReferenceFile(input.rootDirectory, canonical);
+            if (!containsProposalReference(content, current.proposal, input.docsDirectory)) {
+                throw new ProposalFormatError([
+                    `Canonical destination ${canonical} does not contain a verifiable reference to proposal ${current.proposal.id} or proposals/${current.proposal.slug}.md.`,
+                ]);
+            }
+        }
+        if (backlog !== undefined) {
+            const normalizedTaskDirectory = input.taskDirectory.replaceAll("\\", "/").replace(/\/+$/, "");
+            const backlogPath = `${normalizedTaskDirectory}/backlog/${backlog}.md`;
+            const content = await readReferenceFile(input.rootDirectory, backlogPath);
+            if (!containsProposalReference(content, current.proposal, input.docsDirectory)) {
+                throw new ProposalFormatError([
+                    `Backlog card ${backlogPath} does not contain a verifiable reference to proposal ${current.proposal.id} or proposals/${current.proposal.slug}.md.`,
+                ]);
+            }
+        }
+        const next = {
+            ...current.proposal,
+            updated: new Date().toISOString(),
+            ...(canonical !== undefined ? { canonical } : {}),
+            ...(backlog !== undefined ? { backlog } : {}),
+        };
+        const markdown = renderProposalMarkdown(next);
+        parseProposalMarkdown(markdown, next.slug, next.path);
+        await assertProposalStorageSafe(input.rootDirectory, input.docsDirectory);
+        const path = join(input.rootDirectory, proposalDirectoryRelative(input.docsDirectory), `${next.slug}.md`);
+        const displayPath = proposalRelativePath(input.docsDirectory, next.slug);
+        const fresh = await readBoundedProposal(path, displayPath);
+        if (proposalRevision(fresh) !== current.revision) {
             throw new ProposalFormatError([
-                `Backlog card ${backlogPath} does not contain a verifiable reference to proposal ${current.proposal.id} or proposals/${current.proposal.slug}.md.`,
+                `Proposal ${next.slug} changed while the link was being prepared; re-read it and retry.`,
             ]);
         }
-    }
-    const next = {
-        ...current.proposal,
-        updated: new Date().toISOString(),
-        ...(canonical !== undefined ? { canonical } : {}),
-        ...(backlog !== undefined ? { backlog } : {}),
-    };
-    const markdown = renderProposalMarkdown(next);
-    parseProposalMarkdown(markdown, next.slug, next.path);
-    await assertProposalStorageSafe(input.rootDirectory, input.docsDirectory);
-    const path = join(input.rootDirectory, proposalDirectoryRelative(input.docsDirectory), `${next.slug}.md`);
-    const displayPath = proposalRelativePath(input.docsDirectory, next.slug);
-    const fresh = await readBoundedProposal(path, displayPath);
-    if (proposalRevision(fresh) !== current.revision) {
-        throw new ProposalFormatError([
-            `Proposal ${next.slug} changed while the link was being prepared; re-read it and retry.`,
-        ]);
-    }
-    const temporary = join(input.rootDirectory, proposalDirectoryRelative(input.docsDirectory), `.${next.slug}.${randomUUID()}.tmp`);
-    try {
-        await writeFile(temporary, markdown, { encoding: "utf8", flag: "wx" });
-        await rename(temporary, path);
-    }
-    catch (error) {
-        await rm(temporary, { force: true }).catch(() => undefined);
-        throw error;
-    }
-    return {
-        proposal: parseProposalMarkdown(markdown, next.slug, next.path),
-        content: markdown,
-        revision: proposalRevision(markdown),
-    };
+        const temporary = join(input.rootDirectory, proposalDirectoryRelative(input.docsDirectory), `.${next.slug}.${randomUUID()}.tmp`);
+        try {
+            await writeFile(temporary, markdown, { encoding: "utf8", flag: "wx" });
+            await rename(temporary, path);
+        }
+        catch (error) {
+            await rm(temporary, { force: true }).catch(() => undefined);
+            throw error;
+        }
+        return {
+            proposal: parseProposalMarkdown(markdown, next.slug, next.path),
+            content: markdown,
+            revision: proposalRevision(markdown),
+        };
+    });
 }

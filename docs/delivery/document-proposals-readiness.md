@@ -15,6 +15,8 @@ This candidate includes:
   Files omitted `src/core/work/session.ts`);
 - document-proposal storage, schema, identity, validation, CLI lifecycle, validated canonical
   and backlog linkage, and an explicit proposal-only local Git commit workflow (Tasks 0269-0273);
+- proposal lifecycle serialization, canonical successor identity, safe decision-text encoding, and
+  CLI error-handling correction found by the final milestone review (Task 0276);
 - planning-agent guidance distinguishing proposals, backlog items, executable tasks, ADRs, and
   canonical documentation;
 - this integrated regression, performance, and release-readiness task (0274).
@@ -32,7 +34,9 @@ explicit operator decisions; this candidate does not self-accept them.
   differentiated sections for context, observations, hypotheses, proposed direction, evidence,
   open questions, related work, and decision history.
 - Lifecycle: `proposed -> accepted|rejected|superseded`, explicit actor and reason, revision-bound
-  decision history, stale-revision refusal, and no automatic task creation or canonical promotion.
+  decision history, stale-revision refusal, host-local cross-process serialization, canonical
+  successor IDs, escaped free-text decision reasons, and no automatic task creation or canonical
+  promotion.
 - Git: `apk proposal commit` uses an isolated index, a pinned-parent diff-tree allowlist,
   `commit-tree`, CAS `update-ref`, and a path-scoped real-index synchronization. It never pushes,
   force-pushes, merges, or rewrites history.
@@ -111,12 +115,14 @@ The authoritative candidate command is:
 NODE_OPTIONS=--max-old-space-size=4096 pnpm release:check
 ```
 
-The host has about 7.8 GiB RAM; the first run without the heap override completed all 862 source
-tests but the coverage child process reached the default ~2 GiB heap limit and aborted. With the
-override the full composition passed: static quality, 862/862 source tests, 30/30 documentation
-tests, coverage gates (92.15% statements, 82.39% branches, 98.34% functions, 92.15% lines),
-`pnpm build`, `apk lint --json`, `apk sync` (3 current, 0 stale), and `apk audit` (one advisory
-warning, no errors). `git diff --check` remains clean.
+The host has about 7.8 GiB RAM; a run without the heap override completed all source tests but the
+coverage child process reached the default ~2 GiB heap limit and aborted. With the override the
+full composition passed: static quality, 867/867 source tests, 30/30 documentation tests, coverage
+gates (92.17% statements, 82.40% branches, 98.34% functions, 92.17% lines), `pnpm build`,
+`apk lint --json`, `apk sync` (3 current, 0 stale), and `apk audit` (one advisory warning, no
+errors). `git diff --check` remains clean. One earlier full run hit a pre-existing diagnostic
+snapshot timing assertion; two isolated reruns and the subsequent full run passed without a code
+change to that path.
 
 Additional candidate checks:
 
