@@ -201,6 +201,19 @@ test("renders deterministic Markdown and safe Unicode slugs", () => {
   assert.throws(() => normalizeProposalSlug("0001-task-like"), /lowercase hyphenated/);
 });
 
+test("proposal lookup fails closed when a slug collides with another stable id", async () => {
+  await withTempDirectory(async (directory) => {
+    const first = await createProposal(directory, "docs", { title: "First collision", summary: "First." });
+    const second = await createProposal(directory, "docs", { title: "Second collision", summary: "Second." });
+    const firstPath = join(directory, proposalRelativePath("docs", first.slug));
+    const firstContent = await readFile(firstPath, "utf8");
+    await writeFile(firstPath, firstContent.replace(/^Proposal-Id: .*$/m, "Proposal-Id: abc-123"), "utf8");
+    await rm(join(directory, proposalRelativePath("docs", second.slug)));
+    await writeFile(join(directory, "docs", "proposals", "abc-123.md"), firstContent.replace(/^Proposal-Id: .*$/m, `Proposal-Id: ${second.id}`), "utf8");
+    await assert.rejects(() => findProposal(directory, "docs", "abc-123"), /ambiguous/);
+  });
+});
+
 test("proposal commit publishes exactly one validated proposal and never pushes", async () => {
   await withTempDirectory(async (directory) => {
     await initRepository(directory);

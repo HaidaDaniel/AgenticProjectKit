@@ -648,22 +648,31 @@ export async function findProposal(
   const slugLike = SLUG_PATTERN.test(value)
     && !/^\d+$/.test(value)
     && !/^\d{4,}(?:-|$)/.test(value);
+  let bySlug: ProposalSnapshot | undefined;
   if (slugLike) {
     try {
-      return await readProposalSnapshot(rootDirectory, docsDirectory, value);
+      bySlug = await readProposalSnapshot(rootDirectory, docsDirectory, value);
     } catch (error: unknown) {
       if (!isMissingFileError(error)) throw error;
     }
   }
-  const listed = await listProposals(rootDirectory, docsDirectory);
-  const matches = listed.items.filter((item) => item.id === value);
-  if (matches.length > 1) {
-    throw new ProposalFormatError([`Proposal-Id ${value} is ambiguous: ${matches.map((item) => item.path).join(", ")}`]);
-  }
-  if (matches.length === 0) return undefined;
-  return readProposalSnapshot(rootDirectory, docsDirectory, matches[0]!.slug);
-}
 
+  const listed = await listProposals(rootDirectory, docsDirectory);
+  const idMatches = listed.items.filter((item) => item.id === value);
+  if (idMatches.length > 1) {
+    throw new ProposalFormatError([`Proposal-Id ${value} is ambiguous: ${idMatches.map((item) => item.path).join(", ")}`]);
+  }
+  const byId = idMatches[0];
+  if (bySlug && byId && bySlug.proposal.slug !== byId.slug) {
+    throw new ProposalFormatError([
+      `Proposal identifier ${value} is ambiguous: it names slug ${bySlug.proposal.slug} and Proposal-Id ${byId.path}. `
+      + "Use the full stable id or rename one proposal.",
+    ]);
+  }
+  if (bySlug) return bySlug;
+  if (!byId) return undefined;
+  return readProposalSnapshot(rootDirectory, docsDirectory, byId.slug);
+}
 
 export interface ProposalTransitionInput {
   rootDirectory: string;

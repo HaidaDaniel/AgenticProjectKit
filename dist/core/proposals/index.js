@@ -545,9 +545,10 @@ export async function findProposal(rootDirectory, docsDirectory, idOrSlug) {
     const slugLike = SLUG_PATTERN.test(value)
         && !/^\d+$/.test(value)
         && !/^\d{4,}(?:-|$)/.test(value);
+    let bySlug;
     if (slugLike) {
         try {
-            return await readProposalSnapshot(rootDirectory, docsDirectory, value);
+            bySlug = await readProposalSnapshot(rootDirectory, docsDirectory, value);
         }
         catch (error) {
             if (!isMissingFileError(error))
@@ -555,13 +556,22 @@ export async function findProposal(rootDirectory, docsDirectory, idOrSlug) {
         }
     }
     const listed = await listProposals(rootDirectory, docsDirectory);
-    const matches = listed.items.filter((item) => item.id === value);
-    if (matches.length > 1) {
-        throw new ProposalFormatError([`Proposal-Id ${value} is ambiguous: ${matches.map((item) => item.path).join(", ")}`]);
+    const idMatches = listed.items.filter((item) => item.id === value);
+    if (idMatches.length > 1) {
+        throw new ProposalFormatError([`Proposal-Id ${value} is ambiguous: ${idMatches.map((item) => item.path).join(", ")}`]);
     }
-    if (matches.length === 0)
+    const byId = idMatches[0];
+    if (bySlug && byId && bySlug.proposal.slug !== byId.slug) {
+        throw new ProposalFormatError([
+            `Proposal identifier ${value} is ambiguous: it names slug ${bySlug.proposal.slug} and Proposal-Id ${byId.path}. `
+                + "Use the full stable id or rename one proposal.",
+        ]);
+    }
+    if (bySlug)
+        return bySlug;
+    if (!byId)
         return undefined;
-    return readProposalSnapshot(rootDirectory, docsDirectory, matches[0].slug);
+    return readProposalSnapshot(rootDirectory, docsDirectory, byId.slug);
 }
 function assertTransitionAllowed(item, decision, successor) {
     if (decision === "accepted" || decision === "rejected") {
