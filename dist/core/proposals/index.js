@@ -542,7 +542,10 @@ export async function findProposal(rootDirectory, docsDirectory, idOrSlug) {
     const value = idOrSlug.trim();
     if (value.length === 0)
         return undefined;
-    if (SLUG_PATTERN.test(value) && !/^\d+$/.test(value)) {
+    const slugLike = SLUG_PATTERN.test(value)
+        && !/^\d+$/.test(value)
+        && !/^\d{4,}(?:-|$)/.test(value);
+    if (slugLike) {
         try {
             return await readProposalSnapshot(rootDirectory, docsDirectory, value);
         }
