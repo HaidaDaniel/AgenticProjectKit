@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 
 import { readAgenticConfigFile } from "../../core/config/index.js";
+import { resolveContainedRepositoryPath } from "../../core/config/paths.js";
 import {
   getTaskTemplate,
   resolveTaskTemplateType,
@@ -712,6 +713,9 @@ async function runLockSubcommand(argv: string[]): Promise<number> {
   const kinds: LockKind[] = selectedKind ? [selectedKind] : ["task", "evidence"];
   if (action === "recover" && !selectedKind) {
     throw new Error("--kind is required for lock recover.");
+  }
+  if (kinds.includes("task")) {
+    await resolveContainedRepositoryPath(rootDirectory, config.taskDirectory, "directory");
   }
   const pathFor = (kind: LockKind): string => kind === "task"
     ? join(rootDirectory, config.taskDirectory, ".apk.lock")

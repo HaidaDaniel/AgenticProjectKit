@@ -1996,6 +1996,28 @@ test("CLI lock diagnostics preserve live owners and explicitly recover malformed
   });
 });
 
+test("CLI lock recovery refuses symlinked task storage without deleting outside the repository", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-cli-lock-outside-"));
+    try {
+      const outsideLock = join(outside, ".apk.lock");
+      await writeFile(outsideLock, "broken", "utf8");
+      await symlink(outside, join(directory, ".tasks"));
+
+      const status = await runCli(["task", "lock", "status", "--kind", "task"], directory);
+      assert.equal(status.exitCode, 1);
+      assert.match(status.stderr, /symbolic link/i);
+
+      const recovered = await runCli(["task", "lock", "recover", "--kind", "task", "--force"], directory);
+      assert.equal(recovered.exitCode, 1);
+      assert.match(recovered.stderr, /symbolic link/i);
+      assert.equal(await readFile(outsideLock, "utf8"), "broken");
+    } finally {
+      await rm(outside, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
+    }
+  });
+});
+
 test("CLI doctor fails on broken task files", async () => {
   await withTempDirectory(async (directory) => {
     await mkdir(join(directory, ".tasks"), { recursive: true });
