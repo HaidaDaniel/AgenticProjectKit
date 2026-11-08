@@ -1715,6 +1715,80 @@ test("evidence append rejects malformed lock metadata without deleting it", asyn
   });
 });
 
+test("dogfood session writes refuse symlinked final session files", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-dogfood-final-outside-"));
+    try {
+      const git = async (...args: string[]) => {
+        await execFileAsync("git", args, { cwd: directory });
+      };
+      await git("init", "--quiet");
+      await git("config", "user.email", "codex@example.test");
+      await git("config", "user.name", "Codex");
+      await mkdir(join(directory, ".tasks"), { recursive: true });
+      const taskPath = join(directory, ".tasks", "0007-dogfood-final-task.md");
+      await writeTaskFile(taskPath, {
+        ...TASK,
+        state: "doing",
+        owner: "agent-dogfood-final",
+        dependsOn: [],
+        allowedFiles: ["src/core/tasks/**"],
+        forbiddenFiles: [],
+      });
+      await git("add", ".");
+      await git("commit", "--quiet", "-m", "initial");
+      const agent = await registerAgent(directory, {
+        id: "agent-dogfood-final",
+        developer: "alice",
+        platform: "generic-harness",
+        model: "vendor-neutral",
+      });
+      const sessionDirectory = join(directory, ".agentic", "sessions", "dogfood", "0007", "dogfood-final");
+      await mkdir(sessionDirectory, { recursive: true });
+      const externalPrompt = join(outside, "prompt.md");
+      await writeFile(externalPrompt, "external prompt\n", "utf8");
+      await symlink(externalPrompt, join(sessionDirectory, "prompt.md"));
+      await assert.rejects(
+        () => startDogfoodSession({
+          rootDirectory: directory,
+          taskDirectory: ".tasks",
+          taskId: "0007",
+          owner: agent.id,
+          tool: "generic-harness",
+          scenario: "Exercise a symlinked final prompt.",
+          sessionId: "dogfood-final",
+        }),
+        /symbolic link/i,
+      );
+      assert.equal(await readFile(externalPrompt, "utf8"), "external prompt\n");
+
+      await rm(join(sessionDirectory, "prompt.md"));
+      const externalMetadata = join(outside, "session.json");
+      await symlink(join(outside, "missing-session.json"), join(sessionDirectory, "session.json"));
+      await assert.rejects(
+        () => startDogfoodSession({
+          rootDirectory: directory,
+          taskDirectory: ".tasks",
+          taskId: "0007",
+          owner: agent.id,
+          tool: "generic-harness",
+          scenario: "Exercise a dangling final metadata link.",
+          sessionId: "dogfood-final",
+        }),
+        /symbolic link/i,
+      );
+      try {
+        await stat(externalMetadata);
+        assert.fail("external dogfood metadata must not be created");
+      } catch (error: unknown) {
+        assert.equal((error as NodeJS.ErrnoException).code, "ENOENT");
+      }
+    } finally {
+      await rm(outside, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
+    }
+  });
+});
+
 test("agentic runtime mutations refuse a symlinked .agentic directory without external writes", async () => {
   await withTempDirectory(async (directory) => {
     const outside = await mkdtemp(join(tmpdir(), "apk-agentic-outside-"));
