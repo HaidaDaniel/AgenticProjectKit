@@ -192,7 +192,7 @@ export async function commitProposal(
     if (!tree) throw new ProposalGitError("Git produced an empty tree for the proposal commit.");
 
     const changed = (await git(rootReal, [
-      "diff-tree", "--no-commit-id", "--name-only", "-r", "-z", "HEAD", tree,
+      "diff-tree", "--no-commit-id", "--name-only", "-r", "-z", previousHead, tree,
     ])).stdout.split("\0").filter(Boolean).sort();
     if (changed.length === 0) {
       throw new ProposalGitError(`No proposal changes to commit for ${proposalPath}.`);
