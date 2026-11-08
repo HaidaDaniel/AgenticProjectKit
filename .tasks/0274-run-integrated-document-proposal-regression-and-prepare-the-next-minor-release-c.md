@@ -1,6 +1,6 @@
 # Task 0274 - Run integrated document-proposal regression and prepare the next minor release candidate
 
-State: doing
+State: done
 Owner: opencode-milestone
 Mode: maintenance
 Lane: release
