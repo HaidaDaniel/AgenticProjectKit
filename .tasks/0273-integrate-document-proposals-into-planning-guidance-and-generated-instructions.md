@@ -1,7 +1,7 @@
 # Task 0273 - Integrate document proposals into planning guidance and generated instructions
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-milestone
 Mode: maintenance
 Lane: planning
 Type: feature
