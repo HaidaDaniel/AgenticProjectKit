@@ -1,6 +1,6 @@
 # Task 0262 - Contain configured filesystem mutations within the repository
 
-State: todo
+State: canceled
 Owner: none
 Mode: maintenance
 Lane: bugfix
@@ -123,3 +123,4 @@ Prevent task and docs filesystem mutations from escaping the repository through 
 
 - Previous corrective commit 546d0ae added a private assertTaskDirectoryContained in adoption only; ordinary task lifecycle still lacks an equivalent check.
 - Keep repository-relative POSIX directory paths as the canonical config form; do not add an automatic symlink repair path.
+- cancel: Contract omitted required evidence category declaration; canceled before implementation and superseded by corrected successor.

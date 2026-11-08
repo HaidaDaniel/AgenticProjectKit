@@ -1,6 +1,6 @@
 # Task 0263 - Create task files with crash-safe exclusive publication
 
-State: todo
+State: canceled
 Owner: none
 Mode: maintenance
 Lane: bugfix
@@ -109,3 +109,4 @@ Replace direct exclusive file writing for new tasks with a same-directory tempor
 
 - writeTaskFile already uses a same-directory temp file plus rename for updates; this task changes new-file creation only.
 - Do not claim fsync directory durability unless it is actually implemented and tested.
+- cancel: Dependency 0262 contract omitted required evidence category declaration; canceled before implementation and superseded by corrected successor.

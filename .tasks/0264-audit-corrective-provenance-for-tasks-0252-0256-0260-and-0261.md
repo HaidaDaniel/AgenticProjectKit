@@ -1,6 +1,6 @@
 # Task 0264 - Audit corrective provenance for tasks 0252, 0256, 0260, and 0261
 
-State: todo
+State: canceled
 Owner: none
 Mode: audit
 Lane: audit
@@ -74,3 +74,4 @@ Establish and document the factual claim, contract, candidate, evidence, and com
 
 - This is a read-only provenance audit plus a documented report, not permission to rewrite history.
 - Tasks 0256 and 0260 show post-claim material contract changes in their completion commits; classify them only after checking all evidence.
+- cancel: Contract omitted evidence declaration needed for high-assurance provenance audit; canceled before implementation and superseded by corrected successor.
