@@ -75,6 +75,13 @@ The command synopsis and option list below are rendered from `src/cli/command-re
 - `apkit perf report [--json]` - report observed tooling wall, attribution, coverage, and Amdahl scenarios.
 - `apkit perf exec --category <repo-tool|test|lint|typecheck|build|git> -- <command...>` - include one direct repository command in the active local performance session.
 - `apkit prompt <agent> --task <task-id> [--level 1|2|3] [--budget <units>] [--language <tag>]` - render bounded task context and an optional invocation-only language override.
+- `apkit proposal add --title <title> [--slug <slug>] [--kind <kind>] [--summary <text>] [--context <text>] [--observations <text>] [--hypotheses <text>] [--direction <text>] [--evidence <text>] [--open-questions <text>] [--related-work <text>] [--related <csv>] [--json]` - create one Git-tracked proposal document; no git operation and no task are created.
+- `apkit proposal list [--status <status>] [--kind <kind>] [--json]` - list bounded proposals without reading executable task inventories.
+- `apkit proposal show <slug|id> [--json]` - show one proposal by stable id or slug.
+- `apkit proposal validate [--json]` - validate proposal documents and report duplicate identities or malformed Markdown.
+- `apkit proposal accept <slug|id> --actor <operator-id> --reason <text> [--expect-revision <sha256>] [--json]` - record an explicit operator acceptance bound to a verified proposal revision.
+- `apkit proposal reject <slug|id> --actor <operator-id> --reason <text> [--expect-revision <sha256>] [--json]` - record an explicit operator rejection bound to a verified proposal revision.
+- `apkit proposal supersede <slug|id> --by <successor-id> --actor <operator-id> --reason <text> [--expect-revision <sha256>] [--json]` - mark a proposal superseded with a traceable successor proposal.
 - `apkit quality detect [directory] [--json]` - read declared quality signals and evaluate explicit policy without executing project commands.
 - `apkit resources [--json]` - render configured model, harness, and worker records without probing providers.
 - `apkit resources detect [--json]` - inventory local markers and declared capabilities without mutation.

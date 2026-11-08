@@ -2039,6 +2039,69 @@ test("CLI execution calibration refuses a symlinked .agentic directory without w
   });
 });
 
+test("CLI proposals add list show validate and lifecycle transitions stay outside tasks", async () => {
+  await withTempDirectory(async (directory) => {
+    const added = await runCli([
+      "proposal", "add", "--title", "Evidence bound proposal", "--kind", "research",
+      "--summary", "A short research proposal.", "--observations", "One observation.",
+      "--json",
+    ], directory);
+    assert.equal(added.exitCode, 0, added.stderr);
+    const item = JSON.parse(added.stdout) as { id: string; slug: string; path: string; status: string };
+    assert.equal(item.status, "proposed");
+    assert.equal(item.path, `docs/proposals/${item.slug}.md`);
+    assert.match(await readFile(join(directory, item.path), "utf8"), /# Evidence bound proposal/);
+    await assert.rejects(() => stat(join(directory, ".tasks")), { code: "ENOENT" });
+    await assert.rejects(() => stat(join(directory, ".git")), { code: "ENOENT" });
+
+    const listed = await runCli(["proposal", "list", "--json"], directory);
+    assert.equal(listed.exitCode, 0, listed.stderr);
+    assert.equal((JSON.parse(listed.stdout) as { items: unknown[] }).items.length, 1);
+
+    const shown = await runCli(["proposal", "show", item.id, "--json"], directory);
+    assert.equal(shown.exitCode, 0, shown.stderr);
+    assert.equal((JSON.parse(shown.stdout) as { id: string }).id, item.id);
+
+    const validated = await runCli(["proposal", "validate", "--json"], directory);
+    assert.equal(validated.exitCode, 0, validated.stderr);
+
+    const missingReason = await runCli(["proposal", "accept", item.slug, "--actor", "operator"], directory);
+    assert.equal(missingReason.exitCode, 1);
+    assert.match(missingReason.stderr, /--reason is required/);
+
+    const accepted = await runCli([
+      "proposal", "accept", item.slug, "--actor", "operator", "--reason", "Accept for planning.", "--json",
+    ], directory);
+    assert.equal(accepted.exitCode, 0, accepted.stderr);
+    const acceptedSnapshot = JSON.parse(accepted.stdout) as { proposal: { status: string; decisions: unknown[] }; revision: string };
+    assert.equal(acceptedSnapshot.proposal.status, "accepted");
+    assert.equal(acceptedSnapshot.proposal.decisions.length, 1);
+
+    const invalid = await runCli([
+      "proposal", "reject", item.slug, "--actor", "operator", "--reason", "Reverse it.",
+    ], directory);
+    assert.equal(invalid.exitCode, 1);
+    assert.match(invalid.stderr, /only a proposed proposal/);
+
+    const second = await runCli(["proposal", "add", "--title", "Successor proposal", "--summary", "Successor.", "--json"], directory);
+    assert.equal(second.exitCode, 0, second.stderr);
+    const successor = JSON.parse(second.stdout) as { id: string; slug: string };
+    const superseded = await runCli([
+      "proposal", "supersede", item.slug, "--by", successor.id, "--actor", "operator", "--reason", "Replaced.", "--json",
+    ], directory);
+    assert.equal(superseded.exitCode, 0, superseded.stderr);
+    const supersededSnapshot = JSON.parse(superseded.stdout) as { proposal: { status: string; supersededBy: string } };
+    assert.equal(supersededSnapshot.proposal.status, "superseded");
+    assert.equal(supersededSnapshot.proposal.supersededBy, successor.id);
+
+    const stale = await runCli([
+      "proposal", "accept", successor.slug, "--actor", "operator", "--reason", "Stale.", "--expect-revision", "0".repeat(64),
+    ], directory);
+    assert.equal(stale.exitCode, 1);
+    assert.match(stale.stderr, /revision changed/);
+  });
+});
+
 test("CLI evidence lock recovery refuses a symlinked .agentic directory without deleting outside the repository", async () => {
   await withTempDirectory(async (directory) => {
     const outside = await mkdtemp(join(tmpdir(), "apk-cli-evidence-lock-outside-"));

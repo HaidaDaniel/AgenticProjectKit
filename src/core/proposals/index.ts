@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, readdir, writeFile } from "node:fs/promises";
+import { lstat, mkdir, open, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { repositoryRelativePathIssue, resolveContainedRepositoryPath } from "../config/paths.js";
@@ -659,4 +659,120 @@ export async function findProposal(
   }
   if (matches.length === 0) return undefined;
   return readProposalSnapshot(rootDirectory, docsDirectory, matches[0]!.slug);
+}
+
+
+export interface ProposalTransitionInput {
+  rootDirectory: string;
+  docsDirectory: string;
+  idOrSlug: string;
+  decision: ProposalDecisionKind;
+  actor: string;
+  reason: string;
+  expectedRevision?: string;
+  successor?: string;
+}
+
+function assertTransitionAllowed(item: ProposalItem, decision: ProposalDecisionKind, successor?: string): void {
+  if (decision === "accepted" || decision === "rejected") {
+    if (item.status !== "proposed") {
+      throw new ProposalFormatError([
+        `Proposal ${item.slug} is ${item.status}; only a proposed proposal can be ${decision}.`,
+      ]);
+    }
+    if (successor !== undefined) {
+      throw new ProposalFormatError(["A successor is only valid for a supersede decision."]);
+    }
+    return;
+  }
+  if (item.status !== "proposed" && item.status !== "accepted") {
+    throw new ProposalFormatError([
+      `Proposal ${item.slug} is ${item.status}; only a proposed or accepted proposal can be superseded.`,
+    ]);
+  }
+  if (!successor || !ID_PATTERN.test(successor)) {
+    throw new ProposalFormatError(["Supersede requires --by with a successor proposal id."]);
+  }
+  if (successor === item.id) {
+    throw new ProposalFormatError(["A proposal cannot supersede itself."]);
+  }
+}
+
+export async function transitionProposal(input: ProposalTransitionInput): Promise<ProposalSnapshot> {
+  const actor = input.actor.trim();
+  if (!ACTOR_PATTERN.test(actor)) {
+    throw new ProposalFormatError(["Actor must be a compact operator identifier."]);
+  }
+  const reason = input.reason.trim();
+  if (reason.length === 0 || reason.length > PROPOSAL_LIMITS.decisionReasonCharacters) {
+    throw new ProposalFormatError([
+      `Reason must contain 1-${PROPOSAL_LIMITS.decisionReasonCharacters} characters.`,
+    ]);
+  }
+  const current = await findProposal(input.rootDirectory, input.docsDirectory, input.idOrSlug);
+  if (!current) {
+    throw new ProposalFormatError([`Proposal not found: ${input.idOrSlug}`]);
+  }
+  if (input.expectedRevision !== undefined && input.expectedRevision !== current.revision) {
+    throw new ProposalFormatError([
+      `Proposal revision changed: expected ${input.expectedRevision}, found ${current.revision}. Re-read the proposal and retry.`,
+    ]);
+  }
+  assertTransitionAllowed(current.proposal, input.decision, input.successor);
+  if (input.decision === "superseded" && input.successor) {
+    const successor = await findProposal(input.rootDirectory, input.docsDirectory, input.successor);
+    if (!successor) {
+      throw new ProposalFormatError([`Successor proposal not found: ${input.successor}`]);
+    }
+  }
+
+  const now = new Date().toISOString();
+  const next: ProposalItem = {
+    ...current.proposal,
+    status: input.decision === "accepted" ? "accepted" : input.decision === "rejected" ? "rejected" : "superseded",
+    updated: now,
+    ...(input.decision === "superseded" ? { supersededBy: input.successor } : {}),
+    decisions: [
+      ...current.proposal.decisions,
+      {
+        time: now,
+        decision: input.decision,
+        actor,
+        revision: current.revision,
+        reason,
+        ...(input.successor !== undefined ? { successor: input.successor } : {}),
+      },
+    ],
+  };
+  const markdown = renderProposalMarkdown(next);
+  parseProposalMarkdown(markdown, next.slug, next.path);
+
+  await assertProposalStorageSafe(input.rootDirectory, input.docsDirectory);
+  const path = join(input.rootDirectory, proposalDirectoryRelative(input.docsDirectory), `${next.slug}.md`);
+  const displayPath = proposalRelativePath(input.docsDirectory, next.slug);
+  const fresh = await readBoundedProposal(path, displayPath);
+  if (proposalRevision(fresh) !== current.revision) {
+    throw new ProposalFormatError([
+      `Proposal ${next.slug} changed while the decision was being prepared; re-read it and retry.`,
+    ]);
+  }
+
+  const temporary = join(
+    input.rootDirectory,
+    proposalDirectoryRelative(input.docsDirectory),
+    `.${next.slug}.${randomUUID()}.tmp`,
+  );
+  try {
+    await writeFile(temporary, markdown, { encoding: "utf8", flag: "wx" });
+    await rename(temporary, path);
+  } catch (error: unknown) {
+    await rm(temporary, { force: true }).catch(() => undefined);
+    throw error;
+  }
+
+  return {
+    proposal: parseProposalMarkdown(markdown, next.slug, next.path),
+    content: markdown,
+    revision: proposalRevision(markdown),
+  };
 }

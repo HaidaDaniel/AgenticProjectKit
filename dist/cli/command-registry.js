@@ -14,6 +14,7 @@ import { runLintCommand } from "./commands/lint.js";
 import { runModeCommand } from "./commands/mode.js";
 import { runNextTaskCommand } from "./commands/next-task.js";
 import { runPromptCommand } from "./commands/prompt.js";
+import { runProposalCommand } from "./commands/proposal.js";
 import { runPerfCommand } from "./commands/perf.js";
 import { runQualityCommand } from "./commands/quality.js";
 import { runResourcesCommand } from "./commands/resources.js";
@@ -192,6 +193,20 @@ export const PUBLIC_COMMANDS = [
         summary: "Generate an agent-specific task prompt.",
         handler: simple(runPromptCommand),
         variants: [{ usage: "prompt <agent> --task <task-id> [--level 1|2|3] [--budget <units>] [--language <tag>]", description: "render bounded task context and an optional invocation-only language override." }],
+    },
+    {
+        command: "proposal",
+        summary: "Preserve document proposals without creating tasks.",
+        handler: simple(runProposalCommand),
+        variants: [
+            { usage: "proposal add --title <title> [--slug <slug>] [--kind <kind>] [--summary <text>] [--context <text>] [--observations <text>] [--hypotheses <text>] [--direction <text>] [--evidence <text>] [--open-questions <text>] [--related-work <text>] [--related <csv>] [--json]", description: "create one Git-tracked proposal document; no git operation and no task are created." },
+            { usage: "proposal list [--status <status>] [--kind <kind>] [--json]", description: "list bounded proposals without reading executable task inventories." },
+            { usage: "proposal show <slug|id> [--json]", description: "show one proposal by stable id or slug." },
+            { usage: "proposal validate [--json]", description: "validate proposal documents and report duplicate identities or malformed Markdown." },
+            { usage: "proposal accept <slug|id> --actor <operator-id> --reason <text> [--expect-revision <sha256>] [--json]", description: "record an explicit operator acceptance bound to a verified proposal revision." },
+            { usage: "proposal reject <slug|id> --actor <operator-id> --reason <text> [--expect-revision <sha256>] [--json]", description: "record an explicit operator rejection bound to a verified proposal revision." },
+            { usage: "proposal supersede <slug|id> --by <successor-id> --actor <operator-id> --reason <text> [--expect-revision <sha256>] [--json]", description: "mark a proposal superseded with a traceable successor proposal." },
+        ],
     },
     {
         command: "quality",

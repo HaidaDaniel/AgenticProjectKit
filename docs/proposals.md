@@ -138,5 +138,23 @@ the local workflow. Protected branches require a separate explicit branch and PR
 
 ## CLI
 
-The proposal CLI is implemented by the dependent task. Storage and validation expose the schema,
-parser, renderer, exclusive creation, bounded inventory, and duplicate detection used by that CLI.
+```bash
+pnpm exec apk proposal add --title "ComfyUI ROCm adapter sketch" --kind adapter-design --summary "A possible direction."
+pnpm exec apk proposal list [--status proposed] [--kind research] [--json]
+pnpm exec apk proposal show <slug-or-id> [--json]
+pnpm exec apk proposal validate [--json]
+pnpm exec apk proposal accept <slug-or-id> --actor <operator-id> --reason "Accept for planning."
+pnpm exec apk proposal reject <slug-or-id> --actor <operator-id> --reason "Out of scope."
+pnpm exec apk proposal supersede <slug-or-id> --by <successor-id> --actor <operator-id> --reason "Replaced."
+```
+
+`add` creates only one proposal document. It never runs `git add`, `git commit`, or `git push`,
+creates no executable task, and allocates no task ID. `list`, `show`, and `validate` are read-only.
+
+`accept`, `reject`, and `supersede` require an explicit actor and reason. They bind the decision to
+the verified current proposal revision and optionally accept `--expect-revision <sha256>` to refuse
+a stale edit. The decision-history entry records the time, decision, actor, verified revision, and
+reason. A stale revision or invalid transition fails closed without changing the file.
+
+Acceptance records an operator assertion. It does not authenticate the operator cryptographically,
+prove implementation, deploy anything, or make the proposal canonical.
