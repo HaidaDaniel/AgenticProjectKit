@@ -13,6 +13,7 @@ import test from "node:test";
 import { promisify } from "node:util";
 
 import { DEFAULT_CONFIG, writeAgenticConfigFile } from "../config/index.js";
+import { withWorkerReviewLifecycleLock } from "../work/session.js";
 import {
   registerAgent,
   listAgents,
@@ -1744,6 +1745,27 @@ test("agentic runtime mutations refuse a symlinked .agentic directory without ex
       );
       await assert.rejects(() => writeAgenticConfigFile(directory, DEFAULT_CONFIG), /symbolic link/i);
       assert.deepEqual(await readdir(outside), []);
+    } finally {
+      await rm(outside, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
+    }
+  });
+});
+
+test("worker review lifecycle locks stay inside a contained .agentic directory", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-agentic-worker-lock-outside-"));
+    try {
+      await symlink(outside, join(directory, ".agentic"));
+      await assert.rejects(
+        () => withWorkerReviewLifecycleLock(directory, "0001", "run-1", async () => "unexpected"),
+        /symbolic link/i,
+      );
+      assert.deepEqual(await readdir(outside), []);
+
+      await rm(join(directory, ".agentic"));
+      const result = await withWorkerReviewLifecycleLock(directory, "0001", "run-1", async () => "locked");
+      assert.equal(result, "locked");
+      assert.deepEqual((await readdir(join(directory, ".agentic", "sessions", "work", ".review-locks"))).filter((name) => name.endsWith(".lock")), []);
     } finally {
       await rm(outside, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
     }
