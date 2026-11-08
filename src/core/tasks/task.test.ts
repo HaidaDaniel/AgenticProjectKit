@@ -13,6 +13,8 @@ import test from "node:test";
 import { promisify } from "node:util";
 
 import { DEFAULT_CONFIG, writeAgenticConfigFile } from "../config/index.js";
+import { initProject } from "../init/index.js";
+import { startPerfSession } from "../perf/index.js";
 import { withWorkerReviewLifecycleLock } from "../work/session.js";
 import {
   registerAgent,
@@ -1763,7 +1765,7 @@ test("dogfood session writes refuse symlinked final session files", async () => 
       assert.equal(await readFile(externalPrompt, "utf8"), "external prompt\n");
 
       await rm(join(sessionDirectory, "prompt.md"));
-      const externalMetadata = join(outside, "session.json");
+      const externalMetadata = join(outside, "missing-session.json");
       await symlink(join(outside, "missing-session.json"), join(sessionDirectory, "session.json"));
       await assert.rejects(
         () => startDogfoodSession({
@@ -1783,6 +1785,58 @@ test("dogfood session writes refuse symlinked final session files", async () => 
       } catch (error: unknown) {
         assert.equal((error as NodeJS.ErrnoException).code, "ENOENT");
       }
+    } finally {
+      await rm(outside, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
+    }
+  });
+});
+
+test("review sessions perf state and init refuse symlinked runtime components", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-agentic-extra-outside-"));
+    try {
+      const git = async (...args: string[]) => {
+        await execFileAsync("git", args, { cwd: directory });
+      };
+      await git("init", "--quiet");
+      await git("config", "user.email", "codex@example.test");
+      await git("config", "user.name", "Codex");
+      await mkdir(join(directory, ".tasks"), { recursive: true });
+      await writeTaskFile(join(directory, ".tasks", "0007-review-task.md"), {
+        ...TASK,
+        state: "todo",
+        owner: "none",
+        dependsOn: [],
+        allowedFiles: ["src/**"],
+        forbiddenFiles: [],
+      });
+      await git("add", ".");
+      await git("commit", "--quiet", "-m", "initial");
+      await registerAgent(directory, { id: "review-owner", developer: "alice", platform: "codex", model: "gpt-5" });
+      await registerAgent(directory, { id: "review-checker", developer: "bob", platform: "codex", model: "gpt-5" });
+      await claimTask({ rootDirectory: directory, taskDirectory: ".tasks", taskId: "0007", owner: "review-owner" });
+      await symlink(outside, join(directory, ".agentic", "reviews"));
+      await assert.rejects(
+        () => prepareTaskReview({
+          rootDirectory: directory,
+          taskDirectory: ".tasks",
+          taskId: "0007",
+          reviewer: "review-checker",
+        }),
+        /symbolic link/i,
+      );
+      assert.deepEqual(await readdir(outside), []);
+
+      await rm(join(directory, ".agentic", "reviews"));
+      await symlink(outside, join(directory, ".agentic", "perf"));
+      await assert.rejects(() => startPerfSession(directory, "contained perf"), /symbolic link/i);
+      assert.deepEqual(await readdir(outside), []);
+
+      await rm(join(directory, ".agentic", "perf"));
+      await rm(join(directory, ".agentic"), { recursive: true, force: true });
+      await symlink(outside, join(directory, ".agentic"));
+      await assert.rejects(() => initProject(directory), /symbolic link/i);
+      assert.deepEqual(await readdir(outside), []);
     } finally {
       await rm(outside, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
     }

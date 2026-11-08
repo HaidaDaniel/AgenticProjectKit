@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { CONFIG_PATH } from "../config/file.js";
+import { resolveContainedAgenticPath } from "../config/paths.js";
 import { parseAgenticConfig } from "../config/index.js";
 import { WORKER_PROTOCOL } from "../work/contract.js";
 import { EXECUTION_PROFILES, EXECUTION_ROLES, ExecutionValidationError, parseExecutionProfile, } from "./index.js";
@@ -221,6 +222,7 @@ function isMissingFileError(error) {
  * closed instead of risking a rewrite that would drop the user's config.
  */
 async function readRawConfigForMerge(rootDirectory) {
+    await resolveContainedAgenticPath(rootDirectory, CONFIG_PATH, "file");
     const configPath = join(rootDirectory, CONFIG_PATH);
     let content;
     try {
@@ -274,6 +276,7 @@ export async function applyExecutionCalibration(rootDirectory, recommendation, i
         return { written: false, calibration: existing };
     }
     raw.executionCalibration = desired;
+    await resolveContainedAgenticPath(rootDirectory, CONFIG_PATH, "file");
     const configPath = join(rootDirectory, CONFIG_PATH);
     await mkdir(dirname(configPath), { recursive: true });
     await writeFile(configPath, `${JSON.stringify(raw, null, 2)}\n`, "utf8");

@@ -2018,6 +2018,27 @@ test("CLI lock recovery refuses symlinked task storage without deleting outside 
   });
 });
 
+test("CLI execution calibration refuses a symlinked .agentic directory without writing outside the repository", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-cli-calibration-outside-"));
+    try {
+      await symlink(outside, join(directory, ".agentic"));
+      const recommendation = JSON.stringify({
+        protocol: "apk-calibration-v1-result",
+        profile: "local",
+        routes: {},
+        planner: "fixture-planner",
+      });
+      const result = await runCli(["execution", "calibrate", "--recommendation", recommendation, "--apply"], directory);
+      assert.equal(result.exitCode, 1);
+      assert.match(result.stderr, /symbolic link/i);
+      assert.deepEqual(await readdir(outside), []);
+    } finally {
+      await rm(outside, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
+    }
+  });
+});
+
 test("CLI evidence lock recovery refuses a symlinked .agentic directory without deleting outside the repository", async () => {
   await withTempDirectory(async (directory) => {
     const outside = await mkdtemp(join(tmpdir(), "apk-cli-evidence-lock-outside-"));

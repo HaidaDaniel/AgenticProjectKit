@@ -1,7 +1,7 @@
 # Task 0275 - Contain remaining .agentic runtime mutations inside the repository
 
-State: todo
-Owner: none
+State: doing
+Owner: opencode-milestone
 Mode: maintenance
 Lane: bugfix
 Type: bugfix
@@ -45,6 +45,7 @@ Prevent every APK .agentic runtime mutation from escaping the repository through
 - src/core/workspaces/index.ts
 - src/core/perf/index.ts
 - src/core/init/index.ts
+- src/core/execution/calibrate.ts
 - src/cli/commands/task.ts
 - src/core/tasks/task.test.ts
 - src/cli/cli.test.ts
