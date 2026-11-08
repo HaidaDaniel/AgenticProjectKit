@@ -109,10 +109,11 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0098](#adr-0098---sensitive-task-and-docs-mutations-use-shared-filesystem-containment) | accepted | Sensitive task and docs mutations use shared filesystem containment | — |
 | [ADR-0099](#adr-0099---apk-runtime-state-mutations-use-the-same-repository-containment-boundary) | accepted | APK runtime state mutations use the same repository containment boundary | — |
 | [ADR-0100](#adr-0100---document-proposals-are-bounded-non-authoritative-markdown) | accepted | Document proposals are bounded non-authoritative Markdown | — |
+| [ADR-0101](#adr-0101---proposal-only-commits-use-an-isolated-index-and-explicit-handoff) | accepted | Proposal-only commits use an isolated index and explicit handoff | — |
 
 ### ADR index cross-check
 
-- [x] Each of the 90 index rows matches one retained ADR heading and its title.
+- [x] Each of the 91 index rows matches one retained ADR heading and its title.
 - [x] Each status matches that record's explicit `Status` field.
 - [x] The only supersession link is ADR-0006 -> ADR-0062, recorded by ADR-0006's status and ADR-0062's heading and decision text.
 
@@ -2057,3 +2058,26 @@ A proposal is not a task, backlog item, ADR, canonical document, or verification
 ### Consequences
 
 Engineers can preserve optional technical knowledge in Git without inflating the executable task graph. Programmatic or ordinary APK commands do not scan proposals, so normal workflow cost is unchanged. Proposal commits remain ordinary provenance-visible Git commits. The first version intentionally omits automatic promotion, automatic task creation, a separate review/gate lifecycle, and push/PR automation; canonical and backlog linkage is explicit and validated.
+
+
+## ADR-0101 - Proposal-only commits use an isolated index and explicit handoff
+
+Status: accepted
+
+Date: 2026-11-08
+
+### Context
+
+A developer may need to save a document proposal in Git while another worktree holds an unfinished executable task, or while unrelated staged and dirty changes exist in the current checkout. Ordinary `git add`/`git commit` could absorb unrelated source, task contracts, generated output, evidence, or `.agentic` state. Automatic push or history rewriting would bypass repository policy.
+
+### Decision
+
+`apk proposal commit <slug-or-id>` is an explicit local publication step. It revalidates the proposal and revision, requires the repository root and an attached branch, refuses ignored paths and proposal paths with conflicting staged content, and builds the commit from an isolated temporary `GIT_INDEX_FILE` seeded from `HEAD`. It adds exactly the selected proposal path, verifies with `diff-tree` that no other path enters the tree, creates a normal commit with `git commit-tree`, and advances the branch with a compare-and-swap `git update-ref`.
+
+After the branch update, it synchronizes only the committed proposal path in the caller's real index with a path-scoped `git reset`, so the real index does not appear to delete the newly committed file; unrelated staged entries and working-tree changes remain intact. A staged conflict on the proposal path, a detached HEAD, a stale revision, an ignored path, an unexpected tree path, or a concurrent branch move fails closed.
+
+The command never pushes, force-pushes, rewrites history, automatically merges, or bypasses branch protection. It prints the commit SHA and manual push or PR handoff guidance. Proposal commits are ordinary Git commits and remain visible to task provenance; they are not exempt from scope or candidate-freshness checks.
+
+### Consequences
+
+Proposal documentation can be committed safely without absorbing unrelated work, and parallel development should use a separate Git worktree. The command does not run commit hooks or signing, because it uses Git plumbing; repositories requiring hooks or signed commits must handle that through their own policy. Protected `main` still requires a separate branch and PR. A remote update after the local commit is not fetched or merged automatically.

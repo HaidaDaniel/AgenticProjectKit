@@ -22,9 +22,17 @@ export class ProposalGitError extends Error {
   }
 }
 
+export interface ProposalCommitRuntime {
+  /** Test-only hook after the isolated tree is prepared and before the final revision check. */
+  beforeFinalRevisionCheck?: () => Promise<void> | void;
+  /** Test-only hook immediately before the compare-and-swap branch update. */
+  beforeUpdateRef?: (context: { headRef: string; commitId: string; previousHead: string }) => Promise<void> | void;
+}
+
 export interface ProposalCommitOptions {
   message?: string;
   expectedRevision?: string;
+  runtime?: ProposalCommitRuntime;
 }
 
 export interface ProposalCommitResult {
@@ -195,6 +203,7 @@ export async function commitProposal(
       );
     }
 
+    await options.runtime?.beforeFinalRevisionCheck?.();
     const after = await readFile(join(rootReal, proposalPath), "utf8");
     if (proposalRevision(after) !== snapshot.revision) {
       throw new ProposalFormatError([
@@ -204,6 +213,7 @@ export async function commitProposal(
 
     const commitId = (await git(rootReal, ["commit-tree", tree, "-p", previousHead, "-m", message])).stdout.trim();
     if (!commitId) throw new ProposalGitError("Git did not produce a commit id.");
+    await options.runtime?.beforeUpdateRef?.({ headRef, commitId, previousHead });
     await git(rootReal, ["update-ref", headRef, commitId, previousHead]);
     // The isolated index never touched the caller index. Synchronize only the
     // committed proposal path so the real index does not appear to delete or

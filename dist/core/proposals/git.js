@@ -133,6 +133,7 @@ export async function commitProposal(rootDirectory, docsDirectory, idOrSlug, opt
         if (changed.length !== 1 || changed[0] !== proposalPath) {
             throw new ProposalGitError(`Refusing to commit unexpected paths: ${changed.join(", ")}. Only ${proposalPath} may be published.`);
         }
+        await options.runtime?.beforeFinalRevisionCheck?.();
         const after = await readFile(join(rootReal, proposalPath), "utf8");
         if (proposalRevision(after) !== snapshot.revision) {
             throw new ProposalFormatError([
@@ -142,6 +143,7 @@ export async function commitProposal(rootDirectory, docsDirectory, idOrSlug, opt
         const commitId = (await git(rootReal, ["commit-tree", tree, "-p", previousHead, "-m", message])).stdout.trim();
         if (!commitId)
             throw new ProposalGitError("Git did not produce a commit id.");
+        await options.runtime?.beforeUpdateRef?.({ headRef, commitId, previousHead });
         await git(rootReal, ["update-ref", headRef, commitId, previousHead]);
         // The isolated index never touched the caller index. Synchronize only the
         // committed proposal path so the real index does not appear to delete or

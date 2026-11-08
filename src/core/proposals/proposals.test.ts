@@ -267,6 +267,43 @@ test("proposal commit refuses staged proposal changes detached HEAD and stale re
   });
 });
 
+test("proposal commit detects a mid-operation mutation and a moved branch", async () => {
+  await withTempDirectory(async (directory) => {
+    await initRepository(directory);
+    const item = await createProposal(directory, "docs", { title: "Concurrent proposal", summary: "Concurrent." });
+    const path = join(directory, item.path);
+    const previousHead = (await git(directory, "rev-parse", "HEAD")).trim();
+
+    await assert.rejects(
+      () => commitProposal(directory, "docs", item.slug, {
+        runtime: {
+          beforeFinalRevisionCheck: async () => {
+            const current = await readFile(path, "utf8");
+            await writeFile(path, current.replace("Concurrent.", "Concurrent.\n\nChanged mid-operation."), "utf8");
+          },
+        },
+      }),
+      /changed while the commit was being prepared/,
+    );
+    assert.equal((await git(directory, "rev-parse", "HEAD")).trim(), previousHead);
+    await writeFile(path, (await readFile(path, "utf8")).replace("Concurrent.\n\nChanged mid-operation.", "Concurrent."), "utf8");
+
+    const concurrentCommit = (await git(directory, "commit-tree", `${previousHead}^{tree}`, "-p", previousHead, "-m", "concurrent move")).trim();
+    await assert.rejects(
+      () => commitProposal(directory, "docs", item.slug, {
+        runtime: {
+          beforeUpdateRef: async ({ headRef }) => {
+            await git(directory, "update-ref", headRef, concurrentCommit, previousHead);
+          },
+        },
+      }),
+      /Git command failed \(update-ref/,
+    );
+    assert.equal((await git(directory, "rev-parse", "HEAD")).trim(), concurrentCommit);
+    assert.equal((await git(directory, "show", "--pretty=format:", "--name-only", "HEAD")).trim(), "");
+  });
+});
+
 test("proposal commit in one worktree leaves another worktree unchanged", async () => {
   await withTempDirectory(async (directory) => {
     await initRepository(directory);
