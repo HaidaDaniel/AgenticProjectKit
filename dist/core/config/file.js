@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { resolveContainedAgenticPath } from "./paths.js";
 import { parseAgenticConfigJson, serializeAgenticConfig, } from "./schema.js";
 export const CONFIG_PATH = ".agentic/config.json";
 function isMissingFileError(error) {
@@ -20,6 +21,7 @@ export async function readAgenticConfigFile(rootDirectory) {
     }
 }
 export async function writeAgenticConfigFile(rootDirectory, config) {
+    await resolveContainedAgenticPath(rootDirectory, CONFIG_PATH, "file");
     const path = join(rootDirectory, CONFIG_PATH);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, serializeAgenticConfig(config), "utf8");

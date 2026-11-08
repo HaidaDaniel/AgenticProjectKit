@@ -188,6 +188,12 @@ Configured task storage is also checked for filesystem containment before task m
 
 A missing active or archive directory is treated as an empty optional inventory during initial setup. Any other read failure (`EACCES`, `EPERM`, `ENOTDIR`, `ELOOP`, I/O error) surfaces as `Task inventory unavailable (path): code`; it is never silently converted to an empty list. A file or symlink loop at the archive path is rejected, and task creation refuses to allocate a new ID while either active or archive inventory is unavailable. Healthy archived IDs remain part of the allocation sequence.
 
+## APK runtime containment
+
+All APK-owned runtime state under `.agentic/` is treated as a sensitive mutation target. The shared containment helper in `src/core/config/paths.ts` resolves the real repository root and rejects a symlinked `.agentic` ancestor, a symlinked final component, a dangling link, or any path that does not name `.agentic/`. Evidence appends, evidence-lock recovery, task baselines, agent and run records, configuration writes, review and dogfood sessions, worker sessions, workspace records, optional performance traces, and init starter files check containment immediately before mutation.
+
+A refusal fails closed: it does not create or delete external files, append external journals, or remove or replace a lock marker. Normal first-run creation and normal Git linked worktrees remain supported because missing final components are allowed. This is a pre-mutation inspection, not a lock or sandbox; an external process that replaces a missing component after the inspection remains a residual TOCTOU boundary.
+
 ## Task file writes
 
 Task Markdown reads and updates refuse a symlinked final path; `O_NOFOLLOW` is used where available and the refusal is actionable rather than silently following the link. The configured task directory, archive directory, lock publication, and task file target are all checked immediately before mutation, and a refusal leaves the original bytes and any external target unchanged.

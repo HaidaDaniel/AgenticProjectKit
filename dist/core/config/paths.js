@@ -56,6 +56,22 @@ export function repositoryRelativePathIssue(value, kind = "directory") {
 export function repositoryRelativeDirectoryIssue(value) {
     return repositoryRelativePathIssue(value, "directory");
 }
+export const AGENTIC_RUNTIME_DIRECTORY = ".agentic";
+/**
+ * Resolve a repository-relative `.agentic` runtime path for a mutation. This is
+ * the single containment entry point for local operational state; it refuses a
+ * path outside `.agentic` as well as every symlinked ancestor or final
+ * component. Missing final components are allowed so callers can create new
+ * runtime files. The same residual TOCTOU boundary as
+ * `resolveContainedRepositoryPath` applies.
+ */
+export async function resolveContainedAgenticPath(rootDirectory, relativePath, kind = "file") {
+    const normalized = relativePath.replace(/\\/g, "/");
+    if (normalized !== AGENTIC_RUNTIME_DIRECTORY && !normalized.startsWith(`${AGENTIC_RUNTIME_DIRECTORY}/`)) {
+        throw new PathContainmentError(`Refusing to treat ${JSON.stringify(relativePath)} as an APK runtime path under ${AGENTIC_RUNTIME_DIRECTORY}/.`);
+    }
+    return resolveContainedRepositoryPath(rootDirectory, normalized, kind);
+}
 /** Normalize one optional trailing separator; never rewrite user config. */
 export function canonicalRepositoryRelativeDirectory(value) {
     return value.endsWith("/") ? value.slice(0, -1) : value;

@@ -3,6 +3,7 @@ import { appendRunLog, requireAgent } from "../agents/index.js";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { readAgenticConfigFile } from "../config/file.js";
+import { resolveContainedAgenticPath } from "../config/paths.js";
 import {
   captureTaskEvidenceSubject,
   findTaskFile,
@@ -161,6 +162,7 @@ async function writePreparedReview(
   preparation: StoredTaskReviewPreparation,
 ): Promise<void> {
   const path = reviewSessionPath(rootDirectory, preparation.taskId, preparation.reviewRunId);
+  await resolveContainedAgenticPath(rootDirectory, relative(rootDirectory, path).replace(/\\/g, "/"), "file");
   await mkdir(join(rootDirectory, TASK_REVIEW_SESSIONS_PATH, preparation.taskId), { recursive: true });
   try {
     await writeFile(path, `${JSON.stringify(preparation)}\n`, { encoding: "utf8", flag: "wx" });
@@ -717,7 +719,9 @@ export async function cleanupPreparedWorkerReview(options: {
       return "preserved";
     }
 
-    await rm(reviewSessionPath(options.rootDirectory, expected.task.id, expected.reviewRunId));
+    const removalPath = reviewSessionPath(options.rootDirectory, expected.task.id, expected.reviewRunId);
+    await resolveContainedAgenticPath(options.rootDirectory, relative(options.rootDirectory, removalPath).replace(/\\/g, "/"), "file");
+    await rm(removalPath);
     return "removed";
   });
 }

@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { appendRunLog, requireAgent, } from "../agents/index.js";
+import { resolveContainedAgenticPath } from "../config/paths.js";
 import { appendTaskEvidence, readTaskEvidence, } from "./evidence.js";
 import { captureTaskEvidenceSubject, captureTaskScope, findTaskFile, loadTaskFile, readTaskBaseline, } from "./index.js";
 import { claimTask } from "./workflow.js";
@@ -217,6 +218,7 @@ export async function startDogfoodSession(options) {
     };
     await requireNewSession(options.rootDirectory, task.id, sessionId);
     const directory = sessionDirectory(options.rootDirectory, task.id, sessionId);
+    await resolveContainedAgenticPath(options.rootDirectory, relative(options.rootDirectory, directory).replace(/\\/g, "/"), "directory");
     await mkdir(directory, { recursive: true });
     await writeFile(promptPath(options.rootDirectory, task.id, sessionId), prompt, "utf8");
     await writeFile(metadataPath(options.rootDirectory, task.id, sessionId), `${JSON.stringify(stored, null, 2)}\n`, "utf8");
@@ -299,7 +301,9 @@ export async function recordDogfoodResult(options) {
         endedAt,
         outcome: options.outcome,
     };
-    await writeFile(metadataPath(options.rootDirectory, options.taskId, sessionId), `${JSON.stringify(completed, null, 2)}\n`, "utf8");
+    const completedPath = metadataPath(options.rootDirectory, options.taskId, sessionId);
+    await resolveContainedAgenticPath(options.rootDirectory, relative(options.rootDirectory, completedPath).replace(/\\/g, "/"), "file");
+    await writeFile(completedPath, `${JSON.stringify(completed, null, 2)}\n`, "utf8");
     await appendRunLog(options.rootDirectory, {
         event: "work",
         agent,

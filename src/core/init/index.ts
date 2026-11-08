@@ -7,6 +7,7 @@ import {
   DEFAULT_CONFIG,
   serializeAgenticConfig,
 } from "../config/index.js";
+import { resolveContainedAgenticPath } from "../config/paths.js";
 import { renderTemplateFile } from "../templates/index.js";
 import { execFile } from "node:child_process";
 const initTemplateDirectory = join(
@@ -685,6 +686,7 @@ export function getInitStarterFiles(): readonly StarterFile[] {
 }
 
 export async function initProject(rootDirectory: string): Promise<InitResult> {
+  await mkdir(rootDirectory, { recursive: true });
   const created: string[] = [];
   const skipped: string[] = [];
   const updated: string[] = [];
@@ -697,6 +699,9 @@ export async function initProject(rootDirectory: string): Promise<InitResult> {
       continue;
     }
 
+    if (file.path.startsWith(".agentic/")) {
+      await resolveContainedAgenticPath(rootDirectory, file.path, "file");
+    }
     await mkdir(dirname(absolutePath), { recursive: true });
     const content =
       "templatePath" in file

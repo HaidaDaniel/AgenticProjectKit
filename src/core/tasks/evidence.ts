@@ -2,6 +2,7 @@ import type { TaskDiagnosticSnapshot } from "./diagnostics.js";
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
+import { resolveContainedAgenticPath } from "../config/paths.js";
 import { withLocalMutationLock } from "./lock.js";
 import type { ResourceCostClass } from "../resources/index.js";
 import { TASK_APK_OPERATIONS, type TaskApkOperation } from "./apk-verification.js";
@@ -538,6 +539,7 @@ async function withEvidenceAppendLock<T>(
   rootDirectory: string,
   run: () => Promise<T>,
 ): Promise<T> {
+  await resolveContainedAgenticPath(rootDirectory, TASK_EVIDENCE_LOCK_PATH, "file");
   const lockPath = join(rootDirectory, TASK_EVIDENCE_LOCK_PATH);
   return withLocalMutationLock({
     path: lockPath,
@@ -563,6 +565,7 @@ export async function appendTaskEvidence(
     },
   });
   const path = join(rootDirectory, TASK_EVIDENCE_PATH);
+  await resolveContainedAgenticPath(rootDirectory, TASK_EVIDENCE_PATH, "file");
 
   await withEvidenceAppendLock(rootDirectory, async () => {
     if (uniqueness) {

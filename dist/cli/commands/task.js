@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { readAgenticConfigFile } from "../../core/config/index.js";
-import { resolveContainedRepositoryPath } from "../../core/config/paths.js";
+import { resolveContainedAgenticPath, resolveContainedRepositoryPath } from "../../core/config/paths.js";
 import { getTaskTemplate, resolveTaskTemplateType, TASK_TEMPLATE_TYPES, } from "../../core/templates/task-templates.js";
 import { TASK_HUMAN_DECISIONS, MAX_HUMAN_REVIEW_GRANT_PASSES, recordTaskHumanDecision, renderTaskHumanDecisionResult, cancelTask, previewTaskContractAmendment, startTaskEpoch, } from "../../core/tasks/index.js";
 import { archiveAllTasks, archiveTask, previewArchiveTask, previewArchiveTasks, buildTaskProvenance, buildTaskDeps, createTask, evaluateTaskCompletionGate, findTaskFile, listArchivedTaskFiles, listTaskFiles, loadTaskFile, readTaskEvidence, renderTaskPolicy, renderTaskDeps, renderTaskEvidence, renderTaskCompletionGate, renderTaskProvenance, renderTaskVerifyResult, renderRecordManualVerificationResult, recordManualVerification, renderDogfoodResult, renderDogfoodSession, recordDogfoodResult, resolveTaskPolicy, startDogfoodSession, TASK_MODES, TASK_RISKS, TASK_VERIFICATION_PROFILES, PACKAGED_DIST_CHECK_ID, mayIncludePackagedSource, repositoryPackagedDistContract, normalizeVerificationCommands, taskPathPatternMayMatchDistOutput, verifyTask, } from "../../core/tasks/index.js";
@@ -595,6 +595,9 @@ async function runLockSubcommand(argv) {
     }
     if (kinds.includes("task")) {
         await resolveContainedRepositoryPath(rootDirectory, config.taskDirectory, "directory");
+    }
+    if (kinds.includes("evidence")) {
+        await resolveContainedAgenticPath(rootDirectory, TASK_EVIDENCE_LOCK_PATH, "file");
     }
     const pathFor = (kind) => kind === "task"
         ? join(rootDirectory, config.taskDirectory, ".apk.lock")

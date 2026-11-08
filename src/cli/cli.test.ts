@@ -2018,6 +2018,24 @@ test("CLI lock recovery refuses symlinked task storage without deleting outside 
   });
 });
 
+test("CLI evidence lock recovery refuses a symlinked .agentic directory without deleting outside the repository", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-cli-evidence-lock-outside-"));
+    try {
+      const outsideLock = join(outside, "evidence.append.lock");
+      await writeFile(outsideLock, "broken", "utf8");
+      await symlink(outside, join(directory, ".agentic"));
+
+      const recovered = await runCli(["task", "lock", "recover", "--kind", "evidence", "--force"], directory);
+      assert.equal(recovered.exitCode, 1);
+      assert.match(recovered.stderr, /symbolic link/i);
+      assert.equal(await readFile(outsideLock, "utf8"), "broken");
+    } finally {
+      await rm(outside, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
+    }
+  });
+});
+
 test("CLI doctor fails on broken task files", async () => {
   await withTempDirectory(async (directory) => {
     await mkdir(join(directory, ".tasks"), { recursive: true });

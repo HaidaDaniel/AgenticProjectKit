@@ -6,6 +6,7 @@ import {
   requireAgent,
   type RegisteredAgent,
 } from "../agents/index.js";
+import { resolveContainedAgenticPath } from "../config/paths.js";
 import {
   appendTaskEvidence,
   readTaskEvidence,
@@ -323,6 +324,7 @@ export async function startDogfoodSession(options: StartDogfoodOptions): Promise
   };
   await requireNewSession(options.rootDirectory, task.id, sessionId);
   const directory = sessionDirectory(options.rootDirectory, task.id, sessionId);
+  await resolveContainedAgenticPath(options.rootDirectory, relative(options.rootDirectory, directory).replace(/\\/g, "/"), "directory");
   await mkdir(directory, { recursive: true });
   await writeFile(promptPath(options.rootDirectory, task.id, sessionId), prompt, "utf8");
   await writeFile(metadataPath(options.rootDirectory, task.id, sessionId), `${JSON.stringify(stored, null, 2)}\n`, "utf8");
@@ -415,8 +417,10 @@ export async function recordDogfoodResult(options: RecordDogfoodOptions): Promis
     endedAt,
     outcome: options.outcome,
   };
+  const completedPath = metadataPath(options.rootDirectory, options.taskId, sessionId);
+  await resolveContainedAgenticPath(options.rootDirectory, relative(options.rootDirectory, completedPath).replace(/\\/g, "/"), "file");
   await writeFile(
-    metadataPath(options.rootDirectory, options.taskId, sessionId),
+    completedPath,
     `${JSON.stringify(completed, null, 2)}\n`,
     "utf8",
   );

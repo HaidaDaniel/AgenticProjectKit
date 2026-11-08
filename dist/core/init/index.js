@@ -2,6 +2,7 @@ import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CURRENT_CONFIG_SCHEMA_VERSION, DEFAULT_CONFIG, serializeAgenticConfig, } from "../config/index.js";
+import { resolveContainedAgenticPath } from "../config/paths.js";
 import { renderTemplateFile } from "../templates/index.js";
 import { execFile } from "node:child_process";
 const initTemplateDirectory = join(dirname(fileURLToPath(import.meta.url)), "..", "templates", "minimal-docs");
@@ -619,6 +620,7 @@ export function getInitStarterFiles() {
     return STARTER_FILES;
 }
 export async function initProject(rootDirectory) {
+    await mkdir(rootDirectory, { recursive: true });
     const created = [];
     const skipped = [];
     const updated = [];
@@ -627,6 +629,9 @@ export async function initProject(rootDirectory) {
         if (await fileExists(absolutePath)) {
             skipped.push(file.path);
             continue;
+        }
+        if (file.path.startsWith(".agentic/")) {
+            await resolveContainedAgenticPath(rootDirectory, file.path, "file");
         }
         await mkdir(dirname(absolutePath), { recursive: true });
         const content = "templatePath" in file

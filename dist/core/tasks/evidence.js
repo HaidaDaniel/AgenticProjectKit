@@ -1,5 +1,6 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { resolveContainedAgenticPath } from "../config/paths.js";
 import { withLocalMutationLock } from "./lock.js";
 import { TASK_APK_OPERATIONS } from "./apk-verification.js";
 export const TASK_EVIDENCE_PATH = ".agentic/evidence.jsonl";
@@ -301,6 +302,7 @@ function generatedEvidenceId() {
     return `evidence-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 async function withEvidenceAppendLock(rootDirectory, run) {
+    await resolveContainedAgenticPath(rootDirectory, TASK_EVIDENCE_LOCK_PATH, "file");
     const lockPath = join(rootDirectory, TASK_EVIDENCE_LOCK_PATH);
     return withLocalMutationLock({
         path: lockPath,
@@ -321,6 +323,7 @@ export async function appendTaskEvidence(rootDirectory, input, uniqueness) {
         },
     });
     const path = join(rootDirectory, TASK_EVIDENCE_PATH);
+    await resolveContainedAgenticPath(rootDirectory, TASK_EVIDENCE_PATH, "file");
     await withEvidenceAppendLock(rootDirectory, async () => {
         if (uniqueness) {
             const existing = await readTaskEvidence(rootDirectory, input.taskId);

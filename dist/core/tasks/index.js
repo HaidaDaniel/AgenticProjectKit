@@ -5,7 +5,7 @@ import { appendFile, chmod, link, lstat, mkdir, open, readFile, readlink, readdi
 import { constants as osConstants } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { appendRunLog, readRunLog, requireAgent } from "../agents/index.js";
-import { resolveContainedRepositoryPath } from "../config/paths.js";
+import { resolveContainedAgenticPath, resolveContainedRepositoryPath } from "../config/paths.js";
 import { appendTaskEvidence, compareTaskEvidenceFreshness, readTaskEvidence, TASK_EVIDENCE_REFERENCE_MAX_LENGTH, TASK_EVIDENCE_SUMMARY_MAX_LENGTH, } from "./evidence.js";
 import { TASK_APK_OPERATIONS, runTaskApkOperation, } from "./apk-verification.js";
 import { withLocalMutationLock } from "./lock.js";
@@ -2493,6 +2493,7 @@ export async function captureTaskBaseline(rootDirectory, taskId, owner, taskFile
             : {}),
         ...(phase === "epoch" && epoch?.contractAmendment ? { contractAmendment: epoch.contractAmendment } : {}),
     };
+    await resolveContainedAgenticPath(rootDirectory, TASK_BASELINES_PATH, "file");
     const path = join(rootDirectory, TASK_BASELINES_PATH);
     await mkdir(dirname(path), { recursive: true });
     await appendFile(path, `${JSON.stringify(baseline)}\n`, "utf8");

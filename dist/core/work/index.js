@@ -3,6 +3,7 @@ import { mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 
 import { join, relative } from "node:path";
 import { appendRunLog, requireAgent } from "../agents/index.js";
 import { readAgenticConfigFile } from "../config/index.js";
+import { resolveContainedAgenticPath } from "../config/paths.js";
 import { buildTaskPromptInput, renderTaskPrompt } from "../docs/prompt.js";
 import { appendTaskEvidence, readTaskEvidence, TASK_EVIDENCE_PATH } from "../tasks/evidence.js";
 import { captureTaskCompletionCandidate, evaluateTaskCompletionGate, readTaskFrontierUsage, } from "../tasks/gate.js";
@@ -75,6 +76,7 @@ async function persistIssuedWorkerRun(options) {
     validateWorkerRunId(options.runId);
     const directory = issuedSessionDirectory(options.rootDirectory, options.taskId, options.runId);
     const parent = join(options.rootDirectory, WORK_SESSION_DIRECTORY, options.taskId);
+    await resolveContainedAgenticPath(options.rootDirectory, relative(options.rootDirectory, parent).replace(/\\/g, "/"), "directory");
     await mkdir(parent, { recursive: true });
     if (await pathExists(directory)) {
         throw new Error(`Worker run collision: issued run ${options.runId} already exists; existing session is immutable.`);
@@ -147,6 +149,7 @@ async function persistIssuedWorkerRun(options) {
 async function activateIssuedWorkerRun(options) {
     validateWorkerRunId(options.runId);
     const path = issuedActivationPath(options.rootDirectory, options.taskId, options.runId);
+    await resolveContainedAgenticPath(options.rootDirectory, relative(options.rootDirectory, path).replace(/\\/g, "/"), "file");
     const activation = {
         protocol: WORKER_PROTOCOL,
         taskId: options.taskId,

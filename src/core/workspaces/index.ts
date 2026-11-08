@@ -3,6 +3,7 @@ import { mkdir, readFile, readdir, realpath, rm, stat, writeFile } from "node:fs
 import { isAbsolute, join, relative, resolve } from "node:path";
 
 import { readAgenticConfigFile } from "../config/index.js";
+import { resolveContainedAgenticPath } from "../config/paths.js";
 import { observedExecFile } from "../perf/index.js";
 import { findTaskFile, loadTaskFile, type TaskState } from "../tasks/index.js";
 import { withLocalMutationLock } from "../tasks/lock.js";
@@ -354,6 +355,7 @@ async function withWorkspaceLock<T>(
   command: string,
   run: () => Promise<T>,
 ): Promise<T> {
+  await resolveContainedAgenticPath(rootDirectory, WORKSPACE_RECORDS_DIR, "directory");
   await mkdir(join(rootDirectory, WORKSPACE_RECORDS_DIR), { recursive: true });
   return withLocalMutationLock({
     path: join(rootDirectory, WORKSPACE_RECORDS_DIR, ".workspaces.lock"),
@@ -524,8 +526,10 @@ async function createWorkspaceLocked(options: CreateWorkspaceOptions): Promise<C
       marker,
       createdAt: new Date().toISOString(),
     };
+    const recordPath = workspaceRecordPath(options.rootDirectory, id);
+    await resolveContainedAgenticPath(options.rootDirectory, relative(options.rootDirectory, recordPath).replace(/\\/g, "/"), "file");
     await mkdir(join(options.rootDirectory, WORKSPACE_RECORDS_DIR), { recursive: true });
-    await writeFile(workspaceRecordPath(options.rootDirectory, id), `${JSON.stringify(record, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
+    await writeFile(recordPath, `${JSON.stringify(record, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
     return { record };
   } catch (error: unknown) {
     await cleanupCreatedWorktree(repoRoot, worktreePath, branch);
@@ -751,7 +755,9 @@ async function removeWorkspaceLocked(options: RemoveWorkspaceOptions): Promise<R
     if (!options.apply) {
       return { applied: false, removed: false, state: assessment.state, reason: `dry-run: ${assessment.reason}`, record };
     }
-    await rm(workspaceRecordPath(options.rootDirectory, record.id), { force: true });
+    const stalePath = workspaceRecordPath(options.rootDirectory, record.id);
+    await resolveContainedAgenticPath(options.rootDirectory, relative(options.rootDirectory, stalePath).replace(/\\/g, "/"), "file");
+    await rm(stalePath, { force: true });
     return { applied: true, removed: true, state: assessment.state, reason: "Removed stale APK workspace metadata.", record };
   }
 
@@ -772,7 +778,9 @@ async function removeWorkspaceLocked(options: RemoveWorkspaceOptions): Promise<R
     throw new WorkspaceSafetyError(`Refusing to remove workspace ${record.id}: git worktree remove failed: ${detail}`);
   }
   await git(repoRoot, ["worktree", "prune"]);
-  await rm(workspaceRecordPath(options.rootDirectory, record.id), { force: true });
+  const cleanupPath = workspaceRecordPath(options.rootDirectory, record.id);
+  await resolveContainedAgenticPath(options.rootDirectory, relative(options.rootDirectory, cleanupPath).replace(/\\/g, "/"), "file");
+  await rm(cleanupPath, { force: true });
   return { applied: true, removed: true, state: assessment.state, reason: "Removed exact APK-owned workspace.", record };
 }
 

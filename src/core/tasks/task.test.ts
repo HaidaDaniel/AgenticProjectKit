@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { promisify } from "node:util";
 
+import { DEFAULT_CONFIG, writeAgenticConfigFile } from "../config/index.js";
 import {
   registerAgent,
   listAgents,
@@ -1710,6 +1711,104 @@ test("evidence append rejects malformed lock metadata without deleting it", asyn
       /malformed.*lock recover.*--force/,
     );
     assert.equal(await readFile(lockPath, "utf8"), "broken");
+  });
+});
+
+test("agentic runtime mutations refuse a symlinked .agentic directory without external writes", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-agentic-outside-"));
+    try {
+      await symlink(outside, join(directory, ".agentic"));
+      const evidence = {
+        taskId: "0001",
+        runId: "run-symlink",
+        agent: "agent-a",
+        type: "automated-test" as const,
+        result: "pass" as const,
+        subject: {
+          taskId: "0001",
+          repository: "none" as const,
+          baselineId: "base-none",
+          candidateId: "candidate-none",
+          worktreeId: "worktree-none",
+        },
+      };
+      await assert.rejects(() => appendTaskEvidence(directory, evidence), /symbolic link/i);
+      await assert.rejects(
+        () => captureTaskBaseline(directory, "0001", "agent-a", ".tasks/0001-symlink.md", "claim"),
+        /symbolic link/i,
+      );
+      await assert.rejects(
+        () => registerAgent(directory, { id: "agent-a", platform: "opencode", model: "fixture" }),
+        /symbolic link/i,
+      );
+      await assert.rejects(() => writeAgenticConfigFile(directory, DEFAULT_CONFIG), /symbolic link/i);
+      assert.deepEqual(await readdir(outside), []);
+    } finally {
+      await rm(outside, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
+    }
+  });
+});
+
+test("agentic runtime mutations refuse dangling roots and symlinked final files", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-agentic-final-outside-"));
+    try {
+      await symlink(join(outside, "missing"), join(directory, ".agentic"));
+      await assert.rejects(
+        () => appendTaskEvidence(directory, {
+          taskId: "0001",
+          runId: "run-dangling",
+          agent: "agent-a",
+          type: "automated-test",
+          result: "pass",
+          subject: {
+            taskId: "0001",
+            repository: "none",
+            baselineId: "base-none",
+            candidateId: "candidate-none",
+            worktreeId: "worktree-none",
+          },
+        }),
+        /symbolic link/i,
+      );
+      assert.deepEqual(await readdir(outside), []);
+
+      await rm(join(directory, ".agentic"));
+      await mkdir(join(directory, ".agentic"), { recursive: true });
+      const externalEvidence = join(outside, "evidence.jsonl");
+      await writeFile(externalEvidence, "external evidence\n", "utf8");
+      await symlink(externalEvidence, join(directory, ".agentic", "evidence.jsonl"));
+      await assert.rejects(
+        () => appendTaskEvidence(directory, {
+          taskId: "0001",
+          runId: "run-final-symlink",
+          agent: "agent-a",
+          type: "automated-test",
+          result: "pass",
+          subject: {
+            taskId: "0001",
+            repository: "none",
+            baselineId: "base-none",
+            candidateId: "candidate-none",
+            worktreeId: "worktree-none",
+          },
+        }),
+        /symbolic link/i,
+      );
+      assert.equal(await readFile(externalEvidence, "utf8"), "external evidence\n");
+
+      const externalBaseline = join(outside, "task-baselines.jsonl");
+      await writeFile(externalBaseline, "external baseline\n", "utf8");
+      await symlink(externalBaseline, join(directory, ".agentic", "task-baselines.jsonl"));
+      await assert.rejects(
+        () => captureTaskBaseline(directory, "0001", "agent-a", ".tasks/0001-final-symlink.md", "claim"),
+        /symbolic link/i,
+      );
+      assert.equal(await readFile(externalBaseline, "utf8"), "external baseline\n");
+    } finally {
+      await rm(outside, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
+    }
   });
 });
 

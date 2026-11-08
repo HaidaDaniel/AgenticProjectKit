@@ -106,10 +106,12 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0095](#adr-0095---planning-agents-use-the-backlog-only-for-durable-future-ideas) | accepted | Planning agents use the backlog only for durable future ideas | — |
 | [ADR-0096](#adr-0096---downstream-upgrade-acceptance-reuses-existing-compatibility-diagnostics) | accepted | Downstream upgrade acceptance reuses existing compatibility diagnostics | — |
 | [ADR-0097](#adr-0097---configured-repository-directories-are-lexical-repository-relative-paths) | accepted | Configured repository directories are lexical repository-relative paths | — |
+| [ADR-0098](#adr-0098---sensitive-task-and-docs-mutations-use-shared-filesystem-containment) | accepted | Sensitive task and docs mutations use shared filesystem containment | — |
+| [ADR-0099](#adr-0099---apk-runtime-state-mutations-use-the-same-repository-containment-boundary) | accepted | APK runtime state mutations use the same repository containment boundary | — |
 
 ### ADR index cross-check
 
-- [x] Each of the 88 index rows matches one retained ADR heading and its title.
+- [x] Each of the 89 index rows matches one retained ADR heading and its title.
 - [x] Each status matches that record's explicit `Status` field.
 - [x] The only supersession link is ADR-0006 -> ADR-0062, recorded by ADR-0006's status and ADR-0062's heading and decision text.
 
@@ -2010,3 +2012,24 @@ Task mutation locks, task creation, task updates, task archive publication, adop
 ### Consequences
 
 Configured task and docs mutations fail closed when an existing component could escape the repository, and refusals preserve external target bytes. The check is best-effort rather than a lock: an external process that replaces a missing component with a symlink after the check but before the mutation remains a residual TOCTOU boundary. APK does not add sandboxing, automatic symlink repair, or a claim of crash-durable directory publication.
+
+
+## ADR-0099 - APK runtime state mutations use the same repository containment boundary
+
+Status: accepted
+
+Date: 2026-11-08
+
+### Context
+
+ADR-0098 contained configured task and docs mutations, but APK also owns local operational state under `.agentic/`: evidence and baseline journals, agent and run records, local locks, configuration, worker and dogfood sessions, workspace records, and optional performance traces. Several of those writers joined `rootDirectory` with a fixed relative path and wrote directly. A repository whose `.agentic` component was a symbolic link to an external directory could therefore append evidence, register an agent, write run logs or configuration, or delete an evidence lock outside the worktree.
+
+### Decision
+
+`src/core/config/paths.ts` exposes one `.agentic` containment helper built on the existing `resolveContainedRepositoryPath` mechanism. It refuses paths outside `.agentic/` and rejects symlinked ancestors, a symlinked final component, and dangling links. Missing final components remain allowed so normal first-run creation works.
+
+Every production `.agentic` mutation entry point calls the helper immediately before writing, appending, renaming, or deleting: configuration, evidence and evidence locks, task baselines, agent shards and run logs, review and dogfood sessions, worker sessions and activation markers, workspace records, performance runtime state, and init starter files. The existing local lock ownership and dead-owner recovery protocol is unchanged. A refusal does not create, delete, or follow external files or lock markers.
+
+### Consequences
+
+APK runtime state cannot escape the repository through a symlinked `.agentic` path, and refusals preserve external bytes. The check remains a best-effort pre-mutation inspection, not a lock or sandbox: a hostile process that replaces a missing component after the check but before the mutation remains a residual TOCTOU boundary. APK does not add automatic symlink repair, cross-process namespace isolation, or new daemon state.

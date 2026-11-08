@@ -1,5 +1,6 @@
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
+import { resolveContainedAgenticPath } from "../config/paths.js";
 import { observedExecFile } from "../perf/index.js";
 export const AGENTS_PATH = ".agentic/agents.jsonl";
 export const RUNS_PATH = ".agentic/runs.jsonl";
@@ -183,6 +184,7 @@ async function readLegacyAgents(rootDirectory) {
 async function writeAgentShard(rootDirectory, agent, allowIdenticalExisting) {
     const path = agentPath(rootDirectory, agent.id);
     const content = stableAgentJson(agent);
+    await resolveContainedAgenticPath(rootDirectory, relative(rootDirectory, path).replace(/\\/g, "/"), "file");
     await mkdir(dirname(path), { recursive: true });
     try {
         await writeFile(path, content, {
@@ -280,6 +282,7 @@ export async function readRunLog(rootDirectory, diagnosticSnapshot) {
 async function writeRunEvent(rootDirectory, event, dedupe) {
     const path = runShardPath(rootDirectory, event);
     const line = stableEventJson(event);
+    await resolveContainedAgenticPath(rootDirectory, relative(rootDirectory, path).replace(/\\/g, "/"), "file");
     await mkdir(dirname(path), { recursive: true });
     if (dedupe) {
         const existing = new Set((await readJsonlFile(path)).map((entry) => stableEventJson(entry)));
@@ -355,6 +358,8 @@ export async function migrateAgentLogs(rootDirectory, options = {}) {
         }
     }
     if (options.removeLegacy) {
+        await resolveContainedAgenticPath(rootDirectory, AGENTS_PATH, "file");
+        await resolveContainedAgenticPath(rootDirectory, RUNS_PATH, "file");
         await rm(join(rootDirectory, AGENTS_PATH), { force: true });
         await rm(join(rootDirectory, RUNS_PATH), { force: true });
     }

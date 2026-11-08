@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 
+import { resolveContainedAgenticPath } from "../config/paths.js";
 import { withLocalMutationLock } from "../tasks/lock.js";
 
 import {
@@ -293,6 +294,7 @@ export async function withWorkerReviewLifecycleLock<T>(
 ): Promise<T> {
   validateWorkerRunId(runId);
   const lockDirectory = join(rootDirectory, WORK_SESSION_DIRECTORY, ".review-locks");
+  await resolveContainedAgenticPath(rootDirectory, relative(rootDirectory, lockDirectory).replace(/\\/g, "/"), "directory");
   await mkdir(lockDirectory, { recursive: true });
   const lockName = `${hashText(`${taskId}\0${runId}`)}.lock`;
   return withLocalMutationLock({

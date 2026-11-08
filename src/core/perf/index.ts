@@ -1,8 +1,10 @@
 import { exec, execFile, spawn, type ExecFileOptions, type ExecOptions } from "node:child_process";
 import { appendFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { promisify } from "node:util";
+
+import { resolveContainedAgenticPath } from "../config/paths.js";
 
 export const PERF_SCHEMA_VERSION = 2 as const;
 export const LEGACY_PERF_SCHEMA_VERSION = 1 as const;
@@ -232,7 +234,12 @@ async function readActiveSession(rootDirectory: string): Promise<PerfSessionStat
 }
 
 async function ensureRuntimeDirectory(rootDirectory: string): Promise<void> {
+  await resolveContainedAgenticPath(rootDirectory, PERF_RUNTIME_DIRECTORY, "directory");
   await mkdir(join(rootDirectory, PERF_RUNTIME_DIRECTORY), { recursive: true });
+}
+
+async function containRuntimeFile(rootDirectory: string, path: string): Promise<void> {
+  await resolveContainedAgenticPath(rootDirectory, relative(rootDirectory, path).replace(/\\/g, "/"), "file");
 }
 
 /**
@@ -274,6 +281,7 @@ async function safeAppendRecord(rootDirectory: string, record: PerfInvocationRec
     } catch (error: unknown) {
       if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) return;
     }
+    await containRuntimeFile(rootDirectory, tracePath);
     await appendFile(tracePath, `${serialized}\n`, "utf8");
   } catch {
     // Profiling is diagnostic and must never make normal APK work fail.
@@ -300,6 +308,7 @@ export async function startPerfSession(rootDirectory: string, label: string): Pr
   };
   await ensurePerfGitExclude(rootDirectory);
   await ensureRuntimeDirectory(rootDirectory);
+  await containRuntimeFile(rootDirectory, activePath);
   await writeFile(activePath, `${JSON.stringify(session)}\n`, { encoding: "utf8", flag: "wx" });
   return session;
 }
@@ -308,8 +317,12 @@ export async function stopPerfSession(rootDirectory: string): Promise<PerfSessio
   const active = await readActiveSession(rootDirectory);
   if (!active) return undefined;
   await ensureRuntimeDirectory(rootDirectory);
-  await writeFile(runtimePath(rootDirectory, LAST_SESSION_FILE), `${JSON.stringify(active)}\n`, "utf8");
-  await rm(runtimePath(rootDirectory, ACTIVE_SESSION_FILE), { force: true });
+  const lastPath = runtimePath(rootDirectory, LAST_SESSION_FILE);
+  const activePath = runtimePath(rootDirectory, ACTIVE_SESSION_FILE);
+  await containRuntimeFile(rootDirectory, lastPath);
+  await containRuntimeFile(rootDirectory, activePath);
+  await writeFile(lastPath, `${JSON.stringify(active)}\n`, "utf8");
+  await rm(activePath, { force: true });
   return active;
 }
 

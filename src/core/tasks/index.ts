@@ -7,7 +7,7 @@ import { constants as osConstants } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { appendRunLog, readRunLog, requireAgent } from "../agents/index.js";
-import { resolveContainedRepositoryPath } from "../config/paths.js";
+import { resolveContainedAgenticPath, resolveContainedRepositoryPath } from "../config/paths.js";
 import {
   appendTaskEvidence,
   compareTaskEvidenceFreshness,
@@ -3286,6 +3286,7 @@ export async function captureTaskBaseline(
       : {}),
     ...(phase === "epoch" && epoch?.contractAmendment ? { contractAmendment: epoch.contractAmendment } : {}),
   };
+  await resolveContainedAgenticPath(rootDirectory, TASK_BASELINES_PATH, "file");
   const path = join(rootDirectory, TASK_BASELINES_PATH);
   await mkdir(dirname(path), { recursive: true });
   await appendFile(path, `${JSON.stringify(baseline)}\n`, "utf8");

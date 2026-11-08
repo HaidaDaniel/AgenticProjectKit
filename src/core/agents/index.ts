@@ -1,7 +1,8 @@
 import type { TaskDiagnosticSnapshot } from "../tasks/diagnostics.js";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 
+import { resolveContainedAgenticPath } from "../config/paths.js";
 import { observedExecFile } from "../perf/index.js";
 import type { TaskState } from "../tasks/index.js";
 
@@ -268,6 +269,11 @@ async function writeAgentShard(
   const path = agentPath(rootDirectory, agent.id);
   const content = stableAgentJson(agent);
 
+  await resolveContainedAgenticPath(
+    rootDirectory,
+    relative(rootDirectory, path).replace(/\\/g, "/"),
+    "file",
+  );
   await mkdir(dirname(path), { recursive: true });
 
   try {
@@ -411,6 +417,11 @@ async function writeRunEvent(
   const path = runShardPath(rootDirectory, event);
   const line = stableEventJson(event);
 
+  await resolveContainedAgenticPath(
+    rootDirectory,
+    relative(rootDirectory, path).replace(/\\/g, "/"),
+    "file",
+  );
   await mkdir(dirname(path), { recursive: true });
 
   if (dedupe) {
@@ -521,6 +532,8 @@ export async function migrateAgentLogs(
   }
 
   if (options.removeLegacy) {
+    await resolveContainedAgenticPath(rootDirectory, AGENTS_PATH, "file");
+    await resolveContainedAgenticPath(rootDirectory, RUNS_PATH, "file");
     await rm(join(rootDirectory, AGENTS_PATH), { force: true });
     await rm(join(rootDirectory, RUNS_PATH), { force: true });
   }
