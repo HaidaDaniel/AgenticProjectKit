@@ -218,10 +218,14 @@ export async function startDogfoodSession(options) {
     };
     await requireNewSession(options.rootDirectory, task.id, sessionId);
     const directory = sessionDirectory(options.rootDirectory, task.id, sessionId);
+    const promptFile = promptPath(options.rootDirectory, task.id, sessionId);
+    const metadataFile = metadataPath(options.rootDirectory, task.id, sessionId);
     await resolveContainedAgenticPath(options.rootDirectory, relative(options.rootDirectory, directory).replace(/\\/g, "/"), "directory");
+    await resolveContainedAgenticPath(options.rootDirectory, relative(options.rootDirectory, promptFile).replace(/\\/g, "/"), "file");
+    await resolveContainedAgenticPath(options.rootDirectory, relative(options.rootDirectory, metadataFile).replace(/\\/g, "/"), "file");
     await mkdir(directory, { recursive: true });
-    await writeFile(promptPath(options.rootDirectory, task.id, sessionId), prompt, "utf8");
-    await writeFile(metadataPath(options.rootDirectory, task.id, sessionId), `${JSON.stringify(stored, null, 2)}\n`, "utf8");
+    await writeFile(promptFile, prompt, "utf8");
+    await writeFile(metadataFile, `${JSON.stringify(stored, null, 2)}\n`, "utf8");
     await appendRunLog(options.rootDirectory, {
         event: "work",
         agent,
