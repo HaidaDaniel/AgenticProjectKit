@@ -33,7 +33,7 @@ All four tasks have `epochs: []`. No audited amendment epoch exists for any post
 - Baseline allowed files: `src/core/config/schema.ts`, `src/core/config/schema.test.ts`, `src/core/config/types.ts`, `src/core/config/file.ts`, `src/core/config/paths.ts`, `docs/decisions.md`, `docs/progress.md`, `dist/**`; `src/core/tasks/**` and `src/core/backlog/**` were forbidden.
 - Implementation commits: `2bb7f57` (config path rejection, docs, dist), `27f5cb6` (test diagnostics), `a972ad9` (path hardening, dist). Every changed path was within the baseline allowed list.
 - Cancellation: `f779b41` at `17:54:23Z` changed only the task file's terminal state and note. Current material hash equals the baseline hash.
-- Evidence: automated verification records exist for all three implementation heads; there is no completion record, review record, or gate decision because the task was canceled before completion.
+- Evidence: automated verification records exist for all three implementation heads. Two `review-v1` request records exist under `.agentic/reviews/0252/` (`review-1793986882377-igtgni` prepared at `27f5cb6`, `review-1793987390349-av71eu` prepared at `a972ad9`), but neither has a recorded result. There is no completed review evidence, completion record, or gate decision because the task was canceled before completion.
 - Provenance: APK lists 0261 commit `4382336` under `excludedCommits` and `excludedFiles`, and reports `lineageStatus: intervening`. The actual common changed path between 0252 commit `2bb7f57` and 0261 commit `4382336` is `docs/decisions.md`. The exclusion is a cross-task attribution limitation, not a 0252 contract change.
 - Classification: **correct history** for 0252; **documented limitation** for the cross-task provenance exclusion.
 
@@ -46,7 +46,7 @@ All four tasks have `epochs: []`. No audited amendment epoch exists for any post
 - Current material hash `fc804a8f2bcfb64f043367c8875d73928eb930829a41f8c7685415c56f6fabc5` differs from the baseline hash. No amendment epoch exists.
 - Evidence: two automated verification runs passed for candidate `363d006`; a completion record passed. The task was medium risk and has no independent review record.
 - Provenance: APK lists 0257 commit `0a6519f` under `excludedCommits` and `excludedFiles`, and reports `lineageStatus: intervening`. No changed path is common between 0256 `363d006` and 0257 `0a6519f`; the exclusion is a conservative cross-task accounting limitation, not evidence that 0256 edited 0257's files.
-- Classification: **explicit operator decision required** for the post-claim material dependency edit. The provenance exclusion is a separate **documented limitation**. The dependency edit occurred after claim and was never covered by an audited amendment epoch; a retrospective epoch is not an authorized repair because it would require rewriting historical baselines/task state.
+- Classification: **explicit operator decision required** for the post-claim material dependency edit. The provenance exclusion is a separate **documented limitation**. The dependency edit occurred after claim and was never covered by a pre-commit audited amendment epoch. Epochs append rather than rewrite the original claim, but epoch start requires an active `doing` or `review` task; 0256 is already `done`, so a retrospective epoch is not available. The missing control was operator approval and `apk task epoch` before the completion commit.
 
 ## Task 0260 - Support task IDs beyond 9999 consistently
 
