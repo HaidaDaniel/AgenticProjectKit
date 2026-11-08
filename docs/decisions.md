@@ -2119,11 +2119,11 @@ Date: 2026-11-08
 
 ### Decision
 
-Before `commit-tree`, the command inspects every `Proposal-Id` under the configured proposals directory in the prospective tree with one bounded Git search. It fails closed if any stable ID appears more than once or if the selected path does not contain exactly the expected ID. A rename must be published through a separate controlled `git mv`/removal commit; the proposal commit workflow keeps its isolated-index, pinned-parent diff-tree allowlist, CAS `update-ref`, and no-push behavior. Staged proposal paths remain a separate fail-closed case.
+Before `commit-tree`, the command lists proposal paths in the prospective tree with a bounded `git ls-tree` call, reads each bounded proposal blob, and parses it with the canonical proposal parser to inspect every `Proposal-Id`. It fails closed if any stable ID appears more than once or if the selected path does not contain exactly the expected ID. A rename must be published through a separate controlled `git mv`/removal commit; the proposal commit workflow keeps its isolated-index, pinned-parent diff-tree allowlist, CAS `update-ref`, and no-push behavior. Staged proposal paths remain a separate fail-closed case.
 
 ### Consequences
 
-A proposal commit cannot publish duplicate stable identity, including an unstaged rename. The automatic rename workflow remains intentionally narrow: users publish structural rename history separately and then commit content changes. Existing new-proposal and in-place update commits are unchanged. The check reads proposal identity metadata from Git objects, not the filesystem, so it remains valid in linked worktrees and after external working-tree edits.
+A proposal commit cannot publish duplicate stable identity, including an unstaged rename. The automatic rename workflow remains intentionally narrow: users publish structural rename history separately and then commit content changes. Existing new-proposal and in-place update commits are unchanged. The check reads proposal identity metadata from Git objects, not the filesystem, so it remains valid in linked worktrees and after external working-tree edits. Because every committed proposal file in the configured directory must parse, a malformed unrelated proposal also fails the commit closed rather than weakening identity proof.
 
 
 ## ADR-0104 - New proposals are published by exclusive hard link

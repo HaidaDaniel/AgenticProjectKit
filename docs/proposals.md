@@ -89,9 +89,11 @@ history visibly separate instead of blending into one undifferentiated note.
 - Duplicate stable IDs are reported by validation; filename collisions are refused.
 - New proposal creation prepares the complete Markdown in a same-directory exclusive temporary
   file, syncs its contents when supported, and publishes it by hard link. An existing target is
-  never replaced, unsupported hard-link publication fails closed, and temporary files are removed
-  on write/publication/collision failures. If cleanup after successful publication fails, the
-  command reports that the proposal was published and names the temporary file to remove.
+  never replaced and unsupported hard-link publication fails closed. Pre-publication cleanup is
+  attempted on write/publication/collision failure; if that cleanup itself fails, the original
+  failure is reported and a temporary file may remain. If cleanup after successful publication
+  fails, the command reports that the proposal was published and names the temporary file to
+  remove.
 - Existing proposal bytes are never silently overwritten.
 - Unknown metadata or sections fail closed and are left unchanged.
 - Concurrent edits are detected through a content revision hash before a lifecycle decision is
@@ -161,7 +163,10 @@ rename leaves the old committed path in `HEAD` while the new path is added, the 
 would contain two files with the same `Proposal-Id`; the command fails closed before creating a
 commit. Publish a rename through a separate controlled `git mv`/removal commit, then commit any
 later content change with `apk proposal commit`. The command also refuses an ignored path, a
-proposal path with staged changes, and a prospective tree with any duplicate stable ID.
+proposal path with staged changes, and a prospective tree with any duplicate stable ID. Identity
+proof lists every committed `.md` under the proposals directory and parses each proposal; a
+malformed unrelated proposal therefore blocks the commit closed instead of weakening uniqueness
+proof.
 
 The command never pushes, force-pushes, rewrites history, merges automatically, or bypasses branch
 protection. Unrelated staged files, untracked files, and dirty working-tree files do not enter the
