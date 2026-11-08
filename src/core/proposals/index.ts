@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { link, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import { repositoryRelativePathIssue, resolveContainedRepositoryPath } from "../config/paths.js";
 
@@ -527,10 +527,82 @@ async function readBoundedProposal(path: string, displayPath: string): Promise<s
   }
 }
 
+export interface ProposalCreateRuntime {
+  beforePublish?: (temporary: string, target: string) => Promise<void> | void;
+  writeTemporary?: (path: string, content: string) => Promise<void>;
+  link?: (temporary: string, target: string) => Promise<void>;
+  removeTemporary?: (path: string) => Promise<void>;
+}
+
+const UNSUPPORTED_EXCLUSIVE_PUBLICATION_CODES = new Set(["EPERM", "EOPNOTSUPP", "ENOTSUP", "ENOSYS", "EXDEV"]);
+const IGNORED_TEMPORARY_SYNC_CODES = new Set(["EINVAL", "EOPNOTSUPP", "ENOTSUP", "ENOSYS"]);
+
+function fsErrorCode(error: unknown): string | undefined {
+  return error && typeof error === "object" && "code" in error && typeof error.code === "string"
+    ? error.code
+    : undefined;
+}
+
+async function writeExclusiveProposalTemporary(path: string, content: string): Promise<void> {
+  const handle = await open(path, "wx");
+  try {
+    await handle.writeFile(content, { encoding: "utf8" });
+    try {
+      await handle.sync();
+    } catch (error: unknown) {
+      if (!IGNORED_TEMPORARY_SYNC_CODES.has(fsErrorCode(error) ?? "")) throw error;
+    }
+  } finally {
+    await handle.close();
+  }
+}
+
+async function createProposalFileExclusive(
+  path: string,
+  markdown: string,
+  runtime: ProposalCreateRuntime = {},
+): Promise<void> {
+  const directory = dirname(path);
+  await mkdir(directory, { recursive: true });
+  const temporary = join(directory, `.${basename(path)}.${randomUUID()}.tmp`);
+  const removeTemporary = runtime.removeTemporary ?? ((temporaryPath: string) => rm(temporaryPath, { force: true }));
+  try {
+    await (runtime.writeTemporary ?? writeExclusiveProposalTemporary)(temporary, markdown);
+    await runtime.beforePublish?.(temporary, path);
+    try {
+      await (runtime.link ?? link)(temporary, path);
+    } catch (error: unknown) {
+      const code = fsErrorCode(error);
+      if (code === "EEXIST") {
+        throw new ProposalFormatError([`Proposal already exists: ${path}`]);
+      }
+      if (code && UNSUPPORTED_EXCLUSIVE_PUBLICATION_CODES.has(code)) {
+        throw new ProposalFormatError([
+          `Exclusive proposal publication is not supported on this filesystem (${code}): ${path}. `
+          + "Refusing to publish without an existing-target guarantee.",
+        ]);
+      }
+      throw error;
+    }
+  } catch (error: unknown) {
+    await removeTemporary(temporary).catch(() => undefined);
+    throw error;
+  }
+  try {
+    await removeTemporary(temporary);
+  } catch (error: unknown) {
+    throw new ProposalFormatError([
+      `Proposal was published at ${path} but temporary file ${temporary} could not be removed `
+      + `(${fsErrorCode(error) ?? "unknown error"}); remove it manually.`,
+    ]);
+  }
+}
+
 export async function createProposal(
   rootDirectory: string,
   docsDirectory: string,
   input: ProposalCreateInput,
+  runtime: ProposalCreateRuntime = {},
 ): Promise<ProposalItem> {
   const title = input.title.trim();
   if (title.length === 0 || title.length > 200) {
@@ -575,16 +647,12 @@ export async function createProposal(
   parseProposalMarkdown(markdown, slug, item.path);
 
   await assertProposalStorageSafe(rootDirectory, docsDirectory);
-  const directory = join(rootDirectory, proposalDirectoryRelative(docsDirectory));
-  await mkdir(directory, { recursive: true });
-  try {
-    await writeFile(join(directory, `${slug}.md`), markdown, { encoding: "utf8", flag: "wx" });
-  } catch (error: unknown) {
-    if (error && typeof error === "object" && "code" in error && error.code === "EEXIST") {
-      throw new ProposalFormatError([`Proposal already exists: ${item.path}`]);
-    }
-    throw error;
-  }
+  await resolveContainedRepositoryPath(rootDirectory, item.path, "file");
+  await createProposalFileExclusive(
+    join(rootDirectory, proposalDirectoryRelative(docsDirectory), `${slug}.md`),
+    markdown,
+    runtime,
+  );
   return item;
 }
 

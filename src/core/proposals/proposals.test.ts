@@ -1,8 +1,8 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, truncate, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, truncate, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -711,4 +711,98 @@ test("proposal commit detects duplicate identity with CR-only or NUL-containing 
       );
     });
   }
+});
+
+test("proposal creation publishes atomically and preserves existing targets", async () => {
+  await withTempDirectory(async (directory) => {
+    const input = { title: "Atomic target", slug: "atomic-target", summary: "Atomic." };
+    const target = join(directory, "docs", "proposals", "atomic-target.md");
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, "external target bytes\n", "utf8");
+    await assert.rejects(() => createProposal(directory, "docs", input), /already exists/);
+    assert.equal(await readFile(target, "utf8"), "external target bytes\n");
+    assert.deepEqual((await readdir(dirname(target))).filter((name) => name.endsWith(".tmp")), []);
+  });
+});
+
+test("proposal creation refuses a target that appears after the precheck", async () => {
+  await withTempDirectory(async (directory) => {
+    const target = join(directory, "docs", "proposals", "atomic-race.md");
+    await assert.rejects(
+      () => createProposal(directory, "docs", { title: "Atomic race", slug: "atomic-race", summary: "Race." }, {
+        beforePublish: async (_temporary, path) => {
+          await writeFile(path, "external writer content\n", "utf8");
+        },
+      }),
+      /already exists/,
+    );
+    assert.equal(await readFile(target, "utf8"), "external writer content\n");
+    assert.deepEqual((await readdir(dirname(target))).filter((name) => name.endsWith(".tmp")), []);
+  });
+});
+
+test("proposal creation cleans temporary files after write and publication failures", async () => {
+  await withTempDirectory(async (directory) => {
+    const input = { title: "Atomic failure", slug: "atomic-failure", summary: "Failure." };
+    const target = join(directory, "docs", "proposals", "atomic-failure.md");
+    await assert.rejects(() => createProposal(directory, "docs", input, {
+      writeTemporary: async (path, content) => {
+        await writeFile(path, content.slice(0, 16), "utf8");
+        throw Object.assign(new Error("temporary write failed"), { code: "EIO" });
+      },
+    }), /temporary write failed/);
+    await assert.rejects(() => stat(target), { code: "ENOENT" });
+    assert.deepEqual((await readdir(join(directory, "docs", "proposals"))).filter((name) => name.endsWith(".tmp")), []);
+
+    for (const code of ["EPERM", "EOPNOTSUPP", "ENOTSUP", "ENOSYS", "EXDEV"]) {
+      await assert.rejects(() => createProposal(directory, "docs", input, {
+        link: async () => { throw Object.assign(new Error(`link ${code}`), { code }); },
+      }), /Exclusive proposal publication is not supported/);
+      await assert.rejects(() => stat(target), { code: "ENOENT" });
+      assert.deepEqual((await readdir(join(directory, "docs", "proposals"))).filter((name) => name.endsWith(".tmp")), []);
+    }
+
+    await assert.rejects(() => createProposal(directory, "docs", input, {
+      link: async () => { throw Object.assign(new Error("publication failed"), { code: "EIO" }); },
+    }), /publication failed/);
+    await assert.rejects(() => stat(target), { code: "ENOENT" });
+    assert.deepEqual((await readdir(join(directory, "docs", "proposals"))).filter((name) => name.endsWith(".tmp")), []);
+  });
+});
+
+test("proposal creation surfaces cleanup failure after successful publication and supports retry", async () => {
+  await withTempDirectory(async (directory) => {
+    const input = { title: "Atomic cleanup", slug: "atomic-cleanup", summary: "Cleanup." };
+    const target = join(directory, "docs", "proposals", "atomic-cleanup.md");
+    await assert.rejects(() => createProposal(directory, "docs", input, {
+      removeTemporary: async () => { throw Object.assign(new Error("cleanup denied"), { code: "EACCES" }); },
+    }), /was published at .* could not be removed/);
+    assert.match(await readFile(target, "utf8"), /# Atomic cleanup/);
+    for (const name of await readdir(join(directory, "docs", "proposals"))) {
+      if (name.endsWith(".tmp")) await rm(join(directory, "docs", "proposals", name));
+    }
+
+    await rm(target);
+    await assert.rejects(() => createProposal(directory, "docs", input, {
+      link: async () => { throw Object.assign(new Error("retry publication failed"), { code: "EIO" }); },
+    }), /retry publication failed/);
+    const created = await createProposal(directory, "docs", input);
+    assert.equal(created.path, "docs/proposals/atomic-cleanup.md");
+  });
+});
+
+test("proposal creation refuses a symlinked final target without touching the target", async () => {
+  await withTempDirectory(async (directory) => {
+    await withOutsideDirectory(async (outside) => {
+      await mkdir(join(directory, "docs", "proposals"), { recursive: true });
+      const external = join(outside, "target.md");
+      await writeFile(external, "external\n", "utf8");
+      await symlink(external, join(directory, "docs", "proposals", "atomic-symlink.md"));
+      await assert.rejects(
+        () => createProposal(directory, "docs", { title: "Atomic symlink", slug: "atomic-symlink", summary: "Symlink." }),
+        /symbolic link/i,
+      );
+      assert.equal(await readFile(external, "utf8"), "external\n");
+    });
+  });
 });

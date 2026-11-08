@@ -112,10 +112,11 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0101](#adr-0101---proposal-only-commits-use-an-isolated-index-and-explicit-handoff) | accepted | Proposal-only commits use an isolated index and explicit handoff | — |
 | [ADR-0102](#adr-0102---proposal-lifecycle-transitions-are-serialized-and-decision-text-is-escaped) | accepted | Proposal lifecycle transitions are serialized and decision text is escaped | — |
 | [ADR-0103](#adr-0103---proposal-commits-check-stable-identity-in-the-prospective-tree) | accepted | Proposal commits check stable identity in the prospective tree | — |
+| [ADR-0104](#adr-0104---new-proposals-are-published-by-exclusive-hard-link) | accepted | New proposals are published by exclusive hard link | — |
 
 ### ADR index cross-check
 
-- [x] Each of the 93 index rows matches one retained ADR heading and its title.
+- [x] Each of the 94 index rows matches one retained ADR heading and its title.
 - [x] Each status matches that record's explicit `Status` field.
 - [x] The only supersession link is ADR-0006 -> ADR-0062, recorded by ADR-0006's status and ADR-0062's heading and decision text.
 
@@ -2123,3 +2124,24 @@ Before `commit-tree`, the command inspects every `Proposal-Id` under the configu
 ### Consequences
 
 A proposal commit cannot publish duplicate stable identity, including an unstaged rename. The automatic rename workflow remains intentionally narrow: users publish structural rename history separately and then commit content changes. Existing new-proposal and in-place update commits are unchanged. The check reads proposal identity metadata from Git objects, not the filesystem, so it remains valid in linked worktrees and after external working-tree edits.
+
+
+## ADR-0104 - New proposals are published by exclusive hard link
+
+Status: accepted
+
+Date: 2026-11-08
+
+### Context
+
+Proposal creation used `writeFile` with `wx`, which prevents replacing an existing target but can leave a partially written final Markdown file if the write fails. Canonical task creation had already replaced the same pattern with same-directory temporary preparation and hard-link publication.
+
+### Decision
+
+New proposals render and validate the complete Markdown first, write it to a same-directory exclusive temporary file, sync file contents when the platform supports it, close the handle, and publish by hard link. `EEXIST` becomes an actionable "proposal already exists" error; unsupported hard-link publication codes fail closed instead of falling back to an overwrite-capable rename. Temporary files are removed on write, publication, and collision failures. If removal fails after a successful publication, the command reports that the target was published and names the temporary file to remove rather than hiding the cleanup problem.
+
+The protocol does not fsync the parent directory entry and does not claim directory-level crash durability. Existing containment, symlink refusal, custom docs directory, duplicate-identity checks, and no-task/no-Git behavior are unchanged.
+
+### Consequences
+
+A failed creation cannot expose partial final Markdown, and an existing proposal is never replaced. Filesystems without hard-link support require a separate workflow rather than a silent unsafe fallback. A late cleanup failure is visible and leaves the published proposal intact for manual temporary-file cleanup.

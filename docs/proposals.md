@@ -87,6 +87,11 @@ history visibly separate instead of blending into one undifferentiated note.
 - Files are bounded by size, line length, section size, inventory count, and reference count.
 - Reads require strict UTF-8 and detect files that change or are truncated while being read.
 - Duplicate stable IDs are reported by validation; filename collisions are refused.
+- New proposal creation prepares the complete Markdown in a same-directory exclusive temporary
+  file, syncs its contents when supported, and publishes it by hard link. An existing target is
+  never replaced, unsupported hard-link publication fails closed, and temporary files are removed
+  on write/publication/collision failures. If cleanup after successful publication fails, the
+  command reports that the proposal was published and names the temporary file to remove.
 - Existing proposal bytes are never silently overwritten.
 - Unknown metadata or sections fail closed and are left unchanged.
 - Concurrent edits are detected through a content revision hash before a lifecycle decision is
