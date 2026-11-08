@@ -60,21 +60,49 @@ async function gitProbe(cwd, args, env) {
 async function assertProspectiveProposalIdentity(rootDirectory, tree, docsDirectory, proposalPath, expectedId) {
     const directory = proposalDirectoryRelative(docsDirectory);
     const found = await gitProbe(rootDirectory, [
-        "grep", "-n", "-I", "-E", "^Proposal-Id:[[:space:]]*", tree, "--", directory,
+        "grep", "-z", "-n", "-I", "-E", "^Proposal-Id:[[:space:]]*", tree, "--", directory,
     ]);
     if (!found.ok && found.code !== 1) {
         throw new ProposalGitError(`Could not inspect proposal identities in the prospective commit tree: ${found.stderr.trim() || "git grep failed"}.`);
     }
-    const prefix = new RegExp(`^${tree}:([^:]+):[0-9]+:Proposal-Id:[ \t]*(.+)$`);
+    const records = found.stdout.split("\0");
     const identities = new Map();
-    for (const line of found.stdout.split("\n")) {
-        if (line.length === 0)
-            continue;
-        const match = prefix.exec(line);
-        if (!match)
-            continue;
-        const path = match[1];
-        const id = match[2].trim();
+    const treePrefix = `${tree}:`;
+    let index = 0;
+    let pendingFile;
+    while (index < records.length) {
+        const file = pendingFile ?? records[index++];
+        pendingFile = undefined;
+        if (file === "")
+            break;
+        const line = records[index++];
+        const chunk = records[index++];
+        if (line === undefined || chunk === undefined || !/^[0-9]+$/.test(line)) {
+            throw new ProposalGitError("Could not parse proposal identity records from the prospective commit tree; refusing to commit.");
+        }
+        const newline = chunk.indexOf("\n");
+        let content;
+        if (newline === -1) {
+            content = chunk;
+        }
+        else {
+            content = chunk.slice(0, newline);
+            const remainder = chunk.slice(newline + 1);
+            if (remainder.length > 0)
+                pendingFile = remainder;
+        }
+        if (!file.startsWith(treePrefix)) {
+            throw new ProposalGitError(`Unexpected proposal identity record in the prospective commit tree: ${file.slice(0, 160)}.`);
+        }
+        const path = file.slice(treePrefix.length);
+        const match = /^Proposal-Id:[ \t]*(.+)$/.exec(content.replace(/\r$/, ""));
+        if (!match) {
+            throw new ProposalGitError(`Proposal identity record for ${path} is malformed; refusing to commit.`);
+        }
+        const id = match[1].trim();
+        if (id.length === 0) {
+            throw new ProposalGitError(`Proposal identity for ${path} is empty; refusing to commit.`);
+        }
         const paths = identities.get(id) ?? [];
         paths.push(path);
         identities.set(id, paths);

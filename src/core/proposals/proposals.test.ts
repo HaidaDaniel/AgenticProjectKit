@@ -665,3 +665,24 @@ test("proposal commit still updates a normal proposal in place", async () => {
     assert.deepEqual((await git(directory, "show", "--pretty=format:", "--name-only", result.commitId)).trim().split("\n").filter(Boolean), [item.path]);
   });
 });
+
+test("proposal commit detects duplicate identity in a colon-named committed path", async () => {
+  await withTempDirectory(async (directory) => {
+    await initRepository(directory);
+    const source = await createProposal(directory, "docs", { title: "Colon identity", summary: "Colon." });
+    const sourcePath = join(directory, source.path);
+    const content = await readFile(sourcePath, "utf8");
+    await rm(sourcePath);
+    await writeFile(join(directory, "docs", "proposals", "weird:name.md"), content, "utf8");
+    await git(directory, "add", "-A", "docs/proposals");
+    await git(directory, "commit", "--quiet", "-m", "colon proposal fixture");
+
+    const target = await createProposal(directory, "docs", { title: "Colon target", summary: "Target." });
+    const targetPath = join(directory, target.path);
+    await writeFile(targetPath, (await readFile(targetPath, "utf8")).replace(/^Proposal-Id: .*$/m, `Proposal-Id: ${source.id}`), "utf8");
+    await assert.rejects(
+      () => commitProposal(directory, "docs", target.slug),
+      /duplicate Proposal-Id/,
+    );
+  });
+});
