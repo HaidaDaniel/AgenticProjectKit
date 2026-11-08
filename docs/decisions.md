@@ -108,10 +108,11 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0097](#adr-0097---configured-repository-directories-are-lexical-repository-relative-paths) | accepted | Configured repository directories are lexical repository-relative paths | — |
 | [ADR-0098](#adr-0098---sensitive-task-and-docs-mutations-use-shared-filesystem-containment) | accepted | Sensitive task and docs mutations use shared filesystem containment | — |
 | [ADR-0099](#adr-0099---apk-runtime-state-mutations-use-the-same-repository-containment-boundary) | accepted | APK runtime state mutations use the same repository containment boundary | — |
+| [ADR-0100](#adr-0100---document-proposals-are-bounded-non-authoritative-markdown) | accepted | Document proposals are bounded non-authoritative Markdown | — |
 
 ### ADR index cross-check
 
-- [x] Each of the 89 index rows matches one retained ADR heading and its title.
+- [x] Each of the 90 index rows matches one retained ADR heading and its title.
 - [x] Each status matches that record's explicit `Status` field.
 - [x] The only supersession link is ADR-0006 -> ADR-0062, recorded by ADR-0006's status and ADR-0062's heading and decision text.
 
@@ -2033,3 +2034,26 @@ Every production `.agentic` mutation entry point calls the helper immediately be
 ### Consequences
 
 APK runtime state cannot escape the repository through a symlinked `.agentic` path, and refusals preserve external bytes. The check remains a best-effort pre-mutation inspection, not a lock or sandbox: a hostile process that replaces a missing component after the check but before the mutation remains a residual TOCTOU boundary. APK does not add automatic symlink repair, cross-process namespace isolation, or new daemon state.
+
+
+## ADR-0100 - Document proposals are bounded non-authoritative Markdown
+
+Status: accepted
+
+Date: 2026-11-08
+
+### Context
+
+APK had executable task contracts, deferred backlog cards, ADRs, canonical documentation, and verification evidence, but no lightweight place for optional engineering ideas, research notes, experiment observations, adapter sketches, and future documentation plans. Turning every such note into a task forced an owner, contract, verification, review, and gate. Treating it as canonical documentation or an ADR overstated its authority.
+
+### Decision
+
+Document proposals are Git-tracked Markdown at `<docsDirectory>/proposals/<slug>.md`. Each proposal has an opaque `Proposal-Id` independent of the filename, a small metadata contract, a required `## Summary`, and optional differentiated sections for context, observations, hypotheses, proposed direction, evidence, open questions, related work, and decision history. Kinds and statuses are bounded enumerations. `Proposal-Schema` fails closed when unsupported.
+
+Storage reuses the existing repository containment helper and backlog-style bounded reading. It enforces size, line, section, inventory, and reference limits; strict UTF-8; duplicate-ID detection; safe Unicode slugs; exclusive creation; symlink refusal; and change detection while reading. It introduces no database, daemon, background service, model memory, vector index, or application-runtime dependency, and the parser does not import the task engine.
+
+A proposal is not a task, backlog item, ADR, canonical document, or verification evidence. Creation allocates no task ID and requires no task lifecycle. Status changes are explicit operator actions bound to a verified proposal revision; acceptance is an operator assertion, not cryptographic authentication or proof of implementation.
+
+### Consequences
+
+Engineers can preserve optional technical knowledge in Git without inflating the executable task graph. Programmatic or ordinary APK commands do not scan proposals, so normal workflow cost is unchanged. Proposal commits remain ordinary provenance-visible Git commits. The first version intentionally omits automatic promotion, automatic task creation, a separate review/gate lifecycle, and push/PR automation; canonical and backlog linkage is explicit and validated.

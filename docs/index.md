@@ -23,6 +23,7 @@ Use this index to find the canonical guide for starting, understanding, adopting
 
 - [CLI and Configuration Reference](cli-commands.md) — find command syntax and the configuration fields that affect workflow behavior.
 - [Task System](task-system.md) — read task metadata, verification, evidence, review, scope, and completion-gate rules.
+- [Document Proposals](proposals.md) — preserve engineering ideas, research, experiments, and future documentation plans without creating tasks.
 - [Context System](context-system.md) — understand how task context is selected and bounded.
 - [Operating Modes](modes.md) — compare discovery, MVP, product, production, and maintenance guidance.
 
