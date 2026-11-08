@@ -34,8 +34,8 @@ All four tasks have `epochs: []`. No audited amendment epoch exists for any post
 - Implementation commits: `2bb7f57` (config path rejection, docs, dist), `27f5cb6` (test diagnostics), `a972ad9` (path hardening, dist). Every changed path was within the baseline allowed list.
 - Cancellation: `f779b41` at `17:54:23Z` changed only the task file's terminal state and note. Current material hash equals the baseline hash.
 - Evidence: automated verification records exist for all three implementation heads; there is no completion record, review record, or gate decision because the task was canceled before completion.
-- Provenance diagnostic: APK reports `Task 0261 commit 4382336 overlaps task-owned or pre-existing file dist/core/docs/adopt.js; same-file attribution is ambiguous`. 0252 did not change `dist/core/docs/adopt.js`; the actual common changed path between 0252 commit `2bb7f57` and 0261 commit `4382336` is `docs/decisions.md`. The diagnostic is conservative and its named file does not match the actual intersection, so it is recorded here as a diagnostic limitation rather than proof of a same-file edit. The provenance result also lists `4382336` under `excludedCommits` and sets `lineageStatus: intervening`.
-- Classification: **correct history** for 0252; **documented limitation** for the conservative provenance exclusion and diagnostic mismatch.
+- Provenance: APK lists 0261 commit `4382336` under `excludedCommits` and `excludedFiles`, and reports `lineageStatus: intervening`. The actual common changed path between 0252 commit `2bb7f57` and 0261 commit `4382336` is `docs/decisions.md`. The exclusion is a cross-task attribution limitation, not a 0252 contract change.
+- Classification: **correct history** for 0252; **documented limitation** for the cross-task provenance exclusion.
 
 ## Task 0256 - Honor a custom task directory during adoption
 
@@ -45,8 +45,8 @@ All four tasks have `epochs: []`. No audited amendment epoch exists for any post
 - Completion: `3a2569e` at `18:50:15Z`. It changed `State`/`Owner` and, materially, replaced `Depends on: 0252,0253` with `Depends on: 0253,0261`, and added a successor note. 0252 had already been canceled and 0261 was the config-safety successor.
 - Current material hash `fc804a8f2bcfb64f043367c8875d73928eb930829a41f8c7685415c56f6fabc5` differs from the baseline hash. No amendment epoch exists.
 - Evidence: two automated verification runs passed for candidate `363d006`; a completion record passed. The task was medium risk and has no independent review record.
-- Provenance diagnostic: APK reports `Task 0257 commit 0a6519f overlaps task-owned or pre-existing file dist/core/backlog/index.js; same-file attribution is ambiguous`. 0256 did not change that file, and no changed path is common between 0256 `363d006` and 0257 `0a6519f`; the named file is not a proven same-file overlap. The provenance result lists `0a6519f` under `excludedCommits` and sets `lineageStatus: intervening`.
-- Classification: **explicit operator decision required** for the post-claim material dependency edit. The provenance exclusion is a separate **documented limitation**, not evidence that 0256 edited 0257's file. The dependency edit occurred after claim and was never covered by an audited amendment epoch; a retrospective epoch is not an authorized repair because it would require rewriting historical baselines/task state.
+- Provenance: APK lists 0257 commit `0a6519f` under `excludedCommits` and `excludedFiles`, and reports `lineageStatus: intervening`. No changed path is common between 0256 `363d006` and 0257 `0a6519f`; the exclusion is a conservative cross-task accounting limitation, not evidence that 0256 edited 0257's files.
+- Classification: **explicit operator decision required** for the post-claim material dependency edit. The provenance exclusion is a separate **documented limitation**. The dependency edit occurred after claim and was never covered by an audited amendment epoch; a retrospective epoch is not an authorized repair because it would require rewriting historical baselines/task state.
 
 ## Task 0260 - Support task IDs beyond 9999 consistently
 
@@ -56,9 +56,9 @@ All four tasks have `epochs: []`. No audited amendment epoch exists for any post
 - Candidate: `3382b95` at `19:05:19Z` changed `dist/core/backlog/index.js`, `docs/task-system.md`, `scripts/check-docs-consistency.mjs`, `scripts/check-docs-consistency.test.mjs`, `src/core/backlog/backlog.test.ts`, `src/core/backlog/index.ts`, and `src/core/tasks/task.test.ts`. The docs-consistency test file was outside the baseline allowed list.
 - Completion: `42259a8` at `19:08:58Z` changed `State`/`Owner` and materially added `scripts/check-docs-consistency.test.mjs` to `Files allowed to edit`, retrospectively legalizing the already-committed change.
 - Current material hash `04cd0761d8d87ec6865d861ac430754e044326337b36f5632f9ee9aa99d66375` differs from the baseline hash. No amendment epoch exists.
-- Provenance: task 0266 candidate `0bbe41a` later changed the same files `docs/task-system.md` and `src/core/tasks/task.test.ts`. APK lists `0bbe41a` under `excludedCommits`, reports `lineageStatus: intervening`, and names `dist/core/tasks/index.js` in its diagnostic even though 0260 did not change that file. The actual same-file intersection is the two files above; the diagnostic name is not relied on as proof.
+- Provenance: task 0266 candidate `0bbe41a` later changed the same files `docs/task-system.md` and `src/core/tasks/task.test.ts`. APK lists `0bbe41a` under `excludedCommits` and reports `lineageStatus: intervening`; the actual same-file intersection is those two files.
 - Evidence: two verification runs recorded `not-run` results, then one run passed for candidate `3382b95`, followed by a completion record. The task was medium risk and has no independent review record.
-- Classification: **explicit operator decision required** for the post-claim scope expansion, plus **documented limitation** for the later 0266 same-file overlap and the diagnostic mismatch. The scope expansion happened after the file was committed; accepting it would accept the procedural deviation, not prove the original edit was pre-authorized.
+- Classification: **explicit operator decision required** for the post-claim scope expansion, plus **documented limitation** for the later 0266 same-file overlap. The scope expansion happened after the file was committed; accepting it would accept the procedural deviation, not prove the original edit was pre-authorized.
 
 ## Task 0261 - Fail closed on invalid config in compatibility and adoption
 
@@ -67,14 +67,14 @@ All four tasks have `epochs: []`. No audited amendment epoch exists for any post
 - Candidate: `4382336` at `17:56:15Z` changed `src/core/config/compatibility.ts`, `src/core/docs/adopt.ts`, `src/core/docs/adopt.test.ts`, `docs/decisions.md`, and `dist/**`. All paths were allowed.
 - Completion: `970fd89` at `18:11:00Z` changed the task file's lifecycle fields and `docs/progress.md` only. Current material hash equals the baseline hash.
 - Evidence: automated verification passed, an independent review by `review-0261` passed, and a completion record passed.
-- Provenance diagnostic: APK reports `Task 0253 commit dec7ce7d overlaps task-owned or pre-existing file dist/core/tasks/index.js; same-file attribution is ambiguous`. 0261 did not change that file, and no changed path is common between 0261 `4382336` and 0253 `dec7ce7d`; the named file is not a proven same-file overlap. The provenance result lists `dec7ce7d` under `excludedCommits` and sets `lineageStatus: intervening`.
-- Classification: **correct history** for 0261; **documented limitation** for the conservative provenance exclusion and diagnostic mismatch.
+- Provenance: APK lists 0253 commit `dec7ce7d` under `excludedCommits` and `excludedFiles`, and reports `lineageStatus: intervening`. No changed path is common between 0261 `4382336` and 0253 `dec7ce7d`; the exclusion is a conservative cross-task accounting limitation, not evidence that 0261 edited 0253's files.
+- Classification: **correct history** for 0261; **documented limitation** for the cross-task provenance exclusion.
 
 ## Operator decisions requested
 
 1. **Accept or reject task 0256's post-claim dependency edit.** The request is to accept that `Depends on: 0252,0253` was changed to `Depends on: 0253,0261` in completion commit `3a2569e` without an audited epoch, as a historical bookkeeping correction from a canceled dependency to its successor. Accepting this does not create an epoch, does not prove the edit was authorized before commit, and does not authenticate human intent.
 2. **Accept or reject task 0260's retrospective scope expansion.** The request is to accept that `scripts/check-docs-consistency.test.mjs` was changed in candidate `3382b95` before being added to allowed files in completion `42259a8`. Accepting this does not prove the file was pre-authorized and does not convert the missing amendment into an audited epoch.
-3. **Acknowledge the provenance-exclusion and same-file limitations.** For 0252, the actual intersection with 0261 `4382336` is `docs/decisions.md`, while the diagnostic names `dist/core/docs/adopt.js`; for 0261, no changed path is common with 0253 `dec7ce7d`, while the diagnostic names `dist/core/tasks/index.js`; for 0260, the actual intersection with 0266 `0bbe41a` is `docs/task-system.md` and `src/core/tasks/task.test.ts`. These are cross-task attribution limitations and a diagnostic-naming mismatch, not evidence of an out-of-scope source edit by the audited task.
+3. **Acknowledge the cross-task provenance exclusions and same-file limitations.** For 0252, the actual intersection with 0261 `4382336` is `docs/decisions.md`; for 0261, no changed path is common with 0253 `dec7ce7d`; for 0260, the actual intersection with 0266 `0bbe41a` is `docs/task-system.md` and `src/core/tasks/task.test.ts`; for 0256, no changed path is common with 0257 `0a6519f`. These are cross-task attribution limitations, not evidence of an out-of-scope source edit by the audited task.
 
 Rejecting either acceptance request leaves the corresponding historical deviation unresolved. It must not be repaired by editing `.tasks/`, `.agentic/task-baselines.jsonl`, evidence, or Git history.
 
@@ -82,7 +82,7 @@ Rejecting either acceptance request leaves the corresponding historical deviatio
 
 The corrected code tasks 0265 and 0266 are separate candidates and are not evidence for these historical contracts. For a release claim about this audit:
 
-- 0252 and 0261 can be described as correct history with documented provenance-exclusion and diagnostic-naming limitations.
+- 0252 and 0261 can be described as correct history with documented cross-task provenance-exclusion limitations.
 - 0256 and 0260 cannot be described as cleanly audited without the operator decisions above; 0260 also has a real later same-file overlap with 0266 `0bbe41a`.
 - A release may proceed only as **ready with documented limitations**, after explicit operator acceptance of the two historical deviations and acknowledgment of the attribution limitations. It must not be labeled a clean provenance PASS.
 - A future material task-contract change must use `apk task amendment preview`, an exact operator approval digest, and `apk task epoch` before the change is committed.
@@ -92,6 +92,6 @@ The corrected code tasks 0265 and 0266 are separate candidates and are not evide
 - This audit does not rewrite or "restore" history.
 - It does not claim that a missing amendment epoch existed.
 - It does not authenticate the human identity behind any operator decision.
-- It does not resolve cross-task provenance exclusions, same-file attribution, or the diagnostic file-name mismatch.
+- It does not resolve cross-task provenance exclusions or same-file attribution.
 - It does not re-run historical verification or claim current gate eligibility for completed tasks.
 - It does not evaluate tasks outside 0252, 0256, 0260, and 0261.
