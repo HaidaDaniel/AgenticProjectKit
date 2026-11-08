@@ -1,7 +1,7 @@
 # Task 0267 - Audit corrective task provenance and contract integrity
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-final-corrective
 Mode: audit
 Lane: audit
 Type: audit
