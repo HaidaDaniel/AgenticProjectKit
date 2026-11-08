@@ -60,6 +60,8 @@ Apply the migration explicitly:
 pnpm exec apk adopt --apply
 ```
 
+Generated documentation is written under the configured `docsDirectory` rather than a hardcoded `docs/` prefix. Before each adoption destination is created or updated, APK resolves the repository root, inspects existing components with `lstat`, and refuses any symbolic link or non-directory ancestor. The check is best-effort against concurrent replacement and creates no partial destination on refusal.
+
 The apply path preserves recognized and unknown config keys, never overwrites existing instructions or task files, and only creates missing kit files plus the explicit config schema marker. Repeating `--apply` is idempotent. An invalid or newer unsupported config schema fails closed instead of rewriting the repository.
 
 The generated `docs/adoption-report.md` records detected compatibility, task-contract counts, and pre-adoption gaps. `doctor`, `lint`, read-only `audit`, and `status` remain usable on legacy repositories before migration; mandatory gates may still report missing current evidence until the repository opts into them.

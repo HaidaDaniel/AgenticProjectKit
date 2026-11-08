@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { readRunLog } from "../agents/index.js";
+import { resolveContainedRepositoryPath } from "../config/paths.js";
 import { allTaskFiles, } from "../tasks/index.js";
 function currentMonth() {
     return new Date().toISOString().slice(0, 7);
@@ -150,6 +151,7 @@ export function renderAnalyticsSummary(summary) {
     ].join("\n");
 }
 export async function writeAnalyticsSummary(rootDirectory, summary) {
+    await resolveContainedRepositoryPath(rootDirectory, summary.outputPath, "file");
     const path = join(rootDirectory, summary.outputPath);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, renderAnalyticsSummary(summary), "utf8");

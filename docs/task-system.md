@@ -184,9 +184,13 @@ Human and JSON output also include bounded **advisory context-hygiene estimates*
 
 ## Task inventory fail-closed
 
+Configured task storage is also checked for filesystem containment before task mutations: the repository root is resolved, existing configured components and ancestors are inspected with `lstat`, and any symbolic link is refused instead of followed. The check is best-effort, not a lock; replacing a missing component after the check remains a residual TOCTOU boundary.
+
 A missing active or archive directory is treated as an empty optional inventory during initial setup. Any other read failure (`EACCES`, `EPERM`, `ENOTDIR`, `ELOOP`, I/O error) surfaces as `Task inventory unavailable (path): code`; it is never silently converted to an empty list. A file or symlink loop at the archive path is rejected, and task creation refuses to allocate a new ID while either active or archive inventory is unavailable. Healthy archived IDs remain part of the allocation sequence.
 
 ## Task file writes
+
+Task Markdown reads and updates refuse a symlinked final path; `O_NOFOLLOW` is used where available and the refusal is actionable rather than silently following the link. The configured task directory, archive directory, lock publication, and task file target are all checked immediately before mutation, and a refusal leaves the original bytes and any external target unchanged.
 
 Existing task lifecycle updates are written to a same-directory temporary file, fully populated, given the original permission bits where available, and published with a rename. A pre-publication write or rename failure removes the temporary file and leaves the original contract bytes intact. New task creation uses the separate exclusive-create path. This is atomic replacement on supported filesystems, not an fsync-level durability claim; Windows replacement follows the platform rename semantics and is not separately validated in this repository.
 

@@ -1,4 +1,5 @@
 import { withDiagnosticSnapshot, type TaskDiagnosticSnapshot } from "./diagnostics.js";
+import { writeAnalyticsSummary } from "../analytics/index.js";
 import { summarizeStatus } from "../status/index.js";
 import { buildAttentionView } from "../status/attention.js";
 import { execFile } from "node:child_process";
@@ -11433,4 +11434,221 @@ test("Unicode task titles produce deterministic safe non-empty slugs", async () 
 
 test("nextTaskId advances from 9999 to 10000", () => {
   assert.equal(nextTaskId([{ path: "0001-x.md", task: { ...TASK, id: "9999" } }]), "10000");
+});
+
+
+test("task mutation refuses symlinked task storage before writing outside the repository", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-task-outside-"));
+    try {
+      await symlink(outside, join(directory, ".tasks"));
+      const input = {
+        title: "Must stay contained",
+        mode: "mvp" as const,
+        lane: "implementation",
+        scope: ["fixture"],
+        risk: "low" as const,
+        parallel: false,
+        dependsOn: [],
+        tags: [],
+        goal: "Prove symlinked storage is refused.",
+        contextFiles: ["AGENTS.md"],
+        allowedFiles: ["src/**"],
+        forbiddenFiles: [],
+        steps: ["Do not write."],
+        acceptanceCriteria: ["No file appears outside the repository."],
+        verificationCommands: ["true"],
+        documentationUpdates: [],
+        notes: [],
+      };
+      await assert.rejects(() => createTask(directory, ".tasks", input), /symbolic link/i);
+      assert.deepEqual(await readdir(outside), []);
+    } finally {
+      await rm(outside, { force: true, recursive: true, maxRetries: 5, retryDelay: 20 });
+    }
+  });
+});
+
+test("task updates refuse a symlinked task file without following it", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-task-file-outside-"));
+    try {
+      await mkdir(join(directory, ".tasks"), { recursive: true });
+      const outsideFile = join(outside, "0001-target.md");
+      const original = renderTaskMarkdown({ ...TASK, id: "0001", dependsOn: [] });
+      await writeFile(outsideFile, original, "utf8");
+      await symlink(outsideFile, join(directory, ".tasks", "0001-target.md"));
+
+      await assert.rejects(
+        () => writeTaskFile(join(directory, ".tasks", "0001-target.md"), { ...TASK, id: "0001", dependsOn: [] }, directory),
+        /symbolic link/i,
+      );
+      assert.equal(await readFile(outsideFile, "utf8"), original);
+    } finally {
+      await rm(outside, { force: true, recursive: true, maxRetries: 5, retryDelay: 20 });
+    }
+  });
+});
+
+test("task reads refuse a symlinked task file without following it", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-task-read-outside-"));
+    try {
+      await mkdir(join(directory, ".tasks"), { recursive: true });
+      const outsideFile = join(outside, "0001-target.md");
+      await writeFile(outsideFile, renderTaskMarkdown({ ...TASK, id: "0001", dependsOn: [] }), "utf8");
+      await symlink(outsideFile, join(directory, ".tasks", "0001-target.md"));
+
+      await assert.rejects(
+        () => loadTaskFile(join(directory, ".tasks", "0001-target.md")),
+        /symbolic link/i,
+      );
+    } finally {
+      await rm(outside, { force: true, recursive: true, maxRetries: 5, retryDelay: 20 });
+    }
+  });
+});
+
+test("analytics output refuses a symlinked docs directory without writing outside the repository", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-analytics-outside-"));
+    try {
+      await symlink(outside, join(directory, "docs"));
+      await assert.rejects(
+        () => writeAnalyticsSummary(directory, {
+          month: "2026-01",
+          groups: [],
+          outputPath: "docs/analytics/agent-summary-2026-01.md",
+        }),
+        /symbolic link/i,
+      );
+      assert.deepEqual(await readdir(outside), []);
+    } finally {
+      await rm(outside, { force: true, recursive: true, maxRetries: 5, retryDelay: 20 });
+    }
+  });
+});
+
+
+test("task creation refuses symlinked ancestors and dangling configured storage", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-task-ancestor-outside-"));
+    try {
+      await symlink(outside, join(directory, "work"));
+      await assert.rejects(
+        () => createTask(directory, "work/tasks", {
+          title: "Ancestor escape",
+          mode: "mvp" as const,
+          lane: "implementation",
+          scope: ["fixture"],
+          risk: "low" as const,
+          parallel: false,
+          dependsOn: [],
+          tags: [],
+          goal: "Refuse a symlinked ancestor.",
+          contextFiles: ["AGENTS.md"],
+          allowedFiles: ["src/**"],
+          forbiddenFiles: [],
+          steps: ["Do not write."],
+          acceptanceCriteria: ["No ancestor escape."],
+          verificationCommands: ["true"],
+          documentationUpdates: [],
+          notes: [],
+        }),
+        /symbolic link/i,
+      );
+      assert.deepEqual(await readdir(outside), []);
+    } finally {
+      await rm(outside, { force: true, recursive: true, maxRetries: 5, retryDelay: 20 });
+    }
+  });
+
+  await withTempDirectory(async (directory) => {
+    await symlink("missing-tasks", join(directory, ".tasks"));
+    await assert.rejects(
+      () => createTask(directory, ".tasks", {
+        title: "Dangling escape",
+        mode: "mvp" as const,
+        lane: "implementation",
+        scope: ["fixture"],
+        risk: "low" as const,
+        parallel: false,
+        dependsOn: [],
+        tags: [],
+        goal: "Refuse dangling configured storage.",
+        contextFiles: ["AGENTS.md"],
+        allowedFiles: ["src/**"],
+        forbiddenFiles: [],
+        steps: ["Do not write."],
+        acceptanceCriteria: ["No dangling escape."],
+        verificationCommands: ["true"],
+        documentationUpdates: [],
+        notes: [],
+      }),
+      /symbolic link/i,
+    );
+  });
+});
+
+test("task archive refuses a symlinked archive destination", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-task-archive-outside-"));
+    try {
+      await mkdir(join(directory, ".tasks"), { recursive: true });
+      await writeTaskFile(join(directory, ".tasks", "0001-archive-me.md"), {
+        ...TASK,
+        id: "0001",
+        title: "Archive me",
+        state: "done",
+        owner: "fixture-owner",
+        dependsOn: [],
+      });
+      await symlink(outside, join(directory, ".tasks", "archive"));
+      await assert.rejects(() => archiveTask(directory, ".tasks", "0001"), /symbolic link/i);
+      assert.deepEqual(await readdir(outside), []);
+      await assert.rejects(() => stat(join(directory, ".tasks", "archive", "0001-archive-me.md")));
+    } finally {
+      await rm(outside, { force: true, recursive: true, maxRetries: 5, retryDelay: 20 });
+    }
+  });
+});
+
+test("task creation supports nested task directories inside a linked Git worktree", async () => {
+  await withTempDirectory(async (directory) => {
+    const linked = await mkdtemp(join(tmpdir(), "apk-task-linked-"));
+    try {
+      await writeFile(join(directory, "README.md"), "# fixture\n", "utf8");
+      const git = (...args: string[]) => execFileAsync("git", args, { cwd: directory });
+      await git("init", "--quiet");
+      await git("add", "README.md");
+      await git("-c", "user.name=APK", "-c", "user.email=apk@example.test", "commit", "--quiet", "-m", "fixture");
+      await execFileAsync("git", ["worktree", "add", "--quiet", "--detach", linked], { cwd: directory });
+
+      const created = await createTask(linked, "work/tasks", {
+        title: "Linked worktree task",
+        mode: "mvp",
+        lane: "implementation",
+        scope: ["fixture"],
+        risk: "low",
+        parallel: false,
+        dependsOn: [],
+        tags: [],
+        goal: "Create inside a linked worktree.",
+        contextFiles: ["AGENTS.md"],
+        allowedFiles: ["src/**"],
+        forbiddenFiles: [],
+        steps: ["Create."],
+        acceptanceCriteria: ["Created inside the linked worktree."],
+        verificationCommands: ["true"],
+        documentationUpdates: [],
+        notes: [],
+      });
+
+      assert.equal(created.path, "work/tasks/" + created.path.split("/").pop());
+      assert.match(await readFile(join(linked, created.path), "utf8"), /# Task 0001 - Linked worktree task/);
+      await assert.rejects(() => stat(join(directory, created.path)));
+    } finally {
+      await rm(linked, { force: true, recursive: true, maxRetries: 5, retryDelay: 20 });
+    }
+  });
 });

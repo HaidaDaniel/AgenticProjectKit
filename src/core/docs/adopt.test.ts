@@ -813,3 +813,73 @@ test("adoption rejects a symlinked configured task directory before writing", as
     }
   });
 });
+
+
+test("adoption honors a configured docs directory instead of hardcoded docs", async () => {
+  await withTempRepository(async (directory) => {
+    await createExistingRepository(directory);
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), `${JSON.stringify({
+      schemaVersion: 2,
+      projectName: "custom-docs",
+      defaultMode: "adopt",
+      documentationProfile: "minimal",
+      agentStyle: "normal",
+      taskDirectory: ".tasks",
+      docsDirectory: "handbook",
+    }, null, 2)}\n`, "utf8");
+
+    const result = await adoptRepository(directory);
+
+    assert.ok(result.created.includes("handbook/project-map.md"));
+    assert.ok(result.created.includes("handbook/adoption-report.md"));
+    assert.ok(result.created.includes("handbook/project.md"));
+    assert.ok(result.created.includes("handbook/task-system.md"));
+    assert.equal(result.created.includes("docs/project-map.md"), false);
+    await assert.rejects(() => stat(join(directory, "docs", "project-map.md")));
+    const task = await readFile(join(directory, ".tasks", "0001-document-adopted-repository.md"), "utf8");
+    assert.match(task, /handbook\/project-map\.md/);
+    assert.match(task, /handbook\/progress\.md/);
+  });
+});
+
+test("adoption refuses a symlinked configured docs directory without writing outside the repository", async () => {
+  await withTempRepository(async (directory) => {
+    await createExistingRepository(directory);
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(join(directory, ".agentic", "config.json"), `${JSON.stringify({
+      schemaVersion: 2,
+      projectName: "symlinked-docs",
+      defaultMode: "adopt",
+      documentationProfile: "minimal",
+      agentStyle: "normal",
+      taskDirectory: ".tasks",
+      docsDirectory: "docs",
+    }, null, 2)}\n`, "utf8");
+    const outside = await mkdtemp(join(tmpdir(), "apk-adopt-docs-outside-"));
+    try {
+      await symlink(outside, join(directory, "docs"));
+
+      await assert.rejects(() => adoptRepository(directory), /symbolic link/i);
+      assert.deepEqual(await readdir(outside), []);
+    } finally {
+      await rm(outside, { force: true, recursive: true, maxRetries: 5, retryDelay: 20 });
+    }
+  });
+});
+
+
+test("adoption refuses a symlinked destination ancestor without writing outside the repository", async () => {
+  await withTempRepository(async (directory) => {
+    await createExistingRepository(directory);
+    const outside = await mkdtemp(join(tmpdir(), "apk-adopt-agentic-outside-"));
+    try {
+      await symlink(outside, join(directory, ".agentic"));
+
+      await assert.rejects(() => adoptRepository(directory), /symbolic link/i);
+      assert.deepEqual(await readdir(outside), []);
+    } finally {
+      await rm(outside, { force: true, recursive: true, maxRetries: 5, retryDelay: 20 });
+    }
+  });
+});

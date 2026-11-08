@@ -1,5 +1,5 @@
-import { lstat, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { dirname, join, relative, resolve } from "node:path";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 import {
   CURRENT_CONFIG_SCHEMA_VERSION,
@@ -10,6 +10,7 @@ import {
   serializeAgenticConfig,
   type CompatibilityReport,
 } from "../config/index.js";
+import { resolveContainedRepositoryPath } from "../config/paths.js";
 import { CONFIG_PATH } from "../config/file.js";
 import { renderTaskContractInspection } from "../config/compatibility.js";
 import {
@@ -233,7 +234,8 @@ function resolveAdoptionTask(
   return { id, fileName: `${id}-${ADOPTION_TASK_SLUG}.md` };
 }
 
-function createDocumentationCleanupTask(id: string, taskDirectory: string): ProjectTask {
+function createDocumentationCleanupTask(id: string, taskDirectory: string, docsDirectory: string): ProjectTask {
+  const doc = (name: string): string => `${docsDirectory}/${name}`;
   return {
     id,
     title: "Document Adopted Repository",
@@ -249,17 +251,17 @@ function createDocumentationCleanupTask(id: string, taskDirectory: string): Proj
     goal: "Review generated adoption docs and fill in project-specific details.",
     contextFiles: [
       "AGENTS.md",
-      "docs/project-map.md",
-      "docs/adoption-report.md",
-      "docs/project.md",
-      "docs/scope.md",
-      "docs/architecture.md",
+      doc("project-map.md"),
+      doc("adoption-report.md"),
+      doc("project.md"),
+      doc("scope.md"),
+      doc("architecture.md"),
     ],
     allowedFiles: [
-      "docs/project.md",
-      "docs/scope.md",
-      "docs/architecture.md",
-      "docs/progress.md",
+      doc("project.md"),
+      doc("scope.md"),
+      doc("architecture.md"),
+      doc("progress.md"),
       `${taskDirectory}/${id}-document-adopted-repository.md`,
     ],
     forbiddenFiles: ["application source files"],
@@ -273,7 +275,7 @@ function createDocumentationCleanupTask(id: string, taskDirectory: string): Proj
       "No application source files are changed.",
     ],
     verificationCommands: ["echo \"Documentation-only task\""],
-    documentationUpdates: ["Update docs/progress.md."],
+    documentationUpdates: [`Update ${doc("progress.md")}.`],
     notes: ["Keep adoption conservative."],
   };
 }
@@ -291,23 +293,6 @@ async function migrateConfigContent(rootDirectory: string): Promise<string> {
     ...(parsed as Record<string, unknown>),
     schemaVersion: CURRENT_CONFIG_SCHEMA_VERSION,
   }, null, 2)}\n`;
-}
-
-async function assertTaskDirectoryContained(rootDirectory: string, taskDirectory: string): Promise<void> {
-  let current = resolve(rootDirectory);
-  for (const segment of taskDirectory.split("/")) {
-    current = resolve(current, segment);
-    try {
-      const info = await lstat(current);
-      if (info.isSymbolicLink()) throw new Error(`Task directory must not contain a symbolic link: ${taskDirectory}`);
-      if (!info.isDirectory()) throw new Error(`Task directory component is not a directory: ${taskDirectory}`);
-    } catch (error: unknown) {
-      if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") continue;
-      throw error;
-    }
-  }
-  const rel = relative(resolve(rootDirectory), resolve(rootDirectory, taskDirectory));
-  if (rel.startsWith("..") || rel.startsWith("/")) throw new Error(`Task directory escapes the repository: ${taskDirectory}`);
 }
 
 async function buildAdoptionPlan(
@@ -329,10 +314,14 @@ async function buildAdoptionPlan(
     );
   }
 
-  const taskDirectory = compatibility.config.state === "invalid" || compatibility.config.state === "unsupported"
-    ? DEFAULT_CONFIG.taskDirectory
-    : (await readAgenticConfigFile(rootDirectory)).taskDirectory;
-  await assertTaskDirectoryContained(rootDirectory, taskDirectory);
+  const config = compatibility.config.state === "invalid" || compatibility.config.state === "unsupported"
+    ? DEFAULT_CONFIG
+    : await readAgenticConfigFile(rootDirectory);
+  const taskDirectory = config.taskDirectory;
+  const docsDirectory = config.docsDirectory;
+  await resolveContainedRepositoryPath(rootDirectory, taskDirectory, "directory");
+  await resolveContainedRepositoryPath(rootDirectory, docsDirectory, "directory");
+  const doc = (name: string): string => `${docsDirectory}/${name}`;
   const activeTaskFiles = await listMarkdownFiles(join(rootDirectory, taskDirectory));
   const archivedTaskFiles = await listMarkdownFiles(join(rootDirectory, taskDirectory, "archive"));
   const allTaskFiles = [
@@ -366,15 +355,15 @@ async function buildAdoptionPlan(
       content: "",
     },
     {
-      path: "docs/project-map.md",
+      path: doc("project-map.md"),
       content: renderProjectMap(scan),
     },
     {
-      path: "docs/adoption-report.md",
+      path: doc("adoption-report.md"),
       content: renderAdoptionReport(scan, compatibility, activeTaskFiles.length),
     },
     {
-      path: "docs/project.md",
+      path: doc("project.md"),
       content: [
         "# Project",
         "",
@@ -385,7 +374,7 @@ async function buildAdoptionPlan(
       ].join("\n"),
     },
     {
-      path: "docs/scope.md",
+      path: doc("scope.md"),
       content: [
         "# Scope",
         "",
@@ -400,7 +389,7 @@ async function buildAdoptionPlan(
       ].join("\n"),
     },
     {
-      path: "docs/architecture.md",
+      path: doc("architecture.md"),
       content: [
         "# Architecture",
         "",
@@ -409,7 +398,7 @@ async function buildAdoptionPlan(
       ].join("\n"),
     },
     {
-      path: "docs/progress.md",
+      path: doc("progress.md"),
       content: [
         "# Progress",
         "",
@@ -424,7 +413,7 @@ async function buildAdoptionPlan(
       ].join("\n"),
     },
     {
-      path: "docs/task-system.md",
+      path: doc("task-system.md"),
       content: [
         "# Task System",
         "",
@@ -491,7 +480,7 @@ async function buildAdoptionPlan(
       ].join("\n"),
     },
     {
-      path: "docs/context-system.md",
+      path: doc("context-system.md"),
       content: [
         "# Context System",
         "",
@@ -547,7 +536,7 @@ async function buildAdoptionPlan(
       ].join("\n"),
     },
     {
-      path: "docs/decisions.md",
+      path: doc("decisions.md"),
       content: [
         "# Decisions",
         "",
@@ -572,7 +561,7 @@ async function buildAdoptionPlan(
     },
     {
       path: `${taskDirectory}/${adoptionTask.fileName}`,
-      content: renderTaskMarkdown(createDocumentationCleanupTask(adoptionTask.id, taskDirectory)),
+      content: renderTaskMarkdown(createDocumentationCleanupTask(adoptionTask.id, taskDirectory, docsDirectory)),
     },
     ...exportFiles.map((file) => ({
       path: file.outputPath,
@@ -672,11 +661,13 @@ export async function adoptRepository(
   const skipped = [...built.plan.skipped];
 
   for (const operation of built.operations) {
-    const path = join(rootDirectory, operation.path);
     if (operation.kind === "directory") {
+      await resolveContainedRepositoryPath(rootDirectory, operation.path, "directory");
       await ensureApkScratchDirectory(rootDirectory);
       continue;
     }
+    await resolveContainedRepositoryPath(rootDirectory, operation.path, "file");
+    const path = join(rootDirectory, operation.path);
     await mkdir(dirname(path), { recursive: true });
     if (operation.action === "create" && await fileExists(path)) {
       skipped.push(operation.path);

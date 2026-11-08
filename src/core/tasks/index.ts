@@ -1,11 +1,13 @@
 import type { TaskDiagnosticSnapshot } from "./diagnostics.js";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { appendFile, chmod, link, lstat, mkdir, readFile, readlink, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { appendFile, chmod, link, lstat, mkdir, open, readFile, readlink, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { constants as osConstants } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { appendRunLog, readRunLog, requireAgent } from "../agents/index.js";
+import { resolveContainedRepositoryPath } from "../config/paths.js";
 import {
   appendTaskEvidence,
   compareTaskEvidenceFreshness,
@@ -973,13 +975,67 @@ function taskSortValue(task: ProjectTask): number {
   return Number.isNaN(numeric) ? Number.MAX_SAFE_INTEGER : numeric;
 }
 
+function isMissingPathError(error: unknown): boolean {
+  return Boolean(
+    error
+    && typeof error === "object"
+    && "code" in error
+    && (error.code === "ENOENT" || error.code === "ENOTDIR"),
+  );
+}
+
+/** Refuse task files that are symbolic links instead of following them. */
+async function assertTaskFileNotSymlink(path: string): Promise<void> {
+  try {
+    const info = await lstat(path);
+    if (info.isSymbolicLink()) {
+      throw new Error(`Refusing to follow symbolic link for task storage: ${path}.`);
+    }
+  } catch (error: unknown) {
+    if (isMissingPathError(error)) return;
+    throw error;
+  }
+}
+
+/**
+ * Read task Markdown without following a final symbolic link. `O_NOFOLLOW`
+ * closes the common race on supported platforms; the prior lstat keeps the
+ * diagnostic actionable and covers platforms without the flag. A replacement
+ * between the check and open remains a documented residual TOCTOU limit.
+ */
+async function readTaskMarkdownNoFollow(path: string): Promise<string> {
+  await assertTaskFileNotSymlink(path);
+  const noFollow = typeof constants.O_NOFOLLOW === "number" ? constants.O_NOFOLLOW : 0;
+  let handle;
+  try {
+    handle = await open(path, constants.O_RDONLY | noFollow);
+  } catch (error: unknown) {
+    if (error && typeof error === "object" && "code" in error && error.code === "ELOOP") {
+      throw new Error(`Refusing to follow symbolic link for task storage: ${path}.`);
+    }
+    throw error;
+  }
+  try {
+    const info = await handle.stat();
+    if (!info.isFile()) throw new Error(`Task storage path is not a regular file: ${path}.`);
+    return await handle.readFile({ encoding: "utf8" });
+  } finally {
+    await handle.close();
+  }
+}
+
+async function assertTaskStorageContained(rootDirectory: string, taskDirectory: string): Promise<void> {
+  await resolveContainedRepositoryPath(rootDirectory, taskDirectory, "directory");
+}
+
 export async function loadTaskFile(path: string, diagnosticSnapshot?: TaskDiagnosticSnapshot): Promise<ProjectTaskFile> {
-  const load = () => withPerfSpan("task-config", "task.parse", async () => ({
-    path,
-    task: parseTaskMarkdown(diagnosticSnapshot
+  const load = () => withPerfSpan("task-config", "task.parse", async () => {
+    await assertTaskFileNotSymlink(path);
+    const text = diagnosticSnapshot
       ? (await diagnosticSnapshot.readBytes(diagnosticSnapshot.rootDirectory, path)).toString("utf8")
-      : await readFile(path, "utf8")),
-  }));
+      : await readTaskMarkdownNoFollow(path);
+    return { path, task: parseTaskMarkdown(text) };
+  });
   return diagnosticSnapshot ? diagnosticSnapshot.memo(diagnosticSnapshot.rootDirectory, `task-file:${resolve(path)}`, load) : load();
 }
 
@@ -989,8 +1045,18 @@ export async function loadTaskFile(path: string, diagnosticSnapshot?: TaskDiagno
  * failure leaves the original Markdown untouched. This is atomic replacement,
  * not fsync-level crash durability, and Windows rename behavior follows the
  * platform's replace semantics.
+ *
+ * When `rootDirectory` is supplied, the target must be a contained,
+ * non-symlinked repository path. Callers that hold an absolute task path from a
+ * contained inventory still get the final-component symlink refusal.
  */
-export async function writeTaskFile(path: string, task: ProjectTask): Promise<void> {
+export async function writeTaskFile(path: string, task: ProjectTask, rootDirectory?: string): Promise<void> {
+  if (rootDirectory) {
+    const relativePath = relative(rootDirectory, path).replace(/\\/g, "/");
+    await resolveContainedRepositoryPath(rootDirectory, relativePath, "file");
+  } else {
+    await assertTaskFileNotSymlink(path);
+  }
   const directory = dirname(path);
   await mkdir(directory, { recursive: true });
   const temporary = join(directory, `.${basename(path)}.${randomUUID()}.tmp`);
@@ -1533,6 +1599,7 @@ async function applyArchiveTasks(
     }
     const archived: TaskArchiveResult[] = [];
     if (currentPreview.plans.some((plan) => plan.canArchive)) {
+      await resolveContainedRepositoryPath(rootDirectory, `${taskDirectory}/archive`, "directory");
       await mkdir(join(rootDirectory, taskDirectory, "archive"), { recursive: true });
     }
     const expectedSourceHashes = new Map<string, string>();
@@ -1548,6 +1615,8 @@ async function applyArchiveTasks(
       for (const plan of currentPreview.plans.filter((candidate) => candidate.canArchive)) {
         const source = join(rootDirectory, plan.sourcePath);
         const destination = join(rootDirectory, plan.archivePath);
+        await resolveContainedRepositoryPath(rootDirectory, plan.sourcePath, "file");
+        await resolveContainedRepositoryPath(rootDirectory, plan.archivePath, "file");
         const latestPlan = await previewArchiveTask(rootDirectory, taskDirectory, plan.taskId);
         if (archivePlanSafetySignature(latestPlan, taskDirectory) !== archivePlanSafetySignature(plan, taskDirectory)) {
           throw new Error(`Archive plan changed before mutation for task ${plan.taskId}; re-run the preview and apply the current plan.`);
@@ -2144,6 +2213,7 @@ export async function withTaskMutationLock<T>(
   run: () => Promise<T>,
   lockOptions: { timeoutMs?: number; retryMs?: number } = {},
 ): Promise<T> {
+  await assertTaskStorageContained(rootDirectory, taskDirectory);
   const lockPath = join(rootDirectory, taskDirectory, ".apk.lock");
   return withLocalMutationLock({
     path: lockPath,
@@ -2160,6 +2230,7 @@ export async function createTaskUnderTaskLock(
   taskDirectory: string,
   input: TaskCreateInput,
 ): Promise<TaskCreateResult> {
+    await assertTaskStorageContained(rootDirectory, taskDirectory);
     const files = await listTaskFiles(rootDirectory, taskDirectory);
     const archived = await listArchivedTaskFiles(rootDirectory, taskDirectory);
     const id = nextTaskId(files, archived);

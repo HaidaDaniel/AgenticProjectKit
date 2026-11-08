@@ -1990,3 +1990,23 @@ This is lexical validation. Filesystem writers still require their own symlink/c
 ### Consequences
 
 Unsafe configured directories fail during parsing, and diagnostic/adoption consumers fail closed rather than deriving filesystem paths from an invalid config. Valid existing nested configurations remain readable, and no automatic config rewrite is performed.
+
+## ADR-0098 - Sensitive task and docs mutations use shared filesystem containment
+
+Status: accepted
+
+Date: 2026-11-08
+
+### Context
+
+ADR-0097 keeps configured `taskDirectory` and `docsDirectory` values lexically repository-relative, but configuration validation cannot prove that existing filesystem components stay inside the repository. Task creation, lifecycle updates, archive moves, adoption destinations, and analytics reports previously used different or missing checks. A symlinked configured directory, ancestor, archive directory, task Markdown file, or adoption destination could redirect a write outside the worktree.
+
+### Decision
+
+`src/core/config/paths.ts` exposes one containment helper that keeps the lexical contract separate, resolves the real repository root, and walks every existing relative component with `lstat`. Existing symbolic links are refused; existing intermediate components must be directories, and an existing final component must match the requested file or directory kind. Missing components are allowed because canonical create/init flows must create configured directories and files.
+
+Task mutation locks, task creation, task updates, task archive publication, adoption destinations, and analytics summary writes call the helper immediately before mutating. Task Markdown reads and updates also refuse a symlinked final path, using `O_NOFOLLOW` where the platform provides it. Adoption uses the configured `docsDirectory` for generated documentation instead of a hardcoded `docs/` prefix. A refusal creates no partial files and does not follow or repair the link. Normal nested directories and Git linked worktrees remain supported.
+
+### Consequences
+
+Configured task and docs mutations fail closed when an existing component could escape the repository, and refusals preserve external target bytes. The check is best-effort rather than a lock: an external process that replaces a missing component with a symlink after the check but before the mutation remains a residual TOCTOU boundary. APK does not add sandboxing, automatic symlink repair, or a claim of crash-durable directory publication.

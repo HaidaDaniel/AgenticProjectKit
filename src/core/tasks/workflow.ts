@@ -26,11 +26,12 @@ import {
   type TaskClaimBaseline,
   taskContractHash,
   taskContractSnapshot,
+  withTaskMutationLock,
   writeTaskFile,
   type ProjectTask,
   type TaskState,
 } from "./index.js";
-import { withLocalMutationLock } from "./lock.js";
+import { resolveContainedRepositoryPath } from "../config/paths.js";
 
 export interface TaskTransitionOptions {
   rootDirectory: string;
@@ -56,13 +57,7 @@ async function withTaskLock<T>(
   taskId: string,
   run: () => Promise<T>,
 ): Promise<T> {
-  const lockPath = join(rootDirectory, taskDirectory, ".apk.lock");
-  return withLocalMutationLock({
-    path: lockPath,
-    kind: "task-mutation",
-    command,
-    taskId,
-  }, run);
+  return withTaskMutationLock(rootDirectory, taskDirectory, command, taskId, run);
 }
 
 function requireOwner(task: ProjectTask, owner: string): void {
@@ -146,7 +141,7 @@ async function transition(
       ? await durationSinceLastClaim(options.rootDirectory, task.id, agent.id)
       : undefined;
 
-    await writeTaskFile(taskPath, nextTask);
+    await writeTaskFile(taskPath, nextTask, options.rootDirectory);
     await appendRunLog(options.rootDirectory, {
       event,
       agent,
@@ -302,7 +297,7 @@ export async function doneTask(options: TaskTransitionOptions): Promise<ProjectT
       ...task,
       state: "done" as const,
     };
-    await writeTaskFile(taskPath, nextTask);
+    await writeTaskFile(taskPath, nextTask, options.rootDirectory);
     await appendRunLog(options.rootDirectory, {
       event: "done",
       agent,
@@ -337,6 +332,7 @@ export async function createStaleTaskLock(
   rootDirectory: string,
   taskDirectory: string,
 ): Promise<string> {
+  await resolveContainedRepositoryPath(rootDirectory, taskDirectory, "directory");
   const lockPath = join(rootDirectory, taskDirectory, ".apk.lock");
   await mkdir(dirname(lockPath), { recursive: true });
   await writeFile(lockPath, "stale\n", {

@@ -3,16 +3,10 @@ import { dirname, join, relative } from "node:path";
 import { appendRunLog, durationSinceLastClaim, normalizeReasonText, REASON_STORAGE_LIMIT, requireAgent, } from "../agents/index.js";
 import { appendTaskEvidence } from "./evidence.js";
 import { captureTaskCompletionCandidate, evaluateTaskCompletionGate, TaskCompletionGateError, } from "./gate.js";
-import { allTaskFiles, findTaskFile, ensureTaskBaseline, loadTaskFile, recordTaskHandoff, startTaskVerificationEpoch, taskContractHash, taskContractSnapshot, writeTaskFile, } from "./index.js";
-import { withLocalMutationLock } from "./lock.js";
+import { allTaskFiles, findTaskFile, ensureTaskBaseline, loadTaskFile, recordTaskHandoff, startTaskVerificationEpoch, taskContractHash, taskContractSnapshot, withTaskMutationLock, writeTaskFile, } from "./index.js";
+import { resolveContainedRepositoryPath } from "../config/paths.js";
 async function withTaskLock(rootDirectory, taskDirectory, command, taskId, run) {
-    const lockPath = join(rootDirectory, taskDirectory, ".apk.lock");
-    return withLocalMutationLock({
-        path: lockPath,
-        kind: "task-mutation",
-        command,
-        taskId,
-    }, run);
+    return withTaskMutationLock(rootDirectory, taskDirectory, command, taskId, run);
 }
 function requireOwner(task, owner) {
     if (task.owner !== owner) {
@@ -61,7 +55,7 @@ async function transition(options, event, update) {
         const durationSec = event === "done"
             ? await durationSinceLastClaim(options.rootDirectory, task.id, agent.id)
             : undefined;
-        await writeTaskFile(taskPath, nextTask);
+        await writeTaskFile(taskPath, nextTask, options.rootDirectory);
         await appendRunLog(options.rootDirectory, {
             event,
             agent,
@@ -194,7 +188,7 @@ export async function doneTask(options) {
             ...task,
             state: "done",
         };
-        await writeTaskFile(taskPath, nextTask);
+        await writeTaskFile(taskPath, nextTask, options.rootDirectory);
         await appendRunLog(options.rootDirectory, {
             event: "done",
             agent,
@@ -222,6 +216,7 @@ export async function cancelTask(options) {
     });
 }
 export async function createStaleTaskLock(rootDirectory, taskDirectory) {
+    await resolveContainedRepositoryPath(rootDirectory, taskDirectory, "directory");
     const lockPath = join(rootDirectory, taskDirectory, ".apk.lock");
     await mkdir(dirname(lockPath), { recursive: true });
     await writeFile(lockPath, "stale\n", {

@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import { readRunLog, type RunLogEvent } from "../agents/index.js";
+import { resolveContainedRepositoryPath } from "../config/paths.js";
 import {
   allTaskFiles,
   type ProjectTask,
@@ -214,6 +215,7 @@ export async function writeAnalyticsSummary(
   rootDirectory: string,
   summary: AnalyticsSummary,
 ): Promise<string> {
+  await resolveContainedRepositoryPath(rootDirectory, summary.outputPath, "file");
   const path = join(rootDirectory, summary.outputPath);
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, renderAnalyticsSummary(summary), "utf8");
