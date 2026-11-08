@@ -1,6 +1,6 @@
 # Task 0275 - Contain remaining .agentic runtime mutations inside the repository
 
-State: doing
+State: done
 Owner: opencode-milestone
 Mode: maintenance
 Lane: bugfix
