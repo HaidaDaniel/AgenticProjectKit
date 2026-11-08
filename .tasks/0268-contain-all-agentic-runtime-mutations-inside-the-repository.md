@@ -39,6 +39,7 @@ Prevent every APK .agentic runtime mutation from escaping the repository through
 - src/core/tasks/review.ts
 - src/core/tasks/dogfood.ts
 - src/core/work/index.ts
+- src/core/work/session.ts
 - src/core/workspaces/index.ts
 - src/core/perf/index.ts
 - src/core/init/index.ts
