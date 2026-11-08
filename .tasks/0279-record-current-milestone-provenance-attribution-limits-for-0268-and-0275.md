@@ -1,7 +1,7 @@
 # Task 0279 - Record current-milestone provenance attribution limits for 0268 and 0275
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-milestone
 Mode: audit
 Lane: audit
 Type: audit
