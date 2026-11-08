@@ -8263,6 +8263,7 @@ test("createTask writes a valid task file with auto-generated id", async () => {
     const reparse = parseTaskMarkdown(content);
     assert.equal(reparse.id, "0001");
     assert.equal(reparse.title, "Example Task");
+    assert.deepEqual(await readdir(join(directory, ".tasks")), ["0001-example-task.md"]);
   });
 });
 
@@ -8333,6 +8334,7 @@ test("createTask avoids overwriting existing task file", async () => {
       documentationUpdates: [],
       notes: [],
     });
+    const originalContent = await readFile(join(directory, ".tasks", "0001-example-task.md"), "utf8");
 
     await assert.rejects(
       () => createTask(directory, ".tasks", {
@@ -8356,6 +8358,8 @@ test("createTask avoids overwriting existing task file", async () => {
       }),
       /Task file already exists/,
     );
+    assert.equal(await readFile(join(directory, ".tasks", "0001-example-task.md"), "utf8"), originalContent);
+    assert.deepEqual(await readdir(join(directory, ".tasks")), ["0001-example-task.md"]);
   });
 });
 
@@ -11341,41 +11345,116 @@ test("exclusive task creation refuses a target that appears after the precheck",
   await withTempDirectory(async (directory) => {
     await mkdir(join(directory, ".tasks"), { recursive: true });
     const target = join(directory, ".tasks", "0001-race-task.md");
-    const original = fsPromises.writeFile;
-    fsPromises.writeFile = (async (...args: Parameters<typeof fsPromises.writeFile>) => {
-      const [path, , options] = args;
-      if (String(path) === target && typeof options === "object" && options?.flag === "wx") {
-        await original(path, "external writer content\n", "utf8");
-      }
-      return original(...args);
-    }) as typeof fsPromises.writeFile;
-    syncBuiltinESMExports();
-    try {
-      await assert.rejects(() => createTask(directory, ".tasks", {
-        title: "Race task",
-        mode: "mvp",
-        lane: "implementation",
-        scope: ["fixture"],
-        risk: "low",
-        parallel: false,
-        dependsOn: [],
-        tags: [],
-        goal: "Exercise exclusive creation.",
-        contextFiles: ["AGENTS.md"],
-        allowedFiles: ["src/**"],
-        forbiddenFiles: [],
-        steps: ["Create."],
-        acceptanceCriteria: ["Conflict is refused."],
-        verificationCommands: ["true"],
-        documentationUpdates: [],
-        notes: [],
-      }), /appeared during creation|already exists/);
-    } finally {
-      fsPromises.writeFile = original;
-      syncBuiltinESMExports();
-    }
+    await assert.rejects(() => createTask(directory, ".tasks", {
+      title: "Race task",
+      mode: "mvp",
+      lane: "implementation",
+      scope: ["fixture"],
+      risk: "low",
+      parallel: false,
+      dependsOn: [],
+      tags: [],
+      goal: "Exercise exclusive creation.",
+      contextFiles: ["AGENTS.md"],
+      allowedFiles: ["src/**"],
+      forbiddenFiles: [],
+      steps: ["Create."],
+      acceptanceCriteria: ["Conflict is refused."],
+      verificationCommands: ["true"],
+      documentationUpdates: [],
+      notes: [],
+    }, {
+      beforePublish: async (_temporary, path) => {
+        await writeFile(path, "external writer content\n", "utf8");
+      },
+    }), /appeared during creation/);
     assert.equal(await readFile(target, "utf8"), "external writer content\n");
     assert.deepEqual(await readdir(join(directory, ".tasks")), ["0001-race-task.md"]);
+  });
+});
+
+test("exclusive task publication cleans temporary files and leaves no partial target", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    const input = {
+      title: "Exclusive failure",
+      mode: "mvp" as const,
+      lane: "implementation",
+      scope: ["fixture"],
+      risk: "low" as const,
+      parallel: false,
+      dependsOn: [],
+      tags: [],
+      goal: "Exercise publication failure paths.",
+      contextFiles: ["AGENTS.md"],
+      allowedFiles: ["src/**"],
+      forbiddenFiles: [],
+      steps: ["Create."],
+      acceptanceCriteria: ["Fail cleanly."],
+      verificationCommands: ["true"],
+      documentationUpdates: [],
+      notes: [],
+    };
+
+    await assert.rejects(() => createTask(directory, ".tasks", input, {
+      writeTemporary: async (path, content) => {
+        await writeFile(path, content.slice(0, 32), "utf8");
+        throw Object.assign(new Error("temporary write failed"), { code: "EIO" });
+      },
+    }), /temporary write failed/);
+    await assert.rejects(() => stat(join(directory, ".tasks", "0001-exclusive-failure.md")), { code: "ENOENT" });
+    assert.deepEqual((await readdir(join(directory, ".tasks"))).filter((name) => name.endsWith(".tmp")), []);
+
+    await assert.rejects(() => createTask(directory, ".tasks", input, {
+      link: async () => { throw Object.assign(new Error("exclusive link failed"), { code: "EIO" }); },
+    }), /exclusive link failed/);
+    await assert.rejects(() => stat(join(directory, ".tasks", "0001-exclusive-failure.md")), { code: "ENOENT" });
+    assert.deepEqual((await readdir(join(directory, ".tasks"))).filter((name) => name.endsWith(".tmp")), []);
+  });
+});
+
+test("exclusive task publication fails closed on unsupported hard links and retries with the same ID", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".tasks"), { recursive: true });
+    const input = {
+      title: "Unsupported link",
+      mode: "mvp" as const,
+      lane: "implementation",
+      scope: ["fixture"],
+      risk: "low" as const,
+      parallel: false,
+      dependsOn: [],
+      tags: [],
+      goal: "Exercise unsupported publication.",
+      contextFiles: ["AGENTS.md"],
+      allowedFiles: ["src/**"],
+      forbiddenFiles: [],
+      steps: ["Create."],
+      acceptanceCriteria: ["Refuse unsupported publication."],
+      verificationCommands: ["true"],
+      documentationUpdates: [],
+      notes: [],
+    };
+
+    for (const code of ["EPERM", "EOPNOTSUPP", "ENOSYS", "EXDEV"]) {
+      await assert.rejects(() => createTask(directory, ".tasks", input, {
+        link: async () => { throw Object.assign(new Error(`link ${code}`), { code }); },
+      }), (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.name, "TaskCreateError");
+        assert.match(error.message, /Exclusive task publication is not supported/);
+        assert.ok(error.message.includes(code));
+        return true;
+      });
+      await assert.rejects(() => stat(join(directory, ".tasks", "0001-unsupported-link.md")), { code: "ENOENT" });
+      assert.deepEqual((await readdir(join(directory, ".tasks"))).filter((name) => name.endsWith(".tmp")), []);
+    }
+
+    const created = await createTask(directory, ".tasks", input);
+    assert.equal(created.id, "0001");
+    assert.equal(created.path, ".tasks/0001-unsupported-link.md");
+    assert.match(await readFile(join(directory, created.path), "utf8"), /# Task 0001 - Unsupported link/);
+    assert.deepEqual(await readdir(join(directory, ".tasks")), ["0001-unsupported-link.md"]);
   });
 });
 

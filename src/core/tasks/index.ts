@@ -1076,19 +1076,76 @@ export async function writeTaskFile(path: string, task: ProjectTask, rootDirecto
   }
 }
 
-/** Publish a brand-new task without ever replacing an existing target. */
-async function createTaskFileExclusive(path: string, task: ProjectTask): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
+const UNSUPPORTED_EXCLUSIVE_PUBLICATION_CODES = new Set(["EPERM", "EOPNOTSUPP", "ENOTSUP", "ENOSYS", "EXDEV"]);
+const IGNORED_TEMPORARY_SYNC_CODES = new Set(["EINVAL", "EOPNOTSUPP", "ENOTSUP", "ENOSYS"]);
+
+function errorCode(error: unknown): string | undefined {
+  return error && typeof error === "object" && "code" in error && typeof error.code === "string"
+    ? error.code
+    : undefined;
+}
+
+function taskCreateError(message: string): TaskCreateError {
+  const err = new Error(message) as TaskCreateError;
+  err.name = "TaskCreateError";
+  return err;
+}
+
+async function writeExclusiveTaskTemporary(path: string, content: string): Promise<void> {
+  const handle = await open(path, "wx");
   try {
-    await writeFile(path, renderTaskMarkdown(task), { encoding: "utf8", flag: "wx" });
-  } catch (error: unknown) {
-    if (error && typeof error === "object" && "code" in error && error.code === "EEXIST") {
-      const err = new Error(`Task file appeared during creation: ${path}. Retry with a fresh task ID.`) as TaskCreateError;
-      err.name = "TaskCreateError";
-      throw err;
+    await handle.writeFile(content, { encoding: "utf8" });
+    try {
+      await handle.sync();
+    } catch (error: unknown) {
+      if (!IGNORED_TEMPORARY_SYNC_CODES.has(errorCode(error) ?? "")) throw error;
     }
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * Publish a brand-new task without ever replacing an existing target. The
+ * Markdown is written and file-synced through a same-directory exclusive
+ * temporary file, closed, then hard-linked into place. `link` fails with
+ * EEXIST instead of replacing a target that appeared after the inventory
+ * precheck. File sync improves crash visibility of the temporary contents but
+ * this protocol does not fsync the directory entry and does not claim
+ * directory-level crash durability.
+ */
+async function createTaskFileExclusive(
+  path: string,
+  task: ProjectTask,
+  runtime: TaskExclusivePublicationRuntime = {},
+): Promise<void> {
+  const directory = dirname(path);
+  await mkdir(directory, { recursive: true });
+  const temporary = join(directory, `.${basename(path)}.${randomUUID()}.tmp`);
+  const removeTemporary = runtime.removeTemporary ?? ((temporaryPath: string) => rm(temporaryPath, { force: true }));
+  try {
+    await (runtime.writeTemporary ?? writeExclusiveTaskTemporary)(temporary, renderTaskMarkdown(task));
+    await runtime.beforePublish?.(temporary, path);
+    try {
+      await (runtime.link ?? link)(temporary, path);
+    } catch (error: unknown) {
+      const code = errorCode(error);
+      if (code === "EEXIST") {
+        throw taskCreateError(`Task file appeared during creation: ${path}. Retry with a fresh task ID.`);
+      }
+      if (code && UNSUPPORTED_EXCLUSIVE_PUBLICATION_CODES.has(code)) {
+        throw taskCreateError(
+          `Exclusive task publication is not supported on this filesystem (${code}): ${path}. `
+          + "Refusing to publish without an existing-target guarantee.",
+        );
+      }
+      throw error;
+    }
+  } catch (error: unknown) {
+    await removeTemporary(temporary).catch(() => undefined);
     throw error;
   }
+  await removeTemporary(temporary).catch(() => undefined);
 }
 
 async function readTaskInventoryDirectory(
@@ -1975,6 +2032,14 @@ export interface TaskCreateError extends Error {
   name: "TaskCreateError";
 }
 
+/** Injectable operations for exclusive task publication failure-path tests. */
+export interface TaskExclusivePublicationRuntime {
+  writeTemporary?: (path: string, content: string) => Promise<void>;
+  beforePublish?: (temporary: string, target: string) => Promise<void>;
+  link?: (temporary: string, target: string) => Promise<void>;
+  removeTemporary?: (path: string) => Promise<void>;
+}
+
 export interface TaskFileScopeResult {
   changedFiles: string[];
   outOfScopeFiles: string[];
@@ -2229,6 +2294,7 @@ export async function createTaskUnderTaskLock(
   rootDirectory: string,
   taskDirectory: string,
   input: TaskCreateInput,
+  runtime: TaskExclusivePublicationRuntime = {},
 ): Promise<TaskCreateResult> {
     await assertTaskStorageContained(rootDirectory, taskDirectory);
     const files = await listTaskFiles(rootDirectory, taskDirectory);
@@ -2342,7 +2408,7 @@ export async function createTaskUnderTaskLock(
       throw err;
     }
 
-    await createTaskFileExclusive(taskPath, task);
+    await createTaskFileExclusive(taskPath, task, runtime);
 
     return {
       id,
@@ -2355,13 +2421,14 @@ export async function createTask(
   rootDirectory: string,
   taskDirectory: string,
   input: TaskCreateInput,
+  runtime: TaskExclusivePublicationRuntime = {},
 ): Promise<TaskCreateResult> {
   return withTaskMutationLock(
     rootDirectory,
     taskDirectory,
     "task create",
     undefined,
-    () => createTaskUnderTaskLock(rootDirectory, taskDirectory, input),
+    () => createTaskUnderTaskLock(rootDirectory, taskDirectory, input, runtime),
   );
 }
 
