@@ -74,6 +74,20 @@ test("planning instructions keep backlog cards separate from numeric task IDs", 
   assert.doesNotMatch(projectGrill, /backlog changes use fresh task IDs/i);
 });
 
+test("planning instructions distinguish document proposals from tasks and canonical truth", async () => {
+  for (const file of ["docs/agent-exporters.md", "docs/task-system.md", "docs/proposals.md"]) {
+    const content = await readFile(new URL(`../${file}`, import.meta.url), "utf8");
+    assert.match(content, /document proposal/i, file);
+    assert.match(content, /not a task|not an executable task|without creating/i, file);
+  }
+  const author = await readFile(
+    new URL("../src/core/templates/skills/apk-task-author/SKILL.md.hbs", import.meta.url),
+    "utf8",
+  );
+  assert.match(author, /apk proposal add/);
+  assert.match(author, /accepted proposal is still not an implemented feature/i);
+});
+
 test("compact test reporter preserves failures, diagnostics, and captured output", async () => {
   async function* events() {
     yield { type: "test:pass", data: { name: "quiet passing test" } };

@@ -76,6 +76,12 @@ an immutable `Backlog-Id`; approved executable work uses fresh canonical task ID
 promotion is the explicit conversion between them, without rewriting completed history. It never
 implements product code, auto-activates, or becomes a gate.
 
+Document proposals are a separate optional artifact: a request to save research, an experiment,
+or an engineering note should produce a proposal only with explicit permission; a proposal is not a task,
+backlog item, ADR, or canonical document. An accepted proposal is not an implementation task, backlog card, ADR, or canonical truth.
+Planning agents inspect only proposals the human names or returns from a bounded filtered list;
+ordinary work does not scan the proposal inventory.
+
 `apk-task-grill` clarifies one existing task before implementation. It runs only on an explicit
 human request such as "Use the APK task-grill skill on task 0026"; it never auto-activates, adds
 no CLI command, and does not change the normal work/review/gate flow.

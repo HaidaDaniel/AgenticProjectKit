@@ -103,6 +103,16 @@ canonical documentation. Prior decisions remain in the decision-history section.
 Rejected and superseded proposals remain readable. A superseded proposal records a traceable
 successor ID.
 
+## Planning use
+
+Planning agents create a proposal only when the human explicitly asks to preserve technical
+information. They do not create a proposal from every message, do not accept one without an
+operator decision, and do not move an observation into authoritative documentation as an
+established fact. Before authoring a task, an agent may inspect a proposal the human names or a
+bounded filtered lookup; ordinary implementation, verification, review, status, gate, and
+next-task work does not scan proposals. A relevant accepted proposal can inform planning without
+being copied into a task automatically.
+
 ## Relationship to other APK artifacts
 
 | Artifact | Purpose | Authority |

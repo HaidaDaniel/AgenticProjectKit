@@ -74,6 +74,15 @@ Distinguish a durable future idea from work that is ready to execute:
 - A blocked executable task is not a backlog item. Backlog items are not tasks, have no owner or verification ceremony, and must not be created automatically from every user message.
 - Reading backlog cards is bounded planning context. Do not scan the whole backlog during ordinary implementation, verification, review, or status work.
 
+## Proposal awareness
+
+Distinguish saving technical information from planning work:
+
+- A request to save research, an experiment, an observation, or an engineering note is not a task request. Propose a document proposal through `apk proposal add` and create one only when the human explicitly permits it.
+- Before authoring a task, inspect proposals the human names or returns from a bounded filtered `apk proposal list`; never scan every proposal during ordinary work.
+- A proposal is not a backlog card or an executable task. An accepted proposal is still not an implemented feature or canonical truth.
+- Do not convert an accepted proposal into a task automatically. Promotion is a separate explicit human request.
+
 ## Ask only material clarification questions
 
 Repository truth owns implementation details. Ask the human one question at a time only when a

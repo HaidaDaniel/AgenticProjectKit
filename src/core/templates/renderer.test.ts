@@ -808,3 +808,44 @@ test("grill skills expose the resolved local language without becoming developer
   assert.ok(agents);
   assert.doesNotMatch(agents.content, /apk language|agentic-project-kit\/preferences/i);
 });
+
+test("planning guidance distinguishes proposals backlog cards and executable tasks", async () => {
+  const agents = (await renderAgentExportFiles()).find((file) => file.outputPath === "AGENTS.md");
+  assert.ok(agents);
+  assert.match(agents.content, /Use document proposals for optional engineering ideas/);
+  assert.match(agents.content, /never auto-accept a proposal/);
+
+  const expectations: Record<string, RegExp[]> = {
+    "apk-task-author": [
+      /document proposal/i,
+      /apk proposal add/i,
+      /not a backlog card or an executable task/i,
+      /do not convert an accepted proposal into a task automatically/i,
+      /never scan every proposal/i,
+    ],
+    "apk-task-split": [
+      /document proposal/i,
+      /accepted proposal is not an implementation task/i,
+      /not the whole proposal inventory/i,
+    ],
+    "apk-project-grill": [
+      /document proposals/i,
+      /accepted proposal is not an implemented feature/i,
+    ],
+    "apk-task-grill": [
+      /document proposal/i,
+      /accepted proposal is still not implementation/i,
+    ],
+    "apk-prototype": [
+      /document proposal/i,
+      /not production verification/i,
+    ],
+  };
+  for (const [name, patterns] of Object.entries(expectations)) {
+    const content = normalizeLineEndings(
+      await readFile(join(process.cwd(), "src/core/templates/skills", name, "SKILL.md.hbs"), "utf8"),
+    );
+    for (const pattern of patterns) assert.match(content, pattern, name);
+    assert.doesNotMatch(content, /\{\{/, name);
+  }
+});

@@ -2057,7 +2057,7 @@ A proposal is not a task, backlog item, ADR, canonical document, or verification
 
 ### Consequences
 
-Engineers can preserve optional technical knowledge in Git without inflating the executable task graph. Programmatic or ordinary APK commands do not scan proposals, so normal workflow cost is unchanged. Proposal commits remain ordinary provenance-visible Git commits. The first version intentionally omits automatic promotion, automatic task creation, a separate review/gate lifecycle, and push/PR automation; canonical and backlog linkage is explicit and validated.
+Engineers can preserve optional technical knowledge in Git without inflating the executable task graph. Planning agents distinguish a short thought, engineering note, experiment observation, document proposal, backlog item, executable task, accepted ADR, and canonical runbook; they create proposals only on explicit human request, never accept one automatically, and never treat an observation as canonical fact. Proposal discovery is bounded to named or filtered entries, and ordinary status, next-task, workers, attention, verification, review, and gate work does not scan the proposal inventory. Programmatic or ordinary APK commands do not scan proposals, so normal workflow cost is unchanged. Proposal commits remain ordinary provenance-visible Git commits. The first version intentionally omits automatic promotion, automatic task creation, a separate review/gate lifecycle, and push/PR automation; canonical and backlog linkage is explicit and validated.
 
 
 ## ADR-0101 - Proposal-only commits use an isolated index and explicit handoff
