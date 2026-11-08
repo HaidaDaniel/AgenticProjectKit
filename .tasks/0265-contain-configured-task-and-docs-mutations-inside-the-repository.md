@@ -1,11 +1,11 @@
 # Task 0265 - Contain configured task and docs mutations inside the repository
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-final-corrective
 Mode: maintenance
 Lane: bugfix
 Type: bugfix
-Scope: filesystem,containment,security,tasks,adoption,docs
+Scope: filesystem,containment,security,tasks,adoption,docs,cli,lock-recovery
 Risk: high
 Parallel: false
 Depends on: none
@@ -27,6 +27,8 @@ Prevent task and docs filesystem mutations from escaping the repository through 
 - src/core/docs/adopt.ts
 - src/core/analytics/index.ts
 - src/core/tasks/diagnostics.ts
+- src/cli/commands/task.ts
+- src/cli/cli.test.ts
 - .tasks/0252-validate-configured-repository-paths.md
 - .tasks/0261-fail-closed-on-invalid-config-in-compatibility-and-adoption.md
 
@@ -39,6 +41,8 @@ Prevent task and docs filesystem mutations from escaping the repository through 
 - src/core/docs/adopt.ts
 - src/core/docs/adopt.test.ts
 - src/core/analytics/index.ts
+- src/cli/commands/task.ts
+- src/cli/cli.test.ts
 - docs/task-system.md
 - docs/adoption-flow.md
 - docs/decisions.md
@@ -124,3 +128,4 @@ Prevent task and docs filesystem mutations from escaping the repository through 
 
 - Previous corrective commit 546d0ae added a private assertTaskDirectoryContained in adoption only; ordinary task lifecycle still lacks an equivalent check.
 - Keep repository-relative POSIX directory paths as the canonical config form; do not add an automatic symlink repair path.
+- Operator scope expansion (2026-11-08): add CLI lock-recovery containment after independent review found `apk task lock recover --kind task` could delete a lock through a symlinked configured task directory.
