@@ -1,7 +1,7 @@
 # Task 0280 - Align proposal publication and identity documentation with implemented behavior
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-milestone
 Mode: maintenance
 Lane: documentation
 Type: bugfix
