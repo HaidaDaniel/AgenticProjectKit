@@ -1,7 +1,7 @@
 # Task 0268 - Contain all .agentic runtime mutations inside the repository
 
-State: doing
-Owner: opencode-milestone
+State: canceled
+Owner: none
 Mode: maintenance
 Lane: bugfix
 Type: bugfix
@@ -127,3 +127,4 @@ Prevent every APK .agentic runtime mutation from escaping the repository through
 
 - Confirmed before task creation: a disposable repository with .agentic symlinked to an external directory allowed appendTaskEvidence to write external evidence.jsonl and apk task lock recover --kind evidence --force to delete an external evidence.append.lock.
 - Keep the change mechanical and reuse resolveContainedRepositoryPath; do not build a general filesystem framework.
+- cancel: Canceled because the claim baseline predates the milestone planning commit and its Allowed Files omitted src/core/work/session.ts. The implementation is retained in commit cc290a9; successor task will carry a complete allowed-file set and independent verification.
