@@ -253,8 +253,8 @@ test("proposal commit preserves unrelated staged and unstaged state", async () =
     assert.match(indexAfter, new RegExp(`${item.path}$`, "m"));
     assert.deepEqual((await git(directory, "show", "--pretty=format:", "--name-only", "HEAD")).trim().split("\n").filter(Boolean), [item.path]);
     assert.equal((await git(directory, "diff", "--cached", "--name-only")).trim(), "app.ts");
-    assert.match(await git(directory, "status", "--porcelain"), /app\.ts/);
-    assert.match(await git(directory, "status", "--porcelain"), /notes\.txt/);
+    assert.match(await git(directory, "status", "--porcelain", "-uall"), /app\.ts/);
+    assert.match(await git(directory, "status", "--porcelain", "-uall"), /notes\.txt/);
     assert.equal(result.path, item.path);
   });
 });
@@ -420,4 +420,75 @@ test("links remain available for rejected proposals and symlinked canonical file
       assert.equal(await readFile(external, "utf8"), `References proposal ${item.id}.\n`);
     });
   });
+});
+
+test("end-to-end proposal workflow preserves destinations and creates no task", async () => {
+  await withTempDirectory(async (directory) => {
+    await initRepository(directory);
+    const item = await createProposal(directory, "docs", {
+      title: "End-to-end proposal",
+      kind: "experiment",
+      summary: "Capture an experiment result.",
+      observations: "Observed once in a disposable fixture.",
+      hypotheses: "May generalize.",
+    });
+    await writeFile(join(directory, "docs", "architecture.md"), `# Architecture\n\nProposal-Id: ${item.id}\n`, "utf8");
+    await mkdir(join(directory, ".tasks", "backlog"), { recursive: true });
+    await writeFile(join(directory, ".tasks", "backlog", "e2e-card.md"), `# E2E card\n\nProposal-Id: ${item.id}\n`, "utf8");
+    const canonicalBefore = await readFile(join(directory, "docs", "architecture.md"), "utf8");
+    const backlogBefore = await readFile(join(directory, ".tasks", "backlog", "e2e-card.md"), "utf8");
+
+    const accepted = await transitionProposal({
+      rootDirectory: directory,
+      docsDirectory: "docs",
+      idOrSlug: item.slug,
+      decision: "accepted",
+      actor: "operator",
+      reason: "Accept for planning.",
+    });
+    const linked = await linkProposal({
+      rootDirectory: directory,
+      docsDirectory: "docs",
+      taskDirectory: ".tasks",
+      idOrSlug: accepted.proposal.id,
+      canonical: "docs/architecture.md",
+      backlog: "e2e-card",
+    });
+    assert.equal(linked.proposal.status, "accepted");
+    assert.equal(linked.proposal.canonical, "docs/architecture.md");
+    assert.equal(linked.proposal.backlog, "e2e-card");
+    assert.equal(await readFile(join(directory, "docs", "architecture.md"), "utf8"), canonicalBefore);
+    assert.equal(await readFile(join(directory, ".tasks", "backlog", "e2e-card.md"), "utf8"), backlogBefore);
+
+    const committed = await commitProposal(directory, "docs", linked.proposal.id);
+    assert.equal((await git(directory, "show", "--pretty=format:", "--name-only", committed.commitId)).trim(), item.path);
+    assert.deepEqual((await readdir(join(directory, ".tasks"))).sort(), ["backlog"]);
+    const status = await git(directory, "status", "--porcelain", "-uall");
+    assert.doesNotMatch(status, new RegExp(item.path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(status, /e2e-card\.md/);
+  });
+});
+
+test("proposal storage works in Go Python and Node downstream-shaped repositories without tasks", async () => {
+  for (const [marker, content] of [
+    ["go.mod", "module fixture\n"],
+    ["pyproject.toml", "[project]\nname = \"fixture\"\n"],
+    ["package.json", "{}\n"],
+  ] as const) {
+    await withTempDirectory(async (directory) => {
+      await writeFile(join(directory, marker), content, "utf8");
+      const item = await createProposal(directory, "knowledge", {
+        title: `Proposal in ${marker} repository`,
+        summary: "Downstream-shaped fixture.",
+      });
+      const listed = await listProposals(directory, "knowledge");
+      assert.equal(listed.items.length, 1);
+      assert.equal(listed.diagnostics.length, 0);
+      const validated = await validateProposals(directory, "knowledge");
+      assert.equal(validated.items.length, 1);
+      assert.equal(validated.diagnostics.length, 0);
+      assert.equal(await readFile(join(directory, proposalRelativePath("knowledge", item.slug)), "utf8").then((text) => text.includes(item.id)), true);
+      await assert.rejects(() => readdir(join(directory, ".tasks")), { code: "ENOENT" });
+    });
+  }
 });

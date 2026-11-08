@@ -44,3 +44,4 @@ Use this index to find the canonical guide for starting, understanding, adopting
 - [Historical Progress](history/progress-history.md) — locate older progress records.
 - [Delivery Milestones](delivery/milestones.md) — browse historical milestone plans and release evidence.
 - [Corrective Provenance Audit](delivery/corrective-provenance-audit.md) — inspect the recorded contract and commit chronology for tasks 0252, 0256, 0260, and 0261, including operator decisions required for release readiness.
+- [Document Proposals Readiness](delivery/document-proposals-readiness.md) — inspect the proposal feature regression, performance evidence, and release-candidate limitations.

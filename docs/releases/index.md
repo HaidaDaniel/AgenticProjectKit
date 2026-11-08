@@ -2,10 +2,11 @@
 
 <!-- APK_VALIDATED_RELEASE: v0.5.2 -->
 
-The current package/candidate version is `0.5.2`.
+The current package/candidate version is `0.6.0`.
 The latest validated tagged release is [v0.5.2](v0.5.2.md), with the separate
 [post-tag validation record](../delivery/workflow-v0.5.2-post-release.md).
 Its annotated tag peels to candidate `c4fa572ebfd38954093d9f58db0caa6f2cbba89b`.
+A separate pre-tag `v0.6.0` candidate adds document proposals and the final `.agentic` containment correction; it is not validated or published until its own post-tag record exists.
 The prior v0.5.1, v0.5.0 and v0.4.9 releases remain immutable historical evidence.
 
 This index lists tags and committed release documentation; the documentation consistency
