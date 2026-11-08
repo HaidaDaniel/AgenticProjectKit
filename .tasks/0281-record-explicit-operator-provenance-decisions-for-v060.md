@@ -1,7 +1,7 @@
 # Task 0281 - Record explicit operator provenance decisions for v0.6.0
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-milestone
 Mode: audit
 Lane: audit
 Type: audit
