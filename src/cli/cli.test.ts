@@ -2135,6 +2135,28 @@ test("CLI proposal link requires a verifiable canonical or backlog reference", a
   });
 });
 
+test("CLI proposal commit refuses an unstaged rename that would duplicate identity", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => execFileAsync("git", args, { cwd: directory, encoding: "utf8" });
+    await git("init", "--quiet");
+    await git("config", "user.email", "fixture@example.test");
+    await git("config", "user.name", "Fixture");
+    await writeFile(join(directory, "README.md"), "baseline\n", "utf8");
+    await git("add", "README.md");
+    await git("commit", "--quiet", "-m", "baseline");
+    const add = await runCli(["proposal", "add", "--title", "Rename CLI", "--summary", "Rename.", "--json"], directory);
+    assert.equal(add.exitCode, 0, add.stderr);
+    const item = JSON.parse(add.stdout) as { slug: string; path: string };
+    const committed = await runCli(["proposal", "commit", item.slug], directory);
+    assert.equal(committed.exitCode, 0, committed.stderr);
+    await git("mv", item.path, "docs/proposals/renamed-cli.md");
+    await git("reset", "--", "docs/proposals/renamed-cli.md", item.path);
+    const refused = await runCli(["proposal", "commit", "renamed-cli"], directory);
+    assert.equal(refused.exitCode, 1);
+    assert.match(refused.stderr, /duplicate Proposal-Id|separate controlled git mv commit/);
+  });
+});
+
 test("CLI concurrent proposal decisions serialize and only one succeeds", async () => {
   await withTempDirectory(async (directory) => {
     const added = await runCli(["proposal", "add", "--title", "Concurrent CLI proposal", "--summary", "Race.", "--json"], directory);

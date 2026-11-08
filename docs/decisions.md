@@ -111,10 +111,11 @@ One row corresponds to each retained ADR heading below. Status mirrors the expli
 | [ADR-0100](#adr-0100---document-proposals-are-bounded-non-authoritative-markdown) | accepted | Document proposals are bounded non-authoritative Markdown | — |
 | [ADR-0101](#adr-0101---proposal-only-commits-use-an-isolated-index-and-explicit-handoff) | accepted | Proposal-only commits use an isolated index and explicit handoff | — |
 | [ADR-0102](#adr-0102---proposal-lifecycle-transitions-are-serialized-and-decision-text-is-escaped) | accepted | Proposal lifecycle transitions are serialized and decision text is escaped | — |
+| [ADR-0103](#adr-0103---proposal-commits-check-stable-identity-in-the-prospective-tree) | accepted | Proposal commits check stable identity in the prospective tree | — |
 
 ### ADR index cross-check
 
-- [x] Each of the 92 index rows matches one retained ADR heading and its title.
+- [x] Each of the 93 index rows matches one retained ADR heading and its title.
 - [x] Each status matches that record's explicit `Status` field.
 - [x] The only supersession link is ADR-0006 -> ADR-0062, recorded by ADR-0006's status and ADR-0062's heading and decision text.
 
@@ -2103,3 +2104,22 @@ Supersede resolves `--by` through the proposal lookup, rejects the current propo
 ### Consequences
 
 Two lifecycle commands cannot both report success while one decision disappears; the second sees the new status or revision and fails closed. Successor links remain stable across filename renames. Free-text reasons round-trip without corrupting decision metadata. The lock is host-local; a cross-host filesystem writer remains outside the guarantee, consistent with the existing local lock ownership model.
+
+
+## ADR-0103 - Proposal commits check stable identity in the prospective tree
+
+Status: accepted
+
+Date: 2026-11-08
+
+### Context
+
+`apk proposal commit` builds an isolated tree from `HEAD` and adds the selected proposal path. A working-tree rename that is not staged leaves the old committed path in `HEAD` and adds the new path. The resulting tree can contain two files with the same stable `Proposal-Id`, even though the working-tree inventory contains only the new file. A filesystem-only duplicate check cannot prove published identity uniqueness.
+
+### Decision
+
+Before `commit-tree`, the command inspects every `Proposal-Id` under the configured proposals directory in the prospective tree with one bounded Git search. It fails closed if any stable ID appears more than once or if the selected path does not contain exactly the expected ID. A rename must be published through a separate controlled `git mv`/removal commit; the proposal commit workflow keeps its isolated-index, pinned-parent diff-tree allowlist, CAS `update-ref`, and no-push behavior. Staged proposal paths remain a separate fail-closed case.
+
+### Consequences
+
+A proposal commit cannot publish duplicate stable identity, including an unstaged rename. The automatic rename workflow remains intentionally narrow: users publish structural rename history separately and then commit content changes. Existing new-proposal and in-place update commits are unchanged. The check reads proposal identity metadata from Git objects, not the filesystem, so it remains valid in linked worktrees and after external working-tree edits.

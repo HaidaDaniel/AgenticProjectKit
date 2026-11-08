@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import {
   findProposal,
   ProposalFormatError,
+  proposalDirectoryRelative,
   proposalRevision,
   type ProposalSnapshot,
 } from "./index.js";
@@ -77,7 +78,7 @@ async function gitProbe(
   cwd: string,
   args: readonly string[],
   env?: NodeJS.ProcessEnv,
-): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+): Promise<{ ok: boolean; stdout: string; stderr: string; code?: number }> {
   try {
     const result = await execFileAsync("git", [...args], {
       cwd,
@@ -95,7 +96,54 @@ async function gitProbe(
     const stderr = error && typeof error === "object" && "stderr" in error
       ? String((error as { stderr?: unknown }).stderr ?? "")
       : "";
-    return { ok: false, stdout, stderr };
+    const code = error && typeof error === "object" && "code" in error && typeof error.code === "number"
+      ? error.code
+      : undefined;
+    return { ok: false, stdout, stderr, code };
+  }
+}
+
+async function assertProspectiveProposalIdentity(
+  rootDirectory: string,
+  tree: string,
+  docsDirectory: string,
+  proposalPath: string,
+  expectedId: string,
+): Promise<void> {
+  const directory = proposalDirectoryRelative(docsDirectory);
+  const found = await gitProbe(rootDirectory, [
+    "grep", "-n", "-I", "-E", "^Proposal-Id:[[:space:]]*", tree, "--", directory,
+  ]);
+  if (!found.ok && found.code !== 1) {
+    throw new ProposalGitError(
+      `Could not inspect proposal identities in the prospective commit tree: ${found.stderr.trim() || "git grep failed"}.`,
+    );
+  }
+  const prefix = new RegExp(`^${tree}:([^:]+):[0-9]+:Proposal-Id:[ \t]*(.+)$`);
+  const identities = new Map<string, string[]>();
+  for (const line of found.stdout.split("\n")) {
+    if (line.length === 0) continue;
+    const match = prefix.exec(line);
+    if (!match) continue;
+    const path = match[1]!;
+    const id = match[2]!.trim();
+    const paths = identities.get(id) ?? [];
+    paths.push(path);
+    identities.set(id, paths);
+  }
+  for (const [id, paths] of identities) {
+    if (paths.length > 1) {
+      throw new ProposalGitError(
+        `Refusing to publish duplicate Proposal-Id ${id} at ${paths.join(", ")}. `
+        + "Publish a proposal rename as a separate controlled git mv commit; this command commits only one proposal path.",
+      );
+    }
+  }
+  const expectedPaths = identities.get(expectedId) ?? [];
+  if (expectedPaths.length !== 1 || expectedPaths[0] !== proposalPath) {
+    throw new ProposalGitError(
+      `Prospective commit tree does not contain exactly one ${proposalPath} with Proposal-Id ${expectedId}.`,
+    );
   }
 }
 
@@ -202,6 +250,13 @@ export async function commitProposal(
         `Refusing to commit unexpected paths: ${changed.join(", ")}. Only ${proposalPath} may be published.`,
       );
     }
+    await assertProspectiveProposalIdentity(
+      rootReal,
+      tree,
+      docsDirectory,
+      proposalPath,
+      snapshot.proposal.id,
+    );
 
     await options.runtime?.beforeFinalRevisionCheck?.();
     const after = await readFile(join(rootReal, proposalPath), "utf8");

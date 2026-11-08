@@ -601,3 +601,67 @@ test("validation reports dangling supersede references and contradictory status"
     await assert.rejects(() => readProposalItem(directory, "docs", first.slug), /last decision .* must match Status/);
   });
 });
+
+test("proposal commit refuses an unstaged rename that would duplicate the stable id", async () => {
+  await withTempDirectory(async (directory) => {
+    await initRepository(directory);
+    const item = await createProposal(directory, "docs", { title: "Rename source", summary: "Source." });
+    await commitProposal(directory, "docs", item.slug);
+    const previousHead = (await git(directory, "rev-parse", "HEAD")).trim();
+    await git(directory, "mv", item.path, "docs/proposals/renamed-proposal.md");
+    await git(directory, "reset", "--", "docs/proposals/renamed-proposal.md", item.path);
+    const renamedPath = join(directory, "docs", "proposals", "renamed-proposal.md");
+    await assert.rejects(
+      () => commitProposal(directory, "docs", "renamed-proposal"),
+      /duplicate Proposal-Id|separate controlled git mv commit/,
+    );
+    assert.equal((await git(directory, "rev-parse", "HEAD")).trim(), previousHead);
+    assert.equal(await readFile(renamedPath, "utf8").then((text) => text.includes(item.id)), true);
+    assert.equal((await git(directory, "cat-file", "-e", `HEAD:${item.path}`).then(() => true).catch(() => false)), true);
+  });
+});
+
+test("proposal commit refuses a staged git mv rename", async () => {
+  await withTempDirectory(async (directory) => {
+    await initRepository(directory);
+    const item = await createProposal(directory, "docs", { title: "Staged rename", summary: "Staged." });
+    await commitProposal(directory, "docs", item.slug);
+    await git(directory, "mv", item.path, "docs/proposals/staged-renamed.md");
+    await assert.rejects(
+      () => commitProposal(directory, "docs", "staged-renamed"),
+      /staged changes/,
+    );
+  });
+});
+
+test("proposal commit refuses duplicate stable ids already present in HEAD", async () => {
+  await withTempDirectory(async (directory) => {
+    await initRepository(directory);
+    const first = await createProposal(directory, "docs", { title: "Duplicate first", summary: "First." });
+    const second = await createProposal(directory, "docs", { title: "Duplicate second", summary: "Second." });
+    const firstPath = join(directory, proposalRelativePath("docs", first.slug));
+    const secondPath = join(directory, proposalRelativePath("docs", second.slug));
+    await writeFile(secondPath, (await readFile(secondPath, "utf8")).replace(/^Proposal-Id: .*$/m, `Proposal-Id: ${first.id}`), "utf8");
+    await git(directory, "add", "docs/proposals");
+    await git(directory, "commit", "--quiet", "-m", "duplicate identity fixture");
+    await writeFile(firstPath, (await readFile(firstPath, "utf8")).replace("First.", "First updated."), "utf8");
+    await assert.rejects(
+      () => commitProposal(directory, "docs", first.slug),
+      /duplicate Proposal-Id/,
+    );
+  });
+});
+
+test("proposal commit still updates a normal proposal in place", async () => {
+  await withTempDirectory(async (directory) => {
+    await initRepository(directory);
+    const item = await createProposal(directory, "docs", { title: "Update proposal", summary: "Initial." });
+    await commitProposal(directory, "docs", item.slug);
+    const firstHead = (await git(directory, "rev-parse", "HEAD")).trim();
+    const path = join(directory, item.path);
+    await writeFile(path, (await readFile(path, "utf8")).replace("Initial.", "Updated."), "utf8");
+    const result = await commitProposal(directory, "docs", item.slug);
+    assert.equal((await git(directory, "rev-parse", "HEAD^")).trim(), firstHead);
+    assert.deepEqual((await git(directory, "show", "--pretty=format:", "--name-only", result.commitId)).trim().split("\n").filter(Boolean), [item.path]);
+  });
+});

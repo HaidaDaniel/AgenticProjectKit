@@ -151,6 +151,13 @@ and the final step happens only when the operator actually requests implementati
    staged deletion, leaving unrelated staged entries and working-tree changes intact;
 6. prints the commit SHA and explicit manual push or PR handoff guidance.
 
+Proposal identity is checked against the prospective commit tree, not only the working tree. If a
+rename leaves the old committed path in `HEAD` while the new path is added, the prospective tree
+would contain two files with the same `Proposal-Id`; the command fails closed before creating a
+commit. Publish a rename through a separate controlled `git mv`/removal commit, then commit any
+later content change with `apk proposal commit`. The command also refuses an ignored path, a
+proposal path with staged changes, and a prospective tree with any duplicate stable ID.
+
 The command never pushes, force-pushes, rewrites history, merges automatically, or bypasses branch
 protection. Unrelated staged files, untracked files, and dirty working-tree files do not enter the
 proposal commit. If the proposal path itself has conflicting staged state, or an isolated index
