@@ -110,11 +110,13 @@ unchanged in kind and scales with the number of tracked files, not with proposal
 
 New-work status: ready for release validation (`READY_FOR_RELEASE_VALIDATION`).
 
-Publication status: `READY_WITH_DOCUMENTED_LIMITATIONS`. The operator recorded
+Publication status: `RELEASED_AND_POST_TAG_VALIDATED`. The operator recorded
 `ACCEPT_WITH_DOCUMENTED_LIMITATION` for Tasks 0256 and 0260 and acknowledged the cross-task and
 0268/0275 attribution limitations on `2026-11-08`. This does not rewrite history, create epochs,
-authenticate identity, or claim `CLEAN_PROVENANCE_PASS`. Tag publication, exact-SHA hosted CI, and
-post-tag validation remain separate release steps.
+authenticate identity, or claim `CLEAN_PROVENANCE_PASS`. The annotated tag `v0.6.0`
+(`d83d069f...`, peeling to `88fc21e`) passed exact-SHA hosted CI, cold installation, CLI/proposal
+smoke, self-adoption, and cross-stack fixtures; see the
+[post-tag validation record](workflow-v0.6.0-post-release.md).
 
 No tag, push, GitHub release, version-sentinel change, or downstream upgrade is part of this
 candidate.

@@ -11,7 +11,7 @@ Have Git, Node.js, and pnpm available. The package declares Node.js `>=22.22.1`;
 From the repository root, install the validated release tag as a development dependency:
 
 ```bash
-pnpm add -D agentic-project-kit@git+https://github.com/HaidaDaniel/AgenticProjectKit.git#v0.5.2
+pnpm add -D agentic-project-kit@git+https://github.com/HaidaDaniel/AgenticProjectKit.git#v0.6.0
 ```
 
 Inspect `package.json` and `pnpm-lock.yaml` before committing. The manifest should name the exact tag shown in the install command, and the lockfile should record its resolved Git commit. The historical v0.4.7 clean-directory walkthrough recorded below resolved that older tag to `2797556344eb25cc34d3f51afbe10532147aca85`; re-run resolution for the tag you actually install. If the repository had no manifest, pnpm created both files. For a tooling-only manifest, set `"private": true` if it must not be published, and add `node_modules/` to `.gitignore` when it is not already ignored.
