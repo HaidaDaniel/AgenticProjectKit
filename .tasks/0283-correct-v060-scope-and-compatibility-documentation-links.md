@@ -1,6 +1,6 @@
 # Task 0283 - Correct v0.6.0 scope and compatibility documentation links
 
-State: doing
+State: done
 Owner: opencode-milestone
 Mode: maintenance
 Lane: documentation
