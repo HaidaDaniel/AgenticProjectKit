@@ -1,7 +1,7 @@
 # Task 0266 - Publish new task files with crash-safe exclusive linking
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-final-corrective
 Mode: maintenance
 Lane: bugfix
 Type: bugfix
