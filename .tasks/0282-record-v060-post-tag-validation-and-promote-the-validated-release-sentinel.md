@@ -1,6 +1,6 @@
 # Task 0282 - Record v0.6.0 post-tag validation and promote the validated release sentinel
 
-State: doing
+State: done
 Owner: opencode-milestone
 Mode: maintenance
 Lane: release
