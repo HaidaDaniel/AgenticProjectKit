@@ -127,14 +127,31 @@ and the final step happens only when the operator actually requests implementati
 ## Git workflow
 
 `apk proposal add` creates the document but never runs `git add`, `git commit`, or `git push`.
-A separate explicit local commit operation publishes exactly one validated proposal file through
-an isolated Git index, preserving unrelated staged and working-tree state. If the index cannot be
-preserved safely, the operation fails closed and recommends a separate Git worktree. Proposal
-commits are ordinary Git commits and remain visible to task provenance; they are not an exception
-to history or scope checks.
 
-No push, force-push, history rewrite, automatic merge, or branch-protection bypass is performed by
-the local workflow. Protected branches require a separate explicit branch and PR handoff.
+`apk proposal commit <slug-or-id>` is the separate explicit local publication step. It:
+
+1. revalidates the proposal and its current content revision;
+2. requires the repository root and an attached branch;
+3. refuses an ignored proposal path or a proposal path that is staged differently from the
+   validated working-tree content;
+4. builds the commit from an isolated temporary Git index seeded from `HEAD`, adds exactly the
+   selected proposal path, writes the tree, creates a normal commit with `git commit-tree`, and
+   advances the current branch with a compare-and-swap `git update-ref`;
+5. synchronizes only that path in the caller's real index so it does not appear as a phantom
+   staged deletion, leaving unrelated staged entries and working-tree changes intact;
+6. prints the commit SHA and explicit manual push or PR handoff guidance.
+
+The command never pushes, force-pushes, rewrites history, merges automatically, or bypasses branch
+protection. Unrelated staged files, untracked files, and dirty working-tree files do not enter the
+proposal commit. If the proposal path itself has conflicting staged state, or an isolated index
+cannot be used safely, the operation fails closed and recommends a separate Git worktree.
+
+Proposal commits are ordinary Git commits. They remain visible to task provenance and are not an
+exception to scope or candidate-freshness checks. For parallel work, use a separate Git worktree:
+one worktree may hold an unfinished executable task while another creates and commits proposals.
+A remote branch update is not fetched or merged by this command; push or open a pull request only
+through an explicit, policy-approved manual step. Protected `main` requires a separate branch and
+PR handoff.
 
 ## CLI
 
@@ -146,6 +163,7 @@ pnpm exec apk proposal validate [--json]
 pnpm exec apk proposal accept <slug-or-id> --actor <operator-id> --reason "Accept for planning."
 pnpm exec apk proposal reject <slug-or-id> --actor <operator-id> --reason "Out of scope."
 pnpm exec apk proposal supersede <slug-or-id> --by <successor-id> --actor <operator-id> --reason "Replaced."
+pnpm exec apk proposal commit <slug-or-id> [--message <text>] [--expect-revision <sha256>]
 ```
 
 `add` creates only one proposal document. It never runs `git add`, `git commit`, or `git push`,

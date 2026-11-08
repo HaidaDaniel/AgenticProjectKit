@@ -82,6 +82,7 @@ The command synopsis and option list below are rendered from `src/cli/command-re
 - `apkit proposal accept <slug|id> --actor <operator-id> --reason <text> [--expect-revision <sha256>] [--json]` - record an explicit operator acceptance bound to a verified proposal revision.
 - `apkit proposal reject <slug|id> --actor <operator-id> --reason <text> [--expect-revision <sha256>] [--json]` - record an explicit operator rejection bound to a verified proposal revision.
 - `apkit proposal supersede <slug|id> --by <successor-id> --actor <operator-id> --reason <text> [--expect-revision <sha256>] [--json]` - mark a proposal superseded with a traceable successor proposal.
+- `apkit proposal commit <slug|id> [--message <text>] [--expect-revision <sha256>] [--json]` - commit exactly one validated proposal through an isolated Git index; never pushes or rewrites history.
 - `apkit quality detect [directory] [--json]` - read declared quality signals and evaluate explicit policy without executing project commands.
 - `apkit resources [--json]` - render configured model, harness, and worker records without probing providers.
 - `apkit resources detect [--json]` - inventory local markers and declared capabilities without mutation.

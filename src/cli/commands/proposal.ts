@@ -15,6 +15,7 @@ import {
   type ProposalKind,
   type ProposalStatus,
 } from "../../core/proposals/index.js";
+import { commitProposal } from "../../core/proposals/git.js";
 
 const HELP_TEXT = [
   "Agentic Project Kit",
@@ -27,12 +28,14 @@ const HELP_TEXT = [
   "  apk proposal accept <slug|id> --actor <operator-id> --reason <text> [--expect-revision <sha256>] [--json]",
   "  apk proposal reject <slug|id> --actor <operator-id> --reason <text> [--expect-revision <sha256>] [--json]",
   "  apk proposal supersede <slug|id> --by <successor-id> --actor <operator-id> --reason <text> [--expect-revision <sha256>] [--json]",
+  "  apk proposal commit <slug|id> [--message <text>] [--expect-revision <sha256>] [--json]",
   "",
   "Proposals are Git-tracked Markdown documents, not executable tasks or backlog cards.",
   `Kinds: ${PROPOSAL_KINDS.join(", ")}.`,
   `Statuses: ${PROPOSAL_STATUSES.join(", ")}.`,
   "add performs no git operation and creates no task. list/show/validate are read-only.",
   "accept and reject require an explicit operator decision; accepted does not mean implemented.",
+  "commit publishes exactly one proposal in a local Git commit; it never pushes.",
 ].join("\n");
 
 function hasHelp(argv: readonly string[]): boolean {
@@ -203,6 +206,23 @@ export async function runProposalCommand(argv: string[]): Promise<number> {
         for (const diagnostic of result.diagnostics) console.error(`Error: ${diagnostic}`);
       }
       return result.diagnostics.length > 0 ? 1 : 0;
+    }
+
+    if (command === "commit") {
+      const valueFlags = new Set(["--message", "--expect-revision"]);
+      rejectUnknown(args, [...valueFlags, "--json", "--help", "-h"]);
+      const terms = positional(args, valueFlags);
+      if (terms.length !== 1) throw new Error("Usage: apk proposal commit <slug|id> [--message <text>] [--json]");
+      const result = await commitProposal(rootDirectory, config.docsDirectory, terms[0]!, {
+        ...(value(args, "--message") ? { message: value(args, "--message")! } : {}),
+        ...(value(args, "--expect-revision") ? { expectedRevision: value(args, "--expect-revision")! } : {}),
+      });
+      if (json) printJson(result);
+      else {
+        console.log(`Committed: ${result.commitId} ${result.path} on ${result.branch}`);
+        console.log("No push was performed. Push or open a PR explicitly when the repository policy allows it.");
+      }
+      return 0;
     }
 
     if (command === "accept" || command === "reject" || command === "supersede") {

@@ -2102,6 +2102,34 @@ test("CLI proposals add list show validate and lifecycle transitions stay outsid
   });
 });
 
+test("CLI proposal commit publishes one proposal without touching unrelated staged work", async () => {
+  await withTempDirectory(async (directory) => {
+    const git = async (...args: string[]) => execFileAsync("git", args, { cwd: directory, encoding: "utf8" });
+    await git("init", "--quiet");
+    await git("config", "user.email", "fixture@example.test");
+    await git("config", "user.name", "Fixture");
+    await writeFile(join(directory, "README.md"), "baseline\n", "utf8");
+    await git("add", "README.md");
+    await git("commit", "--quiet", "-m", "baseline");
+    await writeFile(join(directory, "app.ts"), "export const value = 1;\n", "utf8");
+    await git("add", "app.ts");
+    await git("commit", "--quiet", "-m", "app");
+    await writeFile(join(directory, "app.ts"), "export const value = 2;\n", "utf8");
+    await git("add", "app.ts");
+
+    const add = await runCli(["proposal", "add", "--title", "CLI commit proposal", "--summary", "Commit.", "--json"], directory);
+    assert.equal(add.exitCode, 0, add.stderr);
+    const item = JSON.parse(add.stdout) as { slug: string; path: string };
+    const commit = await runCli(["proposal", "commit", item.slug, "--json"], directory);
+    assert.equal(commit.exitCode, 0, commit.stderr);
+    const result = JSON.parse(commit.stdout) as { commitId: string; path: string };
+    assert.equal(result.path, item.path);
+    assert.equal((await git("show", "--pretty=format:", "--name-only", "HEAD")).stdout.trim(), item.path);
+    assert.equal((await git("diff", "--cached", "--name-only")).stdout.trim(), "app.ts");
+    assert.equal((await git("rev-parse", "HEAD")).stdout.trim(), result.commitId);
+  });
+});
+
 test("CLI evidence lock recovery refuses a symlinked .agentic directory without deleting outside the repository", async () => {
   await withTempDirectory(async (directory) => {
     const outside = await mkdtemp(join(tmpdir(), "apk-cli-evidence-lock-outside-"));

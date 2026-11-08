@@ -1,0 +1,231 @@
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { promisify } from "node:util";
+
+import {
+  findProposal,
+  ProposalFormatError,
+  proposalRevision,
+  type ProposalSnapshot,
+} from "./index.js";
+
+const execFileAsync = promisify(execFile);
+const GIT_TIMEOUT_MS = 15_000;
+const GIT_MAX_BUFFER = 4 * 1024 * 1024;
+
+export class ProposalGitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProposalGitError";
+  }
+}
+
+export interface ProposalCommitOptions {
+  message?: string;
+  expectedRevision?: string;
+}
+
+export interface ProposalCommitResult {
+  commitId: string;
+  slug: string;
+  proposalId: string;
+  path: string;
+  message: string;
+  branch: string;
+  previousHead: string;
+}
+
+interface GitResult {
+  stdout: string;
+  stderr: string;
+}
+
+async function git(
+  cwd: string,
+  args: readonly string[],
+  env?: NodeJS.ProcessEnv,
+): Promise<GitResult> {
+  try {
+    const result = await execFileAsync("git", [...args], {
+      cwd,
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: GIT_TIMEOUT_MS,
+      maxBuffer: GIT_MAX_BUFFER,
+      env: env ?? process.env,
+    });
+    return { stdout: result.stdout, stderr: result.stderr };
+  } catch (error: unknown) {
+    const detail = error && typeof error === "object" && "stderr" in error
+      ? String((error as { stderr?: unknown }).stderr ?? "").trim()
+      : error instanceof Error ? error.message : String(error);
+    throw new ProposalGitError(`Git command failed (${args.join(" ")}): ${detail || "unknown error"}`);
+  }
+}
+
+async function gitProbe(
+  cwd: string,
+  args: readonly string[],
+  env?: NodeJS.ProcessEnv,
+): Promise<{ ok: boolean; stdout: string; stderr: string }> {
+  try {
+    const result = await execFileAsync("git", [...args], {
+      cwd,
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: GIT_TIMEOUT_MS,
+      maxBuffer: GIT_MAX_BUFFER,
+      env: env ?? process.env,
+    });
+    return { ok: true, stdout: result.stdout, stderr: result.stderr };
+  } catch (error: unknown) {
+    const stdout = error && typeof error === "object" && "stdout" in error
+      ? String((error as { stdout?: unknown }).stdout ?? "")
+      : "";
+    const stderr = error && typeof error === "object" && "stderr" in error
+      ? String((error as { stderr?: unknown }).stderr ?? "")
+      : "";
+    return { ok: false, stdout, stderr };
+  }
+}
+
+function singleLine(value: string, label: string, maxLength: number): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (normalized.length === 0 || normalized.length > maxLength) {
+    throw new ProposalGitError(`${label} must contain 1-${maxLength} characters.`);
+  }
+  return normalized;
+}
+
+function defaultMessage(item: ProposalSnapshot["proposal"], action: "add" | "update"): string {
+  const subject = `${action === "add" ? "add" : "update"} ${item.slug}`;
+  return `docs(proposals): ${subject}\n\nProposal-Id: ${item.id}\n`;
+}
+
+export async function commitProposal(
+  rootDirectory: string,
+  docsDirectory: string,
+  idOrSlug: string,
+  options: ProposalCommitOptions = {},
+): Promise<ProposalCommitResult> {
+  const snapshot = await findProposal(rootDirectory, docsDirectory, idOrSlug);
+  if (!snapshot) {
+    throw new ProposalFormatError([`Proposal not found: ${idOrSlug}`]);
+  }
+  if (options.expectedRevision !== undefined && options.expectedRevision !== snapshot.revision) {
+    throw new ProposalFormatError([
+      `Proposal revision changed: expected ${options.expectedRevision}, found ${snapshot.revision}. Re-read the proposal and retry.`,
+    ]);
+  }
+
+  const rootReal = await realpath(rootDirectory);
+  const topLevel = await gitProbe(rootDirectory, ["rev-parse", "--show-toplevel"]);
+  if (!topLevel.ok) {
+    throw new ProposalGitError("Proposal commits require a Git repository with a valid worktree.");
+  }
+  const topReal = await realpath(topLevel.stdout.trim());
+  if (topReal !== rootReal) {
+    throw new ProposalGitError(
+      "Run the proposal commit from the repository root; committing from a nested directory is ambiguous.",
+    );
+  }
+
+  const symbolic = await gitProbe(rootDirectory, ["symbolic-ref", "-q", "HEAD"]);
+  if (!symbolic.ok) {
+    throw new ProposalGitError(
+      "Proposal commits require an attached branch, not a detached HEAD. Create a branch or use a separate worktree.",
+    );
+  }
+  const headRef = symbolic.stdout.trim();
+  const branch = headRef.replace(/^refs\/heads\//, "");
+  if (!branch || branch === headRef) {
+    throw new ProposalGitError("Could not resolve the current Git branch.");
+  }
+
+  const previousHead = (await git(rootDirectory, ["rev-parse", "HEAD"])).stdout.trim();
+  if (!previousHead) throw new ProposalGitError("Git HEAD is unavailable.");
+
+  const proposalPath = snapshot.proposal.path;
+  const ignored = await gitProbe(rootDirectory, ["check-ignore", "-q", "--", proposalPath]);
+  if (ignored.ok) {
+    throw new ProposalGitError(
+      `Proposal path is excluded by a Git ignore rule: ${proposalPath}. Fix the ignore rule before committing.`,
+    );
+  }
+
+  const staged = await gitProbe(rootDirectory, ["diff", "--cached", "--quiet", "--", proposalPath]);
+  if (!staged.ok) {
+    throw new ProposalGitError(
+      `The proposal path has staged changes: ${proposalPath}. Unstage it or use a separate Git worktree.`,
+    );
+  }
+
+  const before = await readFile(join(rootReal, proposalPath), "utf8");
+  if (proposalRevision(before) !== snapshot.revision) {
+    throw new ProposalFormatError([
+      `Proposal ${snapshot.proposal.slug} changed before the commit began; re-read it and retry.`,
+    ]);
+  }
+
+  const existsInHead = await gitProbe(rootDirectory, ["cat-file", "-e", `HEAD:${proposalPath}`]);
+  const message = options.message
+    ? singleLine(options.message, "Commit message", 200)
+    : defaultMessage(snapshot.proposal, existsInHead.ok ? "update" : "add");
+
+  const temporaryDirectory = await mkdtemp(join(tmpdir(), "apk-proposal-index-"));
+  try {
+    const indexFile = join(temporaryDirectory, "index");
+    const env = { ...process.env, GIT_INDEX_FILE: indexFile };
+    await git(rootReal, ["read-tree", "HEAD"], env);
+    await git(rootReal, ["add", "--", proposalPath], env);
+    const tree = (await git(rootReal, ["write-tree"], env)).stdout.trim();
+    if (!tree) throw new ProposalGitError("Git produced an empty tree for the proposal commit.");
+
+    const changed = (await git(rootReal, [
+      "diff-tree", "--no-commit-id", "--name-only", "-r", "-z", "HEAD", tree,
+    ])).stdout.split("\0").filter(Boolean).sort();
+    if (changed.length === 0) {
+      throw new ProposalGitError(`No proposal changes to commit for ${proposalPath}.`);
+    }
+    if (changed.length !== 1 || changed[0] !== proposalPath) {
+      throw new ProposalGitError(
+        `Refusing to commit unexpected paths: ${changed.join(", ")}. Only ${proposalPath} may be published.`,
+      );
+    }
+
+    const after = await readFile(join(rootReal, proposalPath), "utf8");
+    if (proposalRevision(after) !== snapshot.revision) {
+      throw new ProposalFormatError([
+        `Proposal ${snapshot.proposal.slug} changed while the commit was being prepared; re-read it and retry.`,
+      ]);
+    }
+
+    const commitId = (await git(rootReal, ["commit-tree", tree, "-p", previousHead, "-m", message])).stdout.trim();
+    if (!commitId) throw new ProposalGitError("Git did not produce a commit id.");
+    await git(rootReal, ["update-ref", headRef, commitId, previousHead]);
+    // The isolated index never touched the caller index. Synchronize only the
+    // committed proposal path so the real index does not appear to delete or
+    // hold an older copy of the file; unrelated staged entries stay intact.
+    try {
+      await git(rootReal, ["reset", "--quiet", "--", proposalPath]);
+    } catch (error: unknown) {
+      throw new ProposalGitError(
+        `Commit ${commitId} was created, but the caller index could not be synchronized for ${proposalPath}: `
+        + `${error instanceof Error ? error.message : String(error)}. Inspect the index before continuing.`,
+      );
+    }
+    return {
+      commitId,
+      slug: snapshot.proposal.slug,
+      proposalId: snapshot.proposal.id,
+      path: proposalPath,
+      message: message.trim(),
+      branch,
+      previousHead,
+    };
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true, maxRetries: 5, retryDelay: 20 });
+  }
+}
