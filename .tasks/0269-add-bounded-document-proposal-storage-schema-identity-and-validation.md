@@ -1,14 +1,14 @@
 # Task 0269 - Add bounded document-proposal storage schema identity and validation
 
-State: todo
-Owner: none
+State: doing
+Owner: opencode-milestone
 Mode: maintenance
 Lane: implementation
 Type: feature
 Scope: proposals,docs,filesystem,validation
 Risk: medium
 Parallel: false
-Depends on: 0268
+Depends on: 0275
 Tags: p2,proposals,storage,validation,filesystem
 
 ## Goal
