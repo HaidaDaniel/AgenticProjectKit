@@ -9,7 +9,7 @@ Scope: release,documentation,consistency
 Risk: low
 Parallel: false
 Depends on: 0282
-Tags: p3,documentation,release,consistency
+Tags: p3,documentation,consistency,v06-links
 
 ## Goal
 
