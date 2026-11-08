@@ -1,7 +1,7 @@
 # Task 0283 - Correct v0.6.0 scope and compatibility documentation links
 
-State: todo
-Owner: none
+State: doing
+Owner: opencode-milestone
 Mode: maintenance
 Lane: documentation
 Type: bugfix
