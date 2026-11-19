@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -48,6 +48,55 @@ test("auditRepository writes reports and lists documentation gaps", async () => 
       await readFile(join(directory, "src/index.ts"), "utf8"),
       "console.log('app');\n",
     );
+  });
+});
+
+test("auditRepository refuses a symlinked docs ancestor and preserves the outside marker", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = join(directory, "repo");
+    const outside = join(directory, "outside");
+    await mkdir(repo, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    const marker = join(outside, "audit-report.md");
+    await writeFile(marker, "DO-NOT-TOUCH\n", "utf8");
+    await symlink("../outside", join(repo, "docs"), "dir");
+
+    await assert.rejects(auditRepository(repo), /symbolic link/);
+    assert.equal(await readFile(marker, "utf8"), "DO-NOT-TOUCH\n");
+  });
+});
+
+test("auditRepository preflights both reports before the first write", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = join(directory, "repo");
+    const outside = join(directory, "outside");
+    await mkdir(repo, { recursive: true });
+    await mkdir(join(repo, "docs"), { recursive: true });
+    await mkdir(outside, { recursive: true });
+    const marker = join(outside, "project-map.md");
+    await writeFile(marker, "DO-NOT-TOUCH\n", "utf8");
+    await symlink(marker, join(repo, "docs/project-map.md"));
+
+    await assert.rejects(auditRepository(repo), /symbolic link/);
+    assert.equal(await readFile(marker, "utf8"), "DO-NOT-TOUCH\n");
+    await assert.rejects(readFile(join(repo, "docs/audit-report.md")), /ENOENT/);
+  });
+});
+
+test("auditRepository uses canonical report paths even with a custom docsDirectory", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, ".agentic"), { recursive: true });
+    await writeFile(
+      join(directory, ".agentic/config.json"),
+      JSON.stringify({ schemaVersion: 2, projectName: "Fixture", docsDirectory: "documentation" }),
+      "utf8",
+    );
+
+    const result = await auditRepository(directory);
+    assert.equal(result.reportPath, "docs/audit-report.md");
+    assert.equal(result.projectMapPath, "docs/project-map.md");
+    assert.match(await readFile(join(directory, "docs/audit-report.md"), "utf8"), /Audit Report/);
+    assert.match(await readFile(join(directory, "docs/project-map.md"), "utf8"), /Project Map/);
   });
 });
 

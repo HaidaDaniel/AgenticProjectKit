@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { CONFIG_PATH, parseAgenticConfigJson, } from "../config/index.js";
+import { resolveContainedWriteBatch } from "../config/paths.js";
 import { detectQualityCapabilities } from "../quality/index.js";
 import { scanRepository } from "../scanners/index.js";
 import { loadTaskFile, listArchivedTaskFiles, TaskFormatError, validateTaskDependencies } from "../tasks/index.js";
@@ -305,11 +306,10 @@ export async function auditRepository(rootDirectory) {
         taskCount,
         hasErrors,
     };
-    const reportPath = join(rootDirectory, AUDIT_REPORT_PATH);
-    const projectMapPath = join(rootDirectory, PROJECT_MAP_PATH);
-    await mkdir(dirname(reportPath), { recursive: true });
-    await writeFile(reportPath, renderAuditReport(result), "utf8");
-    await writeFile(projectMapPath, renderProjectMap(scan, quality), "utf8");
+    const [reportTarget, projectMapTarget] = await resolveContainedWriteBatch(rootDirectory, [AUDIT_REPORT_PATH, PROJECT_MAP_PATH]);
+    await mkdir(dirname(reportTarget.absolutePath), { recursive: true });
+    await writeFile(reportTarget.absolutePath, renderAuditReport(result), "utf8");
+    await writeFile(projectMapTarget.absolutePath, renderProjectMap(scan, quality), "utf8");
     return {
         ...result,
         reportPath: AUDIT_REPORT_PATH,
