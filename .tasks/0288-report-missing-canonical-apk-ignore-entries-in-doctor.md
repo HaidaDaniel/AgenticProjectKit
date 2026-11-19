@@ -1,7 +1,7 @@
 # Task 0288 - Report missing canonical APK ignore entries in doctor
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-impl
 Mode: maintenance
 Lane: diagnostics
 Scope: doctor,diagnostics,gitignore,read-only,tests
