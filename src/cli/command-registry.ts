@@ -162,6 +162,15 @@ export const PUBLIC_COMMANDS: readonly PublicCommand[] = [
     ],
   },
   {
+    command: "help",
+    summary: "Print the CLI reference.",
+    handler: simple(async () => {
+      console.log(renderCliHelp());
+      return 0;
+    }),
+    variants: [{ usage: "help", description: "print the same CLI reference as --help." }],
+  },
+  {
     command: "init",
     summary: "Create starter kit files in a repository.",
     handler: simple(runInitCommand),
@@ -274,7 +283,7 @@ export const PUBLIC_COMMANDS: readonly PublicCommand[] = [
     command: "status",
     summary: "Print compact workflow status.",
     handler: simple(runStatusCommand),
-    variants: [{ usage: "status [--detail]", description: "show task and gate state; detail adds bounded evidence/provenance diagnostics without writing files." }],
+    variants: [{ usage: "status [--detail|--json]", description: "show task and gate state; detail adds bounded evidence/provenance diagnostics, json emits a machine-readable projection, without writing files." }],
   },
   {
     command: "suggest-context",
@@ -314,7 +323,7 @@ export const PUBLIC_COMMANDS: readonly PublicCommand[] = [
     command: "tasks",
     summary: "List tasks in compact form.",
     handler: simple(runTasksCommand),
-    variants: [{ usage: "tasks [--all] [--state <state>] [--owner <agent-id>]", description: "list active tasks or filter the complete lifecycle set." }],
+    variants: [{ usage: "tasks [--all] [--state <state>] [--owner <agent-id>] [--json]", description: "list active tasks or filter the complete lifecycle set; json emits a machine-readable projection." }],
   },
   {
     command: "work",

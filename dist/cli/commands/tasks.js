@@ -5,16 +5,20 @@ const TASKS_HELP_TEXT = [
     "Agentic Project Kit",
     "",
     "Usage:",
-    "  apk tasks [--all] [--state <state>] [--owner <agent-id>]",
+    "  apk tasks [--all] [--state <state>] [--owner <agent-id>] [--json]",
     "",
     "By default only active tasks (todo, doing, review, blocked) are shown.",
     "Use --all to include done, canceled, and archived tasks.",
+    "Use --json for a deterministic machine-readable projection.",
 ].join("\n");
 function hasHelpFlag(argv) {
     return argv.includes("--help") || argv.includes("-h");
 }
 function hasAllFlag(argv) {
     return argv.includes("--all");
+}
+function hasJsonFlag(argv) {
+    return argv.includes("--json");
 }
 function readFlagValue(argv, flag) {
     const index = argv.indexOf(flag);
@@ -37,7 +41,7 @@ function parseState(value) {
 }
 function rejectUnknownOptions(argv) {
     for (const arg of argv) {
-        if (arg.startsWith("-") && arg !== "--state" && arg !== "--owner" && arg !== "--all" && arg !== "--help" && arg !== "-h") {
+        if (arg.startsWith("-") && arg !== "--state" && arg !== "--owner" && arg !== "--all" && arg !== "--json" && arg !== "--help" && arg !== "-h") {
             throw new Error(`Unknown option: ${arg}`);
         }
     }
@@ -81,6 +85,19 @@ export async function runTasksCommand(argv) {
             return (ACTIVE_TASK_STATES.includes(file.task.state) &&
                 (owner === undefined || file.task.owner === owner));
         });
+        if (hasJsonFlag(argv)) {
+            console.log(JSON.stringify(filtered.map((file) => ({
+                id: file.task.id,
+                state: file.task.state,
+                owner: file.task.owner,
+                lane: file.task.lane,
+                risk: file.task.risk,
+                parallel: file.task.parallel,
+                title: file.task.title,
+                path: file.path,
+            })), null, 2));
+            return 0;
+        }
         console.log(renderTasksTable(filtered));
         return 0;
     }

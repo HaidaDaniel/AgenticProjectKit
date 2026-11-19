@@ -15,10 +15,11 @@ const TASKS_HELP_TEXT = [
   "Agentic Project Kit",
   "",
   "Usage:",
-  "  apk tasks [--all] [--state <state>] [--owner <agent-id>]",
+  "  apk tasks [--all] [--state <state>] [--owner <agent-id>] [--json]",
   "",
   "By default only active tasks (todo, doing, review, blocked) are shown.",
   "Use --all to include done, canceled, and archived tasks.",
+  "Use --json for a deterministic machine-readable projection.",
 ].join("\n");
 
 function hasHelpFlag(argv: string[]): boolean {
@@ -27,6 +28,10 @@ function hasHelpFlag(argv: string[]): boolean {
 
 function hasAllFlag(argv: string[]): boolean {
   return argv.includes("--all");
+}
+
+function hasJsonFlag(argv: string[]): boolean {
+  return argv.includes("--json");
 }
 
 function readFlagValue(argv: readonly string[], flag: string): string | undefined {
@@ -56,7 +61,7 @@ function parseState(value: string | undefined): TaskState | undefined {
 
 function rejectUnknownOptions(argv: readonly string[]): void {
   for (const arg of argv) {
-    if (arg.startsWith("-") && arg !== "--state" && arg !== "--owner" && arg !== "--all" && arg !== "--help" && arg !== "-h") {
+    if (arg.startsWith("-") && arg !== "--state" && arg !== "--owner" && arg !== "--all" && arg !== "--json" && arg !== "--help" && arg !== "-h") {
       throw new Error(`Unknown option: ${arg}`);
     }
   }
@@ -114,6 +119,19 @@ export async function runTasksCommand(argv: string[]): Promise<number> {
       );
     });
 
+    if (hasJsonFlag(argv)) {
+      console.log(JSON.stringify(filtered.map((file) => ({
+        id: file.task.id,
+        state: file.task.state,
+        owner: file.task.owner,
+        lane: file.task.lane,
+        risk: file.task.risk,
+        parallel: file.task.parallel,
+        title: file.task.title,
+        path: file.path,
+      })), null, 2));
+      return 0;
+    }
     console.log(renderTasksTable(filtered));
     return 0;
   } catch (error: unknown) {

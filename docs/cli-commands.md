@@ -62,6 +62,7 @@ The command synopsis and option list below are rendered from `src/cli/command-re
 - `apkit export [agent] [--force]` - export generated instructions; existing files are skipped unless forced.
 - `apkit export --report-legacy` - report obsolete generated files without writing.
 - `apkit export --cleanup-legacy` - remove only obsolete files whose content exactly matches a known APK rendering.
+- `apkit help` - print the same CLI reference as --help.
 - `apkit init [directory]` - create starter docs, config, task, ignore rules, and generated instructions.
 - `apkit language [show]` - show the resolved local language and its source.
 - `apkit language set <tag>` - persist a short developer-local language tag.
@@ -94,7 +95,7 @@ The command synopsis and option list below are rendered from `src/cli/command-re
 - `apkit skills list [--json]` - list packaged skills and their canonical source/destination paths.
 - `apkit skills show <skill> [--json]` - show one packaged skill without writing project files.
 - `apkit skills materialize <skill> [--apply] [--force] [--json]` - preview or explicitly materialize one skill under `.agents/skills/<skill>/SKILL.md`; force is required for conflicts.
-- `apkit status [--detail]` - show task and gate state; detail adds bounded evidence/provenance diagnostics without writing files.
+- `apkit status [--detail|--json]` - show task and gate state; detail adds bounded evidence/provenance diagnostics, json emits a machine-readable projection, without writing files.
 - `apkit suggest-context "<task description>" [--limit <n>]` - rank context candidates from repository paths and task signals; suggestions are not guaranteed impact analysis.
 - `apkit sync [agent] [--write]` - check generated files by default; write missing or stale files only with `--write`.
 - `apkit task archive <task-id> [--preview|--apply]` - preview or archive a done or canceled task with literal-reference safety checks.
@@ -112,7 +113,7 @@ The command synopsis and option list below are rendered from `src/cli/command-re
 - `apkit task verify <task-id> [--check-files-only] [--profile <profile|all>] [--owner <agent-id>]` - check task file scope, run eligible checks, and append candidate-bound evidence.
 - `apkit task verify <task-id> --record --owner <agent-id> --check <check-id> --result <pass|fail> --evidence <reference> [--summary <text>]` - record an externally observed manual/live result for a declared check.
 - `apkit task create --title <title> --scope <csv> --allowed <csv> [--type <name>|--template <name>] [--mode <mode>] [--lane <lane>] [--risk <risk>] [--context <csv>] [--forbidden <csv>] [--depends <csv>] [--parallel] [--tags <csv>] [--verification <csv>] [--verification-json <json>] [--lists-json <json>] [--goal <text>] [--steps <csv>] [--acceptance <csv>] [--docs <csv>] [--notes <csv>] [--assumptions <csv>] [--invariants <csv>] [--required-evidence <csv>] [--review-questions <csv>] [--counterexample-searches <csv>]` - generate a validated task file; explicit values override typed template defaults.
-- `apkit tasks [--all] [--state <state>] [--owner <agent-id>]` - list active tasks or filter the complete lifecycle set.
+- `apkit tasks [--all] [--state <state>] [--owner <agent-id>] [--json]` - list active tasks or filter the complete lifecycle set; json emits a machine-readable projection.
 - `apkit work <task-id> --owner <agent-id> --target <agent> [--resource <worker-id>] [--role implement|review|fix|verify] [--level 1|2|3|auto] [--write-session] [--json]` - claim or continue a task and persist an `apk-worker-v1` package; this does not launch an agent.
 - `apkit work result <task-id> --owner <agent-id> --run-id <run-id> --role <implement|review|fix|verify> --status <completed|failed|changes_requested> [--result-json <json>] [--commit-id <sha>] [--diff-id <id>] [--evidence-json <json>] [--finding <text>] [--reason <text>] [--json]` - submit a result for the exact activated worker run; results do not replace canonical verification or review evidence.
 - `apkit work result <task-id> --owner <agent-id> --result-json <json> [--json]` - submit the complete JSON-compatible result instead of individual result fields.
@@ -262,7 +263,7 @@ Sync targets use the same canonical set and aliasing as export targets.
 
 `apkit task provenance <task-id>` is read-only. Human output summarizes participants, runs, commits, changed files, evidence freshness, superseding links, and the exact completion evidence set. `--json` emits the same bounded fields for automation; unavailable Git or historical links appear in `diagnostics` rather than causing non-code task history to disappear.
 
-`apkit status` keeps the existing repository counts and latest-run summary, then lists active tasks with owner, risk/effective policy, dependency readiness, verification progress, scope, review, evidence, gate state, and a bounded next action. `apkit status --detail` adds blocker reasons, candidate/provenance identities, and bounded diagnostics. Status reuses the completion gate and provenance reader; it does not resolve policy independently.
+`apkit status` keeps the existing repository counts and latest-run summary, then lists active tasks with owner, risk/effective policy, dependency readiness, verification progress, scope, review, evidence, gate state, and a bounded next action. `apkit status --detail` adds blocker reasons, candidate/provenance identities, and bounded diagnostics. `apkit status --json` and `apkit tasks --json` emit deterministic machine-readable projections with the same filtering as their human output; `apkit help` is an alias for `--help`. Status reuses the completion gate and provenance reader; it does not resolve policy independently.
 
 ## Behavior principles
 

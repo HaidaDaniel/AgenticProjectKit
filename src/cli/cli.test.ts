@@ -1795,7 +1795,7 @@ test("CLI status help shows usage", async () => {
   const result = await runCli(["status", "--help"]);
 
   assert.equal(result.exitCode, 0);
-  assert.match(result.stdout, /apk status \[--detail\]/);
+  assert.match(result.stdout, /apk status \[--detail\|--json\]/);
   assert.match(result.stdout, /bounded gate, evidence and provenance/);
 });
 
@@ -4649,4 +4649,38 @@ test("CLI sync refuses a dangling symlink selected for writing", async () => {
     assert.match(result.stderr, /symbolic link/);
     await assert.rejects(readFile(join(directory, "outside-dangling.md")), /ENOENT/);
   });
+});
+
+test("CLI tasks --json emits a parseable machine-readable projection", async () => {
+  await withTempDirectory(async (directory) => {
+    const result = await runCli(["tasks", "--json"], directory);
+    assert.equal(result.exitCode, 0, result.stderr);
+    const tasks = JSON.parse(result.stdout);
+    assert.ok(Array.isArray(tasks));
+    for (const task of tasks) {
+      assert.equal(typeof task.id, "string");
+      assert.equal(typeof task.state, "string");
+      assert.equal(typeof task.path, "string");
+    }
+  });
+});
+
+test("CLI status --json emits a parseable summary", async () => {
+  await withTempDirectory(async (directory) => {
+    const result = await runCli(["status", "--json"], directory);
+    assert.equal(result.exitCode, 0, result.stderr);
+    const summary = JSON.parse(result.stdout);
+    assert.ok(summary.taskCounts);
+    assert.ok("mode" in summary);
+  });
+});
+
+test("CLI help alias matches --help without altering unknown-command handling", async () => {
+  const help = await runCli(["--help"]);
+  const alias = await runCli(["help"]);
+  assert.equal(alias.exitCode, 0, alias.stderr);
+  assert.equal(alias.stdout, help.stdout);
+  const unknown = await runCli(["definitely-not-a-command"]);
+  assert.equal(unknown.exitCode, 1);
+  assert.match(unknown.stderr, /Unknown command/);
 });
