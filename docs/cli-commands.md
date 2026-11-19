@@ -125,6 +125,10 @@ The command synopsis and option list below are rendered from `src/cli/command-re
 
 Structured task verification may use `apkOperation` with `lint`, `doctor`, `sync-check`, or `status` for a local read-only APK self-check. This resolves the currently running repository APK implementation and records its package/version identity; use an ordinary explicit shell command for host-project tools or mutating APK commands such as `audit`.
 
+### Doctor ignore-entry diagnostic
+
+`apkit doctor` includes a read-only `ignore-entries` check for the canonical APK operational ignore entries. It first compares the exact entry strings with the root `.gitignore`. Entries already present require no further proof. For each distinct ignore-rule family whose literal entry is absent, doctor probes one representative path (at most eight paths total) in a single `git check-ignore --no-index --verbose --non-matching -z --stdin` invocation; paths are passed only through stdin. A positive matching rule proves effective ignore, while the two `!.agentic/.../.gitkeep` entries are evaluated as re-include rules whose effective assertion is that the corresponding `.gitkeep` is not ignored. An equivalent rule from a nested `.gitignore`, `.git/info/exclude`, or a global exclude file is accepted: doctor reports `source:line:pattern` as an informational pass note, not a leak warning. A missing literal entry without proven effective behavior produces a warning naming the entry and the safe fix path through `apk init` or `apk adopt`. Doctor never writes `.gitignore` or any other file, never fails solely for a missing or differently expressed ignore rule, and reports `warn` rather than `pass` when Git is absent, `git check-ignore` exits 128, or its output is malformed.
+
 ## Example usage
 
 ```bash

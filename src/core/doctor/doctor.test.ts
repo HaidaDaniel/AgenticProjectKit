@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { runDoctor } from "./index.js";
-import { inspectApkGitignore } from "../init/index.js";
+import { APK_OPERATIONAL_IGNORE_ENTRIES, inspectApkGitignore } from "../init/index.js";
 import { inspectApkInstallation } from "./installation.js";
 import { detectCompatibility } from "../config/compatibility.js";
 
@@ -260,5 +260,190 @@ test("doctor reports shared indexed operational categories as advisory warnings"
     assert.equal(check.message, (await inspectApkGitignore(root)).diagnostics.join("\n  "));
     assert.equal(git("ls-files", "--stage", "-z"), index);
     assert.equal(await readFile(join(root, ".agentic/runs/sample.jsonl"), "utf8"), "abc");
+  });
+});
+
+const canonicalIgnore = `${APK_OPERATIONAL_IGNORE_ENTRIES.join("\n")}\n`;
+
+async function ignoreCheck(root: string) {
+  const result = await runDoctor(root);
+  const check = result.checks.find((item) => item.label === "ignore-entries");
+  assert.ok(check, "doctor must emit an ignore-entries check");
+  return check;
+}
+
+async function withGitEnv<T>(run: () => Promise<T>): Promise<T> {
+  const saved = {
+    GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL,
+    GIT_CONFIG_NOSYSTEM: process.env.GIT_CONFIG_NOSYSTEM,
+  };
+  process.env.GIT_CONFIG_GLOBAL = "/dev/null";
+  process.env.GIT_CONFIG_NOSYSTEM = "1";
+  try {
+    return await run();
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+test("doctor reports canonical ignore entries present as pass without probing", async () => {
+  await withGitEnv(async () => {
+    await fixture(async (root) => {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      await writeFile(join(root, ".gitignore"), canonicalIgnore);
+      const check = await ignoreCheck(root);
+      assert.equal(check.level, "pass");
+      assert.match(check.message, /canonical operational ignore entries present/);
+      assert.doesNotMatch(check.message, /effectively|unavailable/);
+    });
+  });
+});
+
+test("doctor warns for a partially missing ignore entry and names the safe fix path", async () => {
+  await withGitEnv(async () => {
+    await fixture(async (root) => {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      await writeFile(join(root, ".gitignore"), canonicalIgnore.replace("/tmp/apk/\n", ""));
+      const check = await ignoreCheck(root);
+      assert.equal(check.level, "warn");
+      assert.match(check.message, /\/tmp\/apk\//);
+      assert.match(check.message, /apk init or apk adopt/);
+    });
+  });
+});
+
+test("doctor warns for a missing .gitignore and probes effective ignore", async () => {
+  await withGitEnv(async () => {
+    await fixture(async (root) => {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      const check = await ignoreCheck(root);
+      assert.equal(check.level, "warn");
+      assert.match(check.message, /\.tasks\/\.apk\.lock/);
+      assert.match(check.message, /docs\/audit-report\.md/);
+    });
+  });
+});
+
+test("doctor treats a broad root ignore pattern as proven effective ignore", async () => {
+  await withGitEnv(async () => {
+    await fixture(async (root) => {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      await writeFile(join(root, ".gitignore"), "*\n!.agentic/\n!.agentic/agents/\n!.agentic/agents/.gitkeep\n!.agentic/runs/\n!.agentic/runs/.gitkeep\n");
+      const check = await ignoreCheck(root);
+      assert.equal(check.level, "pass");
+      assert.match(check.message, /absent as literal strings/);
+      assert.match(check.message, /\.gitignore:1:\*/);
+    });
+  });
+});
+
+test("doctor accepts equivalent rules from .git/info/exclude including re-include rules", async () => {
+  await withGitEnv(async () => {
+    await fixture(async (root) => {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      await mkdir(join(root, ".git/info"), { recursive: true });
+      await writeFile(join(root, ".gitignore"), "\n");
+      await writeFile(join(root, ".git/info/exclude"), canonicalIgnore);
+      const check = await ignoreCheck(root);
+      assert.equal(check.level, "pass");
+      assert.match(check.message, /re-included via \.git\/info\/exclude:\d+:!\.agentic\/agents\/\.gitkeep/);
+      assert.match(check.message, /ignored via \.git\/info\/exclude:\d+:\/tmp\/apk\//);
+    });
+  });
+});
+
+test("doctor accepts a nested .gitignore as an equivalent effective rule", async () => {
+  await withGitEnv(async () => {
+    await fixture(async (root) => {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      await writeFile(join(root, ".gitignore"), "\n");
+      await mkdir(join(root, ".agentic"), { recursive: true });
+      await writeFile(join(root, ".agentic/.gitignore"), "evidence.jsonl\n");
+      const check = await ignoreCheck(root);
+      assert.equal(check.level, "warn");
+      const unproven = check.message.split(" Proven:")[0];
+      assert.doesNotMatch(unproven, /\.agentic\/evidence\.jsonl/);
+      assert.match(unproven, /\.agentic\/agents\/sample|\.tasks\/\.apk\.lock/);
+      assert.match(check.message, /Proven:.*\.agentic\/\.gitignore:1:evidence\.jsonl/);
+    });
+  });
+});
+
+test("doctor never reports a leak when re-include negation is proven", async () => {
+  await withGitEnv(async () => {
+    await fixture(async (root) => {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      const rootIgnore = canonicalIgnore
+        .replace("!.agentic/agents/.gitkeep\n", "")
+        .replace("!.agentic/runs/.gitkeep\n", "");
+      await writeFile(join(root, ".gitignore"), rootIgnore);
+      await mkdir(join(root, ".agentic"), { recursive: true });
+      await writeFile(join(root, ".agentic/.gitignore"), "!.gitkeep\n");
+      const check = await ignoreCheck(root);
+      assert.equal(check.level, "pass");
+      assert.match(check.message, /re-included via \.agentic\/\.gitignore:1:!\.gitkeep/);
+    });
+  });
+});
+
+test("doctor warns when git check-ignore exits 128 instead of claiming effective ignore", async () => {
+  await withGitEnv(async () => {
+    await fixture(async (root) => {
+      const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
+      const fakeBin = await mkdtemp(join(tmpdir(), "apk-doctor-git-"));
+      try {
+        execFileSync("git", ["init", "-q"], { cwd: root });
+        await writeFile(join(root, ".gitignore"), "\n");
+        await writeFile(join(fakeBin, "git"), `#!/bin/sh\ncase "$*" in *check-ignore*) exit 128;; esac\nexec "${realGit}" "$@"\n`, { mode: 0o755 });
+        const savedPath = process.env.PATH;
+        process.env.PATH = `${fakeBin}:${savedPath ?? ""}`;
+        try {
+          const check = await ignoreCheck(root);
+          assert.equal(check.level, "warn");
+          assert.match(check.message, /exited 128/);
+          assert.doesNotMatch(check.message, /effectively ignored|ignored via/);
+        } finally {
+          process.env.PATH = savedPath;
+        }
+      } finally {
+        await rm(fakeBin, { recursive: true, force: true });
+      }
+    });
+  });
+});
+
+test("doctor warns when git is absent and never reports pass for ignore entries", async () => {
+  await withGitEnv(async () => {
+    await fixture(async (root) => {
+      const savedPath = process.env.PATH;
+      process.env.PATH = "";
+      try {
+        const check = await ignoreCheck(root);
+        assert.equal(check.level, "warn");
+        assert.match(check.message, /git is not available/);
+      } finally {
+        process.env.PATH = savedPath;
+      }
+    });
+  });
+});
+
+test("doctor ignore inspection is byte-for-byte read-only", async () => {
+  await withGitEnv(async () => {
+    await fixture(async (root) => {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      await writeFile(join(root, ".gitignore"), canonicalIgnore.replace("/tmp/apk/\n", ""));
+      await writeFile(join(root, "README.md"), "unchanged\n");
+      const before = await readdir(root);
+      const ignoreBefore = await readFile(join(root, ".gitignore"), "utf8");
+      const readmeBefore = await readFile(join(root, "README.md"), "utf8");
+      await runDoctor(root);
+      assert.deepEqual(await readdir(root), before);
+      assert.equal(await readFile(join(root, ".gitignore"), "utf8"), ignoreBefore);
+      assert.equal(await readFile(join(root, "README.md"), "utf8"), readmeBefore);
+    });
   });
 });

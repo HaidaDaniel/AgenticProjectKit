@@ -1,9 +1,10 @@
+import { execFile } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { CONFIG_PATH, readAgenticConfigFile } from "../config/index.js";
 import { observedExecFile } from "../perf/index.js";
 import { detectQualityCapabilities, inspectPythonProject } from "../quality/index.js";
-import { inspectTrackedApkOperationalArtifacts, renderTrackedApkOperationalReport } from "../init/index.js";
+import { APK_OPERATIONAL_IGNORE_ENTRIES, inspectTrackedApkOperationalArtifacts, renderTrackedApkOperationalReport, } from "../init/index.js";
 import { scanRepository } from "../scanners/index.js";
 import { listAgents } from "../agents/index.js";
 import { syncAgentExports } from "../sync/index.js";
@@ -11,6 +12,202 @@ import { listTaskFiles } from "../tasks/index.js";
 import { TASK_EVIDENCE_LOCK_PATH } from "../tasks/evidence.js";
 import { inspectLocalMutationLock, renderLocalLockInspection } from "../tasks/lock.js";
 import { inspectApkInstallation, renderInstallationFinding } from "./installation.js";
+const IGNORE_PROBE_FAMILIES = [
+    {
+        entries: [".tasks/.apk.lock"],
+        probePath: ".tasks/.apk.lock",
+        expect: "ignore",
+    },
+    {
+        entries: [
+            ".agentic/agents.jsonl",
+            ".agentic/runs.jsonl",
+            ".agentic/evidence.jsonl",
+            ".agentic/task-baselines.jsonl",
+            ".agentic/evidence.append.lock",
+        ],
+        probePath: ".agentic/evidence.jsonl",
+        expect: "ignore",
+    },
+    {
+        entries: [
+            ".agentic/agents/*",
+            ".agentic/runs/*",
+            ".agentic/reviews/*",
+            ".agentic/sessions/*",
+            ".agentic/perf/*",
+            ".agentic/workspaces/*",
+        ],
+        probePath: ".agentic/agents/sample.jsonl",
+        expect: "ignore",
+    },
+    {
+        entries: ["!.agentic/agents/.gitkeep"],
+        probePath: ".agentic/agents/.gitkeep",
+        expect: "reinclude",
+    },
+    {
+        entries: ["!.agentic/runs/.gitkeep"],
+        probePath: ".agentic/runs/.gitkeep",
+        expect: "reinclude",
+    },
+    {
+        entries: [".apk-workspaces/"],
+        probePath: ".apk-workspaces/sample",
+        expect: "ignore",
+    },
+    {
+        entries: ["/tmp/apk/"],
+        probePath: "tmp/apk/sample",
+        expect: "ignore",
+    },
+    {
+        entries: ["docs/audit-report.md", "docs/project-map.md"],
+        probePath: "docs/audit-report.md",
+        expect: "ignore",
+    },
+];
+function isMissingPathError(error) {
+    return Boolean(error
+        && typeof error === "object"
+        && "code" in error
+        && error.code === "ENOENT");
+}
+function runCheckIgnore(rootDirectory, probePaths) {
+    return new Promise((resolveResult, reject) => {
+        const input = `${probePaths.join("\0")}\0`;
+        const child = execFile("git", ["check-ignore", "--no-index", "--verbose", "--non-matching", "-z", "--stdin"], {
+            cwd: rootDirectory,
+            env: { ...process.env, LC_ALL: "C", GIT_OPTIONAL_LOCKS: "0" },
+            encoding: "buffer",
+            maxBuffer: 1024 * 1024,
+            timeout: 5000,
+            windowsHide: true,
+        }, (error, stdout) => {
+            if (error && (typeof error.code !== "number" || error.killed || error.signal)) {
+                reject(error);
+                return;
+            }
+            try {
+                resolveResult({
+                    code: error && typeof error.code === "number" ? error.code : 0,
+                    stdout: new TextDecoder("utf-8", { fatal: true }).decode(stdout),
+                });
+            }
+            catch (decodeError) {
+                reject(decodeError);
+            }
+        });
+        child.stdin?.on("error", () => { });
+        child.stdin?.end(input);
+    });
+}
+function parseCheckIgnoreOutput(raw, probePaths) {
+    const fields = raw.split("\0");
+    if (fields.length < 1 || fields[fields.length - 1] !== "")
+        return undefined;
+    const body = fields.slice(0, -1);
+    if (body.length % 4 !== 0)
+        return undefined;
+    const matches = new Map();
+    for (let index = 0; index < body.length; index += 4) {
+        const [source, line, pattern, pathname] = body.slice(index, index + 4);
+        if (!probePaths.includes(pathname))
+            return undefined;
+        if (source === "") {
+            if (line !== "" || pattern !== "")
+                return undefined;
+            continue;
+        }
+        if (!/^\d+$/.test(line) || pattern === "" || matches.has(pathname))
+            return undefined;
+        matches.set(pathname, { source, line, pattern });
+    }
+    return matches;
+}
+async function ignoreEntriesCheck(rootDirectory, gitState, operational) {
+    const label = "ignore-entries";
+    let rootIgnore;
+    try {
+        rootIgnore = await readFile(join(rootDirectory, ".gitignore"), "utf8");
+    }
+    catch (error) {
+        if (!isMissingPathError(error)) {
+            return {
+                level: "warn",
+                label,
+                message: `Effective ignore inspection unavailable: cannot read .gitignore (${error instanceof Error ? error.message : String(error)}).`,
+            };
+        }
+    }
+    const lines = rootIgnore === undefined ? [] : rootIgnore.split(/\r?\n/);
+    const present = new Set(lines);
+    const missing = APK_OPERATIONAL_IGNORE_ENTRIES.filter((entry) => !present.has(entry));
+    if (missing.length === 0) {
+        return { level: "pass", label, message: "canonical operational ignore entries present" };
+    }
+    const trackedSuffix = operational.status === "complete" && operational.count !== null && operational.count > 0
+        ? ` ${operational.count} tracked operational artifact(s) remain in the Git index.`
+        : "";
+    const unavailable = (reason) => ({
+        level: "warn",
+        label,
+        message: `Effective ignore inspection unavailable: ${reason}. Cannot prove effective ignore for: ${missing.join(", ")}. Run apk init or apk adopt to add canonical entries.${trackedSuffix}`,
+    });
+    if (gitState.unavailable || gitState.outsideWorktree) {
+        return unavailable(gitState.unavailable ? "git is not available" : "not inside a Git worktree");
+    }
+    const families = IGNORE_PROBE_FAMILIES.filter((family) => (family.entries.some((entry) => missing.includes(entry))));
+    const probePaths = [...new Set(families.map((family) => family.probePath))];
+    if (probePaths.length === 0 || probePaths.length > 8) {
+        return unavailable("probe set could not be bounded to eight paths");
+    }
+    let result;
+    try {
+        result = await runCheckIgnore(rootDirectory, probePaths);
+    }
+    catch (error) {
+        const reason = error && typeof error === "object" && "code" in error
+            ? `git check-ignore could not start (${String(error.code)})`
+            : "git check-ignore could not start";
+        return unavailable(reason);
+    }
+    if (result.code !== 0 && result.code !== 1) {
+        return unavailable(`git check-ignore exited ${result.code}`);
+    }
+    const matches = parseCheckIgnoreOutput(result.stdout, probePaths);
+    if (!matches) {
+        return unavailable("git check-ignore output was malformed");
+    }
+    const unproven = [];
+    const notes = [];
+    for (const family of families) {
+        const familyMissing = family.entries.filter((entry) => missing.includes(entry));
+        const match = matches.get(family.probePath);
+        const proven = match !== undefined
+            && (family.expect === "reinclude"
+                ? match.pattern.startsWith("!")
+                : !match.pattern.startsWith("!"));
+        if (!proven || match === undefined) {
+            unproven.push(...familyMissing);
+            continue;
+        }
+        const assertion = family.expect === "reinclude" ? "re-included" : "ignored";
+        notes.push(`${familyMissing.join(", ")}: ${assertion} via ${match.source}:${match.line}:${match.pattern}`);
+    }
+    if (unproven.length > 0) {
+        return {
+            level: "warn",
+            label,
+            message: `Canonical ignore entries absent from .gitignore without proven effective ignore: ${unproven.join(", ")}. Run apk init or apk adopt to add them.${notes.length > 0 ? ` Proven: ${notes.join("; ")}.` : ""}${trackedSuffix}`,
+        };
+    }
+    return {
+        level: "pass",
+        label,
+        message: `Canonical entries absent as literal strings but effective behavior confirmed: ${notes.join("; ")}.${trackedSuffix}`,
+    };
+}
 async function exists(path) {
     try {
         await stat(path);
@@ -122,13 +319,18 @@ async function applicationChecks(rootDirectory) {
 export async function runDoctor(rootDirectory) {
     const checks = [];
     let qualityPolicy;
-    checks.push(...await gitCheck(rootDirectory));
+    const gitChecks = await gitCheck(rootDirectory);
+    checks.push(...gitChecks);
     const operational = await inspectTrackedApkOperationalArtifacts(rootDirectory);
     checks.push({
         level: operational.status === "not-applicable" || (operational.status === "complete" && operational.count === 0) ? "pass" : "warn",
         label: "tracked-operational-artifacts",
         message: renderTrackedApkOperationalReport(operational).join("\n  "),
     });
+    checks.push(await ignoreEntriesCheck(rootDirectory, {
+        unavailable: gitChecks.some((check) => check.label === "git" && check.message === "git is not available"),
+        outsideWorktree: gitChecks.some((check) => check.label === "git" && check.message === "not inside git worktree"),
+    }, operational));
     let taskDirectory = ".tasks";
     try {
         const configExists = await exists(join(rootDirectory, CONFIG_PATH));
