@@ -1,7 +1,7 @@
 # Task 0287 - Contain init and gitignore writes inside the repository
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-impl
 Mode: maintenance
 Lane: bugfix
 Scope: init,gitignore,containment,security,tests
