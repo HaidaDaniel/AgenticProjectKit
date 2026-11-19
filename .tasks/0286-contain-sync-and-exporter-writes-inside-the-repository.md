@@ -1,7 +1,7 @@
 # Task 0286 - Contain sync and exporter writes inside the repository
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-impl
 Mode: maintenance
 Lane: bugfix
 Type: security
