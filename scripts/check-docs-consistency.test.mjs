@@ -489,3 +489,23 @@ test("documentation checker accepts five-digit task ids", async (t) => {
   const repo = await fixture(t, [task]);
   assert.deepEqual(await checkDocumentationConsistency(repo.root, cliReference), []);
 });
+
+test("progress audit links must resolve from tracked files only", async () => {
+  const root = process.cwd();
+  const exec = promisify(execFile);
+  const progress = await readFile(join(root, "docs/progress.md"), "utf8");
+  const targets = [...progress.matchAll(/\]\(([^)]+)\)/g)]
+    .map((match) => match[1].split("#")[0])
+    .filter((target) => target.startsWith("audits/"));
+  assert.ok(targets.length > 0, "progress must contain audit links to validate");
+  for (const target of targets) {
+    const trackedPath = join("docs", target);
+    let tracked = true;
+    try {
+      await exec("git", ["ls-files", "--error-unmatch", "--", trackedPath], { cwd: root });
+    } catch {
+      tracked = false;
+    }
+    assert.ok(tracked, `linked document ${trackedPath} must exist in the tracked Git tree even if it exists locally as untracked`);
+  }
+});
