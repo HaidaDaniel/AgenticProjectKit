@@ -17,6 +17,7 @@ DEFAULT_AGENT_POLICY,
   writeAgentExportTarget,
   writeAllAgentExports,
 } from "../exporters/index.js";
+import { resolveContainedDeleteBatch } from "../config/paths.js";
 import {
   listMinimalDocTemplates,
   renderMinimalDoc,
@@ -465,6 +466,77 @@ test("cleanupLegacyAgentExports is a no-write preview by default and preserves c
     assert.deepEqual(applied.preserved, [".opencode/AGENTS.md"]);
     await assert.rejects(readFile(join(directory, ".codex/instructions.md"), "utf8"));
     assert.equal(await readFile(join(directory, ".opencode/AGENTS.md"), "utf8"), "customized\n");
+  });
+});
+
+test("legacy cleanup refuses a symlinked ancestor and preserves the outside marker", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-legacy-outside-"));
+    try {
+      const generated = await renderLegacyAgentExportFile("codex", DEFAULT_AGENT_POLICY);
+      const marker = join(outside, "instructions.md");
+      await writeFile(marker, generated, "utf8");
+      await symlink(outside, join(directory, ".codex"), "dir");
+
+      await assert.rejects(classifyLegacyAgentExports(directory), /symbolic link/i);
+      await assert.rejects(cleanupLegacyAgentExports(directory, { apply: true }), /symbolic link/i);
+      assert.equal(await readFile(marker, "utf8"), generated);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+});
+
+test("legacy cleanup refuses a symlink final component and a dangling link", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-legacy-outside-"));
+    try {
+      const generated = await renderLegacyAgentExportFile("codex", DEFAULT_AGENT_POLICY);
+      const marker = join(outside, "instructions.md");
+      await writeFile(marker, generated, "utf8");
+      await mkdir(join(directory, ".codex"), { recursive: true });
+      await symlink(marker, join(directory, ".codex/instructions.md"));
+
+      await assert.rejects(cleanupLegacyAgentExports(directory, { apply: true }), /symbolic link/i);
+      assert.equal(await readFile(marker, "utf8"), generated);
+      await rm(join(directory, ".codex/instructions.md"), { force: true });
+      await symlink(join(outside, "missing-target.md"), join(directory, ".codex/instructions.md"));
+      await assert.rejects(cleanupLegacyAgentExports(directory, { apply: true }), /symbolic link/i);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+});
+
+test("contained delete batch refuses traversal before any removal", async () => {
+  await withTempDirectory(async (directory) => {
+    await assert.rejects(
+      resolveContainedDeleteBatch(directory, ["../outside/instructions.md"]),
+      /dot segments|escapes the repository root/,
+    );
+  });
+});
+
+test("legacy cleanup aborts the whole batch before deleting a valid first target", async () => {
+  await withTempDirectory(async (directory) => {
+    const outside = await mkdtemp(join(tmpdir(), "apk-legacy-outside-"));
+    try {
+      const generatedCodex = await renderLegacyAgentExportFile("codex", DEFAULT_AGENT_POLICY);
+      const generatedOpencode = await renderLegacyAgentExportFile("opencode", DEFAULT_AGENT_POLICY);
+      const valid = join(directory, ".codex/instructions.md");
+      await mkdir(join(directory, ".codex"), { recursive: true });
+      await writeFile(valid, generatedCodex, "utf8");
+      const marker = join(outside, "AGENTS.md");
+      await writeFile(marker, generatedOpencode, "utf8");
+      await mkdir(join(directory, ".opencode"), { recursive: true });
+      await symlink(marker, join(directory, ".opencode/AGENTS.md"));
+
+      await assert.rejects(cleanupLegacyAgentExports(directory, { apply: true }), /symbolic link/i);
+      assert.equal(await readFile(valid, "utf8"), generatedCodex);
+      assert.equal(await readFile(marker, "utf8"), generatedOpencode);
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
   });
 });
 

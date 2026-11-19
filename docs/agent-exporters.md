@@ -54,6 +54,8 @@ affected harnesses now consume `AGENTS.md` directly:
 - `apk export --report-legacy` lists obsolete generated files present in a repository.
 - `apk export --cleanup-legacy` removes only files whose normalized content exactly matches the known legacy rendering; customized files are preserved and reported.
 - A filename alone is never proof. Any file that differs from the known legacy rendering is treated as customized and left untouched.
+- Both legacy commands apply the same output-path containment as writes: a symlink final component or symlinked ancestor, an escaping path, or an unavailable root is refused before any read or removal. Classification re-verifies containment and exact content immediately before the batch deletion, so a file that changed after classification is not removed. The whole deletion set is validated before the first removal; a refused member leaves earlier members untouched.
+- This remains a best-effort pre-mutation check, not a race-free guarantee: an external process that swaps a checked path after verification but before `rm` is a residual TOCTOU boundary. Cleanup aborts on a detected change, and a refused path is never followed or repaired.
 
 `apk lint` reuses this exact-content classification to report generated legacy full-policy copies as advisory context-hygiene `info`; it never deletes, rewrites, or untracks them, and customized files are not misclassified.
 

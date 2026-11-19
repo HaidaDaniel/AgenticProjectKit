@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import {
   PathContainmentError,
   repositoryRelativePathIssue,
+  resolveContainedDeleteBatch,
+  resolveContainedRepositoryPath,
   resolveContainedWriteBatch,
 } from "../config/paths.js";
 import { renderTemplateFile, type TemplateData } from "../templates/index.js";
@@ -439,7 +441,8 @@ export async function classifyLegacyAgentExports(
   const findings: LegacyAgentExportFinding[] = [];
 
   for (const legacy of LEGACY_EXPORTERS) {
-    const actual = await readOptionalText(join(rootDirectory, legacy.outputPath));
+    const absolutePath = await resolveContainedRepositoryPath(rootDirectory, legacy.outputPath, "file");
+    const actual = await readOptionalText(absolutePath);
     if (actual === undefined) {
       continue;
     }
@@ -474,9 +477,30 @@ export async function cleanupLegacyAgentExports(
   const removed: string[] = [];
 
   if (options.apply) {
-    for (const finding of generated) {
-      await rm(join(rootDirectory, finding.outputPath), { force: true });
-      removed.push(finding.outputPath);
+    const targets = await resolveContainedDeleteBatch(
+      rootDirectory,
+      generated.map((finding) => finding.outputPath),
+    );
+    const verified: Array<{ finding: LegacyAgentExportFinding; absolutePath: string }> = [];
+    for (const [index, finding] of generated.entries()) {
+      const legacy = LEGACY_EXPORTERS.find((entry) => entry.id === finding.id);
+      if (!legacy) {
+        throw new PathContainmentError(`No legacy template is registered for ${JSON.stringify(finding.outputPath)}.`);
+      }
+      const expected = await renderTemplateFile(legacy.templatePath, { data: policy });
+      const freshPath = await resolveContainedRepositoryPath(rootDirectory, finding.outputPath, "file");
+      if (freshPath !== targets[index].absolutePath) {
+        throw new PathContainmentError(`Legacy export ${JSON.stringify(finding.outputPath)} changed during cleanup preflight.`);
+      }
+      const current = await readOptionalText(freshPath);
+      if (current === undefined || normalizeLineEndings(current) !== normalizeLineEndings(expected)) {
+        throw new PathContainmentError(`Legacy export ${JSON.stringify(finding.outputPath)} changed after classification; refusing cleanup.`);
+      }
+      verified.push({ finding, absolutePath: freshPath });
+    }
+    for (const entry of verified) {
+      await rm(entry.absolutePath);
+      removed.push(entry.finding.outputPath);
     }
   }
 

@@ -202,3 +202,25 @@ export async function resolveContainedWriteBatch(
   }
   return targets;
 }
+
+/**
+ * Resolve a complete batch of repository-relative deletion targets before any
+ * removal. A symlink final component, a symlinked ancestor, an escaping or
+ * absolute path, an unavailable root, or any lstat error refuses the entire
+ * batch before the first rm. Callers must re-verify containment and content
+ * immediately before each removal; the documented TOCTOU boundary still
+ * applies between that check and the filesystem mutation.
+ */
+export async function resolveContainedDeleteBatch(
+  rootDirectory: string,
+  relativePaths: readonly string[],
+): Promise<ContainedWriteTarget[]> {
+  const targets: ContainedWriteTarget[] = [];
+  for (const relativePath of relativePaths) {
+    targets.push({
+      relativePath,
+      absolutePath: await resolveContainedRepositoryPath(rootDirectory, relativePath, "file"),
+    });
+  }
+  return targets;
+}

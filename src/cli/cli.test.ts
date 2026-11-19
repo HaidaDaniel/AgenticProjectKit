@@ -9,6 +9,7 @@ import test, { before, after } from "node:test";
 import ts from "typescript";
 
 import { readCliVersion } from "./version.js";
+import { DEFAULT_AGENT_POLICY, renderLegacyAgentExportFile } from "../core/exporters/index.js";
 import { startWork } from "../core/work/index.js";
 import { WORKER_ROLES } from "../core/work/contract.js";
 import { EXECUTION_ROLES } from "../core/execution/index.js";
@@ -4598,6 +4599,42 @@ test("CLI export leaves a skipped symlink untouched and reports the normal skip"
     assert.equal(result.exitCode, 0);
     assert.match(result.stdout, /Skipped 1 existing file/);
     assert.equal(await readFile(outside, "utf8"), "EXISTING-OUTSIDE\n");
+  });
+});
+
+test("CLI export --cleanup-legacy refuses a symlinked ancestor and preserves the outside marker", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = join(directory, "repo");
+    const outside = join(directory, "outside");
+    await mkdir(repo, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    const generated = await renderLegacyAgentExportFile("codex", DEFAULT_AGENT_POLICY);
+    const marker = join(outside, "instructions.md");
+    await writeFile(marker, generated, "utf8");
+    await symlink("../outside", join(repo, ".codex"), "dir");
+
+    const result = await runCli(["export", "--cleanup-legacy"], repo);
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stderr, /symbolic link/);
+    assert.equal(await readFile(marker, "utf8"), generated);
+  });
+});
+
+test("CLI export --report-legacy is read-only for a symlinked ancestor", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = join(directory, "repo");
+    const outside = join(directory, "outside");
+    await mkdir(repo, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    const generated = await renderLegacyAgentExportFile("codex", DEFAULT_AGENT_POLICY);
+    const marker = join(outside, "instructions.md");
+    await writeFile(marker, generated, "utf8");
+    await symlink("../outside", join(repo, ".codex"), "dir");
+
+    const result = await runCli(["export", "--report-legacy"], repo);
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stderr, /symbolic link/);
+    assert.equal(await readFile(marker, "utf8"), generated);
   });
 });
 
