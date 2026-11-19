@@ -164,7 +164,11 @@ export const PUBLIC_COMMANDS: readonly PublicCommand[] = [
   {
     command: "help",
     summary: "Print the CLI reference.",
-    handler: simple(async () => {
+    handler: simple(async (args) => {
+      if (args.includes("--help") || args.includes("-h")) {
+        console.log(["Agentic Project Kit", "", "Usage:", "  apkit help", "", "Print the CLI reference."].join("\n"));
+        return 0;
+      }
       console.log(renderCliHelp());
       return 0;
     }),
