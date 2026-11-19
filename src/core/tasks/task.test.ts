@@ -919,6 +919,33 @@ test("escalation triggers raise canonical assurance and the review projection", 
   assert.equal(integration.requirements.independentReview, true);
 });
 
+test("task policy raises assurance for every safety-verdict category without task-specific rules", () => {
+  const medium = (tags: string[]) => resolveTaskPolicy({ ...TASK, risk: "medium", tags });
+  const categories = [
+    ["diagnostics", "containment"],
+    ["provenance"],
+    ["authorization"],
+    ["diagnostics", "gitignore"],
+    ["security-verdict"],
+    ["safety-diagnostic"],
+  ];
+
+  for (const tags of categories) {
+    const policy = medium(tags);
+    assert.equal(policy.requirements.assurance, "independent", tags.join(","));
+    assert.equal(policy.requirements.independentReview, true, tags.join(","));
+    assert.equal(policy.requirements.reviewLevel, "independent", tags.join(","));
+    assert.ok(
+      policy.requirements.assuranceTriggers?.some((trigger) => trigger.id === "safety-verdict" || trigger.id === "security-auth"),
+      `policy must explain the safety assurance trigger for ${tags.join(",")}`,
+    );
+  }
+
+  const ordinaryDocs = medium(["docs"]);
+  assert.equal(ordinaryDocs.requirements.assurance, "self-check");
+  assert.equal(ordinaryDocs.requirements.independentReview, false);
+});
+
 test("task policy requires declared high-risk evidence and explains tags", () => {
   const high = resolveTaskPolicy({
     ...TASK,

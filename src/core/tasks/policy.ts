@@ -159,7 +159,18 @@ function assuranceFloorForRule(rule: TaskPolicyTagRule): AssuranceLevel | undefi
 function assuranceTriggers(task: ProjectTask): AssuranceTrigger[] {
   const tags = new Set(policyTags(task));
   const triggers: AssuranceTrigger[] = [];
-  if (tags.has("security") || tags.has("auth")) triggers.push({ id: "security-auth", reason: "Security or authentication changes require independent assurance.", raisesTo: "independent" });
+  if (tags.has("security") || tags.has("auth") || tags.has("authorization")) triggers.push({ id: "security-auth", reason: "Security or authentication changes require independent assurance.", raisesTo: "independent" });
+  const safetyVerdictTags = ["containment", "provenance", "security-verdict", "safety-diagnostic", "security-diagnostic"];
+  const reportsSafetyVerdict = tags.has("diagnostics") && (
+    tags.has("gitignore") || tags.has("gate") || tags.has("verdict") || tags.has("safety")
+  );
+  if (safetyVerdictTags.some((tag) => tags.has(tag)) || reportsSafetyVerdict) {
+    triggers.push({
+      id: "safety-verdict",
+      reason: "Changes to containment, provenance, authorization, or safety-reporting diagnostics require independent assurance.",
+      raisesTo: "independent",
+    });
+  }
   if (tags.has("migration")) triggers.push({ id: "schema-migration", reason: "Schema or data migration changes require fresh semantic context.", raisesTo: "fresh-context" });
   if (tags.has("async") || tags.has("worker")) triggers.push({ id: "concurrency-async", reason: "Concurrency or worker lifecycle changes require fresh semantic context.", raisesTo: "fresh-context" });
   if (tags.has("api") || tags.has("public-api")) triggers.push({ id: "public-api", reason: "Public API compatibility changes require fresh semantic context.", raisesTo: "fresh-context" });
