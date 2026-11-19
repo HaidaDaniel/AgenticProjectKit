@@ -1,10 +1,13 @@
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { resolveContainedDeleteBatch, resolveContainedWriteBatch } from "./paths.js";
+import { resolveContainedAgenticPath, resolveContainedDeleteBatch, resolveContainedWriteBatch } from "./paths.js";
+
+const EXPECTED_CALL_SITE_FINGERPRINT = "e2d269f4408c7afb6d2b1512f34be08cff913b32cc05be3276133719bc1c3455";
 
 const MUTATION_CALL = /\b(rm|unlink|rename|rmdir|writeFile|appendFile|mkdir|copyFile|symlink|link)\s*\(/g;
 
@@ -55,14 +58,31 @@ async function sourceFiles(root: string): Promise<string[]> {
     .sort();
 }
 
-async function mutationSites(root: string): Promise<Map<string, string[]>> {
-  const sites = new Map<string, string[]>();
+async function mutationSites(root: string): Promise<Map<string, Record<string, number>>> {
+  const sites = new Map<string, Record<string, number>>();
   for (const file of await sourceFiles(root)) {
     const raw = await readFile(join(root, file), "utf8");
-    const callees = [...new Set([...raw.matchAll(MUTATION_CALL)].map((match) => match[1]))].sort();
-    if (callees.length > 0) sites.set(file, callees);
+    const calls: Record<string, number> = {};
+    for (const match of raw.matchAll(MUTATION_CALL)) {
+      const preceding = raw.slice(0, match.index);
+      const declarations = [...preceding.matchAll(/(?:async\s+)?function\s+([A-Za-z0-9_]+)\s*\(/g)];
+      const owner = declarations.at(-1)?.[1] ?? "<module>";
+      const key = `${owner}::${match[1]}`;
+      calls[key] = (calls[key] ?? 0) + 1;
+    }
+    if (Object.keys(calls).length > 0) sites.set(file, calls);
   }
   return sites;
+}
+
+function callSiteFingerprint(sites: Map<string, Record<string, number>>): string {
+  const canonical = JSON.stringify(Object.fromEntries(
+    [...sites.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([file, calls]) => [
+      file,
+      Object.fromEntries(Object.entries(calls).sort(([a], [b]) => a.localeCompare(b))),
+    ]),
+  ));
+  return createHash("sha256").update(canonical).digest("hex");
 }
 
 test("every shipped filesystem mutation site has an explicit boundary decision", async () => {
@@ -74,9 +94,14 @@ test("every shipped filesystem mutation site has an explicit boundary decision",
     Object.keys(MUTATION_DECISIONS).sort(),
     "new mutation sites require an explicit containment decision before they ship",
   );
-  for (const [file, callees] of sites) {
-    assert.ok(MUTATION_DECISIONS[file]?.reason, `missing decision for ${file} (${callees.join(",")})`);
+  for (const [file, calls] of sites) {
+    assert.ok(MUTATION_DECISIONS[file]?.reason, `missing decision for ${file} (${Object.keys(calls).join(",")})`);
   }
+  assert.equal(
+    callSiteFingerprint(sites),
+    EXPECTED_CALL_SITE_FINGERPRINT,
+    "a new or moved mutation call site requires an inventory review and fingerprint update",
+  );
 });
 
 test("the inventory detects a deliberately introduced uncontained mutation", async () => {
@@ -85,7 +110,7 @@ test("the inventory detects a deliberately introduced uncontained mutation", asy
     await writeFile(join(fixture, "src/core/example.ts"), "export async function run() { await rm('outside.txt'); }\n", "utf8");
     const sites = await mutationSites(fixture);
     assert.deepEqual([...sites.keys()], ["src/core/example.ts"]);
-    assert.deepEqual(sites.get("src/core/example.ts"), ["rm"]);
+    assert.deepEqual(sites.get("src/core/example.ts"), { "run::rm": 1 });
     assert.equal(MUTATION_DECISIONS["src/core/example.ts"], undefined);
   });
   assert.ok((await mutationSites(root)).size > 0);
@@ -112,6 +137,23 @@ test("contained write and delete batches refuse symlink ancestors and final comp
     await assert.rejects(resolveContainedWriteBatch(repo, ["docs/audit-report.md"]), /symbolic link/);
     await assert.rejects(resolveContainedDeleteBatch(repo, ["docs/audit-report.md"]), /symbolic link/);
     assert.equal(await readFile(join(outside, "marker.txt"), "utf8"), "DO-NOT-TOUCH\n");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("contained .agentic runtime path refuses a symlinked runtime directory", async () => {
+  const root = await mkdtemp(join(tmpdir(), "apk-agentic-boundary-"));
+  const repo = join(root, "repo");
+  const outside = join(root, "outside");
+  try {
+    await mkdir(repo, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await writeFile(join(outside, "evidence.jsonl"), "DO-NOT-TOUCH\n", "utf8");
+    await symlink("../outside", join(repo, ".agentic"), "dir");
+
+    await assert.rejects(resolveContainedAgenticPath(repo, ".agentic/evidence.jsonl", "file"), /symbolic link/);
+    assert.equal(await readFile(join(outside, "evidence.jsonl"), "utf8"), "DO-NOT-TOUCH\n");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
