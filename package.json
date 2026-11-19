@@ -47,16 +47,16 @@
     "release:major": "pnpm release:check && pnpm version major --no-git-tag-version"
   },
   "devDependencies": {
+    "@types/node": "^25.6.0",
     "c8": "^12.0.0",
     "eslint": "^10.10.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.5.1",
     "tsx": "^4.21.0",
+    "typescript": "^6.0.3",
     "typescript-eslint": "^8.70.0"
   },
   "dependencies": {
-    "@types/node": "^25.6.0",
-    "handlebars": "^4.7.9",
-    "typescript": "^6.0.3"
+    "handlebars": "^4.7.9"
   }
 }
