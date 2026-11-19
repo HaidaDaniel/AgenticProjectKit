@@ -265,6 +265,31 @@ test("doctor reports shared indexed operational categories as advisory warnings"
 
 const canonicalIgnore = `${APK_OPERATIONAL_IGNORE_ENTRIES.join("\n")}\n`;
 
+function oracleProbePath(entry: string): string {
+  if (entry.startsWith("!")) return entry.substring(1);
+  const withoutRoot = entry.replace(/^\//, "");
+  if (withoutRoot.endsWith("/*")) return `${withoutRoot.slice(0, -2)}/probe-file`;
+  if (withoutRoot.endsWith("/")) return `${withoutRoot}probe-file`;
+  return withoutRoot;
+}
+
+function gitIgnoreOracle(root: string, entry: string): { ignored: boolean; reinclude: boolean } {
+  const probe = oracleProbePath(entry);
+  try {
+    const output = execFileSync("git", ["check-ignore", "-v", "--no-index", probe], {
+      cwd: root,
+      encoding: "utf8",
+    });
+    const pattern = (output.trim().split(/\s+/)[0] ?? "").split(":").slice(2).join(":");
+    return { ignored: !pattern.startsWith("!"), reinclude: pattern.startsWith("!") };
+  } catch (error: unknown) {
+    if (error && typeof error === "object" && "status" in error && error.status === 1) {
+      return { ignored: false, reinclude: false };
+    }
+    throw error;
+  }
+}
+
 async function ignoreCheck(root: string) {
   const result = await runDoctor(root);
   const check = result.checks.find((item) => item.label === "ignore-entries");
@@ -385,6 +410,60 @@ test("doctor never reports a leak when re-include negation is proven", async () 
       const check = await ignoreCheck(root);
       assert.equal(check.level, "pass");
       assert.match(check.message, /re-included via \.agentic\/\.gitignore:1:!\.gitkeep/);
+    });
+  });
+});
+
+test("doctor does not prove a missing entry from another entry's probe", async () => {
+  await withGitEnv(async () => {
+    await fixture(async (root) => {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      await writeFile(join(root, ".gitignore"), canonicalIgnore.replace(".agentic/perf/*\n", ""));
+      const check = await ignoreCheck(root);
+
+      assert.equal(check.level, "warn");
+      assert.match(check.message, /\.agentic\/perf\/\*/);
+      assert.doesNotMatch(check.message, /\.agentic\/perf\/\*: ignored via/);
+    });
+  });
+});
+
+test("doctor ignore verdicts match an independently constructed Git oracle", async () => {
+  await withGitEnv(async () => {
+    await fixture(async (root) => {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      const present = APK_OPERATIONAL_IGNORE_ENTRIES.filter(
+        (entry) => entry !== ".agentic/perf/*" && entry !== "/tmp/apk/",
+      );
+      await writeFile(join(root, ".gitignore"), `${present.join("\n")}\n`);
+      const check = await ignoreCheck(root);
+      const expectedUnproven = APK_OPERATIONAL_IGNORE_ENTRIES.filter((entry) => {
+        const oracle = gitIgnoreOracle(root, entry);
+        return entry.startsWith("!") ? !oracle.reinclude : !oracle.ignored;
+      });
+
+      assert.equal(check.level, "warn");
+      for (const entry of expectedUnproven) {
+        assert.ok(check.message.includes(entry), `warn must name ${entry}`);
+      }
+      assert.match(check.message, /\.agentic\/perf\/\*/);
+    });
+  });
+});
+
+test("doctor rejects a re-include pattern that matches a different path", async () => {
+  await withGitEnv(async () => {
+    await fixture(async (root) => {
+      execFileSync("git", ["init", "-q"], { cwd: root });
+      await writeFile(
+        join(root, ".gitignore"),
+        canonicalIgnore.replace("!.agentic/agents/.gitkeep\n", "!.agentic/runs/.gitkeep-extra\n"),
+      );
+      const check = await ignoreCheck(root);
+
+      assert.equal(check.level, "warn");
+      assert.match(check.message, /!\.agentic\/agents\/\.gitkeep/);
+      assert.doesNotMatch(check.message, /!\.agentic\/agents\/\.gitkeep: re-included/);
     });
   });
 });

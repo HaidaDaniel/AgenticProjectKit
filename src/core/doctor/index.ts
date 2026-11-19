@@ -32,67 +32,28 @@ export interface DoctorResult {
   ok: boolean;
 }
 
-interface IgnoreProbeFamily {
-  entries: readonly string[];
+interface IgnoreProbe {
+  entry: string;
   probePath: string;
   expect: "ignore" | "reinclude";
 }
 
-const IGNORE_PROBE_FAMILIES: readonly IgnoreProbeFamily[] = [
-  {
-    entries: [".tasks/.apk.lock"],
-    probePath: ".tasks/.apk.lock",
-    expect: "ignore",
-  },
-  {
-    entries: [
-      ".agentic/agents.jsonl",
-      ".agentic/runs.jsonl",
-      ".agentic/evidence.jsonl",
-      ".agentic/task-baselines.jsonl",
-      ".agentic/evidence.append.lock",
-    ],
-    probePath: ".agentic/evidence.jsonl",
-    expect: "ignore",
-  },
-  {
-    entries: [
-      ".agentic/agents/*",
-      ".agentic/runs/*",
-      ".agentic/reviews/*",
-      ".agentic/sessions/*",
-      ".agentic/perf/*",
-      ".agentic/workspaces/*",
-    ],
-    probePath: ".agentic/agents/sample.jsonl",
-    expect: "ignore",
-  },
-  {
-    entries: ["!.agentic/agents/.gitkeep"],
-    probePath: ".agentic/agents/.gitkeep",
-    expect: "reinclude",
-  },
-  {
-    entries: ["!.agentic/runs/.gitkeep"],
-    probePath: ".agentic/runs/.gitkeep",
-    expect: "reinclude",
-  },
-  {
-    entries: [".apk-workspaces/"],
-    probePath: ".apk-workspaces/sample",
-    expect: "ignore",
-  },
-  {
-    entries: ["/tmp/apk/"],
-    probePath: "tmp/apk/sample",
-    expect: "ignore",
-  },
-  {
-    entries: ["docs/audit-report.md", "docs/project-map.md"],
-    probePath: "docs/audit-report.md",
-    expect: "ignore",
-  },
-];
+/**
+ * Build one independent probe for every canonical entry. A result for one
+ * entry is never allowed to prove a different entry, even when both look
+ * similar or share a directory prefix.
+ */
+function ignoreProbesFor(entries: readonly string[]): IgnoreProbe[] {
+  return entries.map((entry) => {
+    if (entry.startsWith("!")) {
+      return { entry, probePath: entry.slice(1), expect: "reinclude" as const };
+    }
+    let probePath = entry.startsWith("/") ? entry.slice(1) : entry;
+    if (probePath.endsWith("/*")) probePath = `${probePath.slice(0, -2)}/apk-probe`;
+    else if (probePath.endsWith("/")) probePath = `${probePath}apk-probe`;
+    return { entry, probePath, expect: "ignore" as const };
+  });
+}
 
 interface IgnoreMatch {
   source: string;
@@ -208,12 +169,10 @@ async function ignoreEntriesCheck(
     return unavailable(gitState.unavailable ? "git is not available" : "not inside a Git worktree");
   }
 
-  const families = IGNORE_PROBE_FAMILIES.filter((family) => (
-    family.entries.some((entry) => missing.includes(entry))
-  ));
-  const probePaths = [...new Set(families.map((family) => family.probePath))];
-  if (probePaths.length === 0 || probePaths.length > 8) {
-    return unavailable("probe set could not be bounded to eight paths");
+  const probes = ignoreProbesFor(missing);
+  const probePaths = [...new Set(probes.map((probe) => probe.probePath))];
+  if (probePaths.length === 0 || probePaths.length > 64) {
+    return unavailable("probe set could not be bounded");
   }
 
   let result: { code: number; stdout: string };
@@ -237,19 +196,18 @@ async function ignoreEntriesCheck(
 
   const unproven: string[] = [];
   const notes: string[] = [];
-  for (const family of families) {
-    const familyMissing = family.entries.filter((entry) => missing.includes(entry));
-    const match = matches.get(family.probePath);
+  for (const probe of probes) {
+    const match = matches.get(probe.probePath);
     const proven = match !== undefined
-      && (family.expect === "reinclude"
+      && (probe.expect === "reinclude"
         ? match.pattern.startsWith("!")
         : !match.pattern.startsWith("!"));
     if (!proven || match === undefined) {
-      unproven.push(...familyMissing);
+      unproven.push(probe.entry);
       continue;
     }
-    const assertion = family.expect === "reinclude" ? "re-included" : "ignored";
-    notes.push(`${familyMissing.join(", ")}: ${assertion} via ${match.source}:${match.line}:${match.pattern}`);
+    const assertion = probe.expect === "reinclude" ? "re-included" : "ignored";
+    notes.push(`${probe.entry}: ${assertion} via ${match.source}:${match.line}:${match.pattern}`);
   }
 
   if (unproven.length > 0) {
