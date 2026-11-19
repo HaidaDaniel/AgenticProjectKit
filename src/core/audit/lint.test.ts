@@ -450,3 +450,28 @@ test("contract lint shares bounded compatibility issues and manual migration gui
     assert.equal(result.hasErrors, true);
   });
 });
+
+test("contract lint honors declared external read-only evidence references", async () => {
+  await withTempDirectory(async (directory) => {
+    await initProject(directory);
+    await writeAllAgentExports(directory, undefined, { force: true });
+    const external = "/tmp/external-benchmark-runs/local-qa-2026/run.json";
+
+    await writeTask(directory, "0030-undeclared.md", task("0030", { contextFiles: ["AGENTS.md", external] }));
+    const undeclared = await lintRepositoryContracts(directory);
+    assert.ok(undeclared.findings.some(
+      (finding) => finding.code === "context-reference-missing" && finding.path === external,
+    ));
+
+    await writeTask(directory, "0030-undeclared.md", task("0030", {
+      contextFiles: ["AGENTS.md", external],
+      externalEvidence: [external],
+    }));
+    const declared = await lintRepositoryContracts(directory);
+    assert.ok(!declared.findings.some(
+      (finding) => finding.code === "context-reference-missing" && finding.path === external,
+    ));
+    assert.ok(!declared.contextHygiene.missing.includes(external));
+    assert.equal(declared.hasErrors, false);
+  });
+});

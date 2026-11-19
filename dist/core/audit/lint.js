@@ -208,8 +208,16 @@ async function evaluateContextHygiene(rootDirectory, taskDirectory, documents, f
     const taskContractSet = new Set(documents.active.map((file) => normalizeRepoPath(relative(rootDirectory, file.path))));
     const required = new Set();
     const missing = new Set();
+    const declaredExternal = new Set();
+    for (const file of documents.active) {
+        for (const reference of file.task.externalEvidence ?? []) {
+            declaredExternal.add(normalizeRepoPath(reference));
+        }
+    }
     for (const file of documents.active) {
         for (const reference of file.task.contextFiles) {
+            if (declaredExternal.has(normalizeRepoPath(reference)))
+                continue;
             const path = normalizeRepoPath(reference);
             if (path.includes("*"))
                 continue;

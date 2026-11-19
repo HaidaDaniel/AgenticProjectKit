@@ -67,6 +67,7 @@ export class TaskFormatError extends Error {
 const SECTION_TITLES = {
     Goal: "goal",
     "Context files": "contextFiles",
+    "External evidence": "externalEvidence",
     "Files allowed to edit": "allowedFiles",
     "Files forbidden to edit": "forbiddenFiles",
     Steps: "steps",
@@ -84,6 +85,7 @@ const SECTION_TITLES = {
 const SECTION_ORDER = [
     ["goal", "Goal"],
     ["contextFiles", "Context files"],
+    ["externalEvidence", "External evidence"],
     ["allowedFiles", "Files allowed to edit"],
     ["forbiddenFiles", "Files forbidden to edit"],
     ["steps", "Steps"],
@@ -537,6 +539,9 @@ export function parseTaskMarkdown(markdown) {
         : normalizeVerificationCommands(parseList(sections.verificationCommands ?? "", "Verification commands"));
     const verificationCommands = verificationCommandsFromChecks(verification);
     const optionalLists = {
+        externalEvidence: sections.externalEvidence === undefined
+            ? undefined
+            : parseList(sections.externalEvidence, "External evidence"),
         correctnessAssumptions: sections.correctnessAssumptions === undefined
             ? undefined
             : parseList(sections.correctnessAssumptions, "Correctness assumptions"),
@@ -568,6 +573,8 @@ export function parseTaskMarkdown(markdown) {
         tags,
         goal: requireSection(sections, "goal", "Goal", issues).trim(),
         contextFiles: parseList(requireSection(sections, "contextFiles", "Context files", issues), "Context files", "single-line"),
+        ...(optionalLists.externalEvidence && optionalLists.externalEvidence.length > 0
+            ? { externalEvidence: optionalLists.externalEvidence } : {}),
         allowedFiles: parseList(requireSection(sections, "allowedFiles", "Files allowed to edit", issues), "Files allowed to edit", "single-line"),
         forbiddenFiles: parseList(requireSection(sections, "forbiddenFiles", "Files forbidden to edit", issues), "Files forbidden to edit", "single-line"),
         steps: parseSteps(requireSection(sections, "steps", "Steps", issues)),
@@ -621,6 +628,7 @@ export function renderTaskMarkdown(task) {
     const sectionOrder = SECTION_ORDER.filter(([key]) => (key !== "verification" &&
         key !== "verificationCommands" &&
         (![
+            "externalEvidence",
             "correctnessAssumptions",
             "invariants",
             "requiredEvidence",
@@ -640,7 +648,7 @@ export function renderTaskMarkdown(task) {
                 ? renderSteps(value)
                 : key === "verification"
                     ? renderVerification(verification)
-                    : renderList(value, title, ["contextFiles", "allowedFiles", "forbiddenFiles"].includes(key)
+                    : renderList(value, title, ["contextFiles", "externalEvidence", "allowedFiles", "forbiddenFiles"].includes(key)
                         ? "single-line"
                         : "prose");
         return [`## ${title}`, "", content].join("\n");
