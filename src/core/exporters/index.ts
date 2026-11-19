@@ -2,6 +2,11 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  PathContainmentError,
+  repositoryRelativePathIssue,
+  resolveContainedWriteBatch,
+} from "../config/paths.js";
 import { renderTemplateFile, type TemplateData } from "../templates/index.js";
 
 export const AGENT_EXPORTER_IDS = [
@@ -334,13 +339,19 @@ export async function writeAgentExportFiles(
   const written: string[] = [];
   const skipped: string[] = [];
   const force = options.force ?? false;
+  const writeSet: AgentExportFile[] = [];
 
   for (const file of files) {
-    const outputPath = join(rootDirectory, file.outputPath);
+    const issue = repositoryRelativePathIssue(file.outputPath, "file");
+    if (issue) {
+      throw new PathContainmentError(
+        `Refusing to use ${JSON.stringify(file.outputPath)} as a repository-relative file: ${issue}.`,
+      );
+    }
 
     if (!force) {
       try {
-        await readFile(outputPath);
+        await readFile(join(rootDirectory, file.outputPath));
         skipped.push(file.outputPath);
         continue;
       } catch (error: unknown) {
@@ -357,9 +368,18 @@ export async function writeAgentExportFiles(
       }
     }
 
-    await mkdir(dirname(outputPath), { recursive: true });
-    await writeFile(outputPath, file.content, "utf8");
-    written.push(file.outputPath);
+    writeSet.push(file);
+  }
+
+  const targets = await resolveContainedWriteBatch(
+    rootDirectory,
+    writeSet.map((file) => file.outputPath),
+  );
+
+  for (const [index, target] of targets.entries()) {
+    await mkdir(dirname(target.absolutePath), { recursive: true });
+    await writeFile(target.absolutePath, writeSet[index].content, "utf8");
+    written.push(target.relativePath);
   }
 
   return { written, skipped };

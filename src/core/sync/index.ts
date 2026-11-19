@@ -3,6 +3,10 @@ import { dirname, join } from "node:path";
 
 import { readAgenticConfigFile } from "../config/index.js";
 import {
+  resolveContainedWriteBatch,
+  type ContainedWriteTarget,
+} from "../config/paths.js";
+import {
   styleRulesFor,
   DEFAULT_AGENT_POLICY,
   renderAgentExportFiles,
@@ -64,13 +68,11 @@ async function renderExpectedFiles(
 }
 
 async function writeExpectedFile(
-  rootDirectory: string,
-  file: AgentExportFile,
+  target: ContainedWriteTarget,
+  content: string,
 ): Promise<void> {
-  const outputPath = join(rootDirectory, file.outputPath);
-
-  await mkdir(dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, file.content, "utf8");
+  await mkdir(dirname(target.absolutePath), { recursive: true });
+  await writeFile(target.absolutePath, content, "utf8");
 }
 
 export async function syncAgentExports(
@@ -96,11 +98,17 @@ export async function syncAgentExports(
   }
 
   if (options.write) {
-    for (const file of files.filter((entry) => (
+    const writeSet = files.filter((entry) => (
       missing.includes(entry.outputPath) || stale.includes(entry.outputPath)
-    ))) {
-      await writeExpectedFile(rootDirectory, file);
-      written.push(file.outputPath);
+    ));
+    const targets = await resolveContainedWriteBatch(
+      rootDirectory,
+      writeSet.map((file) => file.outputPath),
+    );
+
+    for (const [index, target] of targets.entries()) {
+      await writeExpectedFile(target, writeSet[index].content);
+      written.push(target.relativePath);
     }
   }
 

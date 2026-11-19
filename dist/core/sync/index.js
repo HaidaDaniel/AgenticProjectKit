@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { readAgenticConfigFile } from "../config/index.js";
+import { resolveContainedWriteBatch, } from "../config/paths.js";
 import { styleRulesFor, DEFAULT_AGENT_POLICY, renderAgentExportFiles, renderAgentExportTarget, } from "../exporters/index.js";
 function normalizeLineEndings(value) {
     return value.replace(/\r\n/g, "\n");
@@ -31,10 +32,9 @@ async function renderExpectedFiles(rootDirectory, target) {
         ? renderAgentExportTarget(target, policy)
         : renderAgentExportFiles(policy);
 }
-async function writeExpectedFile(rootDirectory, file) {
-    const outputPath = join(rootDirectory, file.outputPath);
-    await mkdir(dirname(outputPath), { recursive: true });
-    await writeFile(outputPath, file.content, "utf8");
+async function writeExpectedFile(target, content) {
+    await mkdir(dirname(target.absolutePath), { recursive: true });
+    await writeFile(target.absolutePath, content, "utf8");
 }
 export async function syncAgentExports(rootDirectory, options = {}) {
     const files = await renderExpectedFiles(rootDirectory, options.target);
@@ -55,9 +55,11 @@ export async function syncAgentExports(rootDirectory, options = {}) {
         }
     }
     if (options.write) {
-        for (const file of files.filter((entry) => (missing.includes(entry.outputPath) || stale.includes(entry.outputPath)))) {
-            await writeExpectedFile(rootDirectory, file);
-            written.push(file.outputPath);
+        const writeSet = files.filter((entry) => (missing.includes(entry.outputPath) || stale.includes(entry.outputPath)));
+        const targets = await resolveContainedWriteBatch(rootDirectory, writeSet.map((file) => file.outputPath));
+        for (const [index, target] of targets.entries()) {
+            await writeExpectedFile(target, writeSet[index].content);
+            written.push(target.relativePath);
         }
     }
     return {

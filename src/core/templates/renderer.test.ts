@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -308,6 +308,101 @@ test("writeAgentExportFiles skips existing files by default", async () => {
     assert.deepEqual(result.written, []);
     assert.deepEqual(result.skipped, ["AGENTS.md"]);
     assert.equal(await readFile(join(directory, "AGENTS.md"), "utf8"), "existing");
+  });
+});
+
+test("writeAgentExportFiles refuses a symlinked ancestor without writing outside", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = join(directory, "repo");
+    const outside = join(directory, "outside");
+    await mkdir(repo, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await symlink("../outside", join(repo, "nested"));
+
+    await assert.rejects(
+      writeAgentExportFiles(repo, [
+        { id: "agents", outputPath: "nested/AGENTS.md", content: "PWNED" },
+      ], { force: true }),
+      /symbolic link/,
+    );
+    await assert.rejects(readFile(join(outside, "AGENTS.md")), /ENOENT/);
+  });
+});
+
+test("writeAgentExportFiles refuses traversal and absolute output paths", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = join(directory, "repo");
+    const outside = join(directory, "outside.md");
+    await mkdir(repo, { recursive: true });
+    await writeFile(outside, "OUTSIDE-ORIGINAL\n", "utf8");
+
+    await assert.rejects(
+      writeAgentExportFiles(repo, [
+        { id: "agents", outputPath: "../outside.md", content: "PWNED" },
+      ], { force: true }),
+      /dot segments/,
+    );
+    await assert.rejects(
+      writeAgentExportFiles(repo, [
+        { id: "agents", outputPath: outside, content: "PWNED" },
+      ], { force: true }),
+      /absolute path/,
+    );
+    assert.equal(await readFile(outside, "utf8"), "OUTSIDE-ORIGINAL\n");
+  });
+});
+
+test("writeAgentExportFiles leaves a skipped symlink untouched", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = join(directory, "repo");
+    const outside = join(directory, "outside.md");
+    await mkdir(repo, { recursive: true });
+    await writeFile(outside, "EXISTING-OUTSIDE\n", "utf8");
+    await symlink("../outside.md", join(repo, "AGENTS.md"));
+
+    const result = await writeAgentExportFiles(repo, [
+      { id: "agents", outputPath: "AGENTS.md", content: "NEW" },
+    ]);
+
+    assert.deepEqual(result.written, []);
+    assert.deepEqual(result.skipped, ["AGENTS.md"]);
+    assert.equal(await readFile(outside, "utf8"), "EXISTING-OUTSIDE\n");
+  });
+});
+
+test("writeAgentExportFiles refuses a dangling symlink selected for writing", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = join(directory, "repo");
+    await mkdir(repo, { recursive: true });
+    await symlink("../outside-dangling.md", join(repo, "AGENTS.md"));
+
+    await assert.rejects(
+      writeAgentExportFiles(repo, [
+        { id: "agents", outputPath: "AGENTS.md", content: "NEW" },
+      ]),
+      /symbolic link/,
+    );
+    await assert.rejects(readFile(join(directory, "outside-dangling.md")), /ENOENT/);
+  });
+});
+
+test("writeAgentExportFiles preflights the whole batch before any write", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = join(directory, "repo");
+    const outside = join(directory, "outside.md");
+    await mkdir(repo, { recursive: true });
+    await writeFile(outside, "OUTSIDE-ORIGINAL\n", "utf8");
+    await symlink("../outside.md", join(repo, "B.md"));
+
+    await assert.rejects(
+      writeAgentExportFiles(repo, [
+        { id: "agents", outputPath: "A.md", content: "NEW-A" },
+        { id: "agents", outputPath: "B.md", content: "NEW-B" },
+      ], { force: true }),
+      /symbolic link/,
+    );
+    await assert.rejects(readFile(join(repo, "A.md")), /ENOENT/);
+    assert.equal(await readFile(outside, "utf8"), "OUTSIDE-ORIGINAL\n");
   });
 });
 

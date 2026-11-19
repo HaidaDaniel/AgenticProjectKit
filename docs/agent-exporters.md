@@ -30,6 +30,21 @@ directories, so no second common-policy file is generated for them. No
 filesystem symlinks are used; every generated file is a portable regular text
 file.
 
+## Output-path containment
+
+`apk export` and `apk sync --write` resolve every selected output path inside
+the repository before the first write and refuse a symlink component, a
+symlinked ancestor, an escaping/absolute/traversing path, or an unavailable
+repository root. The whole batch is checked before any file is created or
+overwritten, so a rejected member cannot leave an earlier member written. Paths
+the command will skip without writing are not part of that batch: an existing
+symlink whose content reads successfully is left untouched and reported by the
+normal skipped/current semantics, while a dangling symlink selected for writing
+is refused. This is a best-effort pre-mutation check, not a race-free lock: an
+external process that replaces a checked path with a symlink after the check
+but before the write remains a residual TOCTOU boundary that Node core
+filesystem APIs cannot remove.
+
 ## Removed outputs and safe migration
 
 Earlier APK versions generated `.codex/instructions.md`,

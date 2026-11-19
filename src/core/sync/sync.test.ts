@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
@@ -101,6 +101,55 @@ test("syncAgentExports writes missing and stale target files when requested", as
       await readFile(join(directory, "AGENTS.md"), "utf8"),
       /automatically launch a separate read-only reviewer/,
     );
+  });
+});
+
+test("syncAgentExports refuses a symlinked output and leaves the outside target unchanged", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = join(directory, "repo");
+    const outside = join(directory, "outside-marker");
+    await mkdir(repo, { recursive: true });
+    await writeFile(outside, "OUTSIDE-ORIGINAL\n", "utf8");
+    await symlink("../outside-marker", join(repo, "AGENTS.md"));
+
+    await assert.rejects(
+      syncAgentExports(repo, { target: "agents", write: true }),
+      /symbolic link/,
+    );
+    assert.equal(await readFile(outside, "utf8"), "OUTSIDE-ORIGINAL\n");
+  });
+});
+
+test("syncAgentExports refuses a dangling symlink selected for writing", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = join(directory, "repo");
+    await mkdir(repo, { recursive: true });
+    await symlink("../outside-dangling", join(repo, "AGENTS.md"));
+
+    await assert.rejects(
+      syncAgentExports(repo, { target: "agents", write: true }),
+      /symbolic link/,
+    );
+    const outside = join(directory, "outside-dangling");
+    await assert.rejects(readFile(outside), /ENOENT/);
+  });
+});
+
+test("syncAgentExports preflights the whole write batch before any write", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = join(directory, "repo");
+    const outside = join(directory, "outside-marker");
+    await mkdir(repo, { recursive: true });
+    await writeFile(outside, "OUTSIDE-ORIGINAL\n", "utf8");
+    await writeFile(join(repo, "AGENTS.md"), "stale\n", "utf8");
+    await symlink("../outside-marker", join(repo, "CLAUDE.md"));
+
+    await assert.rejects(
+      syncAgentExports(repo, { target: "claude", write: true }),
+      /symbolic link/,
+    );
+    assert.equal(await readFile(join(repo, "AGENTS.md"), "utf8"), "stale\n");
+    assert.equal(await readFile(outside, "utf8"), "OUTSIDE-ORIGINAL\n");
   });
 });
 

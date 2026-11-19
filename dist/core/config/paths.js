@@ -140,3 +140,23 @@ export async function resolveContainedRepositoryPath(rootDirectory, relativePath
     }
     return absolute;
 }
+/**
+ * Resolve a complete batch of repository-relative write targets before any
+ * mutation. Every member passes the same containment check as a single
+ * sensitive path, so a symlinked component or ancestor, an escaping or
+ * absolute path, an unavailable root, or any lstat/containment failure refuses
+ * the entire batch before the first mkdir or writeFile. This is a best-effort
+ * pre-mutation check with the same residual TOCTOU boundary as
+ * `resolveContainedRepositoryPath`; callers must resolve immediately before
+ * writing and must not follow or repair discovered links.
+ */
+export async function resolveContainedWriteBatch(rootDirectory, relativePaths) {
+    const targets = [];
+    for (const relativePath of relativePaths) {
+        targets.push({
+            relativePath,
+            absolutePath: await resolveContainedRepositoryPath(rootDirectory, relativePath, "file"),
+        });
+    }
+    return targets;
+}

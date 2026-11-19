@@ -4559,3 +4559,57 @@ test("version manifest lookup is bounded and rejects invalid metadata without a 
     }
   });
 });
+
+test("CLI sync and export refuse symlinked outputs and leave outside markers unchanged", async () => {
+  await withTempDirectory(async (directory) => {
+    const syncRepo = join(directory, "sync-repo");
+    const syncOutside = join(directory, "sync-outside.md");
+    await mkdir(syncRepo, { recursive: true });
+    await writeFile(syncOutside, "OUTSIDE-ORIGINAL\n", "utf8");
+    await symlink("../sync-outside.md", join(syncRepo, "AGENTS.md"));
+
+    const syncResult = await runCli(["sync", "--write"], syncRepo);
+    assert.equal(syncResult.exitCode, 1);
+    assert.match(syncResult.stderr, /symbolic link/);
+    assert.equal(await readFile(syncOutside, "utf8"), "OUTSIDE-ORIGINAL\n");
+
+    const exportRepo = join(directory, "export-repo");
+    const exportOutside = join(directory, "export-outside.md");
+    await mkdir(exportRepo, { recursive: true });
+    await writeFile(exportOutside, "OUTSIDE-ORIGINAL\n", "utf8");
+    await symlink("../export-outside.md", join(exportRepo, "AGENTS.md"));
+
+    const exportResult = await runCli(["export", "agents", "--force"], exportRepo);
+    assert.equal(exportResult.exitCode, 1);
+    assert.match(exportResult.stderr, /symbolic link/);
+    assert.equal(await readFile(exportOutside, "utf8"), "OUTSIDE-ORIGINAL\n");
+  });
+});
+
+test("CLI export leaves a skipped symlink untouched and reports the normal skip", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = join(directory, "repo");
+    const outside = join(directory, "outside.md");
+    await mkdir(repo, { recursive: true });
+    await writeFile(outside, "EXISTING-OUTSIDE\n", "utf8");
+    await symlink("../outside.md", join(repo, "AGENTS.md"));
+
+    const result = await runCli(["export", "agents"], repo);
+    assert.equal(result.exitCode, 0);
+    assert.match(result.stdout, /Skipped 1 existing file/);
+    assert.equal(await readFile(outside, "utf8"), "EXISTING-OUTSIDE\n");
+  });
+});
+
+test("CLI sync refuses a dangling symlink selected for writing", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = join(directory, "repo");
+    await mkdir(repo, { recursive: true });
+    await symlink("../outside-dangling.md", join(repo, "AGENTS.md"));
+
+    const result = await runCli(["sync", "--write"], repo);
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stderr, /symbolic link/);
+    await assert.rejects(readFile(join(directory, "outside-dangling.md")), /ENOENT/);
+  });
+});
