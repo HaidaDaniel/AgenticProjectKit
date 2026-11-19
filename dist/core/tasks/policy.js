@@ -100,7 +100,7 @@ function assuranceTriggers(task) {
     if (safetyVerdictTags.some((tag) => tags.has(tag)) || reportsSafetyVerdict) {
         triggers.push({
             id: "safety-verdict",
-            reason: "Changes to containment, provenance, authorization, or safety-reporting diagnostics require independent assurance.",
+            reason: "Changes to containment, provenance, security verdicts, or safety-reporting diagnostics require independent assurance.",
             raisesTo: "independent",
         });
     }

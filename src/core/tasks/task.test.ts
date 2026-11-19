@@ -928,6 +928,10 @@ test("task policy raises assurance for every safety-verdict category without tas
     ["diagnostics", "gitignore"],
     ["security-verdict"],
     ["safety-diagnostic"],
+    ["security-diagnostic"],
+    ["diagnostics", "gate"],
+    ["diagnostics", "verdict"],
+    ["diagnostics", "safety"],
   ];
 
   for (const tags of categories) {
