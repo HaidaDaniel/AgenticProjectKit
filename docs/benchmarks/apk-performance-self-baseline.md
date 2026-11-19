@@ -34,3 +34,21 @@ Each row is one profiler session. APK subprocess intervals are attributed exclus
 The fixture uses `apk init`, status/task listing/doctor commands, and explicit `apk perf exec --category test` for a short non-APK process. The self rows use read-only help/status/task-list/doctor/lint commands. No task lifecycle mutation or external agent session is inferred from this synthetic run.
 
 No Go speed claim is made from this fixture. The data is a self-dogfood baseline for instrumentation and attribution; Task 0209 must collect real downstream workflows before a runtime decision.
+
+## Task 0296 — current status/attention wall-clock check (2026-11-19)
+
+This section is a later additive measurement, not a revision of the historical v0.4.9 rows above. Environment: Linux, Node v24, committed `dist` at the 0296 candidate, AgenticProjectKit checkout with 301 task files (130 active + 159 archived at task creation, then the new corrective tasks). Five sequential runs per command, wall clock including Node startup:
+
+| Command | ms/run |
+| --- | ---: |
+| `node -e ""` (runtime baseline) | 25 |
+| `apk --version` | 34 |
+| `apk tasks` | 257 |
+| `apk doctor` | 281 |
+| `apk lint --json` | 548 |
+| `apk status --detail` | 1330 |
+| `apk attention --json` | 1360 |
+
+Interpretation: CLI startup is ~9 ms above the Node baseline, so the cost is in inventory parsing plus the per-selected-task gate/scope Git work, not in process launch. Earlier measurements on the same repository with 289 task files gave ~1107 ms for `status --detail` and ~1051 ms for `attention --json`; the increase tracks the added task files. On a 76-task downstream repository the same commands take ~308 ms and ~273 ms.
+
+Decision: no cross-process cache is introduced. A cache would require invalidation on task Markdown, evidence, config, Git HEAD and working-tree state across concurrent agents; the measured benefit does not justify that correctness risk. The existing `withDiagnosticSnapshot` already deduplicates reads within one invocation. If a future profile shows a dominant hotspot, revisit with a snapshot-scoped projection rather than a persistent cache. This section is advisory and is not an absolute performance gate.
