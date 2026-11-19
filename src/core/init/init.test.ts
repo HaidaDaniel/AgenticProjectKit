@@ -440,3 +440,88 @@ test("operational index report works in linked worktrees and rejects ambiguous m
     assert.equal(conflicted.count, 1); assert.equal(conflicted.indexedBytes, null); assert.equal(conflicted.status, "incomplete");
   });
 });
+
+// Symlink creation requires elevated privileges on Windows; these Linux
+// observations record the documented privilege caveat rather than a cross-platform claim.
+test("initProject refuses a symlinked .gitignore without writing outside", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = join(directory, "repo");
+    const outside = join(directory, "outside-gitignore");
+    await mkdir(repo, { recursive: true });
+    await writeFile(outside, "USER-GITIGNORE\n", "utf8");
+    await symlink("../outside-gitignore", join(repo, ".gitignore"));
+
+    await assert.rejects(initProject(repo), /symbolic link/);
+    assert.equal(await readFile(outside, "utf8"), "USER-GITIGNORE\n");
+  });
+});
+
+test("initProject refuses an existing symlink with a live target instead of skipping it", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = join(directory, "repo");
+    const outside = join(directory, "outside-scope.md");
+    await mkdir(join(repo, "docs"), { recursive: true });
+    await writeFile(outside, "OUTSIDE-SCOPE-ORIGINAL\n", "utf8");
+    await symlink("../../outside-scope.md", join(repo, "docs/scope.md"));
+
+    await assert.rejects(initProject(repo), /symbolic link/);
+    assert.equal(await readFile(outside, "utf8"), "OUTSIDE-SCOPE-ORIGINAL\n");
+  });
+});
+
+test("initProject refuses a dangling starter symlink without creating the target", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = join(directory, "repo");
+    await mkdir(join(repo, "docs"), { recursive: true });
+    await symlink("../../outside-project.md", join(repo, "docs/project.md"));
+
+    await assert.rejects(initProject(repo), /symbolic link/);
+    await assert.rejects(readFile(join(directory, "outside-project.md")), /ENOENT/);
+  });
+});
+
+test("initProject refuses a symlinked parent directory of starter files", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = join(directory, "repo");
+    const outside = join(directory, "outside-docs");
+    await mkdir(repo, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await symlink("../outside-docs", join(repo, "docs"));
+
+    await assert.rejects(initProject(repo), /symbolic link/);
+    await assert.rejects(readFile(join(outside, "project.md")), /ENOENT/);
+  });
+});
+
+test("initProject keeps a symlinked .agentic refusal and changes no outside file", async () => {
+  await withTempDirectory(async (directory) => {
+    const repo = join(directory, "repo");
+    const outside = join(directory, "outside-agentic");
+    await mkdir(repo, { recursive: true });
+    await mkdir(outside, { recursive: true });
+    await symlink("../outside-agentic", join(repo, ".agentic"));
+
+    await assert.rejects(initProject(repo), /symbolic link/);
+    await assert.rejects(readFile(join(outside, "config.json")), /ENOENT/);
+  });
+});
+
+test("initProject preserves regular user files and stays idempotent", async () => {
+  await withTempDirectory(async (directory) => {
+    await mkdir(join(directory, "docs"));
+    await writeFile(join(directory, "docs/project.md"), "USER-PROJECT\n", "utf8");
+    await writeFile(join(directory, ".gitignore"), "USER-RULE\n", "utf8");
+
+    const first = await initProject(directory);
+    assert.ok(first.skipped.includes("docs/project.md"));
+    assert.equal(first.gitignore.action, "updated");
+    const afterFirst = await readFile(join(directory, ".gitignore"), "utf8");
+    assert.ok(afterFirst.startsWith("USER-RULE\n"));
+    assert.equal(await readFile(join(directory, "docs/project.md"), "utf8"), "USER-PROJECT\n");
+
+    const second = await initProject(directory);
+    assert.equal(second.gitignore.action, "unchanged");
+    assert.ok(second.skipped.includes("docs/project.md"));
+    assert.equal(await readFile(join(directory, ".gitignore"), "utf8"), afterFirst);
+  });
+});

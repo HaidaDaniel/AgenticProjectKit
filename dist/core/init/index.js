@@ -2,7 +2,7 @@ import { lstat, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CURRENT_CONFIG_SCHEMA_VERSION, DEFAULT_CONFIG, serializeAgenticConfig, } from "../config/index.js";
-import { resolveContainedAgenticPath } from "../config/paths.js";
+import { PathContainmentError, resolveContainedAgenticPath, resolveContainedWriteBatch, } from "../config/paths.js";
 import { renderTemplateFile } from "../templates/index.js";
 import { execFile } from "node:child_process";
 const initTemplateDirectory = join(dirname(fileURLToPath(import.meta.url)), "..", "templates", "minimal-docs");
@@ -257,9 +257,10 @@ export function renderTrackedApkOperationalReport(report) {
     ];
 }
 export async function ensureApkGitignore(rootDirectory) {
+    const [target] = await resolveContainedWriteBatch(rootDirectory, [GITIGNORE_PATH]);
     const { result, content } = await planApkGitignore(rootDirectory);
     if (content !== undefined) {
-        await writeFile(join(rootDirectory, GITIGNORE_PATH), content, "utf8");
+        await writeFile(target.absolutePath, content, "utf8");
     }
     return result;
 }
@@ -601,21 +602,6 @@ const STARTER_FILES = [
         ].join("\n"),
     },
 ];
-async function fileExists(path) {
-    try {
-        await readFile(path);
-        return true;
-    }
-    catch (error) {
-        if (error &&
-            typeof error === "object" &&
-            "code" in error &&
-            error.code === "ENOENT") {
-            return false;
-        }
-        throw error;
-    }
-}
 export function getInitStarterFiles() {
     return STARTER_FILES;
 }
@@ -624,9 +610,22 @@ export async function initProject(rootDirectory) {
     const created = [];
     const skipped = [];
     const updated = [];
-    for (const file of STARTER_FILES) {
-        const absolutePath = join(rootDirectory, file.path);
-        if (await fileExists(absolutePath)) {
+    const targets = await resolveContainedWriteBatch(rootDirectory, [...STARTER_FILES.map((file) => file.path), GITIGNORE_PATH]);
+    const existing = new Set();
+    for (const target of targets) {
+        const info = await lstatOptional(target.absolutePath);
+        if (info?.isSymbolicLink()) {
+            throw new PathContainmentError(`Refusing to use ${JSON.stringify(target.relativePath)}: the target is a symbolic link and could escape the repository.`);
+        }
+        if (info && !info.isFile()) {
+            throw new PathContainmentError(`Refusing to use ${JSON.stringify(target.relativePath)}: the target exists and is not a regular file.`);
+        }
+        if (info)
+            existing.add(target.relativePath);
+    }
+    for (const [index, file] of STARTER_FILES.entries()) {
+        const absolutePath = targets[index].absolutePath;
+        if (existing.has(file.path)) {
             skipped.push(file.path);
             continue;
         }
