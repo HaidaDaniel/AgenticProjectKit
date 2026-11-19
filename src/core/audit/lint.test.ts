@@ -6,6 +6,7 @@ import test from "node:test";
 import { execFileSync } from "node:child_process";
 
 import { initProject } from "../init/index.js";
+import { parseTaskMarkdown } from "../tasks/index.js";
 import { renderLegacyAgentExportFile, writeAllAgentExports } from "../exporters/index.js";
 import { registerAgent } from "../agents/index.js";
 import {
@@ -474,4 +475,21 @@ test("contract lint honors declared external read-only evidence references", asy
     assert.ok(!declared.contextHygiene.missing.includes(external));
     assert.equal(declared.hasErrors, false);
   });
+});
+
+test("external evidence declarations reject multiline entries with an actionable error", async () => {
+  const valid = renderTaskMarkdown(task("0031", {
+    contextFiles: ["AGENTS.md"],
+    externalEvidence: ["/tmp/external-benchmark-runs/local-qa/run.json"],
+  }));
+  assert.match(valid, /## External evidence/);
+
+  const malformed = valid.replace(
+    "- /tmp/external-benchmark-runs/local-qa/run.json",
+    "- /tmp/external-benchmark-runs/local-qa/run.json\n  continued line",
+  );
+  assert.throws(
+    () => parseTaskMarkdown(malformed),
+    /External evidence|continuation|single-line/i,
+  );
 });
