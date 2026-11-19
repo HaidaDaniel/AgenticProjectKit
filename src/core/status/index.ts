@@ -101,6 +101,7 @@ export interface ActiveTaskStatus {
     completion: "pass" | "stale" | "none";
   };
   nextAction: string;
+  humanDecisionRequired: boolean;
   diagnostics: string[];
 }
 
@@ -295,6 +296,22 @@ function evidenceStatus(provenance: TaskProvenance | undefined): ActiveTaskStatu
   };
 }
 
+function requiresHumanDecision(gate: TaskCompletionGateResult): boolean {
+  const budget = gate.review.budget;
+  if (!budget) return false;
+  const decision = gate.review.decision;
+  const accepted = decision?.freshness === "current"
+    && (decision.decision === "accept-current" || decision.decision === "grant-review-passes");
+  if (accepted) return false;
+  const passing = gate.review.freshness === "current" && gate.review.outcome === "pass";
+  if (budget.exhausted && !passing) return true;
+  return budget.passesUsed > budget.effectiveMaxReviewPasses
+    || (budget.frontierPassesUsed !== Number.MAX_SAFE_INTEGER
+      && budget.frontierPassesUsed > budget.maxFrontierReviewPasses)
+    || (budget.frontierRunsUsed !== Number.MAX_SAFE_INTEGER
+      && budget.frontierRunsUsed > budget.maxFrontierRuns);
+}
+
 function nextTaskAction(
   task: ProjectTask,
   gate: TaskCompletionGateResult,
@@ -380,6 +397,7 @@ async function summarizeActiveTask(
         completion: "none",
       },
       nextAction: `inspect task ${file.task.id} status error`,
+      humanDecisionRequired: false,
       diagnostics: [message],
     };
   }
@@ -445,6 +463,7 @@ async function summarizeActiveTask(
     },
     provenance: provenanceStatus(provenance, gate),
     nextAction: nextTaskAction(file.task, gate, dependencies),
+    humanDecisionRequired: requiresHumanDecision(gate),
     diagnostics: [
       ...gate.diagnostics.slice(0, MAX_STATUS_BLOCKERS).map((diagnostic) => capStatusText(diagnostic)),
       ...(provenance?.diagnostics ?? []).slice(0, MAX_STATUS_BLOCKERS).map((diagnostic) => capStatusText(diagnostic)),

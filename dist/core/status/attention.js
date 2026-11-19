@@ -56,6 +56,13 @@ function attentionAction(status, independentReview) {
     // Error text is not a policy decision, even if it contains operator keywords.
     if (status.gate.status === "unavailable")
         return inspect;
+    // Lifecycle first: a task that is not actively owned cannot be reviewed,
+    // verified or driven by a review action regardless of what its blockers say.
+    if (status.state === "blocked" || status.state === "todo" || status.owner === "none") {
+        return ordinary;
+    }
+    if (status.state !== "doing" && status.state !== "review")
+        return ordinary;
     const review = status.review;
     const budget = independentReview ? review.budget : undefined;
     const passing = review.status === "current" && review.outcome === "pass";
@@ -78,10 +85,10 @@ function attentionAction(status, independentReview) {
     if (budget?.exhausted && !passing && !accepted) {
         return { needsHuman: true, nextAction: `request explicit operator decision with apk task decision ${status.id}` };
     }
-    const explicitApproval = status.gate.blockers.some((blocker) => (/^(?:Explicit )?(?:operator|human) (?:approval|decision) (?:is )?required(?:[.:;]|$)/i.test(blocker)
-        || /^needs-human(?:[.:;]|$)/i.test(blocker)));
-    if (explicitApproval) {
-        return { needsHuman: true, nextAction: `request the explicit operator approval identified by apk task gate ${status.id}` };
+    // Human-decision need is a structured gate fact, never inferred from blocker
+    // prose. Textual blockers remain presentation only.
+    if (status.humanDecisionRequired) {
+        return { needsHuman: true, nextAction: `request the explicit operator decision identified by apk task gate ${status.id}` };
     }
     if (frontierUnknown || (independentReview && review.status === "unknown"))
         return inspect;
