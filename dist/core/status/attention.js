@@ -59,6 +59,9 @@ function attentionAction(status, independentReview) {
     // Lifecycle first: a task that is not actively owned cannot be reviewed,
     // verified or driven by a review action regardless of what its blockers say.
     if (status.state === "blocked" || status.state === "todo" || status.owner === "none") {
+        if (status.humanDecisionRequired) {
+            return { needsHuman: true, nextAction: `request explicit operator decision with apk task decision ${status.id}; inspect apk task gate ${status.id}` };
+        }
         return ordinary;
     }
     if (status.state !== "doing" && status.state !== "review")
