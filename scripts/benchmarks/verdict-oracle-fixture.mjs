@@ -22,14 +22,16 @@ try {
   const outside = join(root, "outside");
   await mkdir(repo, { recursive: true });
   await mkdir(outside, { recursive: true });
-  await writeFile(join(outside, "instructions.md"), "ORACLE-MARKER\n", "utf8");
+  const { renderLegacyAgentExportFile, DEFAULT_AGENT_POLICY } = await import("../../dist/core/exporters/index.js");
+  const generated = await renderLegacyAgentExportFile("codex", DEFAULT_AGENT_POLICY);
+  await writeFile(join(outside, "instructions.md"), generated, "utf8");
   await symlink("../outside", join(repo, ".codex"), "dir");
   const cleanup = await run(repo, ["export", "--cleanup-legacy"]);
   const marker = await (await import("node:fs/promises")).readFile(join(outside, "instructions.md"), "utf8");
   console.log(JSON.stringify({
     case: "legacy-deletion-escape",
     expected: "refuse and preserve marker",
-    observed: { exit: cleanup.code, message: cleanup.stdout, markerIntact: marker === "ORACLE-MARKER\n" },
+    observed: { exit: cleanup.code, message: cleanup.stdout,     markerIntact: marker === generated },
   }, null, 2));
 
   const doctorRepo = join(root, "doctor");

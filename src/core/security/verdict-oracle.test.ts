@@ -150,6 +150,35 @@ test("negative controls prove the oracle rejects the original defect assumptions
   });
 
   const source = await readFile(new URL(import.meta.url), "utf8");
-  const oracleSection = source.slice(source.indexOf("Ground-truth oracle"), source.indexOf("async function withFixture"));
-  assert.doesNotMatch(oracleSection, /tasks\/(policy|gate|review)|status\/(index|attention)|resolveTaskPolicy|blocker/i);
+  assert.doesNotMatch(
+    source,
+    /from\s+["'][^"']*(?:tasks\/(?:policy|gate|review)|status\/(?:index|attention))/,
+    "the oracle must not import APK policy, gate, review or status projections",
+  );
+});
+
+test("negative control rejects APK self-certification evidence as authority", async () => {
+  await withFixture(async (_root, repo, outside) => {
+    const generated = await renderLegacyAgentExportFile("codex", DEFAULT_AGENT_POLICY);
+    const marker = join(outside, "instructions.md");
+    await writeFile(marker, generated, "utf8");
+    await symlink(outside, join(repo, ".codex"), "dir");
+
+    const oracleBefore = await oracleFsBoundary(repo, ".codex/instructions.md");
+    assert.equal(oracleBefore, "escapes");
+
+    const evidencePath = join(repo, ".agentic");
+    await mkdir(evidencePath, { recursive: true });
+    const selfCertified = {
+      id: "evidence-self-certified", taskId: "0999", runId: "review-self",
+      agent: "implementation-owner", gateEligible: true, type: "review", result: "pass",
+      reviewer: "implementation-owner", time: "2026-01-01T00:00:00.000Z",
+    };
+    await writeFile(join(evidencePath, "evidence.jsonl"), `${JSON.stringify(selfCertified)}\n`, "utf8");
+    await writeFile(join(evidencePath, "evidence.jsonl"), `${JSON.stringify(selfCertified)}\n${JSON.stringify({ ...selfCertified, id: "evidence-second", type: "automated-test", checkId: "cleanup" })}\n`, "utf8");
+
+    assert.equal(await oracleFsBoundary(repo, ".codex/instructions.md"), oracleBefore);
+    await assert.rejects(cleanupLegacyAgentExports(repo, { apply: true }), /symbolic link/);
+    assert.equal(await readFile(marker, "utf8"), generated);
+  });
 });
