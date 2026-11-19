@@ -9,6 +9,103 @@ import { resolveContainedAgenticPath, resolveContainedDeleteBatch, resolveContai
 
 const EXPECTED_CALL_SITE_FINGERPRINT = "e2d269f4408c7afb6d2b1512f34be08cff913b32cc05be3276133719bc1c3455";
 
+const SITE_BOUNDARIES: Record<string, string> = {
+  "src/core/agents/index.ts::migrateAgentLogs::rm": "repository-contained",
+  "src/core/agents/index.ts::writeAgentShard::mkdir": "repository-contained",
+  "src/core/agents/index.ts::writeAgentShard::writeFile": "repository-contained",
+  "src/core/agents/index.ts::writeRunEvent::mkdir": "repository-contained",
+  "src/core/agents/index.ts::writeRunEvent::writeFile": "repository-contained",
+  "src/core/analytics/index.ts::writeAnalyticsSummary::mkdir": "repository-contained",
+  "src/core/analytics/index.ts::writeAnalyticsSummary::writeFile": "repository-contained",
+  "src/core/audit/index.ts::auditRepository::mkdir": "repository-contained",
+  "src/core/audit/index.ts::auditRepository::writeFile": "repository-contained",
+  "src/core/backlog/index.ts::createBacklogItem::mkdir": "repository-contained",
+  "src/core/backlog/index.ts::createBacklogItem::writeFile": "repository-contained",
+  "src/core/backlog/promote.ts::writeBacklogCardWithRevision::rename": "repository-contained",
+  "src/core/backlog/promote.ts::writeBacklogCardWithRevision::rm": "repository-contained",
+  "src/core/backlog/promote.ts::writeBacklogCardWithRevision::writeFile": "repository-contained",
+  "src/core/config/file.ts::writeAgenticConfigFile::mkdir": "repository-contained",
+  "src/core/config/file.ts::writeAgenticConfigFile::writeFile": "repository-contained",
+  "src/core/config/local-preferences.ts::resetLocalCommunicationLanguage::rm": "user-local",
+  "src/core/config/local-preferences.ts::writeLocalCommunicationLanguage::mkdir": "user-local",
+  "src/core/config/local-preferences.ts::writeLocalCommunicationLanguage::writeFile": "user-local",
+  "src/core/docs/adopt.ts::adoptRepository::mkdir": "repository-contained",
+  "src/core/docs/adopt.ts::adoptRepository::writeFile": "repository-contained",
+  "src/core/execution/calibrate.ts::applyExecutionCalibration::mkdir": "repository-contained",
+  "src/core/execution/calibrate.ts::applyExecutionCalibration::writeFile": "repository-contained",
+  "src/core/exporters/index.ts::cleanupLegacyAgentExports::rm": "repository-contained",
+  "src/core/exporters/index.ts::writeAgentExportFiles::mkdir": "repository-contained",
+  "src/core/exporters/index.ts::writeAgentExportFiles::writeFile": "repository-contained",
+  "src/core/init/index.ts::ensureApkGitignore::writeFile": "repository-contained",
+  "src/core/init/index.ts::ensureApkScratchDirectory::mkdir": "repository-contained",
+  "src/core/init/index.ts::initProject::mkdir": "repository-contained",
+  "src/core/init/index.ts::initProject::writeFile": "repository-contained",
+  "src/core/perf/index.ts::ensurePerfGitExclude::mkdir": "repository-contained",
+  "src/core/perf/index.ts::ensurePerfGitExclude::writeFile": "repository-contained",
+  "src/core/perf/index.ts::ensureRuntimeDirectory::mkdir": "repository-contained",
+  "src/core/perf/index.ts::safeAppendRecord::appendFile": "repository-contained",
+  "src/core/perf/index.ts::startPerfSession::writeFile": "repository-contained",
+  "src/core/perf/index.ts::stopPerfSession::rm": "repository-contained",
+  "src/core/perf/index.ts::stopPerfSession::writeFile": "repository-contained",
+  "src/core/proposals/git.ts::commitProposal::rm": "external-owned",
+  "src/core/proposals/index.ts::assertTransitionAllowed::mkdir": "repository-contained",
+  "src/core/proposals/index.ts::createProposalFileExclusive::mkdir": "repository-contained",
+  "src/core/proposals/index.ts::createProposalFileExclusive::rm": "repository-contained",
+  "src/core/proposals/index.ts::linkProposal::rename": "repository-contained",
+  "src/core/proposals/index.ts::linkProposal::rm": "repository-contained",
+  "src/core/proposals/index.ts::linkProposal::writeFile": "repository-contained",
+  "src/core/proposals/index.ts::transitionProposal::rename": "repository-contained",
+  "src/core/proposals/index.ts::transitionProposal::rm": "repository-contained",
+  "src/core/proposals/index.ts::transitionProposal::writeFile": "repository-contained",
+  "src/core/proposals/index.ts::writeExclusiveProposalTemporary::writeFile": "repository-contained",
+  "src/core/skills/index.ts::openDirectoryChild::mkdir": "follow-up-required",
+  "src/core/skills/index.ts::resolveSafePathBasedDestination::mkdir": "follow-up-required",
+  "src/core/skills/index.ts::writeDescriptorRelativeFile::unlink": "follow-up-required",
+  "src/core/skills/index.ts::writeOpenFile::writeFile": "follow-up-required",
+  "src/core/skills/index.ts::writePathBasedFile::unlink": "follow-up-required",
+  "src/core/sync/index.ts::writeExpectedFile::mkdir": "repository-contained",
+  "src/core/sync/index.ts::writeExpectedFile::writeFile": "repository-contained",
+  "src/core/tasks/dogfood.ts::recordDogfoodResult::writeFile": "repository-contained",
+  "src/core/tasks/dogfood.ts::startDogfoodSession::mkdir": "repository-contained",
+  "src/core/tasks/dogfood.ts::startDogfoodSession::writeFile": "repository-contained",
+  "src/core/tasks/evidence.ts::appendTaskEvidence::appendFile": "repository-contained",
+  "src/core/tasks/evidence.ts::appendTaskEvidence::mkdir": "repository-contained",
+  "src/core/tasks/index.ts::applyArchiveTasks::mkdir": "repository-contained",
+  "src/core/tasks/index.ts::captureTaskBaseline::appendFile": "repository-contained",
+  "src/core/tasks/index.ts::captureTaskBaseline::mkdir": "repository-contained",
+  "src/core/tasks/index.ts::createTaskFileExclusive::mkdir": "repository-contained",
+  "src/core/tasks/index.ts::createTaskFileExclusive::rm": "repository-contained",
+  "src/core/tasks/index.ts::moveArchiveFile::link": "repository-contained",
+  "src/core/tasks/index.ts::moveArchiveFile::unlink": "repository-contained",
+  "src/core/tasks/index.ts::writeExclusiveTaskTemporary::writeFile": "repository-contained",
+  "src/core/tasks/index.ts::writeTaskFile::mkdir": "repository-contained",
+  "src/core/tasks/index.ts::writeTaskFile::rename": "repository-contained",
+  "src/core/tasks/index.ts::writeTaskFile::rm": "repository-contained",
+  "src/core/tasks/index.ts::writeTaskFile::writeFile": "repository-contained",
+  "src/core/tasks/lock.ts::recoverDeadLock::rm": "repository-contained",
+  "src/core/tasks/lock.ts::recoverLocalLock::rm": "repository-contained",
+  "src/core/tasks/lock.ts::removeIfOwned::rm": "repository-contained",
+  "src/core/tasks/lock.ts::tryPublishLock::link": "repository-contained",
+  "src/core/tasks/lock.ts::tryPublishLock::mkdir": "repository-contained",
+  "src/core/tasks/lock.ts::tryPublishLock::rm": "repository-contained",
+  "src/core/tasks/lock.ts::tryPublishLock::writeFile": "repository-contained",
+  "src/core/tasks/review.ts::cleanupPreparedWorkerReview::rm": "repository-contained",
+  "src/core/tasks/review.ts::writePreparedReview::mkdir": "repository-contained",
+  "src/core/tasks/review.ts::writePreparedReview::writeFile": "repository-contained",
+  "src/core/tasks/workflow.ts::createStaleTaskLock::mkdir": "repository-contained",
+  "src/core/tasks/workflow.ts::createStaleTaskLock::writeFile": "repository-contained",
+  "src/core/work/index.ts::activateIssuedWorkerRun::writeFile": "repository-contained",
+  "src/core/work/index.ts::persistIssuedWorkerRun::mkdir": "repository-contained",
+  "src/core/work/index.ts::persistIssuedWorkerRun::rename": "repository-contained",
+  "src/core/work/index.ts::persistIssuedWorkerRun::rm": "repository-contained",
+  "src/core/work/index.ts::persistIssuedWorkerRun::writeFile": "repository-contained",
+  "src/core/work/session.ts::sessionDirectory::mkdir": "repository-contained",
+  "src/core/workspaces/index.ts::cleanupCreatedWorktree::mkdir": "external-owned",
+  "src/core/workspaces/index.ts::createWorkspaceLocked::mkdir": "external-owned",
+  "src/core/workspaces/index.ts::createWorkspaceLocked::writeFile": "external-owned",
+  "src/core/workspaces/index.ts::removeWorkspaceLocked::rm": "external-owned",
+};
+
 const MUTATION_CALL = /\b(rm|unlink|rename|rmdir|writeFile|appendFile|mkdir|copyFile|symlink|link)\s*\(/g;
 
 interface MutationDecision {
@@ -97,6 +194,16 @@ test("every shipped filesystem mutation site has an explicit boundary decision",
   for (const [file, calls] of sites) {
     assert.ok(MUTATION_DECISIONS[file]?.reason, `missing decision for ${file} (${Object.keys(calls).join(",")})`);
   }
+  const discoveredSites = [...sites.entries()].flatMap(([file, calls]) =>
+    Object.keys(calls).map((call) => `${file}::${call}`)).sort();
+  assert.deepEqual(
+    discoveredSites,
+    Object.keys(SITE_BOUNDARIES).sort(),
+    "every call site needs an explicit per-site boundary entry with its exact call path and trust boundary",
+  );
+  for (const site of discoveredSites) {
+    assert.ok(SITE_BOUNDARIES[site], `missing per-site boundary for ${site}`);
+  }
   assert.equal(
     callSiteFingerprint(sites),
     EXPECTED_CALL_SITE_FINGERPRINT,
@@ -152,6 +259,13 @@ test("contained .agentic runtime path refuses a symlinked runtime directory", as
     await writeFile(join(outside, "evidence.jsonl"), "DO-NOT-TOUCH\n", "utf8");
     await symlink("../outside", join(repo, ".agentic"), "dir");
 
+    await assert.rejects(resolveContainedAgenticPath(repo, ".agentic/evidence.jsonl", "file"), /symbolic link/);
+    assert.equal(await readFile(join(outside, "evidence.jsonl"), "utf8"), "DO-NOT-TOUCH\n");
+
+    await rm(join(repo, ".agentic"), { force: true });
+    await mkdir(join(repo, ".agentic"), { recursive: true });
+    await writeFile(join(outside, "evidence.jsonl"), "DO-NOT-TOUCH\n", "utf8");
+    await symlink(join(outside, "evidence.jsonl"), join(repo, ".agentic/evidence.jsonl"));
     await assert.rejects(resolveContainedAgenticPath(repo, ".agentic/evidence.jsonl", "file"), /symbolic link/);
     assert.equal(await readFile(join(outside, "evidence.jsonl"), "utf8"), "DO-NOT-TOUCH\n");
   } finally {
