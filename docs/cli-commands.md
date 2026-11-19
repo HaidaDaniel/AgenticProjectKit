@@ -53,7 +53,7 @@ The command synopsis and option list below are rendered from `src/cli/command-re
 - `apkit block <task-id> --owner <agent-id> [--reason <text>]` - block a task with an optional reason.
 - `apkit cancel <task-id> --owner <agent-id> [--reason <text>]` - cancel a task with an optional reason.
 - `apkit claim <task-id> --owner <agent-id>` - claim a todo task and capture its task baseline; another doing/review task in the same checkout must be released first, or work must use a separate Git worktree.
-- `apkit context <task-id> [--level 1|2|3] [--budget <units>]` - select task context; budget units approximate tokens and required files are never dropped.
+- `apkit context <task-id> [--level 1|2|3] [--budget <units>] [--section <heading>]` - select task context; budget units approximate tokens, section emits exact heading excerpts, and required files are never dropped.
 - `apkit done <task-id> --owner <agent-id>` - evaluate the completion gate and record completion evidence; there is no force bypass.
 - `apkit doctor` - inspect local APK workflow health without running adopted-repository commands.
 - `apkit execution explain <task-id> --role <planning|implementation|review|fix|documentation|triage|verification> [--profile <local|constrained|balanced|abundant>] [--resource <worker-id>] [--complexity <simple|medium|complex>] [--json]` - explain the effective route without starting a worker.

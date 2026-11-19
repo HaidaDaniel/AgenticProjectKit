@@ -127,7 +127,7 @@ export const PUBLIC_COMMANDS: readonly PublicCommand[] = [
     command: "context",
     summary: "Print task context files.",
     handler: simple(runContextCommand),
-    variants: [{ usage: "context <task-id> [--level 1|2|3] [--budget <units>]", description: "select task context; budget units approximate tokens and required files are never dropped." }],
+    variants: [{ usage: "context <task-id> [--level 1|2|3] [--budget <units>] [--section <heading>]", description: "select task context; budget units approximate tokens, section emits exact heading excerpts, and required files are never dropped." }],
   },
   {
     command: "done",
