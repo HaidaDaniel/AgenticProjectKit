@@ -541,7 +541,7 @@ export function parseTaskMarkdown(markdown) {
     const optionalLists = {
         externalEvidence: sections.externalEvidence === undefined
             ? undefined
-            : parseList(sections.externalEvidence, "External evidence"),
+            : parseList(sections.externalEvidence, "External evidence", "single-line"),
         correctnessAssumptions: sections.correctnessAssumptions === undefined
             ? undefined
             : parseList(sections.correctnessAssumptions, "Correctness assumptions"),
