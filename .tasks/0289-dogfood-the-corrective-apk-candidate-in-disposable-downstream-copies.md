@@ -1,7 +1,7 @@
 # Task 0289 - Dogfood the corrective APK candidate in disposable downstream copies
 
-State: todo
-Owner: none
+State: done
+Owner: opencode-impl
 Mode: maintenance
 Lane: verification
 Scope: downstream,integration,verification,doctor,adopt,sync,cli
