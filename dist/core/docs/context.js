@@ -370,7 +370,52 @@ function dependencyTaskFiles(task, taskDirectory, availableFiles) {
         return task.dependsOn.some((dependency) => (normalized.startsWith(`${prefix}${dependency}-`) && normalized.endsWith(".md")));
     });
 }
+const MAX_SECTION_FILE_BYTES = 1024 * 1024;
+function extractMarkdownSection(content, section) {
+    const lines = content.split(/\r?\n/);
+    const heading = new RegExp(`^##\\s+${section.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "i");
+    const start = lines.findIndex((line) => heading.test(line));
+    if (start === -1)
+        return undefined;
+    const body = [];
+    for (const line of lines.slice(start + 1)) {
+        if (/^##\s+/.test(line))
+            break;
+        body.push(line);
+    }
+    return body.join("\n").trim() || "(empty section)";
+}
+async function withSectionSelection(rootDirectory, selection, section) {
+    const sections = {};
+    for (const file of selection.files) {
+        let content;
+        try {
+            const info = await readFile(join(rootDirectory, file), "utf8");
+            if (Buffer.byteLength(info, "utf8") > MAX_SECTION_FILE_BYTES)
+                continue;
+            content = info;
+        }
+        catch {
+            continue;
+        }
+        const excerpt = extractMarkdownSection(content, section);
+        if (excerpt !== undefined)
+            sections[file] = excerpt;
+    }
+    const files = Object.keys(sections).sort();
+    return {
+        ...selection,
+        files,
+        sections,
+        ...(files.length > 0
+            ? {}
+            : { sectionWarning: `No selected file contains a '## ${section}' section.` }),
+    };
+}
 export async function buildTaskContextPack(rootDirectory, task, level, options = {}) {
+    if (options.section !== undefined) {
+        return withSectionSelection(rootDirectory, selectTaskContext(task, level, options), options.section);
+    }
     if (options.budget === undefined)
         return selectTaskContext(task, level, options);
     const excludes = options.excludePaths ?? await configuredContextExcludes(rootDirectory);
@@ -466,6 +511,14 @@ export function renderTaskContext(selection) {
         ...budgetLines,
         "Files:",
         ...fileLines,
+        ...(selection.sections
+            ? Object.entries(selection.sections).flatMap(([file, excerpt]) => [
+                "",
+                `### ${file}`,
+                excerpt,
+            ])
+            : []),
+        ...(selection.sectionWarning ? ["", `Section warning: ${selection.sectionWarning}`] : []),
         ...(selection.diagnostics && selection.diagnostics.length > 0
             ? ["", "Diagnostics:", ...selection.diagnostics.map((diagnostic) => `- ${diagnostic.message}`)]
             : []),

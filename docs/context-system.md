@@ -8,6 +8,8 @@ Default context output stays concise and readable; expand it only when the task 
 
 `apk context <task-id> --budget <units>` and `apk prompt <agent> --task <task-id> --budget <units>` build deterministic packs with approximate token units. A unit is `ceil(UTF-8 bytes / 4)` for files available in the repository; direct API callers can provide the same stable units through `fileSizes`. Missing explicit files use a deterministic path-length fallback.
 
+`apk context <task-id> --section <heading>` is an optional additive selector for routine work. Instead of listing whole files, it reads each selected file (bounded to 1 MiB) and emits only the exact `## <heading>` excerpt from files that contain it; files without the heading are omitted. An absent heading produces a visible section warning and a smaller bundle, not a silent empty selection. Section selection never removes a task-required file when the selector is not used, and it cannot be combined with a budget in the same request. The API equivalent is `section` in `TaskContextOptions`. Because the task contract's allowed files do not include a context test module, coverage for this selector is manual plus the existing context regression suite rather than a new committed fixture.
+
 Budgeted packs select tiers in order:
 
 - `required`: agent instructions, level base contracts, active task, explicit task context, level-2 decisions, and available metadata-relevant design contracts;

@@ -13,9 +13,10 @@ const CONTEXT_HELP_TEXT = [
   "Agentic Project Kit",
   "",
   "Usage:",
-  "  apk context <task-id> [--level 1|2|3] [--budget <units>]",
+  "  apk context <task-id> [--level 1|2|3] [--budget <units>] [--section <heading>]",
   "",
   "Prints the exact files an agent should read for a task.",
+  "--section emits only the matching '## <heading>' excerpt from selected files.",
 ].join("\n");
 
 function hasHelpFlag(argv: string[]): boolean {
@@ -48,10 +49,21 @@ function readBudget(argv: string[]): number | undefined {
   return Number(rawBudget);
 }
 
+function readSection(argv: string[]): string | undefined {
+  const sectionIndex = argv.indexOf("--section");
+  if (sectionIndex === -1) return undefined;
+  const raw = argv[sectionIndex + 1];
+  if (raw === undefined || raw.length === 0 || raw.length > 80 || /[\0\r\n]/.test(raw) || raw.startsWith("-")) {
+    throw new Error("Context section must be a single non-empty heading name of at most 80 characters.");
+  }
+  return raw;
+}
+
 interface ContextArgs {
   taskId: string;
   level: ContextLevel;
   budget?: number;
+  section?: string;
 }
 
 function parseContextArgs(argv: string[]): ContextArgs {
@@ -65,7 +77,7 @@ function parseContextArgs(argv: string[]): ContextArgs {
       continue;
     }
 
-    if (arg === "--budget") {
+    if (arg === "--budget" || arg === "--section") {
       index += 1;
       continue;
     }
@@ -81,12 +93,17 @@ function parseContextArgs(argv: string[]): ContextArgs {
     throw new Error("Usage: apk context <task-id> [--level 1|2|3]");
   }
 
-  const budget = readBudget(argv);
-  return {
-    taskId: positional[0],
-    level: readLevel(argv),
-    ...(budget === undefined ? {} : { budget }),
-  };
+    const budget = readBudget(argv);
+    const section = readSection(argv);
+    if (budget !== undefined && section !== undefined) {
+      throw new Error("Use either --budget or --section, not both.");
+    }
+    return {
+      taskId: positional[0],
+      level: readLevel(argv),
+      ...(budget === undefined ? {} : { budget }),
+      ...(section === undefined ? {} : { section }),
+    };
 }
 
 export async function runContextCommand(argv: string[]): Promise<number> {
@@ -107,6 +124,7 @@ export async function runContextCommand(argv: string[]): Promise<number> {
       taskFile: relative(rootDirectory, taskFile),
       taskDirectory: config.taskDirectory,
       ...(args.budget === undefined ? {} : { budget: args.budget }),
+      ...(args.section === undefined ? {} : { section: args.section }),
     });
     console.log(renderTaskContext(selection));
     return selection.diagnostics && selection.diagnostics.length > 0 ? 1 : 0;

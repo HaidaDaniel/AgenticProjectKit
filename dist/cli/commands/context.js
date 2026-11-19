@@ -7,9 +7,10 @@ const CONTEXT_HELP_TEXT = [
     "Agentic Project Kit",
     "",
     "Usage:",
-    "  apk context <task-id> [--level 1|2|3] [--budget <units>]",
+    "  apk context <task-id> [--level 1|2|3] [--budget <units>] [--section <heading>]",
     "",
     "Prints the exact files an agent should read for a task.",
+    "--section emits only the matching '## <heading>' excerpt from selected files.",
 ].join("\n");
 function hasHelpFlag(argv) {
     return argv.includes("--help") || argv.includes("-h");
@@ -35,6 +36,16 @@ function readBudget(argv) {
     }
     return Number(rawBudget);
 }
+function readSection(argv) {
+    const sectionIndex = argv.indexOf("--section");
+    if (sectionIndex === -1)
+        return undefined;
+    const raw = argv[sectionIndex + 1];
+    if (raw === undefined || raw.length === 0 || raw.length > 80 || /[\0\r\n]/.test(raw) || raw.startsWith("-")) {
+        throw new Error("Context section must be a single non-empty heading name of at most 80 characters.");
+    }
+    return raw;
+}
 function parseContextArgs(argv) {
     const positional = [];
     for (let index = 0; index < argv.length; index += 1) {
@@ -43,7 +54,7 @@ function parseContextArgs(argv) {
             index += 1;
             continue;
         }
-        if (arg === "--budget") {
+        if (arg === "--budget" || arg === "--section") {
             index += 1;
             continue;
         }
@@ -56,10 +67,15 @@ function parseContextArgs(argv) {
         throw new Error("Usage: apk context <task-id> [--level 1|2|3]");
     }
     const budget = readBudget(argv);
+    const section = readSection(argv);
+    if (budget !== undefined && section !== undefined) {
+        throw new Error("Use either --budget or --section, not both.");
+    }
     return {
         taskId: positional[0],
         level: readLevel(argv),
         ...(budget === undefined ? {} : { budget }),
+        ...(section === undefined ? {} : { section }),
     };
 }
 export async function runContextCommand(argv) {
@@ -78,6 +94,7 @@ export async function runContextCommand(argv) {
             taskFile: relative(rootDirectory, taskFile),
             taskDirectory: config.taskDirectory,
             ...(args.budget === undefined ? {} : { budget: args.budget }),
+            ...(args.section === undefined ? {} : { section: args.section }),
         });
         console.log(renderTaskContext(selection));
         return selection.diagnostics && selection.diagnostics.length > 0 ? 1 : 0;
