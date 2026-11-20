@@ -430,13 +430,13 @@ export class TaskDiagnosticSnapshot {
             throw new DiagnosticSnapshotError(`inputs changed during capture${changed ? ` (${relative(this.rootDirectory, changed).slice(0, 160)})` : " (Git state)"}`);
         }
     }
-    static async run(root, taskDirectory, project) {
+    static async run(root, taskDirectory, project, options = {}) {
         const configPath = join(root, ".agentic/config.json");
         const configRoots = new Map();
         await watchInputPath(configRoots, configPath);
         const configVersions = await witness(configRoots);
         const beforeConfig = configVersions.get(resolve(configPath));
-        const config = await readAgenticConfigFile(root);
+        const config = await readAgenticConfigFile(root, options.configReader);
         const snapshot = new TaskDiagnosticSnapshot(root, taskDirectory ?? config.taskDirectory, config, !["ENOENT", "ENOTDIR"].includes(beforeConfig));
         for (const [path, recursive] of configRoots)
             snapshot.roots.set(path, recursive);

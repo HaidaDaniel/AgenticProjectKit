@@ -9,9 +9,9 @@ function isMissingFileError(error) {
         "code" in error &&
         error.code === "ENOENT");
 }
-export async function readAgenticConfigFile(rootDirectory) {
+export async function readAgenticConfigFile(rootDirectory, read = (path) => readFile(path, "utf8")) {
     try {
-        return parseAgenticConfigJson(await readFile(join(rootDirectory, CONFIG_PATH), "utf8"));
+        return parseAgenticConfigJson(await read(join(rootDirectory, CONFIG_PATH)));
     }
     catch (error) {
         if (isMissingFileError(error)) {

@@ -19,12 +19,15 @@ function isMissingFileError(error: unknown): boolean {
   );
 }
 
+export type ConfigReader = (path: string) => Promise<string>;
+
 export async function readAgenticConfigFile(
   rootDirectory: string,
+  read: ConfigReader = (path) => readFile(path, "utf8"),
 ): Promise<AgenticConfig> {
   try {
     return parseAgenticConfigJson(
-      await readFile(join(rootDirectory, CONFIG_PATH), "utf8"),
+      await read(join(rootDirectory, CONFIG_PATH)),
     );
   } catch (error: unknown) {
     if (isMissingFileError(error)) {

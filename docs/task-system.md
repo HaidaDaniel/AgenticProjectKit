@@ -827,3 +827,5 @@ Doctor and init/adopt share bounded index inspection for APK operational files a
 
 
 Worker package goal summaries are limited to 320 characters. When a canonical task goal exceeds that limit, package creation emits an explicitly marked summary ending in `… [full goal: task contract]`; it preserves Unicode character boundaries and emits a single-line summary. The task Markdown and generated execution prompt retain the complete goal, and the current task file remains in worker context. Short single-line goals are unchanged. This producer normalization does not relax external `apk-worker-v1` parser bounds or change acceptance criteria, constraints, provenance, or the canonical task contract.
+
+Invocation-local diagnostic snapshots accept an optional `configReader` in `withDiagnosticSnapshot`. It defaults to the ordinary UTF-8 config read, so production behavior is unchanged; tests can inject a bounded reader to simulate a configuration change during capture without patching global `node:fs/promises` bindings. This keeps the configuration-change consistency assertion deterministic and avoids cross-test interference from `syncBuiltinESMExports()` monkeypatching.

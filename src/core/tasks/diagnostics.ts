@@ -3,6 +3,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { homedir } from "node:os";
 
 import { readAgenticConfigFile, type AgenticConfig } from "../config/index.js";
+import type { ConfigReader } from "../config/file.js";
 import { observedExecFile } from "../perf/index.js";
 import type { TaskEvidenceCandidateSubject } from "./evidence.js";
 
@@ -388,13 +389,18 @@ export class TaskDiagnosticSnapshot {
     }
   }
 
-  static async run<T>(root: string, taskDirectory: string | undefined, project: (snapshot: TaskDiagnosticSnapshot) => Promise<T>): Promise<T> {
+  static async run<T>(
+    root: string,
+    taskDirectory: string | undefined,
+    project: (snapshot: TaskDiagnosticSnapshot) => Promise<T>,
+    options: { configReader?: ConfigReader } = {},
+  ): Promise<T> {
     const configPath = join(root, ".agentic/config.json");
     const configRoots = new Map<string, WitnessMode>();
     await watchInputPath(configRoots, configPath);
     const configVersions = await witness(configRoots);
     const beforeConfig = configVersions.get(resolve(configPath))!;
-    const config = await readAgenticConfigFile(root);
+    const config = await readAgenticConfigFile(root, options.configReader);
     const snapshot = new TaskDiagnosticSnapshot(root, taskDirectory ?? config.taskDirectory, config, !["ENOENT", "ENOTDIR"].includes(beforeConfig));
     for (const [path, recursive] of configRoots) snapshot.roots.set(path, recursive);
     snapshot.excludedDirectories.add(resolve(root, snapshot.taskDirectory, "backlog"));

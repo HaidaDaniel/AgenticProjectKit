@@ -2,6 +2,7 @@ import { withDiagnosticSnapshot, type TaskDiagnosticSnapshot } from "./diagnosti
 import { writeAnalyticsSummary } from "../analytics/index.js";
 import { summarizeStatus } from "../status/index.js";
 import { buildAttentionView } from "../status/attention.js";
+import type { ConfigReader } from "../config/file.js";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import fsPromises, { appendFile, chmod, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, symlink, writeFile } from "node:fs/promises";
@@ -11153,21 +11154,23 @@ test("diagnostic snapshots guard configuration before its first content read", a
     await setupDiagnosticRepo(directory, 1);
     const path = join(directory, ".agentic/config.json");
     await rm(path);
-    const original = fsPromises.readFile;
     let injected = false;
-    fsPromises.readFile = (async (...args: Parameters<typeof readFile>) => {
-      if (String(args[0]) !== path || injected) return original(...args);
+    const configReader: ConfigReader = async (configPath) => {
+      assert.equal(configPath, path);
       injected = true;
-      await writeFile(path, '{"schemaVersion":2}');
-      const value = await original(...args);
-      await rm(path);
-      return value;
-    }) as typeof readFile;
-    syncBuiltinESMExports();
-    try {
-      await assert.rejects(summarizeStatus(directory), /configuration changed during capture/);
-      assert.equal(injected, true);
-    } finally { fsPromises.readFile = original; syncBuiltinESMExports(); }
+      await writeFile(configPath, '{"schemaVersion":2}');
+      return readFile(configPath, "utf8");
+    };
+    await assert.rejects(
+      withDiagnosticSnapshot(
+        directory,
+        ".tasks",
+        (snapshot) => summarizeStatus(directory, snapshot),
+        { configReader },
+      ),
+      /configuration changed during capture/,
+    );
+    assert.equal(injected, true);
   });
 });
 
