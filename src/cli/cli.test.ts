@@ -604,8 +604,8 @@ interface AttentionReviewScenario {
 const attentionReviewScenarios: AttentionReviewScenario[] = [
   { name: "missing review", needsHuman: false, assurance: "unavailable", escalation: true, action: /request independent review/ },
   { name: "blocked missing review", blocked: true, needsHuman: false, assurance: "unavailable", escalation: true, action: /resolve:|blockers/ },
-  { name: "blocked exhausted review budget", blocked: true, reviews: 8, outcome: "changes_requested", needsHuman: true, assurance: "unavailable", escalation: false, action: /operator decision/ },
-  { name: "blocked frontier budget at cap", blocked: true, reviews: 1, frontier: true, outcome: "changes_requested", needsHuman: true, assurance: "unavailable", escalation: false, action: /operator (decision|policy change)/ },
+  { name: "blocked exhausted review budget", blocked: true, reviews: 8, outcome: "changes_requested", needsHuman: true, assurance: "unavailable", escalation: false, action: /human escalation/ },
+  { name: "blocked frontier budget at cap", blocked: true, reviews: 1, frontier: true, outcome: "changes_requested", needsHuman: true, assurance: "unavailable", escalation: false, action: /human escalation/ },
   { name: "stale review", reviews: 1, stale: true, needsHuman: false, assurance: "unavailable", escalation: true, action: /request independent review/ },
   { name: "changes requested", reviews: 1, outcome: "changes_requested", needsHuman: false, assurance: "unavailable", escalation: false, action: /run fixer/ },
   { name: "exhausted nonpassing review", reviews: 8, outcome: "changes_requested", needsHuman: true, assurance: "unavailable", escalation: false, action: /operator decision with apk task decision 0001/ },
@@ -712,7 +712,15 @@ for (const scenario of attentionReviewScenarios) {
       }
       const status = await runCli(["status", "--detail"], directory);
       assert.equal(status.exitCode, 0, status.stderr);
-      if (scenario.blocked) assert.match(status.stdout, /resolve: /);
+      if (scenario.name === "blocked missing review") {
+        assert.match(status.stdout, /resolve: Missing independent review evidence/);
+      }
+      if (scenario.blocked) {
+        assert.match(status.stdout, /resolve: /);
+        if (item.needsHuman) {
+          assert.doesNotMatch(item.nextAction, /apk task decision|apk review|apk task verify|apk done/);
+        }
+      }
     });
   });
 }
