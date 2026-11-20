@@ -185,9 +185,11 @@ function requiresHumanDecision(gate) {
         return true;
     return budget.passesUsed > budget.effectiveMaxReviewPasses
         || (budget.frontierPassesUsed !== Number.MAX_SAFE_INTEGER
-            && budget.frontierPassesUsed > budget.maxFrontierReviewPasses)
+            && (budget.frontierPassesUsed > budget.maxFrontierReviewPasses
+                || (budget.frontierPassesUsed >= budget.maxFrontierReviewPasses && !passing)))
         || (budget.frontierRunsUsed !== Number.MAX_SAFE_INTEGER
-            && budget.frontierRunsUsed > budget.maxFrontierRuns);
+            && (budget.frontierRunsUsed > budget.maxFrontierRuns
+                || (budget.frontierRunsUsed >= budget.maxFrontierRuns && !passing)));
 }
 function nextTaskAction(task, gate, dependencies) {
     if (task.state === "todo") {
