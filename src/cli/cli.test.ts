@@ -717,8 +717,12 @@ for (const scenario of attentionReviewScenarios) {
       }
       if (scenario.blocked) {
         assert.match(status.stdout, /resolve: /);
+        assert.match(item.nextAction, /^resolve: /);
         if (item.needsHuman) {
-          assert.doesNotMatch(item.nextAction, /apk task decision|apk review|apk task verify|apk done/);
+          assert.match(
+            item.nextAction,
+            /^resolve: .+; operator-only condition requires human escalation for \d+$/,
+          );
         }
       }
     });
