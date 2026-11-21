@@ -1,6 +1,6 @@
 # Task 0306 - Publish v0.6.1 patch release with post-tag validation
 
-State: doing
+State: done
 Owner: release-engineer-0306
 Mode: production
 Lane: release
