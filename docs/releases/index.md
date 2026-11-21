@@ -2,7 +2,7 @@
 
 <!-- APK_VALIDATED_RELEASE: v0.6.0 -->
 
-The current package/candidate version is `0.6.0`.
+The current package/candidate version is `0.6.1`.
 The latest validated tagged release is [v0.6.0](v0.6.0.md), with the separate
 [post-tag validation record](../delivery/workflow-v0.6.0-post-release.md).
 Its annotated tag object is `d83d069f5309ca2b963f8939a2626d771265979a` and peels to candidate
